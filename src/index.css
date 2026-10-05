@@ -1,0 +1,47 @@
+:root {
+  font-family: "Yu Gothic", "YuGothic", "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+  color: #222;
+  background: #fff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --surface: #fff;
+  --surface-soft: #f7f7f7;
+  --border: #d6d6d6;
+  --text: #222;
+  --text-muted: #666;
+  --link: #245ea8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 14px;
+}
+
+button, input, select {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid #333;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: #222;
+  color: #fff;
+}
+
+a {
+  color: var(--link);
+}
