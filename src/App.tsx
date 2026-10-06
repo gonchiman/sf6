@@ -1,9 +1,12 @@
+import { AppShell } from './components/AppShell'
 import './App.css'
 
 export default function App() {
   return (
-    <main className="app-content">
-      <h1>スト6 バランス分析</h1>
-    </main>
+    <AppShell activePage="win-rates" title="勝率分析">
+      <section className="analysis-workspace" aria-label="分析データ">
+        <p className="workspace-state">データ未接続</p>
+      </section>
+    </AppShell>
   )
 }

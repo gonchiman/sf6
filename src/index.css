@@ -6,8 +6,11 @@
   text-rendering: optimizeLegibility;
   --surface: #fff;
   --surface-soft: #f7f7f7;
+  --surface-hover: #f3f3f3;
   --border: #d6d6d6;
+  --border-strong: #aaa;
   --text: #222;
+  --text-soft: #444;
   --text-muted: #666;
   --link: #245ea8;
 }
