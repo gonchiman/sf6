@@ -1,20 +1,4 @@
-.analysis-workspace {
-  min-height: 360px;
-  flex: 1 1 auto;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--border);
-  background: var(--surface-soft);
-}
-
-.workspace-state {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-@media (max-width: 520px) {
-  .analysis-workspace {
-    min-height: 240px;
-  }
+.app-content > section {
+  min-width: 0;
+  max-width: 100%;
 }

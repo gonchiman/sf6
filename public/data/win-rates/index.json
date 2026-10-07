@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-07T05:39:21.734Z",
+  "source": {
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/stats/dia",
+    "title": "Buckler 総合版 対戦ダイアグラム"
+  },
+  "datasets": [
+    {
+      "id": "2026-08-rookie-combined",
+      "month": "2026-08",
+      "league": "ROOKIE",
+      "operationMode": "combined",
+      "path": "2026-08-rookie-combined.json",
+      "capturedAt": "2026-10-07T05:32:18.206Z"
+    },
+    {
+      "id": "2026-08-rookie-separate",
+      "month": "2026-08",
+      "league": "ROOKIE",
+      "operationMode": "separate",
+      "path": "2026-08-rookie-separate.json",
+      "capturedAt": "2026-10-07T05:31:53.873Z"
+    },
+    {
+      "id": "2026-08-iron-combined",
+      "month": "2026-08",
+      "league": "IRON",
+      "operationMode": "combined",
+      "path": "2026-08-iron-combined.json",
+      "capturedAt": "2026-10-07T05:32:19.329Z"
+    },
+    {
+      "id": "2026-08-iron-separate",
+      "month": "2026-08",
+      "league": "IRON",
+      "operationMode": "separate",
+      "path": "2026-08-iron-separate.json",
+      "capturedAt": "2026-10-07T05:32:22.019Z"
+    },
+    {
+      "id": "2026-08-bronze-combined",
+      "month": "2026-08",
+      "league": "BRONZE",
+      "operationMode": "combined",
+      "path": "2026-08-bronze-combined.json",
+      "capturedAt": "2026-10-07T05:35:08.119Z"
+    },
+    {
+      "id": "2026-08-bronze-separate",
+      "month": "2026-08",
+      "league": "BRONZE",
+      "operationMode": "separate",
+      "path": "2026-08-bronze-separate.json",
+      "capturedAt": "2026-10-07T05:32:25.425Z"
+    },
+    {
+      "id": "2026-08-silver-combined",
+      "month": "2026-08",
+      "league": "SILVER",
+      "operationMode": "combined",
+      "path": "2026-08-silver-combined.json",
+      "capturedAt": "2026-10-07T05:35:52.833Z"
+    },
+    {
+      "id": "2026-08-silver-separate",
+      "month": "2026-08",
+      "league": "SILVER",
+      "operationMode": "separate",
+      "path": "2026-08-silver-separate.json",
+      "capturedAt": "2026-10-07T05:35:53.422Z"
+    },
+    {
+      "id": "2026-08-gold-combined",
+      "month": "2026-08",
+      "league": "GOLD",
+      "operationMode": "combined",
+      "path": "2026-08-gold-combined.json",
+      "capturedAt": "2026-10-07T05:36:06.887Z"
+    },
+    {
+      "id": "2026-08-gold-separate",
+      "month": "2026-08",
+      "league": "GOLD",
+      "operationMode": "separate",
+      "path": "2026-08-gold-separate.json",
+      "capturedAt": "2026-10-07T05:36:06.338Z"
+    },
+    {
+      "id": "2026-08-platinum-combined",
+      "month": "2026-08",
+      "league": "PLATINUM",
+      "operationMode": "combined",
+      "path": "2026-08-platinum-combined.json",
+      "capturedAt": "2026-10-07T05:36:18.987Z"
+    },
+    {
+      "id": "2026-08-platinum-separate",
+      "month": "2026-08",
+      "league": "PLATINUM",
+      "operationMode": "separate",
+      "path": "2026-08-platinum-separate.json",
+      "capturedAt": "2026-10-07T05:36:19.673Z"
+    },
+    {
+      "id": "2026-08-diamond-combined",
+      "month": "2026-08",
+      "league": "DIAMOND",
+      "operationMode": "combined",
+      "path": "2026-08-diamond-combined.json",
+      "capturedAt": "2026-10-07T05:38:01.332Z"
+    },
+    {
+      "id": "2026-08-diamond-separate",
+      "month": "2026-08",
+      "league": "DIAMOND",
+      "operationMode": "separate",
+      "path": "2026-08-diamond-separate.json",
+      "capturedAt": "2026-10-07T05:38:00.987Z"
+    },
+    {
+      "id": "2026-08-master-combined",
+      "month": "2026-08",
+      "league": "MASTER",
+      "operationMode": "combined",
+      "path": "2026-08-master-combined.json",
+      "capturedAt": "2026-10-07T05:38:08.073Z"
+    },
+    {
+      "id": "2026-08-master-separate",
+      "month": "2026-08",
+      "league": "MASTER",
+      "operationMode": "separate",
+      "path": "2026-08-master-separate.json",
+      "capturedAt": "2026-10-07T05:38:08.460Z"
+    },
+    {
+      "id": "2026-07-master-combined",
+      "month": "2026-07",
+      "league": "MASTER",
+      "operationMode": "combined",
+      "path": "2026-07-master-combined.json",
+      "capturedAt": "2026-10-07T05:39:21.720Z"
+    },
+    {
+      "id": "2026-07-master-separate",
+      "month": "2026-07",
+      "league": "MASTER",
+      "operationMode": "separate",
+      "path": "2026-07-master-separate.json",
+      "capturedAt": "2026-10-07T05:39:21.299Z"
+    }
+  ]
+}

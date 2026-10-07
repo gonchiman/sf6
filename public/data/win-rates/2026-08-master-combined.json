@@ -1,0 +1,4333 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-08-master-combined",
+  "fighters": [
+    {
+      "characterId": "luke",
+      "controlType": null,
+      "id": "luke",
+      "name": "LUKE"
+    },
+    {
+      "characterId": "jamie",
+      "controlType": null,
+      "id": "jamie",
+      "name": "JAMIE"
+    },
+    {
+      "characterId": "manon",
+      "controlType": null,
+      "id": "manon",
+      "name": "MANON"
+    },
+    {
+      "characterId": "kimberly",
+      "controlType": null,
+      "id": "kimberly",
+      "name": "KIMBERLY"
+    },
+    {
+      "characterId": "marisa",
+      "controlType": null,
+      "id": "marisa",
+      "name": "MARISA"
+    },
+    {
+      "characterId": "lily",
+      "controlType": null,
+      "id": "lily",
+      "name": "LILY"
+    },
+    {
+      "characterId": "jp",
+      "controlType": null,
+      "id": "jp",
+      "name": "JP"
+    },
+    {
+      "characterId": "juri",
+      "controlType": null,
+      "id": "juri",
+      "name": "JURI"
+    },
+    {
+      "characterId": "deejay",
+      "controlType": null,
+      "id": "deejay",
+      "name": "DEE JAY"
+    },
+    {
+      "characterId": "cammy",
+      "controlType": null,
+      "id": "cammy",
+      "name": "CAMMY"
+    },
+    {
+      "characterId": "ryu",
+      "controlType": null,
+      "id": "ryu",
+      "name": "RYU"
+    },
+    {
+      "characterId": "honda",
+      "controlType": null,
+      "id": "honda",
+      "name": "E.HONDA"
+    },
+    {
+      "characterId": "blanka",
+      "controlType": null,
+      "id": "blanka",
+      "name": "BLANKA"
+    },
+    {
+      "characterId": "guile",
+      "controlType": null,
+      "id": "guile",
+      "name": "GUILE"
+    },
+    {
+      "characterId": "ken",
+      "controlType": null,
+      "id": "ken",
+      "name": "KEN"
+    },
+    {
+      "characterId": "chunli",
+      "controlType": null,
+      "id": "chunli",
+      "name": "CHUN-LI"
+    },
+    {
+      "characterId": "zangief",
+      "controlType": null,
+      "id": "zangief",
+      "name": "ZANGIEF"
+    },
+    {
+      "characterId": "dhalsim",
+      "controlType": null,
+      "id": "dhalsim",
+      "name": "DHALSIM"
+    },
+    {
+      "characterId": "rashid",
+      "controlType": null,
+      "id": "rashid",
+      "name": "RASHID"
+    },
+    {
+      "characterId": "aki",
+      "controlType": null,
+      "id": "aki",
+      "name": "A.K.I."
+    },
+    {
+      "characterId": "ed",
+      "controlType": null,
+      "id": "ed",
+      "name": "ED"
+    },
+    {
+      "characterId": "gouki",
+      "controlType": null,
+      "id": "gouki",
+      "name": "GOUKI"
+    },
+    {
+      "characterId": "vega",
+      "controlType": null,
+      "id": "vega",
+      "name": "VEGA"
+    },
+    {
+      "characterId": "terry",
+      "controlType": null,
+      "id": "terry",
+      "name": "TERRY"
+    },
+    {
+      "characterId": "mai",
+      "controlType": null,
+      "id": "mai",
+      "name": "MAI"
+    },
+    {
+      "characterId": "elena",
+      "controlType": null,
+      "id": "elena",
+      "name": "ELENA"
+    },
+    {
+      "characterId": "sagat",
+      "controlType": null,
+      "id": "sagat",
+      "name": "SAGAT"
+    },
+    {
+      "characterId": "cviper",
+      "controlType": null,
+      "id": "cviper",
+      "name": "C.VIPER"
+    },
+    {
+      "characterId": "alex",
+      "controlType": null,
+      "id": "alex",
+      "name": "ALEX"
+    },
+    {
+      "characterId": "ingrid",
+      "controlType": null,
+      "id": "ingrid",
+      "name": "INGRID"
+    },
+    {
+      "characterId": "yasmine",
+      "controlType": null,
+      "id": "yasmine",
+      "name": "YASMINE"
+    }
+  ],
+  "league": "MASTER",
+  "month": "2026-08",
+  "operationMode": "combined",
+  "rows": [
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.090"
+        },
+        {
+          "lowSample": false,
+          "text": "5.101"
+        },
+        {
+          "lowSample": false,
+          "text": "4.884"
+        },
+        {
+          "lowSample": false,
+          "text": "4.945"
+        },
+        {
+          "lowSample": false,
+          "text": "5.045"
+        },
+        {
+          "lowSample": false,
+          "text": "5.076"
+        },
+        {
+          "lowSample": false,
+          "text": "5.177"
+        },
+        {
+          "lowSample": false,
+          "text": "5.150"
+        },
+        {
+          "lowSample": false,
+          "text": "5.039"
+        },
+        {
+          "lowSample": false,
+          "text": "5.139"
+        },
+        {
+          "lowSample": false,
+          "text": "5.011"
+        },
+        {
+          "lowSample": false,
+          "text": "5.053"
+        },
+        {
+          "lowSample": false,
+          "text": "5.054"
+        },
+        {
+          "lowSample": false,
+          "text": "5.078"
+        },
+        {
+          "lowSample": false,
+          "text": "4.809"
+        },
+        {
+          "lowSample": false,
+          "text": "5.209"
+        },
+        {
+          "lowSample": false,
+          "text": "4.903"
+        },
+        {
+          "lowSample": false,
+          "text": "5.150"
+        },
+        {
+          "lowSample": false,
+          "text": "4.961"
+        },
+        {
+          "lowSample": false,
+          "text": "4.938"
+        },
+        {
+          "lowSample": false,
+          "text": "5.059"
+        },
+        {
+          "lowSample": false,
+          "text": "5.118"
+        },
+        {
+          "lowSample": false,
+          "text": "5.139"
+        },
+        {
+          "lowSample": false,
+          "text": "4.993"
+        },
+        {
+          "lowSample": false,
+          "text": "4.992"
+        },
+        {
+          "lowSample": false,
+          "text": "5.041"
+        },
+        {
+          "lowSample": false,
+          "text": "4.983"
+        },
+        {
+          "lowSample": false,
+          "text": "5.204"
+        },
+        {
+          "lowSample": false,
+          "text": "5.047"
+        },
+        {
+          "lowSample": false,
+          "text": "4.856"
+        }
+      ],
+      "fighterId": "luke",
+      "total": {
+        "lowSample": false,
+        "text": "5.058"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.907"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.946"
+        },
+        {
+          "lowSample": false,
+          "text": "4.886"
+        },
+        {
+          "lowSample": false,
+          "text": "4.951"
+        },
+        {
+          "lowSample": false,
+          "text": "4.774"
+        },
+        {
+          "lowSample": false,
+          "text": "4.806"
+        },
+        {
+          "lowSample": false,
+          "text": "4.856"
+        },
+        {
+          "lowSample": false,
+          "text": "4.648"
+        },
+        {
+          "lowSample": false,
+          "text": "5.198"
+        },
+        {
+          "lowSample": false,
+          "text": "5.028"
+        },
+        {
+          "lowSample": false,
+          "text": "4.728"
+        },
+        {
+          "lowSample": false,
+          "text": "4.733"
+        },
+        {
+          "lowSample": false,
+          "text": "4.676"
+        },
+        {
+          "lowSample": false,
+          "text": "5.002"
+        },
+        {
+          "lowSample": false,
+          "text": "5.079"
+        },
+        {
+          "lowSample": false,
+          "text": "4.991"
+        },
+        {
+          "lowSample": false,
+          "text": "4.529"
+        },
+        {
+          "lowSample": false,
+          "text": "4.993"
+        },
+        {
+          "lowSample": false,
+          "text": "4.882"
+        },
+        {
+          "lowSample": false,
+          "text": "4.939"
+        },
+        {
+          "lowSample": false,
+          "text": "4.997"
+        },
+        {
+          "lowSample": false,
+          "text": "5.079"
+        },
+        {
+          "lowSample": false,
+          "text": "4.917"
+        },
+        {
+          "lowSample": false,
+          "text": "5.107"
+        },
+        {
+          "lowSample": false,
+          "text": "4.928"
+        },
+        {
+          "lowSample": false,
+          "text": "4.679"
+        },
+        {
+          "lowSample": false,
+          "text": "4.846"
+        },
+        {
+          "lowSample": false,
+          "text": "4.963"
+        },
+        {
+          "lowSample": false,
+          "text": "4.893"
+        },
+        {
+          "lowSample": false,
+          "text": "5.055"
+        }
+      ],
+      "fighterId": "jamie",
+      "total": {
+        "lowSample": false,
+        "text": "4.947"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.910"
+        },
+        {
+          "lowSample": false,
+          "text": "5.057"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.939"
+        },
+        {
+          "lowSample": false,
+          "text": "4.961"
+        },
+        {
+          "lowSample": false,
+          "text": "4.828"
+        },
+        {
+          "lowSample": false,
+          "text": "4.650"
+        },
+        {
+          "lowSample": false,
+          "text": "5.043"
+        },
+        {
+          "lowSample": false,
+          "text": "4.961"
+        },
+        {
+          "lowSample": false,
+          "text": "5.152"
+        },
+        {
+          "lowSample": false,
+          "text": "5.093"
+        },
+        {
+          "lowSample": false,
+          "text": "5.011"
+        },
+        {
+          "lowSample": false,
+          "text": "4.803"
+        },
+        {
+          "lowSample": false,
+          "text": "5.124"
+        },
+        {
+          "lowSample": false,
+          "text": "4.972"
+        },
+        {
+          "lowSample": false,
+          "text": "4.872"
+        },
+        {
+          "lowSample": false,
+          "text": "5.326"
+        },
+        {
+          "lowSample": false,
+          "text": "4.322"
+        },
+        {
+          "lowSample": false,
+          "text": "4.948"
+        },
+        {
+          "lowSample": false,
+          "text": "4.996"
+        },
+        {
+          "lowSample": false,
+          "text": "4.733"
+        },
+        {
+          "lowSample": false,
+          "text": "4.970"
+        },
+        {
+          "lowSample": false,
+          "text": "5.218"
+        },
+        {
+          "lowSample": false,
+          "text": "5.114"
+        },
+        {
+          "lowSample": false,
+          "text": "5.044"
+        },
+        {
+          "lowSample": false,
+          "text": "5.006"
+        },
+        {
+          "lowSample": false,
+          "text": "4.909"
+        },
+        {
+          "lowSample": false,
+          "text": "4.979"
+        },
+        {
+          "lowSample": false,
+          "text": "4.850"
+        },
+        {
+          "lowSample": false,
+          "text": "5.043"
+        },
+        {
+          "lowSample": false,
+          "text": "4.960"
+        }
+      ],
+      "fighterId": "manon",
+      "total": {
+        "lowSample": false,
+        "text": "4.988"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.111"
+        },
+        {
+          "lowSample": false,
+          "text": "5.120"
+        },
+        {
+          "lowSample": false,
+          "text": "5.087"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.152"
+        },
+        {
+          "lowSample": false,
+          "text": "5.287"
+        },
+        {
+          "lowSample": false,
+          "text": "5.455"
+        },
+        {
+          "lowSample": false,
+          "text": "5.128"
+        },
+        {
+          "lowSample": false,
+          "text": "5.028"
+        },
+        {
+          "lowSample": false,
+          "text": "5.126"
+        },
+        {
+          "lowSample": false,
+          "text": "5.305"
+        },
+        {
+          "lowSample": false,
+          "text": "4.861"
+        },
+        {
+          "lowSample": false,
+          "text": "4.704"
+        },
+        {
+          "lowSample": false,
+          "text": "5.166"
+        },
+        {
+          "lowSample": false,
+          "text": "4.916"
+        },
+        {
+          "lowSample": false,
+          "text": "5.081"
+        },
+        {
+          "lowSample": false,
+          "text": "5.028"
+        },
+        {
+          "lowSample": false,
+          "text": "5.382"
+        },
+        {
+          "lowSample": false,
+          "text": "4.837"
+        },
+        {
+          "lowSample": false,
+          "text": "5.309"
+        },
+        {
+          "lowSample": false,
+          "text": "5.614"
+        },
+        {
+          "lowSample": false,
+          "text": "5.235"
+        },
+        {
+          "lowSample": false,
+          "text": "5.190"
+        },
+        {
+          "lowSample": false,
+          "text": "4.911"
+        },
+        {
+          "lowSample": false,
+          "text": "5.239"
+        },
+        {
+          "lowSample": false,
+          "text": "5.192"
+        },
+        {
+          "lowSample": false,
+          "text": "5.024"
+        },
+        {
+          "lowSample": false,
+          "text": "5.178"
+        },
+        {
+          "lowSample": false,
+          "text": "5.300"
+        },
+        {
+          "lowSample": false,
+          "text": "5.752"
+        },
+        {
+          "lowSample": false,
+          "text": "4.801"
+        }
+      ],
+      "fighterId": "kimberly",
+      "total": {
+        "lowSample": false,
+        "text": "5.149"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.054"
+        },
+        {
+          "lowSample": false,
+          "text": "5.054"
+        },
+        {
+          "lowSample": false,
+          "text": "5.046"
+        },
+        {
+          "lowSample": false,
+          "text": "4.857"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.694"
+        },
+        {
+          "lowSample": false,
+          "text": "4.740"
+        },
+        {
+          "lowSample": false,
+          "text": "4.869"
+        },
+        {
+          "lowSample": false,
+          "text": "5.328"
+        },
+        {
+          "lowSample": false,
+          "text": "5.333"
+        },
+        {
+          "lowSample": false,
+          "text": "5.077"
+        },
+        {
+          "lowSample": false,
+          "text": "5.148"
+        },
+        {
+          "lowSample": false,
+          "text": "4.801"
+        },
+        {
+          "lowSample": false,
+          "text": "5.463"
+        },
+        {
+          "lowSample": false,
+          "text": "4.960"
+        },
+        {
+          "lowSample": false,
+          "text": "5.070"
+        },
+        {
+          "lowSample": false,
+          "text": "5.260"
+        },
+        {
+          "lowSample": false,
+          "text": "4.300"
+        },
+        {
+          "lowSample": false,
+          "text": "4.853"
+        },
+        {
+          "lowSample": false,
+          "text": "4.976"
+        },
+        {
+          "lowSample": false,
+          "text": "5.007"
+        },
+        {
+          "lowSample": false,
+          "text": "5.166"
+        },
+        {
+          "lowSample": false,
+          "text": "5.104"
+        },
+        {
+          "lowSample": false,
+          "text": "5.048"
+        },
+        {
+          "lowSample": false,
+          "text": "5.146"
+        },
+        {
+          "lowSample": false,
+          "text": "5.096"
+        },
+        {
+          "lowSample": false,
+          "text": "5.112"
+        },
+        {
+          "lowSample": false,
+          "text": "4.957"
+        },
+        {
+          "lowSample": false,
+          "text": "4.890"
+        },
+        {
+          "lowSample": false,
+          "text": "5.048"
+        },
+        {
+          "lowSample": false,
+          "text": "4.799"
+        }
+      ],
+      "fighterId": "marisa",
+      "total": {
+        "lowSample": false,
+        "text": "5.029"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.971"
+        },
+        {
+          "lowSample": false,
+          "text": "5.224"
+        },
+        {
+          "lowSample": false,
+          "text": "5.171"
+        },
+        {
+          "lowSample": false,
+          "text": "4.692"
+        },
+        {
+          "lowSample": false,
+          "text": "5.285"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.419"
+        },
+        {
+          "lowSample": false,
+          "text": "5.201"
+        },
+        {
+          "lowSample": false,
+          "text": "5.128"
+        },
+        {
+          "lowSample": false,
+          "text": "5.255"
+        },
+        {
+          "lowSample": false,
+          "text": "5.007"
+        },
+        {
+          "lowSample": false,
+          "text": "4.723"
+        },
+        {
+          "lowSample": false,
+          "text": "4.600"
+        },
+        {
+          "lowSample": false,
+          "text": "5.134"
+        },
+        {
+          "lowSample": false,
+          "text": "5.009"
+        },
+        {
+          "lowSample": false,
+          "text": "5.129"
+        },
+        {
+          "lowSample": false,
+          "text": "5.632"
+        },
+        {
+          "lowSample": false,
+          "text": "4.001"
+        },
+        {
+          "lowSample": false,
+          "text": "4.733"
+        },
+        {
+          "lowSample": false,
+          "text": "4.746"
+        },
+        {
+          "lowSample": false,
+          "text": "5.114"
+        },
+        {
+          "lowSample": false,
+          "text": "5.111"
+        },
+        {
+          "lowSample": false,
+          "text": "5.187"
+        },
+        {
+          "lowSample": false,
+          "text": "4.849"
+        },
+        {
+          "lowSample": false,
+          "text": "5.258"
+        },
+        {
+          "lowSample": false,
+          "text": "5.331"
+        },
+        {
+          "lowSample": false,
+          "text": "4.932"
+        },
+        {
+          "lowSample": false,
+          "text": "4.880"
+        },
+        {
+          "lowSample": false,
+          "text": "4.903"
+        },
+        {
+          "lowSample": false,
+          "text": "4.487"
+        },
+        {
+          "lowSample": false,
+          "text": "4.960"
+        }
+      ],
+      "fighterId": "lily",
+      "total": {
+        "lowSample": false,
+        "text": "5.010"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.929"
+        },
+        {
+          "lowSample": false,
+          "text": "5.201"
+        },
+        {
+          "lowSample": false,
+          "text": "5.326"
+        },
+        {
+          "lowSample": false,
+          "text": "4.542"
+        },
+        {
+          "lowSample": false,
+          "text": "5.260"
+        },
+        {
+          "lowSample": false,
+          "text": "5.581"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.758"
+        },
+        {
+          "lowSample": false,
+          "text": "5.080"
+        },
+        {
+          "lowSample": false,
+          "text": "4.898"
+        },
+        {
+          "lowSample": false,
+          "text": "5.290"
+        },
+        {
+          "lowSample": false,
+          "text": "4.832"
+        },
+        {
+          "lowSample": false,
+          "text": "4.928"
+        },
+        {
+          "lowSample": false,
+          "text": "5.809"
+        },
+        {
+          "lowSample": false,
+          "text": "5.124"
+        },
+        {
+          "lowSample": false,
+          "text": "5.308"
+        },
+        {
+          "lowSample": false,
+          "text": "5.804"
+        },
+        {
+          "lowSample": false,
+          "text": "4.123"
+        },
+        {
+          "lowSample": false,
+          "text": "4.930"
+        },
+        {
+          "lowSample": false,
+          "text": "5.012"
+        },
+        {
+          "lowSample": false,
+          "text": "5.119"
+        },
+        {
+          "lowSample": false,
+          "text": "4.849"
+        },
+        {
+          "lowSample": false,
+          "text": "4.591"
+        },
+        {
+          "lowSample": false,
+          "text": "5.243"
+        },
+        {
+          "lowSample": false,
+          "text": "5.155"
+        },
+        {
+          "lowSample": false,
+          "text": "5.007"
+        },
+        {
+          "lowSample": false,
+          "text": "5.232"
+        },
+        {
+          "lowSample": false,
+          "text": "5.059"
+        },
+        {
+          "lowSample": false,
+          "text": "5.054"
+        },
+        {
+          "lowSample": false,
+          "text": "4.842"
+        },
+        {
+          "lowSample": false,
+          "text": "4.811"
+        }
+      ],
+      "fighterId": "jp",
+      "total": {
+        "lowSample": false,
+        "text": "5.066"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.811"
+        },
+        {
+          "lowSample": false,
+          "text": "5.145"
+        },
+        {
+          "lowSample": false,
+          "text": "4.971"
+        },
+        {
+          "lowSample": false,
+          "text": "4.864"
+        },
+        {
+          "lowSample": false,
+          "text": "5.134"
+        },
+        {
+          "lowSample": false,
+          "text": "4.793"
+        },
+        {
+          "lowSample": false,
+          "text": "5.234"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.956"
+        },
+        {
+          "lowSample": false,
+          "text": "5.115"
+        },
+        {
+          "lowSample": false,
+          "text": "4.992"
+        },
+        {
+          "lowSample": false,
+          "text": "4.661"
+        },
+        {
+          "lowSample": false,
+          "text": "4.848"
+        },
+        {
+          "lowSample": false,
+          "text": "4.780"
+        },
+        {
+          "lowSample": false,
+          "text": "4.849"
+        },
+        {
+          "lowSample": false,
+          "text": "4.798"
+        },
+        {
+          "lowSample": false,
+          "text": "5.091"
+        },
+        {
+          "lowSample": false,
+          "text": "4.885"
+        },
+        {
+          "lowSample": false,
+          "text": "4.828"
+        },
+        {
+          "lowSample": false,
+          "text": "5.071"
+        },
+        {
+          "lowSample": false,
+          "text": "4.989"
+        },
+        {
+          "lowSample": false,
+          "text": "5.034"
+        },
+        {
+          "lowSample": false,
+          "text": "4.932"
+        },
+        {
+          "lowSample": false,
+          "text": "4.967"
+        },
+        {
+          "lowSample": false,
+          "text": "4.960"
+        },
+        {
+          "lowSample": false,
+          "text": "5.047"
+        },
+        {
+          "lowSample": false,
+          "text": "4.929"
+        },
+        {
+          "lowSample": false,
+          "text": "4.917"
+        },
+        {
+          "lowSample": false,
+          "text": "5.116"
+        },
+        {
+          "lowSample": false,
+          "text": "4.802"
+        },
+        {
+          "lowSample": false,
+          "text": "4.914"
+        }
+      ],
+      "fighterId": "juri",
+      "total": {
+        "lowSample": false,
+        "text": "4.974"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.845"
+        },
+        {
+          "lowSample": false,
+          "text": "5.361"
+        },
+        {
+          "lowSample": false,
+          "text": "5.031"
+        },
+        {
+          "lowSample": false,
+          "text": "4.977"
+        },
+        {
+          "lowSample": false,
+          "text": "4.669"
+        },
+        {
+          "lowSample": false,
+          "text": "4.874"
+        },
+        {
+          "lowSample": false,
+          "text": "4.925"
+        },
+        {
+          "lowSample": false,
+          "text": "5.042"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.343"
+        },
+        {
+          "lowSample": false,
+          "text": "5.112"
+        },
+        {
+          "lowSample": false,
+          "text": "4.880"
+        },
+        {
+          "lowSample": false,
+          "text": "5.310"
+        },
+        {
+          "lowSample": false,
+          "text": "5.099"
+        },
+        {
+          "lowSample": false,
+          "text": "5.189"
+        },
+        {
+          "lowSample": false,
+          "text": "4.954"
+        },
+        {
+          "lowSample": false,
+          "text": "4.879"
+        },
+        {
+          "lowSample": false,
+          "text": "5.649"
+        },
+        {
+          "lowSample": false,
+          "text": "5.059"
+        },
+        {
+          "lowSample": false,
+          "text": "4.923"
+        },
+        {
+          "lowSample": false,
+          "text": "5.272"
+        },
+        {
+          "lowSample": false,
+          "text": "5.280"
+        },
+        {
+          "lowSample": false,
+          "text": "5.119"
+        },
+        {
+          "lowSample": false,
+          "text": "5.091"
+        },
+        {
+          "lowSample": false,
+          "text": "5.037"
+        },
+        {
+          "lowSample": false,
+          "text": "4.988"
+        },
+        {
+          "lowSample": false,
+          "text": "5.113"
+        },
+        {
+          "lowSample": false,
+          "text": "5.156"
+        },
+        {
+          "lowSample": false,
+          "text": "5.149"
+        },
+        {
+          "lowSample": false,
+          "text": "5.286"
+        },
+        {
+          "lowSample": false,
+          "text": "4.957"
+        }
+      ],
+      "fighterId": "deejay",
+      "total": {
+        "lowSample": false,
+        "text": "5.084"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.955"
+        },
+        {
+          "lowSample": false,
+          "text": "4.802"
+        },
+        {
+          "lowSample": false,
+          "text": "4.845"
+        },
+        {
+          "lowSample": false,
+          "text": "4.879"
+        },
+        {
+          "lowSample": false,
+          "text": "4.677"
+        },
+        {
+          "lowSample": false,
+          "text": "4.746"
+        },
+        {
+          "lowSample": false,
+          "text": "5.100"
+        },
+        {
+          "lowSample": false,
+          "text": "4.869"
+        },
+        {
+          "lowSample": false,
+          "text": "4.660"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.203"
+        },
+        {
+          "lowSample": false,
+          "text": "4.489"
+        },
+        {
+          "lowSample": false,
+          "text": "4.468"
+        },
+        {
+          "lowSample": false,
+          "text": "5.308"
+        },
+        {
+          "lowSample": false,
+          "text": "4.973"
+        },
+        {
+          "lowSample": false,
+          "text": "5.041"
+        },
+        {
+          "lowSample": false,
+          "text": "4.837"
+        },
+        {
+          "lowSample": false,
+          "text": "5.334"
+        },
+        {
+          "lowSample": false,
+          "text": "5.183"
+        },
+        {
+          "lowSample": false,
+          "text": "5.125"
+        },
+        {
+          "lowSample": false,
+          "text": "5.054"
+        },
+        {
+          "lowSample": false,
+          "text": "5.348"
+        },
+        {
+          "lowSample": false,
+          "text": "5.038"
+        },
+        {
+          "lowSample": false,
+          "text": "4.961"
+        },
+        {
+          "lowSample": false,
+          "text": "5.070"
+        },
+        {
+          "lowSample": false,
+          "text": "5.045"
+        },
+        {
+          "lowSample": false,
+          "text": "4.931"
+        },
+        {
+          "lowSample": false,
+          "text": "4.667"
+        },
+        {
+          "lowSample": false,
+          "text": "4.812"
+        },
+        {
+          "lowSample": false,
+          "text": "5.461"
+        },
+        {
+          "lowSample": false,
+          "text": "4.837"
+        }
+      ],
+      "fighterId": "cammy",
+      "total": {
+        "lowSample": false,
+        "text": "4.985"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.854"
+        },
+        {
+          "lowSample": false,
+          "text": "4.978"
+        },
+        {
+          "lowSample": false,
+          "text": "4.898"
+        },
+        {
+          "lowSample": false,
+          "text": "4.698"
+        },
+        {
+          "lowSample": false,
+          "text": "4.920"
+        },
+        {
+          "lowSample": false,
+          "text": "4.977"
+        },
+        {
+          "lowSample": false,
+          "text": "4.705"
+        },
+        {
+          "lowSample": false,
+          "text": "4.997"
+        },
+        {
+          "lowSample": false,
+          "text": "4.884"
+        },
+        {
+          "lowSample": false,
+          "text": "4.794"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.007"
+        },
+        {
+          "lowSample": false,
+          "text": "5.036"
+        },
+        {
+          "lowSample": false,
+          "text": "4.974"
+        },
+        {
+          "lowSample": false,
+          "text": "4.980"
+        },
+        {
+          "lowSample": false,
+          "text": "4.815"
+        },
+        {
+          "lowSample": false,
+          "text": "5.136"
+        },
+        {
+          "lowSample": false,
+          "text": "4.745"
+        },
+        {
+          "lowSample": false,
+          "text": "4.946"
+        },
+        {
+          "lowSample": false,
+          "text": "4.933"
+        },
+        {
+          "lowSample": false,
+          "text": "4.991"
+        },
+        {
+          "lowSample": false,
+          "text": "5.008"
+        },
+        {
+          "lowSample": false,
+          "text": "4.919"
+        },
+        {
+          "lowSample": false,
+          "text": "5.013"
+        },
+        {
+          "lowSample": false,
+          "text": "5.064"
+        },
+        {
+          "lowSample": false,
+          "text": "4.792"
+        },
+        {
+          "lowSample": false,
+          "text": "4.953"
+        },
+        {
+          "lowSample": false,
+          "text": "4.782"
+        },
+        {
+          "lowSample": false,
+          "text": "5.043"
+        },
+        {
+          "lowSample": false,
+          "text": "4.908"
+        },
+        {
+          "lowSample": false,
+          "text": "4.735"
+        }
+      ],
+      "fighterId": "ryu",
+      "total": {
+        "lowSample": false,
+        "text": "4.928"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.995"
+        },
+        {
+          "lowSample": false,
+          "text": "5.284"
+        },
+        {
+          "lowSample": false,
+          "text": "4.954"
+        },
+        {
+          "lowSample": false,
+          "text": "5.111"
+        },
+        {
+          "lowSample": false,
+          "text": "4.871"
+        },
+        {
+          "lowSample": false,
+          "text": "5.323"
+        },
+        {
+          "lowSample": false,
+          "text": "5.171"
+        },
+        {
+          "lowSample": false,
+          "text": "5.332"
+        },
+        {
+          "lowSample": false,
+          "text": "5.127"
+        },
+        {
+          "lowSample": false,
+          "text": "5.509"
+        },
+        {
+          "lowSample": false,
+          "text": "4.979"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.814"
+        },
+        {
+          "lowSample": false,
+          "text": "5.178"
+        },
+        {
+          "lowSample": false,
+          "text": "4.895"
+        },
+        {
+          "lowSample": false,
+          "text": "4.910"
+        },
+        {
+          "lowSample": false,
+          "text": "4.744"
+        },
+        {
+          "lowSample": false,
+          "text": "5.574"
+        },
+        {
+          "lowSample": false,
+          "text": "5.148"
+        },
+        {
+          "lowSample": false,
+          "text": "5.125"
+        },
+        {
+          "lowSample": false,
+          "text": "5.286"
+        },
+        {
+          "lowSample": false,
+          "text": "5.195"
+        },
+        {
+          "lowSample": false,
+          "text": "5.344"
+        },
+        {
+          "lowSample": false,
+          "text": "5.138"
+        },
+        {
+          "lowSample": false,
+          "text": "5.227"
+        },
+        {
+          "lowSample": false,
+          "text": "5.259"
+        },
+        {
+          "lowSample": false,
+          "text": "5.307"
+        },
+        {
+          "lowSample": false,
+          "text": "5.093"
+        },
+        {
+          "lowSample": false,
+          "text": "4.980"
+        },
+        {
+          "lowSample": false,
+          "text": "5.416"
+        },
+        {
+          "lowSample": false,
+          "text": "5.076"
+        }
+      ],
+      "fighterId": "honda",
+      "total": {
+        "lowSample": false,
+        "text": "5.130"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.945"
+        },
+        {
+          "lowSample": false,
+          "text": "5.247"
+        },
+        {
+          "lowSample": false,
+          "text": "5.174"
+        },
+        {
+          "lowSample": false,
+          "text": "5.294"
+        },
+        {
+          "lowSample": false,
+          "text": "5.188"
+        },
+        {
+          "lowSample": false,
+          "text": "5.415"
+        },
+        {
+          "lowSample": false,
+          "text": "5.069"
+        },
+        {
+          "lowSample": false,
+          "text": "5.152"
+        },
+        {
+          "lowSample": false,
+          "text": "4.702"
+        },
+        {
+          "lowSample": false,
+          "text": "5.514"
+        },
+        {
+          "lowSample": false,
+          "text": "4.958"
+        },
+        {
+          "lowSample": false,
+          "text": "4.191"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.568"
+        },
+        {
+          "lowSample": false,
+          "text": "4.939"
+        },
+        {
+          "lowSample": false,
+          "text": "4.986"
+        },
+        {
+          "lowSample": false,
+          "text": "5.326"
+        },
+        {
+          "lowSample": false,
+          "text": "5.188"
+        },
+        {
+          "lowSample": false,
+          "text": "4.820"
+        },
+        {
+          "lowSample": false,
+          "text": "4.996"
+        },
+        {
+          "lowSample": false,
+          "text": "5.468"
+        },
+        {
+          "lowSample": false,
+          "text": "5.060"
+        },
+        {
+          "lowSample": false,
+          "text": "4.968"
+        },
+        {
+          "lowSample": false,
+          "text": "4.989"
+        },
+        {
+          "lowSample": false,
+          "text": "5.132"
+        },
+        {
+          "lowSample": false,
+          "text": "5.153"
+        },
+        {
+          "lowSample": false,
+          "text": "4.817"
+        },
+        {
+          "lowSample": false,
+          "text": "5.015"
+        },
+        {
+          "lowSample": false,
+          "text": "5.208"
+        },
+        {
+          "lowSample": false,
+          "text": "5.298"
+        },
+        {
+          "lowSample": false,
+          "text": "4.876"
+        }
+      ],
+      "fighterId": "blanka",
+      "total": {
+        "lowSample": false,
+        "text": "5.061"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.960"
+        },
+        {
+          "lowSample": false,
+          "text": "5.312"
+        },
+        {
+          "lowSample": false,
+          "text": "4.885"
+        },
+        {
+          "lowSample": false,
+          "text": "4.852"
+        },
+        {
+          "lowSample": false,
+          "text": "4.559"
+        },
+        {
+          "lowSample": false,
+          "text": "4.914"
+        },
+        {
+          "lowSample": false,
+          "text": "4.193"
+        },
+        {
+          "lowSample": false,
+          "text": "5.217"
+        },
+        {
+          "lowSample": false,
+          "text": "4.921"
+        },
+        {
+          "lowSample": false,
+          "text": "4.685"
+        },
+        {
+          "lowSample": false,
+          "text": "5.045"
+        },
+        {
+          "lowSample": false,
+          "text": "4.810"
+        },
+        {
+          "lowSample": false,
+          "text": "5.417"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.354"
+        },
+        {
+          "lowSample": false,
+          "text": "4.948"
+        },
+        {
+          "lowSample": false,
+          "text": "4.829"
+        },
+        {
+          "lowSample": false,
+          "text": "4.944"
+        },
+        {
+          "lowSample": false,
+          "text": "4.754"
+        },
+        {
+          "lowSample": false,
+          "text": "5.240"
+        },
+        {
+          "lowSample": false,
+          "text": "5.219"
+        },
+        {
+          "lowSample": false,
+          "text": "5.308"
+        },
+        {
+          "lowSample": false,
+          "text": "4.671"
+        },
+        {
+          "lowSample": false,
+          "text": "5.173"
+        },
+        {
+          "lowSample": false,
+          "text": "4.991"
+        },
+        {
+          "lowSample": false,
+          "text": "4.769"
+        },
+        {
+          "lowSample": false,
+          "text": "5.218"
+        },
+        {
+          "lowSample": false,
+          "text": "5.163"
+        },
+        {
+          "lowSample": false,
+          "text": "5.399"
+        },
+        {
+          "lowSample": false,
+          "text": "4.942"
+        },
+        {
+          "lowSample": false,
+          "text": "4.949"
+        }
+      ],
+      "fighterId": "guile",
+      "total": {
+        "lowSample": false,
+        "text": "5.026"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.912"
+        },
+        {
+          "lowSample": false,
+          "text": "5.005"
+        },
+        {
+          "lowSample": false,
+          "text": "5.034"
+        },
+        {
+          "lowSample": false,
+          "text": "5.076"
+        },
+        {
+          "lowSample": false,
+          "text": "5.049"
+        },
+        {
+          "lowSample": false,
+          "text": "4.967"
+        },
+        {
+          "lowSample": false,
+          "text": "4.862"
+        },
+        {
+          "lowSample": false,
+          "text": "5.142"
+        },
+        {
+          "lowSample": false,
+          "text": "4.812"
+        },
+        {
+          "lowSample": false,
+          "text": "5.029"
+        },
+        {
+          "lowSample": false,
+          "text": "5.014"
+        },
+        {
+          "lowSample": false,
+          "text": "5.119"
+        },
+        {
+          "lowSample": false,
+          "text": "5.038"
+        },
+        {
+          "lowSample": false,
+          "text": "4.650"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.838"
+        },
+        {
+          "lowSample": false,
+          "text": "5.055"
+        },
+        {
+          "lowSample": false,
+          "text": "4.932"
+        },
+        {
+          "lowSample": false,
+          "text": "5.025"
+        },
+        {
+          "lowSample": false,
+          "text": "4.921"
+        },
+        {
+          "lowSample": false,
+          "text": "4.986"
+        },
+        {
+          "lowSample": false,
+          "text": "4.995"
+        },
+        {
+          "lowSample": false,
+          "text": "5.113"
+        },
+        {
+          "lowSample": false,
+          "text": "5.003"
+        },
+        {
+          "lowSample": false,
+          "text": "5.032"
+        },
+        {
+          "lowSample": false,
+          "text": "4.857"
+        },
+        {
+          "lowSample": false,
+          "text": "4.914"
+        },
+        {
+          "lowSample": false,
+          "text": "4.935"
+        },
+        {
+          "lowSample": false,
+          "text": "5.017"
+        },
+        {
+          "lowSample": false,
+          "text": "5.085"
+        },
+        {
+          "lowSample": false,
+          "text": "4.861"
+        }
+      ],
+      "fighterId": "ken",
+      "total": {
+        "lowSample": false,
+        "text": "4.981"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.199"
+        },
+        {
+          "lowSample": false,
+          "text": "4.915"
+        },
+        {
+          "lowSample": false,
+          "text": "5.108"
+        },
+        {
+          "lowSample": false,
+          "text": "4.910"
+        },
+        {
+          "lowSample": false,
+          "text": "4.924"
+        },
+        {
+          "lowSample": false,
+          "text": "4.853"
+        },
+        {
+          "lowSample": false,
+          "text": "4.707"
+        },
+        {
+          "lowSample": false,
+          "text": "5.192"
+        },
+        {
+          "lowSample": false,
+          "text": "5.054"
+        },
+        {
+          "lowSample": false,
+          "text": "4.948"
+        },
+        {
+          "lowSample": false,
+          "text": "5.176"
+        },
+        {
+          "lowSample": false,
+          "text": "5.103"
+        },
+        {
+          "lowSample": false,
+          "text": "4.983"
+        },
+        {
+          "lowSample": false,
+          "text": "5.027"
+        },
+        {
+          "lowSample": false,
+          "text": "5.158"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.982"
+        },
+        {
+          "lowSample": false,
+          "text": "4.676"
+        },
+        {
+          "lowSample": false,
+          "text": "5.112"
+        },
+        {
+          "lowSample": false,
+          "text": "4.916"
+        },
+        {
+          "lowSample": false,
+          "text": "5.397"
+        },
+        {
+          "lowSample": false,
+          "text": "5.228"
+        },
+        {
+          "lowSample": false,
+          "text": "4.902"
+        },
+        {
+          "lowSample": false,
+          "text": "5.082"
+        },
+        {
+          "lowSample": false,
+          "text": "5.054"
+        },
+        {
+          "lowSample": false,
+          "text": "5.122"
+        },
+        {
+          "lowSample": false,
+          "text": "5.089"
+        },
+        {
+          "lowSample": false,
+          "text": "4.705"
+        },
+        {
+          "lowSample": false,
+          "text": "4.821"
+        },
+        {
+          "lowSample": false,
+          "text": "4.939"
+        },
+        {
+          "lowSample": false,
+          "text": "4.919"
+        }
+      ],
+      "fighterId": "chunli",
+      "total": {
+        "lowSample": false,
+        "text": "5.031"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.797"
+        },
+        {
+          "lowSample": false,
+          "text": "5.022"
+        },
+        {
+          "lowSample": false,
+          "text": "4.675"
+        },
+        {
+          "lowSample": false,
+          "text": "4.979"
+        },
+        {
+          "lowSample": false,
+          "text": "4.750"
+        },
+        {
+          "lowSample": false,
+          "text": "4.391"
+        },
+        {
+          "lowSample": false,
+          "text": "4.195"
+        },
+        {
+          "lowSample": false,
+          "text": "4.895"
+        },
+        {
+          "lowSample": false,
+          "text": "5.128"
+        },
+        {
+          "lowSample": false,
+          "text": "5.172"
+        },
+        {
+          "lowSample": false,
+          "text": "4.870"
+        },
+        {
+          "lowSample": false,
+          "text": "5.296"
+        },
+        {
+          "lowSample": false,
+          "text": "4.676"
+        },
+        {
+          "lowSample": false,
+          "text": "5.167"
+        },
+        {
+          "lowSample": false,
+          "text": "4.937"
+        },
+        {
+          "lowSample": false,
+          "text": "5.013"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "3.686"
+        },
+        {
+          "lowSample": false,
+          "text": "4.695"
+        },
+        {
+          "lowSample": false,
+          "text": "4.810"
+        },
+        {
+          "lowSample": false,
+          "text": "4.646"
+        },
+        {
+          "lowSample": false,
+          "text": "4.940"
+        },
+        {
+          "lowSample": false,
+          "text": "5.368"
+        },
+        {
+          "lowSample": false,
+          "text": "4.956"
+        },
+        {
+          "lowSample": false,
+          "text": "5.101"
+        },
+        {
+          "lowSample": false,
+          "text": "4.758"
+        },
+        {
+          "lowSample": false,
+          "text": "4.714"
+        },
+        {
+          "lowSample": false,
+          "text": "4.782"
+        },
+        {
+          "lowSample": false,
+          "text": "4.811"
+        },
+        {
+          "lowSample": false,
+          "text": "4.852"
+        },
+        {
+          "lowSample": false,
+          "text": "5.002"
+        }
+      ],
+      "fighterId": "zangief",
+      "total": {
+        "lowSample": false,
+        "text": "4.884"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.089"
+        },
+        {
+          "lowSample": false,
+          "text": "5.474"
+        },
+        {
+          "lowSample": false,
+          "text": "5.686"
+        },
+        {
+          "lowSample": false,
+          "text": "4.617"
+        },
+        {
+          "lowSample": false,
+          "text": "5.713"
+        },
+        {
+          "lowSample": false,
+          "text": "5.983"
+        },
+        {
+          "lowSample": false,
+          "text": "5.890"
+        },
+        {
+          "lowSample": false,
+          "text": "5.113"
+        },
+        {
+          "lowSample": false,
+          "text": "4.372"
+        },
+        {
+          "lowSample": false,
+          "text": "4.698"
+        },
+        {
+          "lowSample": false,
+          "text": "5.273"
+        },
+        {
+          "lowSample": false,
+          "text": "4.396"
+        },
+        {
+          "lowSample": false,
+          "text": "4.835"
+        },
+        {
+          "lowSample": false,
+          "text": "5.076"
+        },
+        {
+          "lowSample": false,
+          "text": "5.070"
+        },
+        {
+          "lowSample": false,
+          "text": "5.294"
+        },
+        {
+          "lowSample": false,
+          "text": "6.296"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.438"
+        },
+        {
+          "lowSample": false,
+          "text": "5.149"
+        },
+        {
+          "lowSample": false,
+          "text": "5.832"
+        },
+        {
+          "lowSample": false,
+          "text": "5.350"
+        },
+        {
+          "lowSample": false,
+          "text": "4.493"
+        },
+        {
+          "lowSample": false,
+          "text": "5.094"
+        },
+        {
+          "lowSample": false,
+          "text": "5.374"
+        },
+        {
+          "lowSample": false,
+          "text": "5.371"
+        },
+        {
+          "lowSample": false,
+          "text": "5.185"
+        },
+        {
+          "lowSample": false,
+          "text": "5.230"
+        },
+        {
+          "lowSample": false,
+          "text": "4.808"
+        },
+        {
+          "lowSample": false,
+          "text": "4.866"
+        },
+        {
+          "lowSample": false,
+          "text": "4.757"
+        }
+      ],
+      "fighterId": "dhalsim",
+      "total": {
+        "lowSample": false,
+        "text": "5.156"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.857"
+        },
+        {
+          "lowSample": false,
+          "text": "5.016"
+        },
+        {
+          "lowSample": false,
+          "text": "5.035"
+        },
+        {
+          "lowSample": false,
+          "text": "5.155"
+        },
+        {
+          "lowSample": false,
+          "text": "5.151"
+        },
+        {
+          "lowSample": false,
+          "text": "5.292"
+        },
+        {
+          "lowSample": false,
+          "text": "5.095"
+        },
+        {
+          "lowSample": false,
+          "text": "5.164"
+        },
+        {
+          "lowSample": false,
+          "text": "4.965"
+        },
+        {
+          "lowSample": false,
+          "text": "4.802"
+        },
+        {
+          "lowSample": false,
+          "text": "5.059"
+        },
+        {
+          "lowSample": false,
+          "text": "4.854"
+        },
+        {
+          "lowSample": false,
+          "text": "5.132"
+        },
+        {
+          "lowSample": false,
+          "text": "5.287"
+        },
+        {
+          "lowSample": false,
+          "text": "4.988"
+        },
+        {
+          "lowSample": false,
+          "text": "4.906"
+        },
+        {
+          "lowSample": false,
+          "text": "5.279"
+        },
+        {
+          "lowSample": false,
+          "text": "5.591"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.845"
+        },
+        {
+          "lowSample": false,
+          "text": "5.405"
+        },
+        {
+          "lowSample": false,
+          "text": "5.183"
+        },
+        {
+          "lowSample": false,
+          "text": "4.795"
+        },
+        {
+          "lowSample": false,
+          "text": "5.119"
+        },
+        {
+          "lowSample": false,
+          "text": "5.185"
+        },
+        {
+          "lowSample": false,
+          "text": "4.956"
+        },
+        {
+          "lowSample": false,
+          "text": "4.974"
+        },
+        {
+          "lowSample": false,
+          "text": "5.144"
+        },
+        {
+          "lowSample": false,
+          "text": "5.285"
+        },
+        {
+          "lowSample": false,
+          "text": "5.306"
+        },
+        {
+          "lowSample": false,
+          "text": "4.782"
+        }
+      ],
+      "fighterId": "rashid",
+      "total": {
+        "lowSample": false,
+        "text": "5.058"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.035"
+        },
+        {
+          "lowSample": false,
+          "text": "5.134"
+        },
+        {
+          "lowSample": false,
+          "text": "4.989"
+        },
+        {
+          "lowSample": false,
+          "text": "4.717"
+        },
+        {
+          "lowSample": false,
+          "text": "5.002"
+        },
+        {
+          "lowSample": false,
+          "text": "5.254"
+        },
+        {
+          "lowSample": false,
+          "text": "4.977"
+        },
+        {
+          "lowSample": false,
+          "text": "4.926"
+        },
+        {
+          "lowSample": false,
+          "text": "5.074"
+        },
+        {
+          "lowSample": false,
+          "text": "4.869"
+        },
+        {
+          "lowSample": false,
+          "text": "5.067"
+        },
+        {
+          "lowSample": false,
+          "text": "4.896"
+        },
+        {
+          "lowSample": false,
+          "text": "4.985"
+        },
+        {
+          "lowSample": false,
+          "text": "4.781"
+        },
+        {
+          "lowSample": false,
+          "text": "5.092"
+        },
+        {
+          "lowSample": false,
+          "text": "5.095"
+        },
+        {
+          "lowSample": false,
+          "text": "5.191"
+        },
+        {
+          "lowSample": false,
+          "text": "4.868"
+        },
+        {
+          "lowSample": false,
+          "text": "5.132"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.425"
+        },
+        {
+          "lowSample": false,
+          "text": "5.109"
+        },
+        {
+          "lowSample": false,
+          "text": "4.769"
+        },
+        {
+          "lowSample": false,
+          "text": "5.024"
+        },
+        {
+          "lowSample": false,
+          "text": "5.230"
+        },
+        {
+          "lowSample": false,
+          "text": "5.024"
+        },
+        {
+          "lowSample": false,
+          "text": "4.980"
+        },
+        {
+          "lowSample": false,
+          "text": "4.997"
+        },
+        {
+          "lowSample": false,
+          "text": "5.066"
+        },
+        {
+          "lowSample": false,
+          "text": "5.130"
+        },
+        {
+          "lowSample": false,
+          "text": "4.916"
+        }
+      ],
+      "fighterId": "aki",
+      "total": {
+        "lowSample": false,
+        "text": "5.036"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.061"
+        },
+        {
+          "lowSample": false,
+          "text": "5.061"
+        },
+        {
+          "lowSample": false,
+          "text": "5.287"
+        },
+        {
+          "lowSample": false,
+          "text": "4.395"
+        },
+        {
+          "lowSample": false,
+          "text": "4.980"
+        },
+        {
+          "lowSample": false,
+          "text": "4.918"
+        },
+        {
+          "lowSample": false,
+          "text": "4.882"
+        },
+        {
+          "lowSample": false,
+          "text": "5.015"
+        },
+        {
+          "lowSample": false,
+          "text": "4.744"
+        },
+        {
+          "lowSample": false,
+          "text": "4.934"
+        },
+        {
+          "lowSample": false,
+          "text": "5.016"
+        },
+        {
+          "lowSample": false,
+          "text": "4.761"
+        },
+        {
+          "lowSample": false,
+          "text": "4.576"
+        },
+        {
+          "lowSample": false,
+          "text": "4.781"
+        },
+        {
+          "lowSample": false,
+          "text": "5.023"
+        },
+        {
+          "lowSample": false,
+          "text": "4.592"
+        },
+        {
+          "lowSample": false,
+          "text": "5.370"
+        },
+        {
+          "lowSample": false,
+          "text": "4.151"
+        },
+        {
+          "lowSample": false,
+          "text": "4.612"
+        },
+        {
+          "lowSample": false,
+          "text": "4.579"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.943"
+        },
+        {
+          "lowSample": false,
+          "text": "4.896"
+        },
+        {
+          "lowSample": false,
+          "text": "4.945"
+        },
+        {
+          "lowSample": false,
+          "text": "4.962"
+        },
+        {
+          "lowSample": false,
+          "text": "4.765"
+        },
+        {
+          "lowSample": false,
+          "text": "4.844"
+        },
+        {
+          "lowSample": false,
+          "text": "4.817"
+        },
+        {
+          "lowSample": false,
+          "text": "4.901"
+        },
+        {
+          "lowSample": false,
+          "text": "4.825"
+        },
+        {
+          "lowSample": false,
+          "text": "4.889"
+        }
+      ],
+      "fighterId": "ed",
+      "total": {
+        "lowSample": false,
+        "text": "4.933"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.943"
+        },
+        {
+          "lowSample": false,
+          "text": "4.999"
+        },
+        {
+          "lowSample": false,
+          "text": "5.007"
+        },
+        {
+          "lowSample": false,
+          "text": "4.770"
+        },
+        {
+          "lowSample": false,
+          "text": "4.833"
+        },
+        {
+          "lowSample": false,
+          "text": "4.878"
+        },
+        {
+          "lowSample": false,
+          "text": "5.156"
+        },
+        {
+          "lowSample": false,
+          "text": "4.957"
+        },
+        {
+          "lowSample": false,
+          "text": "4.705"
+        },
+        {
+          "lowSample": false,
+          "text": "4.643"
+        },
+        {
+          "lowSample": false,
+          "text": "4.986"
+        },
+        {
+          "lowSample": false,
+          "text": "4.806"
+        },
+        {
+          "lowSample": false,
+          "text": "4.934"
+        },
+        {
+          "lowSample": false,
+          "text": "4.679"
+        },
+        {
+          "lowSample": false,
+          "text": "5.001"
+        },
+        {
+          "lowSample": false,
+          "text": "4.765"
+        },
+        {
+          "lowSample": false,
+          "text": "5.051"
+        },
+        {
+          "lowSample": false,
+          "text": "4.672"
+        },
+        {
+          "lowSample": false,
+          "text": "4.830"
+        },
+        {
+          "lowSample": false,
+          "text": "4.884"
+        },
+        {
+          "lowSample": false,
+          "text": "5.045"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.749"
+        },
+        {
+          "lowSample": false,
+          "text": "4.944"
+        },
+        {
+          "lowSample": false,
+          "text": "4.949"
+        },
+        {
+          "lowSample": false,
+          "text": "4.750"
+        },
+        {
+          "lowSample": false,
+          "text": "4.954"
+        },
+        {
+          "lowSample": false,
+          "text": "4.613"
+        },
+        {
+          "lowSample": false,
+          "text": "4.748"
+        },
+        {
+          "lowSample": false,
+          "text": "4.824"
+        },
+        {
+          "lowSample": false,
+          "text": "4.649"
+        }
+      ],
+      "fighterId": "gouki",
+      "total": {
+        "lowSample": false,
+        "text": "4.882"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.875"
+        },
+        {
+          "lowSample": false,
+          "text": "4.928"
+        },
+        {
+          "lowSample": false,
+          "text": "4.779"
+        },
+        {
+          "lowSample": false,
+          "text": "4.828"
+        },
+        {
+          "lowSample": false,
+          "text": "4.894"
+        },
+        {
+          "lowSample": false,
+          "text": "4.809"
+        },
+        {
+          "lowSample": false,
+          "text": "5.413"
+        },
+        {
+          "lowSample": false,
+          "text": "5.074"
+        },
+        {
+          "lowSample": false,
+          "text": "4.889"
+        },
+        {
+          "lowSample": false,
+          "text": "4.964"
+        },
+        {
+          "lowSample": false,
+          "text": "5.072"
+        },
+        {
+          "lowSample": false,
+          "text": "4.648"
+        },
+        {
+          "lowSample": false,
+          "text": "5.013"
+        },
+        {
+          "lowSample": false,
+          "text": "5.315"
+        },
+        {
+          "lowSample": false,
+          "text": "4.889"
+        },
+        {
+          "lowSample": false,
+          "text": "5.072"
+        },
+        {
+          "lowSample": false,
+          "text": "4.635"
+        },
+        {
+          "lowSample": false,
+          "text": "5.561"
+        },
+        {
+          "lowSample": false,
+          "text": "5.212"
+        },
+        {
+          "lowSample": false,
+          "text": "5.213"
+        },
+        {
+          "lowSample": false,
+          "text": "5.087"
+        },
+        {
+          "lowSample": false,
+          "text": "5.249"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.943"
+        },
+        {
+          "lowSample": false,
+          "text": "5.114"
+        },
+        {
+          "lowSample": false,
+          "text": "5.113"
+        },
+        {
+          "lowSample": false,
+          "text": "5.030"
+        },
+        {
+          "lowSample": false,
+          "text": "4.976"
+        },
+        {
+          "lowSample": false,
+          "text": "5.064"
+        },
+        {
+          "lowSample": false,
+          "text": "5.590"
+        },
+        {
+          "lowSample": false,
+          "text": "4.871"
+        }
+      ],
+      "fighterId": "vega",
+      "total": {
+        "lowSample": false,
+        "text": "5.023"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.862"
+        },
+        {
+          "lowSample": false,
+          "text": "5.095"
+        },
+        {
+          "lowSample": false,
+          "text": "4.886"
+        },
+        {
+          "lowSample": false,
+          "text": "5.075"
+        },
+        {
+          "lowSample": false,
+          "text": "4.960"
+        },
+        {
+          "lowSample": false,
+          "text": "5.160"
+        },
+        {
+          "lowSample": false,
+          "text": "4.756"
+        },
+        {
+          "lowSample": false,
+          "text": "5.023"
+        },
+        {
+          "lowSample": false,
+          "text": "4.902"
+        },
+        {
+          "lowSample": false,
+          "text": "5.048"
+        },
+        {
+          "lowSample": false,
+          "text": "4.988"
+        },
+        {
+          "lowSample": false,
+          "text": "4.885"
+        },
+        {
+          "lowSample": false,
+          "text": "4.998"
+        },
+        {
+          "lowSample": false,
+          "text": "4.844"
+        },
+        {
+          "lowSample": false,
+          "text": "4.995"
+        },
+        {
+          "lowSample": false,
+          "text": "4.930"
+        },
+        {
+          "lowSample": false,
+          "text": "5.042"
+        },
+        {
+          "lowSample": false,
+          "text": "4.931"
+        },
+        {
+          "lowSample": false,
+          "text": "4.880"
+        },
+        {
+          "lowSample": false,
+          "text": "4.968"
+        },
+        {
+          "lowSample": false,
+          "text": "5.058"
+        },
+        {
+          "lowSample": false,
+          "text": "5.049"
+        },
+        {
+          "lowSample": false,
+          "text": "5.053"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.028"
+        },
+        {
+          "lowSample": false,
+          "text": "4.977"
+        },
+        {
+          "lowSample": false,
+          "text": "4.902"
+        },
+        {
+          "lowSample": false,
+          "text": "5.022"
+        },
+        {
+          "lowSample": false,
+          "text": "5.225"
+        },
+        {
+          "lowSample": false,
+          "text": "5.143"
+        },
+        {
+          "lowSample": false,
+          "text": "4.967"
+        }
+      ],
+      "fighterId": "terry",
+      "total": {
+        "lowSample": false,
+        "text": "5.000"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.022"
+        },
+        {
+          "lowSample": false,
+          "text": "4.895"
+        },
+        {
+          "lowSample": false,
+          "text": "4.952"
+        },
+        {
+          "lowSample": false,
+          "text": "4.776"
+        },
+        {
+          "lowSample": false,
+          "text": "4.864"
+        },
+        {
+          "lowSample": false,
+          "text": "4.739"
+        },
+        {
+          "lowSample": false,
+          "text": "4.855"
+        },
+        {
+          "lowSample": false,
+          "text": "5.024"
+        },
+        {
+          "lowSample": false,
+          "text": "4.965"
+        },
+        {
+          "lowSample": false,
+          "text": "4.924"
+        },
+        {
+          "lowSample": false,
+          "text": "4.939"
+        },
+        {
+          "lowSample": false,
+          "text": "4.766"
+        },
+        {
+          "lowSample": false,
+          "text": "4.879"
+        },
+        {
+          "lowSample": false,
+          "text": "5.025"
+        },
+        {
+          "lowSample": false,
+          "text": "4.968"
+        },
+        {
+          "lowSample": false,
+          "text": "4.967"
+        },
+        {
+          "lowSample": false,
+          "text": "4.902"
+        },
+        {
+          "lowSample": false,
+          "text": "4.654"
+        },
+        {
+          "lowSample": false,
+          "text": "4.805"
+        },
+        {
+          "lowSample": false,
+          "text": "4.784"
+        },
+        {
+          "lowSample": false,
+          "text": "5.039"
+        },
+        {
+          "lowSample": false,
+          "text": "5.049"
+        },
+        {
+          "lowSample": false,
+          "text": "4.884"
+        },
+        {
+          "lowSample": false,
+          "text": "4.985"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.957"
+        },
+        {
+          "lowSample": false,
+          "text": "4.835"
+        },
+        {
+          "lowSample": false,
+          "text": "5.060"
+        },
+        {
+          "lowSample": false,
+          "text": "4.934"
+        },
+        {
+          "lowSample": false,
+          "text": "5.043"
+        },
+        {
+          "lowSample": false,
+          "text": "4.962"
+        }
+      ],
+      "fighterId": "mai",
+      "total": {
+        "lowSample": false,
+        "text": "4.943"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.015"
+        },
+        {
+          "lowSample": false,
+          "text": "5.080"
+        },
+        {
+          "lowSample": false,
+          "text": "5.016"
+        },
+        {
+          "lowSample": false,
+          "text": "4.805"
+        },
+        {
+          "lowSample": false,
+          "text": "4.882"
+        },
+        {
+          "lowSample": false,
+          "text": "4.688"
+        },
+        {
+          "lowSample": false,
+          "text": "4.995"
+        },
+        {
+          "lowSample": false,
+          "text": "4.960"
+        },
+        {
+          "lowSample": false,
+          "text": "5.002"
+        },
+        {
+          "lowSample": false,
+          "text": "4.950"
+        },
+        {
+          "lowSample": false,
+          "text": "5.197"
+        },
+        {
+          "lowSample": false,
+          "text": "4.728"
+        },
+        {
+          "lowSample": false,
+          "text": "4.822"
+        },
+        {
+          "lowSample": false,
+          "text": "5.255"
+        },
+        {
+          "lowSample": false,
+          "text": "5.144"
+        },
+        {
+          "lowSample": false,
+          "text": "4.910"
+        },
+        {
+          "lowSample": false,
+          "text": "5.241"
+        },
+        {
+          "lowSample": false,
+          "text": "4.646"
+        },
+        {
+          "lowSample": false,
+          "text": "5.008"
+        },
+        {
+          "lowSample": false,
+          "text": "4.971"
+        },
+        {
+          "lowSample": false,
+          "text": "5.243"
+        },
+        {
+          "lowSample": false,
+          "text": "5.248"
+        },
+        {
+          "lowSample": false,
+          "text": "4.883"
+        },
+        {
+          "lowSample": false,
+          "text": "5.005"
+        },
+        {
+          "lowSample": false,
+          "text": "5.067"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.015"
+        },
+        {
+          "lowSample": false,
+          "text": "4.968"
+        },
+        {
+          "lowSample": false,
+          "text": "4.978"
+        },
+        {
+          "lowSample": false,
+          "text": "5.422"
+        },
+        {
+          "lowSample": false,
+          "text": "5.055"
+        }
+      ],
+      "fighterId": "elena",
+      "total": {
+        "lowSample": false,
+        "text": "5.054"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.952"
+        },
+        {
+          "lowSample": false,
+          "text": "5.327"
+        },
+        {
+          "lowSample": false,
+          "text": "5.109"
+        },
+        {
+          "lowSample": false,
+          "text": "4.985"
+        },
+        {
+          "lowSample": false,
+          "text": "4.899"
+        },
+        {
+          "lowSample": false,
+          "text": "5.110"
+        },
+        {
+          "lowSample": false,
+          "text": "4.777"
+        },
+        {
+          "lowSample": false,
+          "text": "5.085"
+        },
+        {
+          "lowSample": false,
+          "text": "4.892"
+        },
+        {
+          "lowSample": false,
+          "text": "5.055"
+        },
+        {
+          "lowSample": false,
+          "text": "5.045"
+        },
+        {
+          "lowSample": false,
+          "text": "4.695"
+        },
+        {
+          "lowSample": false,
+          "text": "5.191"
+        },
+        {
+          "lowSample": false,
+          "text": "4.793"
+        },
+        {
+          "lowSample": false,
+          "text": "5.096"
+        },
+        {
+          "lowSample": false,
+          "text": "4.900"
+        },
+        {
+          "lowSample": false,
+          "text": "5.299"
+        },
+        {
+          "lowSample": false,
+          "text": "4.814"
+        },
+        {
+          "lowSample": false,
+          "text": "5.027"
+        },
+        {
+          "lowSample": false,
+          "text": "5.036"
+        },
+        {
+          "lowSample": false,
+          "text": "5.157"
+        },
+        {
+          "lowSample": false,
+          "text": "5.040"
+        },
+        {
+          "lowSample": false,
+          "text": "4.978"
+        },
+        {
+          "lowSample": false,
+          "text": "5.105"
+        },
+        {
+          "lowSample": false,
+          "text": "5.166"
+        },
+        {
+          "lowSample": false,
+          "text": "4.958"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.140"
+        },
+        {
+          "lowSample": false,
+          "text": "4.649"
+        },
+        {
+          "lowSample": false,
+          "text": "5.048"
+        },
+        {
+          "lowSample": false,
+          "text": "4.918"
+        }
+      ],
+      "fighterId": "sagat",
+      "total": {
+        "lowSample": false,
+        "text": "5.018"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.009"
+        },
+        {
+          "lowSample": false,
+          "text": "5.155"
+        },
+        {
+          "lowSample": false,
+          "text": "5.054"
+        },
+        {
+          "lowSample": false,
+          "text": "4.824"
+        },
+        {
+          "lowSample": false,
+          "text": "5.045"
+        },
+        {
+          "lowSample": false,
+          "text": "5.116"
+        },
+        {
+          "lowSample": false,
+          "text": "4.934"
+        },
+        {
+          "lowSample": false,
+          "text": "5.068"
+        },
+        {
+          "lowSample": false,
+          "text": "4.822"
+        },
+        {
+          "lowSample": false,
+          "text": "5.307"
+        },
+        {
+          "lowSample": false,
+          "text": "5.222"
+        },
+        {
+          "lowSample": false,
+          "text": "4.875"
+        },
+        {
+          "lowSample": false,
+          "text": "4.962"
+        },
+        {
+          "lowSample": false,
+          "text": "4.824"
+        },
+        {
+          "lowSample": false,
+          "text": "5.061"
+        },
+        {
+          "lowSample": false,
+          "text": "5.266"
+        },
+        {
+          "lowSample": false,
+          "text": "5.232"
+        },
+        {
+          "lowSample": false,
+          "text": "4.772"
+        },
+        {
+          "lowSample": false,
+          "text": "4.872"
+        },
+        {
+          "lowSample": false,
+          "text": "5.006"
+        },
+        {
+          "lowSample": false,
+          "text": "5.193"
+        },
+        {
+          "lowSample": false,
+          "text": "5.376"
+        },
+        {
+          "lowSample": false,
+          "text": "5.015"
+        },
+        {
+          "lowSample": false,
+          "text": "4.958"
+        },
+        {
+          "lowSample": false,
+          "text": "4.924"
+        },
+        {
+          "lowSample": false,
+          "text": "4.996"
+        },
+        {
+          "lowSample": false,
+          "text": "4.854"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "4.973"
+        },
+        {
+          "lowSample": false,
+          "text": "5.159"
+        },
+        {
+          "lowSample": false,
+          "text": "4.875"
+        }
+      ],
+      "fighterId": "cviper",
+      "total": {
+        "lowSample": false,
+        "text": "5.059"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.788"
+        },
+        {
+          "lowSample": false,
+          "text": "5.042"
+        },
+        {
+          "lowSample": false,
+          "text": "5.144"
+        },
+        {
+          "lowSample": false,
+          "text": "4.691"
+        },
+        {
+          "lowSample": false,
+          "text": "5.114"
+        },
+        {
+          "lowSample": false,
+          "text": "5.096"
+        },
+        {
+          "lowSample": false,
+          "text": "4.937"
+        },
+        {
+          "lowSample": false,
+          "text": "4.888"
+        },
+        {
+          "lowSample": false,
+          "text": "4.857"
+        },
+        {
+          "lowSample": false,
+          "text": "5.190"
+        },
+        {
+          "lowSample": false,
+          "text": "4.960"
+        },
+        {
+          "lowSample": false,
+          "text": "5.028"
+        },
+        {
+          "lowSample": false,
+          "text": "4.781"
+        },
+        {
+          "lowSample": false,
+          "text": "4.609"
+        },
+        {
+          "lowSample": false,
+          "text": "4.983"
+        },
+        {
+          "lowSample": false,
+          "text": "5.183"
+        },
+        {
+          "lowSample": false,
+          "text": "5.195"
+        },
+        {
+          "lowSample": false,
+          "text": "5.166"
+        },
+        {
+          "lowSample": false,
+          "text": "4.726"
+        },
+        {
+          "lowSample": false,
+          "text": "4.933"
+        },
+        {
+          "lowSample": false,
+          "text": "5.098"
+        },
+        {
+          "lowSample": false,
+          "text": "5.245"
+        },
+        {
+          "lowSample": false,
+          "text": "4.928"
+        },
+        {
+          "lowSample": false,
+          "text": "4.782"
+        },
+        {
+          "lowSample": false,
+          "text": "5.079"
+        },
+        {
+          "lowSample": false,
+          "text": "5.037"
+        },
+        {
+          "lowSample": false,
+          "text": "5.361"
+        },
+        {
+          "lowSample": false,
+          "text": "5.030"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.058"
+        },
+        {
+          "lowSample": false,
+          "text": "4.786"
+        }
+      ],
+      "fighterId": "alex",
+      "total": {
+        "lowSample": false,
+        "text": "4.990"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "4.959"
+        },
+        {
+          "lowSample": false,
+          "text": "5.102"
+        },
+        {
+          "lowSample": false,
+          "text": "4.987"
+        },
+        {
+          "lowSample": false,
+          "text": "4.248"
+        },
+        {
+          "lowSample": false,
+          "text": "4.953"
+        },
+        {
+          "lowSample": false,
+          "text": "5.535"
+        },
+        {
+          "lowSample": false,
+          "text": "5.163"
+        },
+        {
+          "lowSample": false,
+          "text": "5.194"
+        },
+        {
+          "lowSample": false,
+          "text": "4.707"
+        },
+        {
+          "lowSample": false,
+          "text": "4.548"
+        },
+        {
+          "lowSample": false,
+          "text": "5.088"
+        },
+        {
+          "lowSample": false,
+          "text": "4.598"
+        },
+        {
+          "lowSample": false,
+          "text": "4.704"
+        },
+        {
+          "lowSample": false,
+          "text": "5.048"
+        },
+        {
+          "lowSample": false,
+          "text": "4.929"
+        },
+        {
+          "lowSample": false,
+          "text": "5.064"
+        },
+        {
+          "lowSample": false,
+          "text": "5.164"
+        },
+        {
+          "lowSample": false,
+          "text": "5.140"
+        },
+        {
+          "lowSample": false,
+          "text": "4.687"
+        },
+        {
+          "lowSample": false,
+          "text": "4.869"
+        },
+        {
+          "lowSample": false,
+          "text": "5.175"
+        },
+        {
+          "lowSample": false,
+          "text": "5.177"
+        },
+        {
+          "lowSample": false,
+          "text": "4.415"
+        },
+        {
+          "lowSample": false,
+          "text": "4.859"
+        },
+        {
+          "lowSample": false,
+          "text": "4.951"
+        },
+        {
+          "lowSample": false,
+          "text": "4.564"
+        },
+        {
+          "lowSample": false,
+          "text": "4.958"
+        },
+        {
+          "lowSample": false,
+          "text": "4.859"
+        },
+        {
+          "lowSample": false,
+          "text": "4.938"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        },
+        {
+          "lowSample": false,
+          "text": "5.066"
+        }
+      ],
+      "fighterId": "ingrid",
+      "total": {
+        "lowSample": false,
+        "text": "4.962"
+      }
+    },
+    {
+      "cells": [
+        {
+          "lowSample": false,
+          "text": "5.132"
+        },
+        {
+          "lowSample": false,
+          "text": "4.946"
+        },
+        {
+          "lowSample": false,
+          "text": "5.041"
+        },
+        {
+          "lowSample": false,
+          "text": "5.201"
+        },
+        {
+          "lowSample": false,
+          "text": "5.191"
+        },
+        {
+          "lowSample": false,
+          "text": "5.039"
+        },
+        {
+          "lowSample": false,
+          "text": "5.176"
+        },
+        {
+          "lowSample": false,
+          "text": "5.082"
+        },
+        {
+          "lowSample": false,
+          "text": "5.063"
+        },
+        {
+          "lowSample": false,
+          "text": "5.159"
+        },
+        {
+          "lowSample": false,
+          "text": "5.255"
+        },
+        {
+          "lowSample": false,
+          "text": "4.930"
+        },
+        {
+          "lowSample": false,
+          "text": "5.113"
+        },
+        {
+          "lowSample": false,
+          "text": "5.051"
+        },
+        {
+          "lowSample": false,
+          "text": "5.133"
+        },
+        {
+          "lowSample": false,
+          "text": "5.076"
+        },
+        {
+          "lowSample": false,
+          "text": "4.998"
+        },
+        {
+          "lowSample": false,
+          "text": "5.256"
+        },
+        {
+          "lowSample": false,
+          "text": "5.202"
+        },
+        {
+          "lowSample": false,
+          "text": "5.075"
+        },
+        {
+          "lowSample": false,
+          "text": "5.115"
+        },
+        {
+          "lowSample": false,
+          "text": "5.345"
+        },
+        {
+          "lowSample": false,
+          "text": "5.113"
+        },
+        {
+          "lowSample": false,
+          "text": "5.035"
+        },
+        {
+          "lowSample": false,
+          "text": "5.041"
+        },
+        {
+          "lowSample": false,
+          "text": "4.948"
+        },
+        {
+          "lowSample": false,
+          "text": "5.067"
+        },
+        {
+          "lowSample": false,
+          "text": "5.127"
+        },
+        {
+          "lowSample": false,
+          "text": "5.203"
+        },
+        {
+          "lowSample": false,
+          "text": "4.932"
+        },
+        {
+          "lowSample": false,
+          "text": "-"
+        }
+      ],
+      "fighterId": "yasmine",
+      "total": {
+        "lowSample": false,
+        "text": "5.120"
+      }
+    }
+  ],
+  "capturedAt": "2026-10-07T05:38:08.073Z",
+  "generatedAt": "2026-10-07T05:38:08.073Z",
+  "source": {
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/stats/dia",
+    "title": "Buckler 総合版 対戦ダイアグラム",
+    "population": "ランクマッチ",
+    "metric": "公式対戦ダイアグラムの掲載値",
+    "notes": [
+      "公式表記の小数3桁を保持。百分率への換算は行っていない。",
+      "少数試合の印は公式表の表示に従う。試合数は公開表から取得できていない。",
+      "勝ち・対戦の集計単位、Totalの算出方法、引き分け・切断等の扱いは未確認。"
+    ]
+  }
+}
