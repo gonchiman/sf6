@@ -8,6 +8,11 @@ Bucklerで公開されたStreet Fighter 6の対戦勝率を確認するアプリ
 セルを選ぶと組み合わせと数値を確認できる。
 狭い画面では上部バーからメニューを開閉できる。
 
+「キャラ情報」ではキャラ名・英語名・体力と公式の技データを表示する。
+クラシック／モダンを選び、技名や入力の検索、カテゴリの絞り込み、発生・硬直差・ダメージの並び替えができる。
+「詳細列」で持続・硬直・キャンセルを追加し、技名から入力・補正・ゲージ・属性・備考を確認できる。
+`#characters/ryu` のようなURLで直接開ける。
+
 ## 開発
 
 Node.js 24とnpmを使用する。
@@ -28,14 +33,15 @@ npm run preview
 ```
 
 `test` は条件・欠損・少数試合・データ形式・読込キャッシュと再試行、Totalの換算・並び替え・元データ不変に加え、取り込みの条件一致と更新失敗時の復元を検証する。
-`validate:data` は登録済みJSONの条件と行列の完全性を確認する。
+`validate:data` は登録済み勝率JSONの条件・行列と、キャラJSONの一覧・技データの整合性を確認する。
 `build` はデータ検証、型チェック、本番ビルドを行い、出力を `dist/` に生成する。
+キャラデータの生表記、操作タイプ、入力変換、欠損・条件付き数値の並び替え、読込の再試行、ルートも検証する。
 
 ## 構成
 
 | 場所 | 役割 |
 | --- | --- |
-| `src/App.tsx` | アプリの入口。共通レイアウト内に勝率ページを表示 |
+| `src/App.tsx` | hash URLに応じて共通レイアウト内のページを切り替える |
 | `src/components/AppShell.tsx` | サイドバー、上部バー、ページ領域を組み合わせる共通レイアウト |
 | `src/components/AppSidebar.tsx` | ナビゲーションとモバイルメニュー |
 | `src/lib/navigation.ts` | 実在するページのナビゲーション定義 |
@@ -53,6 +59,13 @@ npm run preview
 | `scripts/export-buckler-snapshots.js` | 通常閲覧した公式表から月別の入力JSONを書き出す手動用スクリプト |
 | `scripts/update-win-rate-data.ts` | 単月・期間・保存済み全月の取り込みコマンド |
 | `scripts/lib/` | 公式表の正規化、対象範囲の検証、公開用データの反映・復元 |
+| `src/components/CharactersPage.tsx`、`src/characters.css` | キャラ概要、技検索・分類・並べ替え、技詳細 |
+| `src/lib/characters.ts`、`src/types/characters.ts` | キャラJSONの検証・読込、検索、安定ソート、型 |
+| `src/lib/routes.ts` | キャラの直接URLとページ切替 |
+| `public/data/characters/` | キャラ一覧とキャラ別の配信用JSON |
+| `scripts/export-character-snapshot.js` | 選択中の公式フレーム表をDOMから記録する読取スクリプト |
+| `scripts/import-character-data.ts`、`scripts/lib/character-snapshot.ts` | 保存記録の検証、入力アイコンの文字変換、配信用JSON生成 |
+| `scripts/validate-character-data.ts` | 一覧との対応・技ID・出典・取得日時などの検証 |
 | `.github/workflows/pages.yml` | 型チェック・ビルドとGitHub Pagesへの配信 |
 
 ## 勝率データ
@@ -119,6 +132,36 @@ npm run data:update -- --all --input-dir "C:/path/to/snapshots"
 [公式のサイト利用条件](https://www.capcom-games.com/ja-jp/site/)は、法令で許される範囲を除く無断複製・転載等を制限している。
 数値データの自動取得や第三者アプリでの再配布を明示的に認める条件は確認できていない。
 保存済みのデータはビルドに含まれ、GitHub Pagesへのデプロイ時に配信される。
+
+## キャラ・技データ
+
+出典は [公式フレームデータ](https://www.streetfighter.com/6/ja-jp/character/ryu/frame)。
+2026年10月8日に通常のブラウザーで公開表と操作タイプを確認し、31キャラのクラシック・モダンを保存した。
+公式一覧にはアルジュンもあるが、フレーム表はキャラ紹介へ移動し未公開だったため収録していない。
+ゲームのパッチ番号は確認できず `gameVersion: null` としている。勝率の対象月と技データの取得日は別の情報。
+
+発生・持続・硬直・硬直差・キャンセル・ダメージ・補正・ゲージ・属性・備考の文字列を保持する。
+空欄は空文字のまま保存し、画面で「—」と表示する。ゼロ・ダウンを示す `D`・条件式とは区別する。
+持続の `4-6` は公式の発生フレーム範囲であり、持続時間の `3F` に書き換えない。
+数字だけで比較できる値を安定ソートし、条件付き値や空欄は昇降順とも末尾に置く。
+クラシックとモダンの技を区別し、別の操作タイプの性能や未掲載の入力を推定しない。
+入力画像は目視確認して文字へ変換した。未登録画像が増えた場合はファイル名のマーカーを残す。
+キャラ画像・公式サイトの画像・SVGは配信に含めない。
+
+更新時は公式表の各操作タイプを選んで `scripts/export-character-snapshot.js` をDevToolsで実行し、
+JSONを `.local/character-snapshots/<id>.json` と `<id>.modern.json` に保存する。
+`roster.json` に取得できた公式キャラ順の `{ "id": "ryu", "url": "https://www.streetfighter.com/6/ja-jp/character/ryu/frame" }` の配列を保存する。
+取得記録はGitの管理対象から除外している。英語名のSVGに説明文がない4キャラは、公式英語ページの標題を確認した名前を使う。
+
+```sh
+npm run data:import-characters
+npm run validate:data
+npm test
+npm run build
+```
+
+importは全記録を検証してからキャラJSONと一覧を生成する。取得日時は操作タイプ別の記録のうち最後の時刻。
+アプリは保存済みJSONだけを読み込む。自動取得・自動更新は設定していない。
 
 ## GitHub Pages
 
