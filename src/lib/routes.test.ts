@@ -17,3 +17,9 @@ test('不明・壊れたキャラIDも選択ページで扱い、URL解析で落
   const id = '名前/複合'
   assert.deepEqual(parseHashRoute(characterHash(id)), { page: 'characters', characterId: id })
 })
+
+test('キャラ分類の直接URLを独立したページとして読み取る', () => {
+  assert.deepEqual(parseHashRoute('#character-traits'), { page: 'character-traits' })
+  assert.deepEqual(parseHashRoute('#character-traits/'), { page: 'character-traits' })
+  assert.deepEqual(parseHashRoute('#character-traits/unknown'), { page: 'win-rates' })
+})

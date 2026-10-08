@@ -7,6 +7,8 @@ import {
   sortCharacterMoves,
 } from '../lib/characters'
 import type { CharacterDataset, CharacterManifest, CharacterMove, CharacterNumericSortKey } from '../types/characters'
+import { timestampLabel } from '../lib/dateTime'
+import { CharacterDataLoadState as LoadState } from './CharacterDataLoadState'
 import '../table.css'
 import '../win-rates.css'
 import '../characters.css'
@@ -22,17 +24,6 @@ type DatasetState =
   | { id: string; status: 'error' }
 
 type MoveSort = { key: CharacterNumericSortKey; direction: 'asc' | 'desc' } | null
-
-function LoadState({ loading = false, message, onRetry }: {
-  loading?: boolean
-  message: string
-  onRetry?: () => void
-}) {
-  return <div className="win-rates-load-state" role={onRetry ? 'alert' : 'status'} aria-busy={loading || undefined}>
-    <p>{message}</p>
-    {onRetry && <button className="win-rates-button" type="button" onClick={onRetry}>再読み込み</button>}
-  </div>
-}
 
 export function CharactersPage({ characterId, onCharacterChange }: CharactersPageProps) {
   const [manifest, setManifest] = useState<CharacterManifest | null>(null)
@@ -259,8 +250,3 @@ function MoveDetail({ move, titleRef, onClose }: {
 }
 
 function displayValue(value: string): string { return value.trim() ? value : '—' }
-
-function timestampLabel(value: string): string {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : `${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'medium', timeStyle: 'short' }).format(date)} JST`
-}

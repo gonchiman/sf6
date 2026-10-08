@@ -1,0 +1,40 @@
+.character-traits-page { min-width: 0; display: grid; gap: 16px; }
+.character-trait-filters .character-trait-feature-filter { flex: 0 1 290px; }
+.character-trait-scope { padding-bottom: 8px; color: var(--text-muted); font-size: 12px; }
+.character-trait-status-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.character-trait-status-filters .win-rates-button { font-size: 12px; }
+.character-trait-status-filters .win-rates-button[aria-pressed='true'] { color: var(--surface); background: var(--text); }
+.character-trait-status-filters span { margin-left: 4px; font-variant-numeric: tabular-nums; }
+.character-trait-results { min-width: 0; display: grid; gap: 10px; }
+.character-trait-scroll { max-height: min(68vh, 720px); }
+.character-trait-table { min-width: 560px; table-layout: fixed; }
+.character-trait-table thead th:first-child { width: 22%; }
+.character-trait-table thead th:nth-child(2) { width: 135px; }
+.character-trait-table tbody th { padding: 0; background: var(--surface); }
+.character-trait-table td { text-align: left; white-space: pre-line; overflow-wrap: anywhere; }
+.character-trait-status { font-size: 12px; }
+.character-trait-move-name { display: block; }
+.character-trait-excerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; margin-top: 3px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.character-trait-more { min-height: 30px; border: 0; padding: 4px 0; color: var(--link); background: transparent; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.character-trait-detail-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border: 1px solid var(--border); border-bottom: 0; font-size: 12px; }
+.character-trait-evidence-table { min-width: 560px; table-layout: fixed; }
+.character-trait-evidence-table th:first-child { width: 26%; }
+.character-trait-evidence-table th:nth-child(2) { width: 80px; }
+.character-trait-evidence-table th, .character-trait-evidence-table td { text-align: left; white-space: pre-line; overflow-wrap: anywhere; line-height: 1.7; }
+.character-trait-field { display: block; margin-bottom: 4px; color: var(--text-muted); font-size: 12px; }
+.character-trait-no-evidence { margin: 0; padding: 14px 12px; border: 1px solid var(--border); font-size: 12px; color: var(--text-soft); }
+.character-trait-detail > .win-rates-details { margin-top: 10px; }
+.character-trait-detail-source { padding: 12px 0; }
+.character-trait-character-link { display: inline-block; font-size: 12px; }
+.character-trait-help .win-rates-details-content dl > div { grid-template-columns: 170px minmax(0, 1fr); gap: 8px 16px; margin-bottom: 10px; }
+.character-trait-help dt { color: var(--text-soft); }
+@media (max-width: 640px) {
+  .character-trait-filters .character-trait-feature-filter { flex-basis: 100%; }
+  .character-trait-scope { padding-bottom: 0; }
+  .character-trait-table thead th:first-child { width: 135px; }
+  .character-trait-help .win-rates-details-content dl > div { grid-template-columns: 1fr; gap: 2px; }
+}
+@media (max-width: 760px), (pointer: coarse) {
+  .character-trait-more, .character-trait-character-link { min-height: 44px; }
+  .character-trait-character-link { padding: 10px 0; }
+}
