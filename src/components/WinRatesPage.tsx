@@ -3,6 +3,7 @@ import { loadWinRateDataset, loadWinRateManifest } from '../lib/winRates'
 import type { WinRateDataset, WinRateDatasetDescriptor, WinRateManifest, WinRateOperationMode } from '../types/winRates'
 import { WinRateTable } from './WinRateTable'
 import { TotalWinRateTable } from './TotalWinRateTable'
+import { DataLoadState as LoadState } from './DataLoadState'
 import '../win-rates.css'
 
 type DatasetState =
@@ -50,17 +51,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.startsWith('選択した条件')
     ? '選択した条件とデータが一致しません。ページを再読み込みしてください。'
     : '勝率データを読み込めませんでした。'
-}
-
-function LoadState({ loading = false, message, onRetry }: {
-  loading?: boolean
-  message: string
-  onRetry?: () => void
-}) {
-  return <div className="win-rates-load-state" role={onRetry ? 'alert' : 'status'} aria-busy={loading || undefined}>
-    <p>{message}</p>
-    {onRetry && <button className="win-rates-button" type="button" onClick={onRetry}>再読み込み</button>}
-  </div>
 }
 
 export function WinRatesPage() {

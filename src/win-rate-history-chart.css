@@ -1,0 +1,47 @@
+.win-rate-history-chart { min-width: 0; margin: 0; background: var(--surface); }
+.win-rate-history-chart-viewport { min-width: 0; }
+.win-rate-history-chart-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.win-rate-history-chart-scroll:focus-visible { outline-offset: -2px; }
+.win-rate-history-chart-svg { display: block; flex: none; }
+.win-rate-history-axis-title { fill: var(--text-soft); font-size: 12px; font-weight: 600; }
+.win-rate-history-tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.win-rate-history-grid { stroke: var(--border); stroke-width: 1; }
+.win-rate-history-month-grid { stroke-dasharray: 2 5; opacity: .55; }
+.win-rate-history-axis { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+.win-rate-history-baseline { stroke: var(--text-muted); stroke-width: 1.25; stroke-dasharray: 6 4; }
+.win-rate-history-baseline-label {
+  fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums;
+  paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round;
+}
+.win-rate-history-line { fill: none; stroke: var(--link); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.win-rate-history-point { fill: var(--link); stroke: var(--surface); stroke-width: 1; }
+.win-rate-history-point.is-selected { stroke-width: 2; }
+.win-rate-history-selection-guide { stroke: var(--link); stroke-width: 1; stroke-dasharray: 3 4; opacity: .65; }
+.win-rate-history-month-hit { fill: transparent; cursor: pointer; }
+.win-rate-history-empty { fill: var(--text-muted); font-size: 12px; }
+
+.monthly-win-rate-scroll { max-height: 420px; }
+.monthly-win-rate-table { table-layout: fixed; }
+.monthly-win-rate-table th:first-child { width: 48%; }
+.monthly-win-rate-table th.monthly-win-rate-month { padding: 0; }
+.monthly-win-rate-month-button {
+  display: block; width: 100%; min-height: 42px; padding: 9px 12px;
+  border: 0; border-radius: 0; background: transparent; color: var(--text-soft);
+  text-align: left; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.monthly-win-rate-month-button:hover { background: var(--surface-hover); }
+.monthly-win-rate-month-button:focus-visible { outline-offset: -3px; }
+.monthly-win-rate-table tr.is-selected > * { background: var(--surface-hover); }
+.monthly-win-rate-table tr.is-selected .monthly-win-rate-month-button {
+  color: var(--link); font-weight: 700; box-shadow: inset 3px 0 var(--link);
+}
+.monthly-win-rate-value { white-space: nowrap; }
+.monthly-win-rate-value.is-unavailable { color: var(--text-muted); font-size: 12px; }
+.win-rate-history-visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+@media (max-width: 600px) {
+  .monthly-win-rate-month-button { min-height: 44px; }
+}

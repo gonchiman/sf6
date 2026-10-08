@@ -7,6 +7,7 @@ import {
   sortCharacterMoves,
 } from '../lib/characters'
 import type { CharacterDataset, CharacterManifest, CharacterMove, CharacterNumericSortKey } from '../types/characters'
+import { DataLoadState as LoadState } from './DataLoadState'
 import '../table.css'
 import '../win-rates.css'
 import '../characters.css'
@@ -22,17 +23,6 @@ type DatasetState =
   | { id: string; status: 'error' }
 
 type MoveSort = { key: CharacterNumericSortKey; direction: 'asc' | 'desc' } | null
-
-function LoadState({ loading = false, message, onRetry }: {
-  loading?: boolean
-  message: string
-  onRetry?: () => void
-}) {
-  return <div className="win-rates-load-state" role={onRetry ? 'alert' : 'status'} aria-busy={loading || undefined}>
-    <p>{message}</p>
-    {onRetry && <button className="win-rates-button" type="button" onClick={onRetry}>再読み込み</button>}
-  </div>
-}
 
 export function CharactersPage({ characterId, onCharacterChange }: CharactersPageProps) {
   const [manifest, setManifest] = useState<CharacterManifest | null>(null)

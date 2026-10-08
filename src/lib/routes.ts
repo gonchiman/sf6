@@ -1,5 +1,6 @@
 export type AppRoute =
   | { page: 'win-rates' }
+  | { page: 'win-rate-history' }
   | { page: 'characters'; characterId: string | null }
 
 export function characterHash(characterId: string): string {
@@ -7,6 +8,9 @@ export function characterHash(characterId: string): string {
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#win-rate-history' || hash === '#win-rate-history/') {
+    return { page: 'win-rate-history' }
+  }
   if (hash === '#characters' || hash === '#characters/') {
     return { page: 'characters', characterId: null }
   }

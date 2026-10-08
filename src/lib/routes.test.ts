@@ -17,3 +17,9 @@ test('不明・壊れたキャラIDも選択ページで扱い、URL解析で落
   const id = '名前/複合'
   assert.deepEqual(parseHashRoute(characterHash(id)), { page: 'characters', characterId: id })
 })
+
+test('勝率推移の直接URLは既存ページと区別して読み取る', () => {
+  assert.deepEqual(parseHashRoute('#win-rate-history'), { page: 'win-rate-history' })
+  assert.deepEqual(parseHashRoute('#win-rate-history/'), { page: 'win-rate-history' })
+  assert.deepEqual(parseHashRoute('#win-rate-history-invalid'), { page: 'win-rates' })
+})
