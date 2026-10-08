@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { loadWinRateDataset, loadWinRateManifest } from '../lib/winRates'
-import { editionOf, leagueLabel, WIN_RATE_EDITIONS, WIN_RATE_EDITION_SOURCES } from '../lib/winRateConditions'
-import { createWinRateHistorySeries, formatHistoryValue, historyCalendarMonths, historyMonths, initialHistorySelection, loadWinRateHistory, monthLabel } from '../lib/winRateHistory'
-import type { HistoryControlType, HistoryDatasetResult, WinRateHistorySelection } from '../types/winRateHistory'
+import { editionOf, WIN_RATE_EDITION_SOURCES } from '../lib/winRateConditions'
+import { createWinRateHistorySeries, formatHistoryValue, historyMonths, initialHistorySelection, loadWinRateHistory, monthLabel } from '../lib/winRateHistory'
+import type { HistoryDatasetResult, WinRateHistorySelection } from '../types/winRateHistory'
 import type { WinRateFighter, WinRateManifest } from '../types/winRates'
 import { DataLoadState } from './DataLoadState'
 import { CharacterSeriesKey } from './CharacterSeriesKey'
 import { HistoryCharacterSelection } from './HistoryCharacterSelection'
 import { MonthlyWinRateTable } from './MonthlyWinRateTable'
 import { WinRateHistoryChart } from './WinRateHistoryChart'
+import { WinRateHistoryFilters } from './WinRateHistoryFilters'
 import '../win-rates.css'
 import '../win-rate-history.css'
 
@@ -21,10 +22,6 @@ type HistoryState =
   | { key: string; status: 'loading' }
   | { key: string; status: 'error' }
   | { key: string; status: 'ready'; results: HistoryDatasetResult[] }
-
-const CONTROL_LABELS: Record<HistoryControlType, string> = {
-  combined: '合算', classic: 'クラシック', modern: 'モダン',
-}
 
 function timestampLabel(value: string): string {
   return `${new Intl.DateTimeFormat('ja-JP', {
@@ -124,49 +121,13 @@ export function WinRateHistoryPage() {
   if (bootstrap.status === 'error' || !manifest || !selection) {
     return <DataLoadState message="期間とキャラを読み込めませんでした。" onRetry={() => setBootstrapVersion(version => version + 1)} />
   }
-  const months = historyCalendarMonths(manifest)
-  const editions = WIN_RATE_EDITIONS.filter(value => manifest.datasets.some(item => editionOf(item) === value))
-  const editionDatasets = manifest.datasets.filter(item => editionOf(item) === edition)
-  const leagues = [...new Set(editionDatasets.map(item => item.league))]
-  const leagueModes = new Set(editionDatasets.filter(item => item.league === selection.league).map(item => item.operationMode))
-  const controls = (Object.keys(CONTROL_LABELS) as HistoryControlType[])
-    .filter(value => (edition !== 'master' || value === 'combined') && leagueModes.has(value === 'combined' ? 'combined' : 'separate'))
   const failedCount = points.filter(point => point.status === 'error').length
   const source = selectedPoint?.source ?? WIN_RATE_EDITION_SOURCES[edition]
   const selectedValues = series.map(item => ({ ...item, point: item.points[selectedIndex] }))
   const selectedValueText = selectedValues.map(item => `${item.characterName} ${item.point ? formatHistoryValue(item.point) : '未登録'}`).join('、')
 
-  const changeMonth = (key: 'fromMonth' | 'toMonth', month: string) => setSelection(previous => {
-    if (!previous) return previous
-    const next = { ...previous, [key]: month }
-    if (next.fromMonth > next.toMonth) {
-      if (key === 'fromMonth') next.toMonth = month
-      else next.fromMonth = month
-    }
-    return next
-  })
-
   return <section className="win-rate-history-page" aria-label="キャラの勝率推移">
-    <div className="win-rates-filters history-filters">
-      <label><span>統計</span><select aria-label="統計" value={edition} onChange={event => {
-        const nextEdition = WIN_RATE_EDITIONS.find(value => value === event.target.value)
-        if (nextEdition) setSelection(previous => previous && { ...previous, edition: nextEdition, league: 'MASTER', controlType: 'combined' })
-      }}>
-        {editions.map(value => <option key={value} value={value}>{value === 'general' ? '総合版' : 'マスター版'}</option>)}
-      </select></label>
-      <label className="win-rates-league-filter"><span>リーグ</span><select aria-label="リーグ" value={selection.league} onChange={event => { const value = event.target.value; setSelection(previous => previous && { ...previous, league: value }) }}>
-        {leagues.map(value => <option key={value} value={value}>{leagueLabel(value)}</option>)}
-      </select></label>
-      <label><span>操作タイプ</span><select aria-label="操作タイプ" value={selection.controlType} onChange={event => { const value = event.target.value as HistoryControlType; setSelection(previous => previous && { ...previous, controlType: value }) }}>
-        {controls.map(value => <option key={value} value={value}>{CONTROL_LABELS[value]}</option>)}
-      </select></label>
-      <label><span>開始月</span><select aria-label="開始月" value={selection.fromMonth} onChange={event => changeMonth('fromMonth', event.target.value)}>
-        {months.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}
-      </select></label>
-      <label><span>終了月</span><select aria-label="終了月" value={selection.toMonth} onChange={event => changeMonth('toMonth', event.target.value)}>
-        {months.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}
-      </select></label>
-    </div>
+    <WinRateHistoryFilters manifest={manifest} selection={selection} onChange={setSelection} />
     <HistoryCharacterSelection characters={characters} selectedIds={characterIds} onChange={setCharacterIds} />
 
     {(!currentState || currentState.status === 'loading') && <DataLoadState loading message="推移データを読み込み中…" />}

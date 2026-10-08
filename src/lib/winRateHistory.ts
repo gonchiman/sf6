@@ -14,7 +14,7 @@ function indexedMonth(index: number): string {
   return `${String(Math.floor(index / 12)).padStart(4, '0')}-${String(index % 12 + 1).padStart(2, '0')}`
 }
 
-function selectedMonths(selection: WinRateHistorySelection): string[] {
+export function historySelectedMonths(selection: WinRateHistorySelection): string[] {
   const edition = editionOf(selection)
   if (!WIN_RATE_EDITIONS.includes(edition) || !WIN_RATE_EDITION_LEAGUES[edition].includes(selection.league)
     || !['combined', 'classic', 'modern'].includes(selection.controlType)
@@ -27,8 +27,8 @@ function selectedMonths(selection: WinRateHistorySelection): string[] {
   return Array.from({ length: to - from + 1 }, (_, index) => indexedMonth(from + index))
 }
 
-function selectedDescriptors(manifest: WinRateManifest, selection: WinRateHistorySelection): Map<string, WinRateDatasetDescriptor> {
-  const months = new Set(selectedMonths(selection))
+export function historySelectedDescriptors(manifest: WinRateManifest, selection: WinRateHistorySelection): Map<string, WinRateDatasetDescriptor> {
+  const months = new Set(historySelectedMonths(selection))
   const mode = selection.controlType === 'combined' ? 'combined' : 'separate'
   const result = new Map<string, WinRateDatasetDescriptor>()
   for (const descriptor of manifest.datasets) {
@@ -75,7 +75,7 @@ export async function loadWinRateHistory(
   selection: WinRateHistorySelection,
   loader: (descriptor: WinRateDatasetDescriptor) => Promise<WinRateDataset> = loadWinRateDataset,
 ): Promise<HistoryDatasetResult[]> {
-  const descriptors = [...selectedDescriptors(manifest, selection).values()].sort((left, right) => left.month.localeCompare(right.month))
+  const descriptors = [...historySelectedDescriptors(manifest, selection).values()].sort((left, right) => left.month.localeCompare(right.month))
   const results = new Array<HistoryDatasetResult>(descriptors.length)
   let next = 0
   async function worker(): Promise<void> {
@@ -105,7 +105,7 @@ function prepareHistoryMonths(
   selection: WinRateHistorySelection,
   results: readonly HistoryDatasetResult[],
 ): PreparedHistoryMonth[] {
-  const descriptors = selectedDescriptors(manifest, selection)
+  const descriptors = historySelectedDescriptors(manifest, selection)
   const controls = selection.controlType === 'combined' ? null : selection.controlType
   const resultsByMonth = new Map<string, HistoryDatasetResult[]>()
   for (const result of results) {
@@ -113,7 +113,7 @@ function prepareHistoryMonths(
     entries.push(result)
     resultsByMonth.set(result.month, entries)
   }
-  return selectedMonths(selection).map((month): PreparedHistoryMonth => {
+  return historySelectedMonths(selection).map((month): PreparedHistoryMonth => {
     const descriptor = descriptors.get(month)
     if (!descriptor) return { month, status: 'unavailable' }
     const entries = resultsByMonth.get(month)
