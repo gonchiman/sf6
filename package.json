@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc -b",
-    "test": "node --test src/lib/winRates.test.ts",
+    "test": "node --test src/lib/winRates.test.ts src/lib/totalWinRates.test.ts",
     "validate:data": "node scripts/validate-win-rate-data.ts",
     "build": "npm run validate:data && tsc -b && vite build",
     "preview": "vite preview"

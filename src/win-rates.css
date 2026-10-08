@@ -4,6 +4,12 @@
   gap: 16px;
 }
 
+.win-rates-view-selector { min-width: 0; display: flex; }
+.win-rates-view-selector .win-rates-button + .win-rates-button { border-left: 0; }
+.win-rates-view-selector .win-rates-button[aria-pressed='true'] { background: var(--text); color: var(--surface); }
+.win-rates-view-panel { min-width: 0; }
+.win-rates-view-panel[hidden] { display: none; }
+
 .win-rates-filters {
   display: flex;
   flex-wrap: wrap;

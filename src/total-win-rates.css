@@ -1,0 +1,48 @@
+.total-win-rate-scroll {
+  width: 100%;
+  max-height: min(70vh, 720px);
+}
+
+.total-win-rate-table { min-width: 0; table-layout: fixed; }
+.total-win-rate-control-column { width: 112px; }
+.total-win-rate-value-column { width: 156px; }
+.total-win-rate-table .total-win-rate-sort-heading { padding: 0; }
+.total-win-rate-table .total-win-rate-name { overflow-wrap: anywhere; }
+.total-win-rate-table .total-win-rate-control { text-align: left; overflow-wrap: anywhere; }
+.total-win-rate-value { white-space: nowrap; }
+
+.total-win-rate-sort-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border: 0;
+  border-radius: 0;
+  padding: 7px 8px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.total-win-rate-sort-button:hover { color: var(--text); background: var(--surface-hover); }
+.total-win-rate-sort-button:focus-visible { outline-offset: -3px; }
+.total-win-rate-sort-indicator { flex-shrink: 0; color: var(--text-muted); font-size: 10px; }
+.total-win-rate-table th[aria-sort='ascending'] .total-win-rate-sort-button,
+.total-win-rate-table th[aria-sort='descending'] .total-win-rate-sort-button,
+.total-win-rate-table th[aria-sort='other'] .total-win-rate-sort-button { color: var(--text); font-weight: 700; }
+
+@media (max-width: 640px) {
+  .total-win-rate-control-column { width: 82px; }
+  .total-win-rate-value-column { width: 110px; }
+  .total-win-rate-sort-button { flex-wrap: wrap; gap: 3px 6px; }
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  .total-win-rate-sort-button { min-height: 44px; }
+}

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { loadWinRateDataset, loadWinRateManifest } from '../lib/winRates'
 import type { WinRateDataset, WinRateDatasetDescriptor, WinRateManifest, WinRateOperationMode } from '../types/winRates'
 import { WinRateTable } from './WinRateTable'
+import { TotalWinRateTable } from './TotalWinRateTable'
 import '../win-rates.css'
 
 type DatasetState =
@@ -63,6 +64,9 @@ function LoadState({ loading = false, message, onRetry }: {
 }
 
 export function WinRatesPage() {
+  const contentId = useId()
+  const [view, setView] = useState<'total' | 'matchup'>('total')
+  const [hasViewedMatchup, setHasViewedMatchup] = useState(false)
   const [manifest, setManifest] = useState<WinRateManifest | null>(null)
   const [manifestLoading, setManifestLoading] = useState(true)
   const [manifestError, setManifestError] = useState<string | null>(null)
@@ -120,6 +124,19 @@ export function WinRatesPage() {
   const dataset = currentState?.status === 'ready' && currentState.data.id === selected.id ? currentState.data : null
 
   return <section className="win-rates-page" aria-label="キャラクター別の勝率">
+    <div className="win-rates-view-selector" role="group" aria-label="勝率の表示">
+      {([['total', 'キャラ別'], ['matchup', 'マッチアップ']] as const).map(([value, label]) => <button
+        className="win-rates-button"
+        type="button"
+        key={value}
+        aria-pressed={view === value}
+        aria-controls={`${contentId}-${value}`}
+        onClick={() => {
+          setView(value)
+          if (value === 'matchup') setHasViewedMatchup(true)
+        }}
+      >{label}</button>)}
+    </div>
     <div className="win-rates-filters">
       <label>
         <span>対象月</span>
@@ -152,8 +169,13 @@ export function WinRatesPage() {
     {(!currentState || currentState.status === 'loading') && <LoadState loading message="勝率表を読み込み中…" />}
     {currentState?.status === 'error' && <LoadState message={currentState.message} onRetry={() => setDatasetVersion((version) => version + 1)} />}
 
+    <div id={`${contentId}-total`} className="win-rates-view-panel" hidden={view !== 'total' || !dataset}>
+      {dataset && <TotalWinRateTable key={dataset.id} dataset={dataset} />}
+    </div>
+    <div id={`${contentId}-matchup`} className="win-rates-view-panel" hidden={view !== 'matchup' || !dataset}>
+      {dataset && hasViewedMatchup && <WinRateTable key={dataset.id} dataset={dataset} />}
+    </div>
     {dataset && <>
-      <WinRateTable key={dataset.id} dataset={dataset} />
       <dl className="win-rates-source">
         <div><dt>対象期間</dt><dd>{monthLabel(dataset.month)}</dd></div>
         <div><dt>取得日時</dt><dd><time dateTime={dataset.capturedAt}>{timestampLabel(dataset.capturedAt)}</time></dd></div>
@@ -166,10 +188,18 @@ export function WinRatesPage() {
             <div><dt>対象</dt><dd>{dataset.source.population}</dd></div>
             <div><dt>指標</dt><dd>{dataset.source.metric}</dd></div>
           </dl>
-          <p>数値は公式表の表記です。百分率への換算は行っていません。</p>
-          <p>「i」は公式サイトで試合数が少ないと示された組み合わせです。</p>
-          {dataset.operationMode === 'separate' && <p>C：クラシック　M：モダン</p>}
-          {dataset.source.notes.length > 0 && <ul>{dataset.source.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>}
+          {view === 'total' ? <>
+            <p>保存済みの公式Totalを10倍して百分率で表示しています（5.058 → 50.58%）。</p>
+            <p>元の勝数・試合数、ミラー戦・引き分け・切断の扱いなど、集計方法の詳細は未確認です。</p>
+          </> : <>
+            <p>マッチアップの数値は公式表の表記です。百分率への換算は行っていません。</p>
+            <p>「i」は公式サイトで試合数が少ないと示された組み合わせです。</p>
+            {dataset.operationMode === 'separate' && <p>C：クラシック　M：モダン</p>}
+          </>}
+          {dataset.source.notes.length > 0 && <>
+            <p>保存データの注記</p>
+            <ul>{dataset.source.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>
+          </>}
         </div>
       </details>
     </>}
