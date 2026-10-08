@@ -18,6 +18,10 @@ Bucklerで公開されたStreet Fighter 6の対戦勝率を確認するアプリ
 広い画面ではグラフと月別表を横に、狭い画面では縦に並べる。`#win-rate-history` で直接開ける。
 勝率と推移の「統計」で総合版／マスター版を切り替えられる。マスター版はMASTER・HIGH MASTER・GRAND MASTER・ULTIMATE MASTERの操作タイプ合算を表示する。
 
+「キャラ分類」では特徴を1つ選び、31キャラの判定と該当技を一覧で確認できる。
+操作タイプと判定で絞り込み、キャラ名から根拠の原文・全該当技・取得日時・公式出典を開ける。
+`#character-traits` のURLで直接開ける。
+
 ## 開発
 
 Node.js 24とnpmを使用する。
@@ -39,6 +43,7 @@ npm run preview
 
 `test` は条件・欠損・少数試合・データ形式・読込キャッシュと再試行、Totalの換算・並び替え・元データ不変に加え、取り込みの条件一致と更新失敗時の復元を検証する。
 `validate:data` は登録済み勝率JSONの条件・行列と、キャラJSONの一覧・技データの整合性を確認する。
+分類JSONについても元のキャラデータから再計算し、古い分類規則や根拠の不一致を検出する。
 `build` はデータ検証、型チェック、本番ビルドを行い、出力を `dist/` に生成する。
 キャラデータの生表記、操作タイプ、入力変換、欠損・条件付き数値の並び替え、読込の再試行、ルートも検証する。
 推移では条件の一致、月抜け、キャラ未掲載、欠損と0%、IDによるTotal結合、並列読込と失敗月の再試行を検証する。
@@ -61,7 +66,7 @@ npm run preview
 | `src/components/WinRateHistoryPage.tsx`、`src/win-rate-history.css` | 推移の条件選択、読込状態、グラフと月別表の配置・選択連動 |
 | `src/components/WinRateHistoryChart.tsx`、`src/components/MonthlyWinRateTable.tsx` | 月別の折れ線、欠損区間、50%基準、月の選択と数値表 |
 | `src/lib/winRateHistory.ts`、`src/types/winRateHistory.ts` | 同条件の月別読込、暦月を維持したTotal抽出、状態と型 |
-| `src/components/DataLoadState.tsx` | 勝率・推移・キャラ情報で共用する読込中・失敗・再試行の表示 |
+| `src/components/DataLoadState.tsx` | 勝率・推移・キャラ情報・キャラ分類で共用する読込中・失敗・再試行の表示 |
 | `src/lib/winRates.ts` | JSONの検証、条件別読込、失敗時の再試行 |
 | `src/lib/winRateConditions.ts` | 統計の版、版ごとの出典・リーグ・操作モード、表示名 |
 | `src/types/winRates.ts` | 一覧・条件・行列・公式表示値の型 |
@@ -77,6 +82,10 @@ npm run preview
 | `scripts/export-character-snapshot.js` | 選択中の公式フレーム表をDOMから記録する読取スクリプト |
 | `scripts/import-character-data.ts`、`scripts/lib/character-snapshot.ts` | 保存記録の検証、入力アイコンの文字変換、配信用JSON生成 |
 | `scripts/validate-character-data.ts` | 一覧との対応・技ID・出典・取得日時などの検証 |
+| `src/components/CharacterTraitsPage.tsx`、`src/character-traits.css` | 特徴別の分類表、判定での絞り込み、根拠表示 |
+| `src/lib/characterTraits.ts`、`src/types/characterTraits.ts` | 特徴定義、原文に基づく分類、3状態の判定、JSON検証と読込 |
+| `public/data/character-traits.json` | 全キャラ・両操作タイプの分類と根拠を含む配信用JSON |
+| `scripts/build-character-traits.ts`、`scripts/validate-character-traits.ts` | 分類JSONの生成と元データとの一致検証 |
 | `.github/workflows/pages.yml` | 型チェック・ビルドとGitHub Pagesへの配信 |
 
 ## 勝率データ
@@ -196,6 +205,41 @@ npm run build
 importは全記録を検証してからキャラJSONと一覧を生成する。取得日時は操作タイプ別の記録のうち最後の時刻。
 アプリは保存済みJSONだけを読み込む。自動取得・自動更新は設定していない。
 
+## 特徴別のキャラ分類
+
+分類対象は選択した操作タイプの必殺技。通常技・特殊技・SA・共通システムは含めない。
+通常版とOD版を根拠に記録し、通常版には強化状態・派生・ホールドなどの非OD技も含める。
+状態・部位・フレーム・回数などの条件は、技名と属性・備考の原文で保持する。
+
+| 特徴 | 判定条件 |
+| --- | --- |
+| 1F完全無敵 | 通常版またはOD版に1Fから完全無敵となる記載 |
+| 通常版の1F対空無敵 | 非OD技に1Fから空中判定の打撃・空弾属性への無敵が明記されている |
+| 弾属性 | 属性に弾または空弾が記載されている。設置・地面からの攻撃なども含む |
+| アーマー | アーマー判定の記載。アーマーブレイクは含めない |
+| 飛び道具無敵 | 自分が飛び道具に無敵となる記載。部位限定・条件付きも原文を保持して含める |
+| 弾相殺 | 自分の技が弾を相殺する能力の記載 |
+
+完全無敵から対空対象無敵や飛び道具無敵を推定しない。相手の無敵に関する記述も保有の根拠にしない。
+文字の全角・半角と範囲記号を正規化して判定するが、原文自体は変更しない。
+「データで確認」は該当記載が1つ以上ある状態、「該当記載なし」は調べたデータに該当記載が見つからない状態。
+後者を実際の性能なしの断定には使わない。対象データ不足や読み取れない表現が残り、確定根拠がない場合は「未確認」。
+一覧は最初の該当技と該当行を表示し、詳細は確定根拠と未確認の記載の全文を表示する。
+
+分類は保存済みキャラJSONから事前生成し、ブラウザーで全キャラの技JSONを一括取得しない。
+出典・取得日時・パッチ・元の一覧生成日時・分類規則のバージョンを保存する。
+技データと過去の月別勝率の時点対応が未確認のため、このページでは勝率と結合しない。
+
+キャラデータの取り込み後、分類データも再生成する。
+
+```sh
+npm run data:build-character-traits
+npm run validate:data
+```
+
+生成処理は全ソースを検証してから出力する。検証処理はキャラ順・全判定・技ID・原文を再計算した結果と照合する。
+元データや規則だけを更新して分類JSONを更新し忘れた場合は、ビルドを停止する。
+
 ## GitHub Pages
 
 Viteの `base` は `/sf6/`。配信を開始するときはリポジトリのSettings → PagesでSourceをGitHub Actionsに設定する。
@@ -213,6 +257,7 @@ Actionsはpull requestでビルドを確認し、mainへのpushまたはmain上�
 主要な依存バージョンは前作のlockfileに揃え、`package-lock.json` で固定する。
 勝率表では、前作の表のスクロール領域、固定見出し、薄い縦横罫線、読込・再試行の振る舞いを採用している。
 キャラ別・マッチアップの二択表示と見出しボタンによる並び替えも前作の操作方式を採用している。
+キャラ分類では前作のスキル一覧の絞り込み・件数・根拠表示を参照し、SF6の共通テーブル、キャラ情報の選択・詳細とフォーカス復帰を再利用している。
 JSONの条件別Promiseキャッシュと失敗後の再試行は、前作のマップ詳細読込を参考にしている。
 推移の幅への追従・選択位置のガイド・月別表との連動は、前作のSurtrDurationChartとSurtrDurationTimelineTableを参考にした。
 月軸・Totalの尺度・欠損区間はSF6用に実装し、前作のHP計算やスキルのイベントは取り込んでいない。

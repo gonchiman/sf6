@@ -8,6 +8,7 @@ import {
 } from '../lib/characters'
 import type { CharacterDataset, CharacterManifest, CharacterMove, CharacterNumericSortKey } from '../types/characters'
 import { DataLoadState as LoadState } from './DataLoadState'
+import { timestampLabel } from '../lib/dateTime'
 import '../table.css'
 import '../win-rates.css'
 import '../characters.css'
@@ -249,8 +250,3 @@ function MoveDetail({ move, titleRef, onClose }: {
 }
 
 function displayValue(value: string): string { return value.trim() ? value : '—' }
-
-function timestampLabel(value: string): string {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : `${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'medium', timeStyle: 'short' }).format(date)} JST`
-}
