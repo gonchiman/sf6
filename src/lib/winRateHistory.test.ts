@@ -5,7 +5,7 @@ import type { WinRateDataset, WinRateDatasetDescriptor, WinRateEdition, WinRateM
 import { WIN_RATE_EDITION_SOURCES } from './winRateConditions.ts'
 import type { HistoryDatasetResult, WinRateHistorySelection } from '../types/winRateHistory.ts'
 import {
-  createWinRateHistoryPoints, formatHistoryValue, historyCalendarMonths, historyMonths, initialHistorySelection,
+  createWinRateHistoryPoints, createWinRateHistorySeries, formatHistoryValue, historyCalendarMonths, historyMonths, initialHistorySelection,
   loadWinRateHistory, monthLabel,
 } from './winRateHistory.ts'
 
@@ -274,4 +274,115 @@ test('a result from another edition is rejected even when other descriptor field
   assert.equal(createWinRateHistoryPoints(input, selected, 'ryu', [ready(general, dataset(mislabeled))])[0].status, 'error')
   const result = await loadWinRateHistory(input, selected, async () => dataset(mislabeled))
   assert.equal(result[0].status, 'error')
+})
+
+test('複数キャラは安定IDと選択順を使い、重複IDは先勝ち・空選択は空配列になる', () => {
+  const desc = descriptor('2026-01')
+  const data = dataset(desc, '0.000')
+  data.fighters[1].name = 'RYU'
+  const input = manifest([desc])
+  const characters = [
+    { characterId: 'ken', name: 'KEN' }, { characterId: 'ryu', name: 'RYU' },
+    { characterId: 'ken', name: '重複した別名' },
+  ]
+  const results = [ready(desc, data)]
+  const before = structuredClone({ input, characters, results })
+  const selected = selection({ toMonth: '2026-01' })
+  const series = createWinRateHistorySeries(input, selected, characters, results)
+  assert.deepEqual(series.map(({ characterId, characterName }) => ({ characterId, characterName })), [
+    { characterId: 'ken', characterName: 'KEN' }, { characterId: 'ryu', characterName: 'RYU' },
+  ])
+  assert.deepEqual(series.map(({ points }) => points[0].percentHundredths), [10000, 0])
+  for (const item of series) assert.deepEqual(item.points, createWinRateHistoryPoints(input, selected, item.characterId, results))
+  assert.deepEqual({ input, characters, results }, before)
+  assert.deepEqual(createWinRateHistorySeries(input, selected, [], results), [])
+})
+
+test('月別表の検証はキャラ数によらず一度で、検証済みの内容を全系列へ投影する', () => {
+  const descriptors = [descriptor('2026-01'), descriptor('2026-02')]
+  const reads = [0, 0]
+  const results = descriptors.map((desc, index) => {
+    const data = dataset(desc)
+    const rows = data.rows
+    Object.defineProperty(data, 'rows', { get() { reads[index] += 1; return rows } })
+    return ready(desc, data)
+  })
+  const series = createWinRateHistorySeries(manifest(descriptors), selection({ toMonth: '2026-02' }), [
+    { characterId: 'ryu', name: 'RYU' }, { characterId: 'ken', name: 'KEN' }, { characterId: 'terry', name: 'TERRY' },
+  ], results)
+  assert.deepEqual(reads, [1, 1])
+  assert.deepEqual(series.map(({ points }) => points.map(({ status }) => status)), [
+    ['value', 'value'], ['value', 'value'], ['unlisted', 'unlisted'],
+  ])
+})
+
+test('同じ月カレンダーで発売前の未掲載・欠損・未登録・失敗と実際の0%を分ける', () => {
+  const june = descriptor('2023-06')
+  const july = descriptor('2023-07')
+  const august = descriptor('2023-08')
+  const october = descriptor('2023-10')
+  const julyData = dataset(july)
+  julyData.fighters[1] = { ...julyData.fighters[1], characterId: 'rashid', name: 'RASHID' }
+  const augustData = dataset(august, '-.---')
+  augustData.fighters[1] = { ...augustData.fighters[1], characterId: 'rashid', name: 'RASHID' }
+  augustData.rows.find((row) => row.fighterId === 'second-slot')!.total = { text: '-', lowSample: true }
+  const series = createWinRateHistorySeries(manifest([october, august, july, june]), selection({ fromMonth: '2023-06', toMonth: '2023-10' }), [
+    { characterId: 'rashid', name: 'RASHID' }, { characterId: 'ryu', name: 'RYU' },
+  ], [ready(july, julyData), ready(june, dataset(june, '0.000')), ready(august, augustData), { month: october.month, descriptor: october, status: 'error' }])
+  assert.deepEqual(series.map(({ points }) => points.map(({ month }) => month)), [
+    ['2023-06', '2023-07', '2023-08', '2023-09', '2023-10'], ['2023-06', '2023-07', '2023-08', '2023-09', '2023-10'],
+  ])
+  assert.deepEqual(series[0].points.map(formatHistoryValue), ['未掲載', '100.00%', '-', '未登録', '読込失敗'])
+  assert.deepEqual(series[1].points.map(formatHistoryValue), ['0.00%', '50.58%', '-.---', '未登録', '読込失敗'])
+  assert.equal(series[0].points[2].total?.lowSample, true)
+  assert.equal(series[0].points[0].capturedAt, capturedAt)
+  assert.equal(series[1].points[0].percentHundredths, 0)
+  for (const item of series) {
+    assert.equal(item.points[3].source, null)
+    assert.equal(item.points[4].capturedAt, null)
+  }
+})
+
+test('同一の操作タイプ別ファイルから複数キャラのclassicとmodernを正しく選ぶ', () => {
+  const desc = descriptor('2026-01', 'MASTER', 'separate')
+  const data = dataset(desc)
+  data.fighters = ['ryu', 'ken'].flatMap((characterId) => (['classic', 'modern'] as const).map((controlType) => ({
+    id: `${characterId}-${controlType}`, characterId, name: characterId.toUpperCase(), controlType,
+  })))
+  data.rows = data.fighters.map((fighter, index) => ({
+    fighterId: fighter.id, total: { text: ['0.000', '10.000', '4.200', '6.100'][index], lowSample: false },
+    cells: data.fighters.map(() => ({ text: '1.000', lowSample: false })),
+  })).reverse()
+  const input = manifest([desc, descriptor('2026-01')])
+  const characters = [{ characterId: 'ken', name: 'KEN' }, { characterId: 'ryu', name: 'RYU' }]
+  const results = [ready(desc, data)]
+  for (const [controlType, expected] of [['classic', [4200, 0]], ['modern', [6100, 10000]]] as const) {
+    const series = createWinRateHistorySeries(input, selection({ controlType, toMonth: '2026-01' }), characters, results)
+    assert.deepEqual(series.map(({ points }) => points[0].percentHundredths), expected)
+  }
+})
+
+test('複数系列でも総合版とマスター版のMASTERを混ぜず、別版や壊れた月は全系列で失敗にする', async () => {
+  const general = descriptor('2026-01')
+  const master = descriptor('2026-01', 'MASTER', 'combined', 'master')
+  const input = manifest([general, master])
+  const characters = [{ characterId: 'ryu', name: 'RYU' }, { characterId: 'ken', name: 'KEN' }]
+  for (const edition of [undefined, 'master'] as const) {
+    const selected = selection({ edition, toMonth: '2026-01' })
+    const results = await loadWinRateHistory(input, selected, async (desc) => dataset(desc, desc.edition === 'master' ? '4.500' : '5.058'))
+    const series = createWinRateHistorySeries(input, selected, characters, results)
+    assert.deepEqual(series.map(({ points }) => points[0].percentHundredths), [edition === 'master' ? 4500 : 5058, 10000])
+    assert.ok(series.every(({ points }) => points[0].source?.url === WIN_RATE_EDITION_SOURCES[edition ?? 'general'].url))
+  }
+  const selected = selection({ toMonth: '2026-01' })
+  const malformed = dataset(general)
+  malformed.rows[0].cells.pop()
+  for (const results of [
+    [ready(master)], [ready(general, dataset(master))], [ready(general, malformed)],
+    [ready(general), ready(general)], [ready({ ...general, capturedAt: '2026-10-09T00:00:00.000Z' })],
+  ]) {
+    const series = createWinRateHistorySeries(input, selected, characters, results)
+    assert.deepEqual(series.map(({ points }) => points[0].status), ['error', 'error'])
+    assert.ok(series.every(({ points }) => points[0].total === null && points[0].source === null))
+  }
 })

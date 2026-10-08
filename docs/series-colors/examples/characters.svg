@@ -1,0 +1,302 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1148" viewBox="0 0 1120 1148" role="img" aria-labelledby="title description">
+  <title id="title">SF6 キャラクター別の固定配色・線種・記号</title>
+  <desc id="description">共通定義 characterSeriesStyle から生成した31キャラクターと未登録IDの見本。線の色、破線パターン、点の形を組み合わせ、名前とともに表示する。</desc>
+  <style>
+    text { font-family: "Yu Gothic", "Meiryo", sans-serif; fill: #24292f; }
+    .name { font-size: 17px; font-weight: 600; }
+    .id { font-family: Consolas, monospace; font-size: 12px; fill: #57606a; }
+    .color { font-family: Consolas, monospace; font-size: 13px; fill: #57606a; text-anchor: end; }
+  </style>
+  <rect width="1120" height="1148" fill="#ffffff"/>
+  <text x="32" y="45" font-size="27" font-weight="700">キャラクター別の固定配色・線種・記号</text>
+  <text x="32" y="76" font-size="14" fill="#57606a">src/lib/seriesColors.ts から生成 · ラベルと併用する</text>
+  <g>
+    <title>リュウ: ryu, #245ea8, solid, circle</title>
+    <line x1="32" y1="130" x2="118" y2="130" stroke="#245ea8" stroke-width="2.5"/>
+    <circle cx="75" cy="130" r="5.5" fill="#245ea8" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="126" class="name">リュウ</text>
+    <text x="142" y="149" class="id">ryu</text>
+    <text x="522" y="126" class="color">#245ea8</text>
+    <line x1="32" y1="168" x2="532" y2="168" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ルーク: luke, #b65d00, solid, square</title>
+    <line x1="32" y1="192" x2="118" y2="192" stroke="#b65d00" stroke-width="2.5"/>
+    <rect x="70" y="187" width="10" height="10" fill="#b65d00" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="188" class="name">ルーク</text>
+    <text x="142" y="211" class="id">luke</text>
+    <text x="522" y="188" class="color">#b65d00</text>
+    <line x1="32" y1="230" x2="532" y2="230" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ジェイミー: jamie, #25764a, solid, triangle</title>
+    <line x1="32" y1="254" x2="118" y2="254" stroke="#25764a" stroke-width="2.5"/>
+    <path d="M75 247.5 L81 259 L69 259 Z" fill="#25764a" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="250" class="name">ジェイミー</text>
+    <text x="142" y="273" class="id">jamie</text>
+    <text x="522" y="250" class="color">#25764a</text>
+    <line x1="32" y1="292" x2="532" y2="292" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>春麗: chunli, #147d92, solid, diamond</title>
+    <line x1="32" y1="316" x2="118" y2="316" stroke="#147d92" stroke-width="2.5"/>
+    <path d="M75 309 L81 316 L75 323 L69 316 Z" fill="#147d92" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="312" class="name">春麗</text>
+    <text x="142" y="335" class="id">chunli</text>
+    <text x="522" y="312" class="color">#147d92</text>
+    <line x1="32" y1="354" x2="532" y2="354" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ガイル: guile, #5b6f22, 7 4, circle</title>
+    <line x1="32" y1="378" x2="118" y2="378" stroke="#5b6f22" stroke-width="2.5" stroke-dasharray="7 4"/>
+    <circle cx="75" cy="378" r="5.5" fill="#5b6f22" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="374" class="name">ガイル</text>
+    <text x="142" y="397" class="id">guile</text>
+    <text x="522" y="374" class="color">#5b6f22</text>
+    <line x1="32" y1="416" x2="532" y2="416" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>キンバリー: kimberly, #ba3d71, 7 4, square</title>
+    <line x1="32" y1="440" x2="118" y2="440" stroke="#ba3d71" stroke-width="2.5" stroke-dasharray="7 4"/>
+    <rect x="70" y="435" width="10" height="10" fill="#ba3d71" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="436" class="name">キンバリー</text>
+    <text x="142" y="459" class="id">kimberly</text>
+    <text x="522" y="436" class="color">#ba3d71</text>
+    <line x1="32" y1="478" x2="532" y2="478" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ジュリ: juri, #803ca5, solid, triangle</title>
+    <line x1="32" y1="502" x2="118" y2="502" stroke="#803ca5" stroke-width="2.5"/>
+    <path d="M75 495.5 L81 507 L69 507 Z" fill="#803ca5" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="498" class="name">ジュリ</text>
+    <text x="142" y="521" class="id">juri</text>
+    <text x="522" y="498" class="color">#803ca5</text>
+    <line x1="32" y1="540" x2="532" y2="540" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ケン: ken, #bd3c32, solid, diamond</title>
+    <line x1="32" y1="564" x2="118" y2="564" stroke="#bd3c32" stroke-width="2.5"/>
+    <path d="M75 557 L81 564 L75 571 L69 564 Z" fill="#bd3c32" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="560" class="name">ケン</text>
+    <text x="142" y="583" class="id">ken</text>
+    <text x="522" y="560" class="color">#bd3c32</text>
+    <line x1="32" y1="602" x2="532" y2="602" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ブランカ: blanka, #3c8627, 2 4, circle</title>
+    <line x1="32" y1="626" x2="118" y2="626" stroke="#3c8627" stroke-width="2.5" stroke-dasharray="2 4"/>
+    <circle cx="75" cy="626" r="5.5" fill="#3c8627" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="622" class="name">ブランカ</text>
+    <text x="142" y="645" class="id">blanka</text>
+    <text x="522" y="622" class="color">#3c8627</text>
+    <line x1="32" y1="664" x2="532" y2="664" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ダルシム: dhalsim, #8a5e2a, 2 4, square</title>
+    <line x1="32" y1="688" x2="118" y2="688" stroke="#8a5e2a" stroke-width="2.5" stroke-dasharray="2 4"/>
+    <rect x="70" y="683" width="10" height="10" fill="#8a5e2a" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="684" class="name">ダルシム</text>
+    <text x="142" y="707" class="id">dhalsim</text>
+    <text x="522" y="684" class="color">#8a5e2a</text>
+    <line x1="32" y1="726" x2="532" y2="726" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>エドモンド本田: ehonda / honda, #365a92, 7 4, triangle</title>
+    <line x1="32" y1="750" x2="118" y2="750" stroke="#365a92" stroke-width="2.5" stroke-dasharray="7 4"/>
+    <path d="M75 743.5 L81 755 L69 755 Z" fill="#365a92" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="746" class="name">エドモンド本田</text>
+    <text x="142" y="769" class="id">ehonda / honda</text>
+    <text x="522" y="746" class="color">#365a92</text>
+    <line x1="32" y1="788" x2="532" y2="788" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ディージェイ: deejay, #007f72, 7 4, diamond</title>
+    <line x1="32" y1="812" x2="118" y2="812" stroke="#007f72" stroke-width="2.5" stroke-dasharray="7 4"/>
+    <path d="M75 805 L81 812 L75 819 L69 812 Z" fill="#007f72" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="808" class="name">ディージェイ</text>
+    <text x="142" y="831" class="id">deejay</text>
+    <text x="522" y="808" class="color">#007f72</text>
+    <line x1="32" y1="850" x2="532" y2="850" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>マノン: manon, #ad3979, 2 4, triangle</title>
+    <line x1="32" y1="874" x2="118" y2="874" stroke="#ad3979" stroke-width="2.5" stroke-dasharray="2 4"/>
+    <path d="M75 867.5 L81 879 L69 879 Z" fill="#ad3979" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="870" class="name">マノン</text>
+    <text x="142" y="893" class="id">manon</text>
+    <text x="522" y="870" class="color">#ad3979</text>
+    <line x1="32" y1="912" x2="532" y2="912" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>マリーザ: marisa, #9b432c, 2 4, diamond</title>
+    <line x1="32" y1="936" x2="118" y2="936" stroke="#9b432c" stroke-width="2.5" stroke-dasharray="2 4"/>
+    <path d="M75 929 L81 936 L75 943 L69 936 Z" fill="#9b432c" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="932" class="name">マリーザ</text>
+    <text x="142" y="955" class="id">marisa</text>
+    <text x="522" y="932" class="color">#9b432c</text>
+    <line x1="32" y1="974" x2="532" y2="974" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>JP: jp, #654786, 9 3 2 3, circle</title>
+    <line x1="32" y1="998" x2="118" y2="998" stroke="#654786" stroke-width="2.5" stroke-dasharray="9 3 2 3"/>
+    <circle cx="75" cy="998" r="5.5" fill="#654786" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="994" class="name">JP</text>
+    <text x="142" y="1017" class="id">jp</text>
+    <text x="522" y="994" class="color">#654786</text>
+    <line x1="32" y1="1036" x2="532" y2="1036" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ザンギエフ: zangief, #a82e43, 9 3 2 3, square</title>
+    <line x1="32" y1="1060" x2="118" y2="1060" stroke="#a82e43" stroke-width="2.5" stroke-dasharray="9 3 2 3"/>
+    <rect x="70" y="1055" width="10" height="10" fill="#a82e43" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="142" y="1056" class="name">ザンギエフ</text>
+    <text x="142" y="1079" class="id">zangief</text>
+    <text x="522" y="1056" class="color">#a82e43</text>
+    <line x1="32" y1="1098" x2="532" y2="1098" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>リリー: lily, #728126, 9 3 2 3, triangle</title>
+    <line x1="576" y1="130" x2="662" y2="130" stroke="#728126" stroke-width="2.5" stroke-dasharray="9 3 2 3"/>
+    <path d="M619 123.5 L625 135 L613 135 Z" fill="#728126" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="126" class="name">リリー</text>
+    <text x="686" y="149" class="id">lily</text>
+    <text x="1066" y="126" class="color">#728126</text>
+    <line x1="576" y1="168" x2="1076" y2="168" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>キャミィ: cammy, #247552, 9 3 2 3, diamond</title>
+    <line x1="576" y1="192" x2="662" y2="192" stroke="#247552" stroke-width="2.5" stroke-dasharray="9 3 2 3"/>
+    <path d="M619 185 L625 192 L619 199 L613 192 Z" fill="#247552" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="188" class="name">キャミィ</text>
+    <text x="686" y="211" class="id">cammy</text>
+    <text x="1066" y="188" class="color">#247552</text>
+    <line x1="576" y1="230" x2="1076" y2="230" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ラシード: rashid, #087c9d, 2 4, diamond</title>
+    <line x1="576" y1="254" x2="662" y2="254" stroke="#087c9d" stroke-width="2.5" stroke-dasharray="2 4"/>
+    <path d="M619 247 L625 254 L619 261 L613 254 Z" fill="#087c9d" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="250" class="name">ラシード</text>
+    <text x="686" y="273" class="id">rashid</text>
+    <text x="1066" y="250" class="color">#087c9d</text>
+    <line x1="576" y1="292" x2="1076" y2="292" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>A.K.I.: aki, #6b488f, 2 4, circle</title>
+    <line x1="576" y1="316" x2="662" y2="316" stroke="#6b488f" stroke-width="2.5" stroke-dasharray="2 4"/>
+    <circle cx="619" cy="316" r="5.5" fill="#6b488f" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="312" class="name">A.K.I.</text>
+    <text x="686" y="335" class="id">aki</text>
+    <text x="1066" y="312" class="color">#6b488f</text>
+    <line x1="576" y1="354" x2="1076" y2="354" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ED: ed, #4362ba, 2 4, square</title>
+    <line x1="576" y1="378" x2="662" y2="378" stroke="#4362ba" stroke-width="2.5" stroke-dasharray="2 4"/>
+    <rect x="614" y="373" width="10" height="10" fill="#4362ba" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="374" class="name">ED</text>
+    <text x="686" y="397" class="id">ed</text>
+    <text x="1066" y="374" class="color">#4362ba</text>
+    <line x1="576" y1="416" x2="1076" y2="416" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>豪鬼: gouki_akuma / gouki, #7d343b, 7 4, circle</title>
+    <line x1="576" y1="440" x2="662" y2="440" stroke="#7d343b" stroke-width="2.5" stroke-dasharray="7 4"/>
+    <circle cx="619" cy="440" r="5.5" fill="#7d343b" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="436" class="name">豪鬼</text>
+    <text x="686" y="459" class="id">gouki_akuma / gouki</text>
+    <text x="1066" y="436" class="color">#7d343b</text>
+    <line x1="576" y1="478" x2="1076" y2="478" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ベガ: vega_mbison / vega, #a33764, 9 3 2 3, triangle</title>
+    <line x1="576" y1="502" x2="662" y2="502" stroke="#a33764" stroke-width="2.5" stroke-dasharray="9 3 2 3"/>
+    <path d="M619 495.5 L625 507 L613 507 Z" fill="#a33764" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="498" class="name">ベガ</text>
+    <text x="686" y="521" class="id">vega_mbison / vega</text>
+    <text x="1066" y="498" class="color">#a33764</text>
+    <line x1="576" y1="540" x2="1076" y2="540" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>テリー: terry, #c24825, 7 4, diamond</title>
+    <line x1="576" y1="564" x2="662" y2="564" stroke="#c24825" stroke-width="2.5" stroke-dasharray="7 4"/>
+    <path d="M619 557 L625 564 L619 571 L613 564 Z" fill="#c24825" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="560" class="name">テリー</text>
+    <text x="686" y="583" class="id">terry</text>
+    <text x="1066" y="560" class="color">#c24825</text>
+    <line x1="576" y1="602" x2="1076" y2="602" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>舞: mai, #b63347, 2 4, circle</title>
+    <line x1="576" y1="626" x2="662" y2="626" stroke="#b63347" stroke-width="2.5" stroke-dasharray="2 4"/>
+    <circle cx="619" cy="626" r="5.5" fill="#b63347" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="622" class="name">舞</text>
+    <text x="686" y="645" class="id">mai</text>
+    <text x="1066" y="622" class="color">#b63347</text>
+    <line x1="576" y1="664" x2="1076" y2="664" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>エレナ: elena, #287c7e, solid, square</title>
+    <line x1="576" y1="688" x2="662" y2="688" stroke="#287c7e" stroke-width="2.5"/>
+    <rect x="614" y="683" width="10" height="10" fill="#287c7e" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="684" class="name">エレナ</text>
+    <text x="686" y="707" class="id">elena</text>
+    <text x="1066" y="684" class="color">#287c7e</text>
+    <line x1="576" y1="726" x2="1076" y2="726" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>サガット: sagat, #95601e, 7 4, square</title>
+    <line x1="576" y1="750" x2="662" y2="750" stroke="#95601e" stroke-width="2.5" stroke-dasharray="7 4"/>
+    <rect x="614" y="745" width="10" height="10" fill="#95601e" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="746" class="name">サガット</text>
+    <text x="686" y="769" class="id">sagat</text>
+    <text x="1066" y="746" class="color">#95601e</text>
+    <line x1="576" y1="788" x2="1076" y2="788" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>C.ヴァイパー: cviper, #a94586, solid, circle</title>
+    <line x1="576" y1="812" x2="662" y2="812" stroke="#a94586" stroke-width="2.5"/>
+    <circle cx="619" cy="812" r="5.5" fill="#a94586" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="808" class="name">C.ヴァイパー</text>
+    <text x="686" y="831" class="id">cviper</text>
+    <text x="1066" y="808" class="color">#a94586</text>
+    <line x1="576" y1="850" x2="1076" y2="850" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>アレックス: alex, #546e30, 9 3 2 3, square</title>
+    <line x1="576" y1="874" x2="662" y2="874" stroke="#546e30" stroke-width="2.5" stroke-dasharray="9 3 2 3"/>
+    <rect x="614" y="869" width="10" height="10" fill="#546e30" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="870" class="name">アレックス</text>
+    <text x="686" y="893" class="id">alex</text>
+    <text x="1066" y="870" class="color">#546e30</text>
+    <line x1="576" y1="912" x2="1076" y2="912" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>イングリッド: ingrid, #786522, 2 4, diamond</title>
+    <line x1="576" y1="936" x2="662" y2="936" stroke="#786522" stroke-width="2.5" stroke-dasharray="2 4"/>
+    <path d="M619 929 L625 936 L619 943 L613 936 Z" fill="#786522" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="932" class="name">イングリッド</text>
+    <text x="686" y="955" class="id">ingrid</text>
+    <text x="1066" y="932" class="color">#786522</text>
+    <line x1="576" y1="974" x2="1076" y2="974" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>ヤスミン: yasmine, #425aab, 9 3 2 3, triangle</title>
+    <line x1="576" y1="998" x2="662" y2="998" stroke="#425aab" stroke-width="2.5" stroke-dasharray="9 3 2 3"/>
+    <path d="M619 991.5 L625 1003 L613 1003 Z" fill="#425aab" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="994" class="name">ヤスミン</text>
+    <text x="686" y="1017" class="id">yasmine</text>
+    <text x="1066" y="994" class="color">#425aab</text>
+    <line x1="576" y1="1036" x2="1076" y2="1036" stroke="#e5e7eb"/>
+  </g>
+  <g>
+    <title>未登録のキャラクター: unknown, #666666, 3 3, square</title>
+    <line x1="576" y1="1060" x2="662" y2="1060" stroke="#666666" stroke-width="2.5" stroke-dasharray="3 3"/>
+    <rect x="614" y="1055" width="10" height="10" fill="#666666" stroke="#ffffff" stroke-width="1.2"/>
+    <text x="686" y="1056" class="name">未登録のキャラクター</text>
+    <text x="686" y="1079" class="id">unknown</text>
+    <text x="1066" y="1056" class="color">#666666</text>
+    <line x1="576" y1="1098" x2="1076" y2="1098" stroke="#e5e7eb"/>
+  </g>
+  <text x="32" y="1130" font-size="12" fill="#57606a">再生成: node scripts/render-series-colors.ts</text>
+</svg>
