@@ -65,7 +65,7 @@ export function characterTraitsDatasetFromSources(
     return buildCharacterTraits(dataset, descriptor)
   })
   const result = parseCharacterTraitsDataset({
-    schemaVersion: 1,
+    schemaVersion: 2,
     rulesVersion: CHARACTER_TRAIT_RULES_VERSION,
     generatedAt,
     sourceManifestGeneratedAt: manifest.generatedAt,

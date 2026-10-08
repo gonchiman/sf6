@@ -35,6 +35,10 @@ function character(id = 'ryu'): CharacterDataset {
     moves: [
       move('classic', 'od', '上', '1-8F 完全無敵'), move('classic', 'projectile', '上・弾', ''),
       move('modern', 'od', '上', '1-8F 完全無敵'), move('modern', 'projectile', '上・弾', ''),
+      ...(['classic', 'modern'] as const).map((controlType) => ({
+        ...move(controlType, 'crouching-mk', '下', ''), category: '通常技', name: 'しゃがみ中K（中足）', cancel: 'C',
+        inputs: { classic: controlType === 'classic' ? '↓ + 中K' : '', modern: controlType === 'modern' ? '↓ + 中' : '' },
+      })),
     ],
   }
 }
@@ -72,7 +76,8 @@ test('summary preserves manifest order, source metadata and both modes without c
   const before = structuredClone(input)
   const dataset = characterTraitsDatasetFromSources(input, GENERATED_AT)
   assert.deepEqual(input, before)
-  assert.equal(dataset.rulesVersion, 1)
+  assert.equal(dataset.schemaVersion, 2)
+  assert.equal(dataset.rulesVersion, 2)
   assert.equal(dataset.generatedAt, GENERATED_AT)
   assert.equal(dataset.sourceManifestGeneratedAt, MANIFEST_AT)
   assert.deepEqual(dataset.characters.map((entry) => entry.id), ['ken', 'ryu'])
@@ -81,6 +86,8 @@ test('summary preserves manifest order, source metadata and both modes without c
   for (const mode of ['classic', 'modern'] as const) {
     assert.equal(dataset.characters[0].traits[mode].full.status, 'confirmed')
     assert.equal(dataset.characters[0].traits[mode].projectile.status, 'confirmed')
+    assert.equal(dataset.characters[0].traits[mode].crouchingMKCancel.status, 'confirmed')
+    assert.equal(dataset.characters[0].traits[mode].crouchingMKCancel.checkedMoves![0].cancel, 'C')
   }
   assert.deepEqual(validateCharacterTraitsAgainstSources(dataset, input), dataset)
 })
@@ -110,6 +117,8 @@ test('summary rejects a capture after the source manifest or generation before t
 test('validator rejects old rules, changed source generation and missing or extra summary characters', () => {
   const input = sources(['ryu', 'ken'])
   const dataset = characterTraitsDatasetFromSources(input, GENERATED_AT)
+  assert.throws(() => validateCharacterTraitsAgainstSources({ ...dataset, schemaVersion: 1 }, input))
+  assert.throws(() => validateCharacterTraitsAgainstSources({ ...dataset, rulesVersion: 1 }, input))
   assert.throws(() => validateCharacterTraitsAgainstSources({ ...dataset, rulesVersion: 0 }, input))
   assert.throws(() => validateCharacterTraitsAgainstSources({ ...dataset, sourceManifestGeneratedAt: CAPTURED_AT }, input), /生成日時/)
   assert.throws(() => validateCharacterTraitsAgainstSources({ ...dataset, characters: dataset.characters.slice(0, 1) }, input), /件数/)
@@ -132,6 +141,31 @@ test('validator rejects evidence move IDs, original note changes and stale chara
   const changedMetadata = structuredClone(input)
   changedMetadata.datasets[0].gameVersion = '2.000'
   assert.throws(() => validateCharacterTraitsAgainstSources(dataset, changedMetadata), /一致しません/)
+})
+
+test('validator rejects stale checked input, cancel, properties and notes even for not-found classifications', () => {
+  const input = sources()
+  const original = input.datasets[0].moves.find((entry) => entry.id === 'classic-crouching-mk')!
+  original.cancel = ''
+  original.notes = '※ヴィーハト・チェーニのみキャンセル可能'
+  const dataset = characterTraitsDatasetFromSources(input, GENERATED_AT)
+  const result = dataset.characters[0].traits.classic.crouchingMKCancel
+  assert.equal(result.status, 'not-found')
+  assert.equal(result.checkedMoves![0].cancel, '')
+  assert.equal(result.checkedMoves![0].notes, original.notes)
+  for (const field of ['input', 'cancel', 'properties', 'notes'] as const) {
+    const forged = structuredClone(dataset)
+    forged.characters[0].traits.classic.crouchingMKCancel.checkedMoves![0][field] = '変更した原文'
+    assert.throws(() => validateCharacterTraitsAgainstSources(forged, input), /一致しません/)
+  }
+  for (const field of ['cancel', 'properties', 'notes'] as const) {
+    const changed = structuredClone(input)
+    changed.datasets[0].moves.find((entry) => entry.id === 'classic-crouching-mk')![field] = '変更した原文'
+    assert.throws(() => validateCharacterTraitsAgainstSources(dataset, changed), /一致しません/)
+  }
+  const changedInput = structuredClone(input)
+  changedInput.datasets[0].moves.find((entry) => entry.id === 'classic-crouching-mk')!.inputs.classic = '変更した入力'
+  assert.throws(() => validateCharacterTraitsAgainstSources(dataset, changedInput), /一致しません/)
 })
 
 test('generator and validator use stored sources and publish a complete newline-terminated JSON', async () => {

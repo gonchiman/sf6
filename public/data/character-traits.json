@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 1,
-  "rulesVersion": 1,
-  "generatedAt": "2026-10-08T05:00:15.863Z",
+  "schemaVersion": 2,
+  "rulesVersion": 2,
+  "generatedAt": "2026-10-08T06:49:34.164Z",
   "sourceManifestGeneratedAt": "2026-10-08T03:42:46.212Z",
   "characters": [
     {
@@ -184,6 +184,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "ryu-9af1e91cfaece325c341",
+                "moveName": "しゃがみ中K（くるぶしキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "ryu-9af1e91cfaece325c341",
+                "moveName": "しゃがみ中K（くるぶしキック）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -354,6 +379,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "ryu-6223b2fad0ae567cdf6c",
+                "moveName": "しゃがみ中K（くるぶしキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "ryu-6223b2fad0ae567cdf6c",
+                "moveName": "しゃがみ中K（くるぶしキック）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -539,6 +589,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "luke-ebfb597d0644f88374d0",
+                "moveName": "しゃがみ中K（カーフスカッシュ）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "luke-ebfb597d0644f88374d0",
+                "moveName": "しゃがみ中K（カーフスカッシュ）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -710,6 +785,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "luke-6e985d9804d457408027",
+                "moveName": "しゃがみ中K（カーフスカッシュ）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "luke-6e985d9804d457408027",
+                "moveName": "しゃがみ中K（カーフスカッシュ）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -829,6 +929,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "jamie-e32f5c6cff890eac4604",
+                "moveName": "しゃがみ中K（膝降蹴）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "jamie-e32f5c6cff890eac4604",
+                "moveName": "しゃがみ中K（膝降蹴）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -934,6 +1059,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "jamie-2fb11459793a0d4c2fca",
+                "moveName": "しゃがみ中K（膝降蹴）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "jamie-2fb11459793a0d4c2fca",
+                "moveName": "しゃがみ中K（膝降蹴）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -1078,6 +1228,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "chunli-f8d3d5979c93c9214819",
+                "moveName": "しゃがみ中K（後掃旋腿）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "chunli-f8d3d5979c93c9214819",
+                "moveName": "しゃがみ中K（後掃旋腿）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -1208,6 +1383,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "chunli-3166172adcf014e48403",
+                "moveName": "しゃがみ中K（後掃旋腿）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "chunli-3166172adcf014e48403",
+                "moveName": "しゃがみ中K（後掃旋腿）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -1511,6 +1711,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "guile-b9bc4c3a76745a8a6210",
+                "moveName": "しゃがみ中K （スライドスイープ）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -1800,6 +2016,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "guile-0674b2c10aac464c68ef",
+                "moveName": "しゃがみ中K （スライドスイープ）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -1901,6 +2133,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "kimberly-20be18e8230ffa5f7062",
+                "moveName": "しゃがみ中K（脛割り）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -1988,6 +2236,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "kimberly-2271dcf840085f461b52",
+                "moveName": "しゃがみ中K（脛割り）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -2124,6 +2388,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "juri-f03469b91e2693dd1c11",
+                "moveName": "しゃがみ中K（剥影脚）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "juri-f03469b91e2693dd1c11",
+                "moveName": "しゃがみ中K（剥影脚）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -2246,6 +2535,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "juri-7c9083eed2bfefc127b5",
+                "moveName": "しゃがみ中K（剥影脚）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "juri-7c9083eed2bfefc127b5",
+                "moveName": "しゃがみ中K（剥影脚）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -2390,6 +2704,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "ken-5023d6c2cda065551db6",
+                "moveName": "しゃがみ中K （くるぶしキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "ken-5023d6c2cda065551db6",
+                "moveName": "しゃがみ中K （くるぶしキック）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -2504,6 +2843,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "ken-cbf625edadb885cc6786",
+                "moveName": "しゃがみ中K （くるぶしキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "ken-cbf625edadb885cc6786",
+                "moveName": "しゃがみ中K （くるぶしキック）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -2590,6 +2954,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "blanka-318a191942fd3daf6f74",
+                "moveName": "しゃがみ中K （ビーストステップ）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "blanka-318a191942fd3daf6f74",
+                "moveName": "しゃがみ中K （ビーストステップ）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": "※ガード、空振り時硬直2F増加"
+              }
+            ]
           }
         },
         "modern": {
@@ -2662,6 +3051,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "blanka-cf5933b650836f4cc4c5",
+                "moveName": "しゃがみ中K （ビーストステップ）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "blanka-cf5933b650836f4cc4c5",
+                "moveName": "しゃがみ中K （ビーストステップ）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": "※ガード、空振り時硬直2F増加"
+              }
+            ]
           }
         }
       }
@@ -2899,6 +3313,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "dhalsim-e7316768f39a40a9437c",
+                "moveName": "しゃがみ中K（ヨガスライディング）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -3090,6 +3520,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "dhalsim-655f86650a323dc478f0",
+                "moveName": "しゃがみ中K（ヨガスライディング）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -3160,6 +3606,22 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "ehonda-77620ed5972c870b692e",
+                "moveName": "しゃがみ中K（掛け足）",
+                "input": "↓ + 中K",
+                "cancel": "※",
+                "properties": "下",
+                "notes": "※肩屋入り中、百裂張り手でのみキャンセル可能"
+              }
+            ]
           }
         },
         "modern": {
@@ -3216,6 +3678,22 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "ehonda-48e6de8335141288e199",
+                "moveName": "しゃがみ中K（掛け足）",
+                "input": "↓ + 中",
+                "cancel": "※",
+                "properties": "下",
+                "notes": "※肩屋入り中、百裂張り手でのみキャンセル可能"
+              }
+            ]
           }
         }
       }
@@ -3344,6 +3822,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "deejay-dcb9427f771cd47252c9",
+                "moveName": "しゃがみ中K （グランドスクラッチ）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": "パニッシュカウンター時ハードノックダウン"
+              }
+            ]
           }
         },
         "modern": {
@@ -3450,6 +3944,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "deejay-a6078db3c1ec11a1eebb",
+                "moveName": "しゃがみ中K （グランドスクラッチ）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": "パニッシュカウンター時ハードノックダウン"
+              }
+            ]
           }
         }
       }
@@ -3535,6 +4045,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "manon-cdae4514ecade63fa406",
+                "moveName": "しゃがみ中K（ストゥニュー）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -3590,6 +4116,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "manon-99a5077d3cf861d8c9a5",
+                "moveName": "しゃがみ中K（ストゥニュー）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -3788,6 +4330,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "marisa-c372e2814134c4e8c519",
+                "moveName": "しゃがみ中K（レッグバッシュ）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -3972,6 +4530,13 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "unknown",
+            "evidence": [],
+            "unresolved": [],
+            "reason": "この操作タイプの通常状態のしゃがみ中Kが保存データにありません。",
+            "checkedMoves": []
           }
         }
       }
@@ -4202,6 +4767,22 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "jp-1d1044be29a13e64f6e9",
+                "moveName": "しゃがみ中K（ズローバ）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": "※ヴィーハト・チェーニのみキャンセル可能"
+              }
+            ]
           }
         },
         "modern": {
@@ -4418,6 +4999,22 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "jp-232aeb7b6e251fdc1669",
+                "moveName": "しゃがみ中K（ズローバ）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": "※ヴィーハト・チェーニのみキャンセル可能"
+              }
+            ]
           }
         }
       }
@@ -4504,6 +5101,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "zangief-479227a0f0ec16524838",
+                "moveName": "しゃがみ中K（ダイナマイトキック）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -4576,6 +5189,13 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "unknown",
+            "evidence": [],
+            "unresolved": [],
+            "reason": "この操作タイプの通常状態のしゃがみ中Kが保存データにありません。",
+            "checkedMoves": []
           }
         }
       }
@@ -4694,6 +5314,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "lily-86bebd096f5eda925983",
+                "moveName": "しゃがみ中K（ヒールスライドキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "lily-86bebd096f5eda925983",
+                "moveName": "しゃがみ中K（ヒールスライドキック）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -4798,6 +5443,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "lily-9ab7d8d2095f05af02b8",
+                "moveName": "しゃがみ中K（ヒールスライドキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "lily-9ab7d8d2095f05af02b8",
+                "moveName": "しゃがみ中K（ヒールスライドキック）",
+                "input": "AUTO + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -4917,6 +5587,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "cammy-f01f6d9b599e1114f3d4",
+                "moveName": "しゃがみ中K（トゥーバズソー）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "cammy-f01f6d9b599e1114f3d4",
+                "moveName": "しゃがみ中K（トゥーバズソー）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -5022,6 +5717,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "cammy-c28d8ccbb7e549d53309",
+                "moveName": "しゃがみ中K（トゥーバズソー）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "cammy-c28d8ccbb7e549d53309",
+                "moveName": "しゃがみ中K（トゥーバズソー）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -5222,6 +5942,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "rashid-37776f2fe48b3ef44c05",
+                "moveName": "しゃがみ中K （ファルコンキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "rashid-37776f2fe48b3ef44c05",
+                "moveName": "しゃがみ中K （ファルコンキック）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -5360,6 +6105,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "rashid-d611b4937ee408e110ae",
+                "moveName": "しゃがみ中K （ファルコンキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "rashid-d611b4937ee408e110ae",
+                "moveName": "しゃがみ中K （ファルコンキック）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -5495,6 +6265,22 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "aki-db50d9772fcaf7609a05",
+                "moveName": "しゃがみ中K （蛇落蹴）",
+                "input": "↓ + 中K",
+                "cancel": "SA",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -5616,6 +6402,22 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "aki-fc4efc8a05178ecf0827",
+                "moveName": "しゃがみ中K （蛇落蹴）",
+                "input": "↓ + 中",
+                "cancel": "SA",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -5880,6 +6682,22 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "ed-3daab6068d5e6169dc34",
+                "moveName": "しゃがみ中K（オーバーフリッカー）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "上",
+                "notes": "空振り時硬直3F増加\n強制立ち効果"
+              }
+            ]
           }
         },
         "modern": {
@@ -6130,6 +6948,13 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "unknown",
+            "evidence": [],
+            "unresolved": [],
+            "reason": "この操作タイプの通常状態のしゃがみ中Kが保存データにありません。",
+            "checkedMoves": []
           }
         }
       }
@@ -6345,6 +7170,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "gouki_akuma-bb6a8087af3728161860",
+                "moveName": "しゃがみ中K（踝払い）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "gouki_akuma-bb6a8087af3728161860",
+                "moveName": "しゃがみ中K（踝払い）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -6546,6 +7396,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "gouki_akuma-2952f5d71fa24a88e793",
+                "moveName": "しゃがみ中K（踝払い）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "gouki_akuma-2952f5d71fa24a88e793",
+                "moveName": "しゃがみ中K（踝払い）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -6673,6 +7548,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "vega_mbison-887448f0c63e434c7bf4",
+                "moveName": "しゃがみ中K（デスレッグ）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "vega_mbison-887448f0c63e434c7bf4",
+                "moveName": "しゃがみ中K（デスレッグ）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -6786,6 +7686,31 @@
             ],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "vega_mbison-e0d036aca84826380234",
+                "moveName": "しゃがみ中K（デスレッグ）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "vega_mbison-e0d036aca84826380234",
+                "moveName": "しゃがみ中K（デスレッグ）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -6905,6 +7830,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "terry-6cdb63c44793641f4d77",
+                "moveName": "しゃがみ中K （ヒールキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "terry-6cdb63c44793641f4d77",
+                "moveName": "しゃがみ中K （ヒールキック）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -7010,6 +7960,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "terry-47b2f581a6e2673a74ff",
+                "moveName": "しゃがみ中K （ヒールキック）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "terry-47b2f581a6e2673a74ff",
+                "moveName": "しゃがみ中K （ヒールキック）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -7273,6 +8248,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "mai-bb6795343a08710947d5",
+                "moveName": "しゃがみ中K（捌き蹴り）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "mai-bb6795343a08710947d5",
+                "moveName": "しゃがみ中K（捌き蹴り）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -7522,6 +8522,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "mai-b60514c37d545954c506",
+                "moveName": "しゃがみ中K（捌き蹴り）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "mai-b60514c37d545954c506",
+                "moveName": "しゃがみ中K（捌き蹴り）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -7689,6 +8714,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "elena-6094ea9237aa9fd0db97",
+                "moveName": "しゃがみ中K（サーフェスキック）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": "ヒット時硬直2F減少"
+              }
+            ]
           }
         },
         "modern": {
@@ -7842,6 +8883,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "elena-c51b778334079e87705e",
+                "moveName": "しゃがみ中K（サーフェスキック）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": "ヒット時硬直2F減少"
+              }
+            ]
           }
         }
       }
@@ -7977,6 +9034,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "sagat-338b8b51b7b270da1472",
+                "moveName": "しゃがみ中K（タイガースラストキック）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -8098,6 +9171,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "sagat-dadb561e1b571c001a52",
+                "moveName": "しゃがみ中K（タイガースラストキック）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -8209,6 +9298,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "cviper-fff8e9d86f794a3905a1",
+                "moveName": "しゃがみ中K（グランドキック）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": "ハイジャンプキャンセル可能"
+              }
+            ]
           }
         },
         "modern": {
@@ -8306,6 +9411,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "cviper-2ca0ad19089024dab29e",
+                "moveName": "しゃがみ中K（グランドキック）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": "ハイジャンプキャンセル可能"
+              }
+            ]
           }
         }
       }
@@ -8383,6 +9504,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "alex-16b4b075e9698e3fb035",
+                "moveName": "しゃがみ中K（シンキック）",
+                "input": "↓ + 中K",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -8446,6 +9583,22 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "not-found",
+            "evidence": [],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "alex-ac4ef689b9b3c86f839f",
+                "moveName": "しゃがみ中K（シンキック）",
+                "input": "↓ + 中",
+                "cancel": "",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -8652,6 +9805,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "ingrid-eda0357792c0ccc48579",
+                "moveName": "しゃがみ中K（ミルキーウェイ）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "ingrid-eda0357792c0ccc48579",
+                "moveName": "しゃがみ中K（ミルキーウェイ）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -8844,6 +10022,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "ingrid-8a22a8887ba9caa0ad41",
+                "moveName": "しゃがみ中K（ミルキーウェイ）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "ingrid-8a22a8887ba9caa0ad41",
+                "moveName": "しゃがみ中K（ミルキーウェイ）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
@@ -8979,6 +10182,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "yasmine-631cd676a188c2fb4dc4",
+                "moveName": "しゃがみ中K（パンドゥログ・ナン・ルロッド）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "yasmine-631cd676a188c2fb4dc4",
+                "moveName": "しゃがみ中K（パンドゥログ・ナン・ルロッド）",
+                "input": "↓ + 中K",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         },
         "modern": {
@@ -9100,6 +10328,31 @@
             "evidence": [],
             "unresolved": [],
             "reason": null
+          },
+          "crouchingMKCancel": {
+            "status": "confirmed",
+            "evidence": [
+              {
+                "moveId": "yasmine-780e6077b5584c1fbf99",
+                "moveName": "しゃがみ中K（パンドゥログ・ナン・ルロッド）",
+                "variant": "normal",
+                "field": "cancel",
+                "text": "C",
+                "excerpt": "C"
+              }
+            ],
+            "unresolved": [],
+            "reason": null,
+            "checkedMoves": [
+              {
+                "moveId": "yasmine-780e6077b5584c1fbf99",
+                "moveName": "しゃがみ中K（パンドゥログ・ナン・ルロッド）",
+                "input": "↓ + 中",
+                "cancel": "C",
+                "properties": "下",
+                "notes": ""
+              }
+            ]
           }
         }
       }
