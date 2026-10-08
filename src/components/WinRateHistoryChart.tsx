@@ -1,13 +1,14 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { formatHistoryValue, monthLabel } from '../lib/winRateHistory'
-import type { WinRateHistoryPoint } from '../types/winRateHistory'
+import { characterSeriesStyle } from '../lib/seriesColors'
+import type { WinRateHistoryPoint, WinRateHistorySeries } from '../types/winRateHistory'
+import { CharacterSeriesKey, SeriesMarker } from './CharacterSeriesKey'
 import '../win-rate-history-chart.css'
 
 type Props = {
-  points: readonly WinRateHistoryPoint[]
+  series: readonly WinRateHistorySeries[]
   selectedMonth: string
   onSelect: (month: string) => void
-  characterName: string
 }
 
 const HEIGHT = 322
@@ -42,12 +43,13 @@ function valueAxis(points: readonly WinRateHistoryPoint[]) {
   return { start, end, ticks, step }
 }
 
-export function WinRateHistoryChart({ points, selectedMonth, onSelect, characterName }: Props) {
+export function WinRateHistoryChart({ series, selectedMonth, onSelect }: Props) {
   const titleId = useId()
   const descriptionId = useId()
   const viewportRef = useRef<HTMLDivElement>(null)
   const [availableWidth, setAvailableWidth] = useState(320)
-  const axis = useMemo(() => valueAxis(points), [points])
+  const points = series[0]?.points ?? []
+  const axis = useMemo(() => valueAxis(series.flatMap(item => item.points)), [series])
 
   useLayoutEffect(() => {
     const element = viewportRef.current
@@ -82,31 +84,40 @@ export function WinRateHistoryChart({ points, selectedMonth, onSelect, character
     }
     tickIndices.push(points.length - 1)
   }
-  const numericPoints = points.filter(hasValue)
-  const segments: string[] = []
-  let previousMonth: number | null = null
-  for (const point of points) {
-    if (!hasValue(point)) {
-      previousMonth = null
-      continue
+  const renderedSeries = series.map(item => {
+    const segments: string[] = []
+    let previousMonth: number | null = null
+    for (const point of item.points) {
+      if (!hasValue(point)) {
+        previousMonth = null
+        continue
+      }
+      const currentMonth = monthNumber(point.month)
+      const coordinate = `${x(point.month)} ${y(point.percentHundredths)}`
+      // Split each character independently; never bridge missing observations.
+      if (previousMonth === null || currentMonth !== previousMonth + 1) segments.push(`M ${coordinate}`)
+      else segments[segments.length - 1] += ` L ${coordinate}`
+      previousMonth = currentMonth
     }
-    const currentMonth = monthNumber(point.month)
-    const coordinate = `${x(point.month)} ${y(point.percentHundredths)}`
-    // A missing observation or absent calendar month always starts a new segment.
-    if (previousMonth === null || currentMonth !== previousMonth + 1) segments.push(`M ${coordinate}`)
-    else segments[segments.length - 1] += ` L ${coordinate}`
-    previousMonth = currentMonth
-  }
-  const selectionDescription = selected ? `選択中は${monthLabel(selected.month)}、${formatHistoryValue(selected)}。` : ''
+    return { ...item, segments, numericPoints: item.points.filter(hasValue), style: characterSeriesStyle(item.characterId) }
+  })
+  const monthValues = (month: string) => series.map(item => {
+    const point = item.points.find(value => value.month === month)
+    return `${item.characterName} ${point ? formatHistoryValue(point) : '未登録'}`
+  }).join('、')
+  const selectionDescription = selected ? `選択中は${monthLabel(selected.month)}、${monthValues(selected.month)}。` : ''
   const period = points.length ? `${monthLabel(points[0].month)}から${monthLabel(points[points.length - 1].month)}。` : ''
 
   return <figure className="win-rate-history-chart">
+    <figcaption><ul className="history-series-legend" aria-label="グラフのキャラクター">
+      {series.map(item => <li key={item.characterId}><CharacterSeriesKey characterId={item.characterId} /><span>{item.characterName}</span></li>)}
+    </ul></figcaption>
     <div ref={viewportRef} className="win-rate-history-chart-viewport">
       <div className="win-rate-history-chart-scroll" role="region" aria-label="勝率推移グラフ"
         tabIndex={availableWidth < width ? 0 : undefined}>
         <svg className="win-rate-history-chart-svg" width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`}
           role="img" aria-labelledby={`${titleId} ${descriptionId}`}>
-          <title id={titleId}>{`${characterName}の月別勝率推移`}</title>
+          <title id={titleId}>{`${series.map(item => item.characterName).join('・')}の月別勝率推移`}</title>
           <desc id={descriptionId}>{`${period}公式Totalの百分率換算値。破線は比較の基準となる50%。数値がない月は線をつなぎません。${selectionDescription}月別表でも各月を選択できます。`}</desc>
           <text className="win-rate-history-axis-title" x={LEFT} y="17">Total（%）</text>
           {axis.ticks.map((tick) => <g key={tick}>
@@ -130,11 +141,14 @@ export function WinRateHistoryChart({ points, selectedMonth, onSelect, character
           <path className="win-rate-history-axis" d={`M ${LEFT} ${TOP} V ${BOTTOM} H ${right}`} />
           {selected && <line className="win-rate-history-selection-guide" x1={x(selected.month)} x2={x(selected.month)}
             y1={TOP} y2={BOTTOM} />}
-          {segments.map((path, index) => <path key={index} className="win-rate-history-line" d={path} />)}
-          {numericPoints.map((point) => <circle key={point.month}
-            className={point.month === selectedMonth ? 'win-rate-history-point is-selected' : 'win-rate-history-point'}
-            cx={x(point.month)} cy={y(point.percentHundredths)} r={point.month === selectedMonth ? 5 : 2.8} />)}
-          {numericPoints.length === 0 && <text className="win-rate-history-empty" x={(LEFT + right) / 2}
+          {renderedSeries.map(item => <g key={item.characterId} data-history-character={item.characterId}>
+            {item.segments.map((path, index) => <path key={index} className="win-rate-history-line" d={path}
+              style={{ stroke: item.style.color }} strokeDasharray={item.style.dashArray} />)}
+            {item.numericPoints.map(point => <SeriesMarker key={point.month} shape={item.style.marker}
+              className={point.month === selectedMonth ? 'win-rate-history-point is-selected' : 'win-rate-history-point'}
+              x={x(point.month)} y={y(point.percentHundredths)} size={point.month === selectedMonth ? 5 : 2.8} color={item.style.color} />)}
+          </g>)}
+          {renderedSeries.every(item => item.numericPoints.length === 0) && <text className="win-rate-history-empty" x={(LEFT + right) / 2}
             y={(TOP + BOTTOM) / 2 - 18} textAnchor="middle">表示できる数値がありません</text>}
           {points.map((point, index) => {
             const leftEdge = index === 0 ? LEFT - 8 : (x(points[index - 1].month) + x(point.month)) / 2
@@ -142,7 +156,7 @@ export function WinRateHistoryChart({ points, selectedMonth, onSelect, character
             return <rect key={point.month} className="win-rate-history-month-hit" data-history-month={point.month}
               x={leftEdge} y={TOP} width={rightEdge - leftEdge} height={BOTTOM - TOP}
               onClick={() => onSelect(point.month)}>
-              <title>{`${monthLabel(point.month)}：${formatHistoryValue(point)}`}</title>
+              <title>{`${monthLabel(point.month)}：${monthValues(point.month)}`}</title>
             </rect>
           })}
           <text className="win-rate-history-axis-title" x={(LEFT + right) / 2} y={HEIGHT - 3} textAnchor="middle">対象月</text>

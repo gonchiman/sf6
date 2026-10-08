@@ -20,6 +20,12 @@ export interface WinRateHistoryPoint {
   source: WinRateDataset['source'] | null
 }
 
+export interface WinRateHistorySeries {
+  characterId: string
+  characterName: string
+  points: WinRateHistoryPoint[]
+}
+
 export type HistoryDatasetResult =
   | { month: string; descriptor: WinRateDatasetDescriptor; status: 'ready'; dataset: WinRateDataset }
   | { month: string; descriptor: WinRateDatasetDescriptor; status: 'error' }

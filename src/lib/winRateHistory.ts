@@ -1,8 +1,8 @@
 import { formatTotalPercent, totalPercentHundredths } from './totalWinRates.ts'
 import { loadWinRateDataset, parseWinRateDataset } from './winRates.ts'
 import { editionOf, WIN_RATE_EDITIONS, WIN_RATE_EDITION_LEAGUES } from './winRateConditions.ts'
-import type { WinRateDataset, WinRateDatasetDescriptor, WinRateManifest } from '../types/winRates.ts'
-import type { HistoryDatasetResult, WinRateHistoryPoint, WinRateHistorySelection } from '../types/winRateHistory.ts'
+import type { WinRateCell, WinRateDataset, WinRateDatasetDescriptor, WinRateManifest } from '../types/winRates.ts'
+import type { HistoryDatasetResult, WinRateHistoryPoint, WinRateHistorySelection, WinRateHistorySeries } from '../types/winRateHistory.ts'
 
 function monthIndex(month: string): number {
   if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) throw new Error('対象月はYYYY-MM形式で指定してください。')
@@ -95,13 +95,16 @@ export async function loadWinRateHistory(
   return results
 }
 
-/** Keep calendar gaps and distinct no-value states instead of filling or averaging them. */
-export function createWinRateHistoryPoints(
+type PreparedHistoryMonth =
+  | { month: string; status: 'unavailable' | 'error' }
+  | { month: string; status: 'ready'; dataset: WinRateDataset; totals: Map<string, WinRateCell> }
+
+/** 月別データを一度だけ検証し、選択中の操作タイプのTotalをキャラIDに対応付ける。 */
+function prepareHistoryMonths(
   manifest: WinRateManifest,
   selection: WinRateHistorySelection,
-  characterId: string,
   results: readonly HistoryDatasetResult[],
-): WinRateHistoryPoint[] {
+): PreparedHistoryMonth[] {
   const descriptors = selectedDescriptors(manifest, selection)
   const controls = selection.controlType === 'combined' ? null : selection.controlType
   const resultsByMonth = new Map<string, HistoryDatasetResult[]>()
@@ -110,28 +113,65 @@ export function createWinRateHistoryPoints(
     entries.push(result)
     resultsByMonth.set(result.month, entries)
   }
-  return selectedMonths(selection).map((month): WinRateHistoryPoint => {
-    const empty = { month, total: null, percentHundredths: null, capturedAt: null, source: null }
+  return selectedMonths(selection).map((month): PreparedHistoryMonth => {
     const descriptor = descriptors.get(month)
-    if (!descriptor) return { ...empty, status: 'unavailable' }
+    if (!descriptor) return { month, status: 'unavailable' }
     const entries = resultsByMonth.get(month)
     const result = entries?.length === 1 ? entries[0] : undefined
     if (!result || !sameDescriptor(result.descriptor, descriptor) || result.status !== 'ready') {
-      return { ...empty, status: 'error' }
+      return { month, status: 'error' }
     }
     try {
       const dataset = parseWinRateDataset(result.dataset, descriptor)
-      const metadata = { ...empty, capturedAt: dataset.capturedAt, source: dataset.source }
-      const fighter = dataset.fighters.find((item) => item.characterId === characterId && item.controlType === controls)
-      if (!fighter) return { ...metadata, status: 'unlisted' }
-      const row = dataset.rows.find((item) => item.fighterId === fighter.id)
-      if (!row) return { ...empty, status: 'error' }
-      const percentHundredths = totalPercentHundredths(row.total.text)
-      return { ...metadata, status: percentHundredths === null ? 'missing' : 'value', total: row.total, percentHundredths }
+      const rows = new Map(dataset.rows.map((row) => [row.fighterId, row.total]))
+      const totals = new Map<string, WinRateCell>()
+      for (const fighter of dataset.fighters) {
+        if (fighter.controlType === controls) totals.set(fighter.characterId, rows.get(fighter.id)!)
+      }
+      return { month, status: 'ready', dataset, totals }
     } catch {
-      return { ...empty, status: 'error' }
+      return { month, status: 'error' }
     }
   })
+}
+
+function projectHistoryPoint(prepared: PreparedHistoryMonth, characterId: string): WinRateHistoryPoint {
+  const empty = { month: prepared.month, total: null, percentHundredths: null, capturedAt: null, source: null }
+  if (prepared.status !== 'ready') return { ...empty, status: prepared.status }
+  const metadata = { ...empty, capturedAt: prepared.dataset.capturedAt, source: prepared.dataset.source }
+  const total = prepared.totals.get(characterId)
+  if (!total) return { ...metadata, status: 'unlisted' }
+  const percentHundredths = totalPercentHundredths(total.text)
+  return { ...metadata, status: percentHundredths === null ? 'missing' : 'value', total, percentHundredths }
+}
+
+/** 全キャラを同じ条件・月カレンダーに投影する。ID重複は最初の選択を保持する。 */
+export function createWinRateHistorySeries(
+  manifest: WinRateManifest,
+  selection: WinRateHistorySelection,
+  characters: readonly { characterId: string; name: string }[],
+  results: readonly HistoryDatasetResult[],
+): WinRateHistorySeries[] {
+  const uniqueCharacters = new Map<string, { characterId: string; name: string }>()
+  for (const character of characters) {
+    if (!uniqueCharacters.has(character.characterId)) uniqueCharacters.set(character.characterId, character)
+  }
+  if (uniqueCharacters.size === 0) return []
+  const prepared = prepareHistoryMonths(manifest, selection, results)
+  return [...uniqueCharacters.values()].map(({ characterId, name }) => ({
+    characterId, characterName: name,
+    points: prepared.map((month) => projectHistoryPoint(month, characterId)),
+  }))
+}
+
+/** Keep calendar gaps and distinct no-value states instead of filling or averaging them. */
+export function createWinRateHistoryPoints(
+  manifest: WinRateManifest,
+  selection: WinRateHistorySelection,
+  characterId: string,
+  results: readonly HistoryDatasetResult[],
+): WinRateHistoryPoint[] {
+  return createWinRateHistorySeries(manifest, selection, [{ characterId, name: characterId }], results)[0].points
 }
 
 export function formatHistoryValue(point: WinRateHistoryPoint): string {
