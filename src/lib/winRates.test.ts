@@ -11,6 +11,7 @@ import {
   parseWinRateManifest,
 } from './winRates.ts'
 import type { WinRateDataset, WinRateDatasetDescriptor, WinRateManifest } from '../types/winRates.ts'
+import { editionOf, leagueLabel, WIN_RATE_EDITION_LEAGUES, WIN_RATE_EDITION_SOURCES } from './winRateConditions.ts'
 
 const capturedAt = '2026-10-07T01:02:03.000Z'
 const generatedAt = '2026-10-07T02:03:04.000Z'
@@ -41,12 +42,68 @@ function manifest(datasets = [descriptor()]): WinRateManifest {
   return { schemaVersion: 1, generatedAt, source: { ...source }, datasets }
 }
 
+function masterDescriptor(overrides: Partial<WinRateDatasetDescriptor> = {}): WinRateDatasetDescriptor {
+  return descriptor({ edition: 'master', id: '2026-08-master-master-combined', path: '2026-08-master-master-combined.json', ...overrides })
+}
+
+function masterDataset(overrides: Partial<WinRateDataset> = {}): WinRateDataset {
+  return dataset({
+    edition: 'master', id: masterDescriptor().id,
+    source: { ...dataset().source, ...WIN_RATE_EDITION_SOURCES.master }, ...overrides,
+  })
+}
+
 test('official zero, both missing markers, three decimals and low-sample flags retain their meanings', () => {
   const input = dataset()
   assert.deepEqual(parseWinRateDataset(input, descriptor()), input)
   assert.equal(parseWinRateDataset(input).rows[0].cells[1].text, '0.000')
   assert.equal(parseWinRateDataset(input).rows[0].cells[1].lowSample, true)
   assert.deepEqual(parseWinRateManifest(manifest()), manifest())
+})
+
+test('legacy general editions keep their omitted property while explicit editions retain their identity', () => {
+  const legacy = parseWinRateDataset(dataset(), descriptor({ edition: 'general' }))
+  assert.equal(Object.hasOwn(legacy, 'edition'), false)
+  assert.equal(Object.hasOwn(parseWinRateManifest(manifest()).datasets[0], 'edition'), false)
+  const explicit = parseWinRateDataset(dataset({ edition: 'general' }), descriptor())
+  assert.equal(explicit.edition, 'general')
+  assert.equal(editionOf(legacy), 'general')
+  assert.deepEqual(parseWinRateDataset(masterDataset(), masterDescriptor()), masterDataset())
+  assert.equal(editionOf(masterDescriptor()), 'master')
+  assert.equal(leagueLabel('HIGH_MASTER'), 'HIGH MASTER')
+  assert.equal(leagueLabel('GRAND_MASTER'), 'GRAND MASTER')
+  assert.equal(leagueLabel('ULTIMATE_MASTER'), 'ULTIMATE MASTER')
+  assert.equal(leagueLabel('MASTER'), 'MASTER')
+})
+
+test('general and master MASTER conditions coexist, but implicit and explicit general duplicates do not', () => {
+  const mixed = manifest([descriptor(), masterDescriptor()])
+  assert.deepEqual(parseWinRateManifest(mixed), mixed)
+  assert.throws(() => parseWinRateManifest(manifest([
+    descriptor(), descriptor({ edition: 'general', id: 'duplicate-general', path: 'duplicate-general.json' }),
+  ])), /datasets.conditions/)
+  assert.throws(() => parseWinRateManifest(manifest([
+    masterDescriptor(), masterDescriptor({ id: 'duplicate-master', path: 'duplicate-master.json' }),
+  ])), /datasets.conditions/)
+})
+
+test('edition restricts the source, available leagues and operation modes', () => {
+  for (const league of WIN_RATE_EDITION_LEAGUES.master) {
+    assert.equal(parseWinRateDataset(masterDataset({ league }), masterDescriptor({ league })).league, league)
+  }
+  for (const invalid of [
+    dataset({ source: { ...dataset().source, url: WIN_RATE_EDITION_SOURCES.master.url } }),
+    masterDataset({ source: dataset().source }),
+    dataset({ league: 'HIGH_MASTER' }), masterDataset({ league: 'GOLD' }),
+    masterDataset({ operationMode: 'separate' }),
+    { ...dataset(), edition: 'unknown' }, { ...dataset(), edition: null },
+  ]) assert.throws(() => parseWinRateDataset(invalid), /形式/)
+  for (const invalid of [
+    masterDescriptor({ league: 'ROOKIE' }), masterDescriptor({ operationMode: 'separate' }),
+    descriptor({ league: 'HIGH_MASTER' }), { ...descriptor(), edition: 'unknown' },
+  ]) assert.throws(() => parseWinRateManifest(manifest([invalid as WinRateDatasetDescriptor])), /形式/)
+  assert.throws(() => parseWinRateDataset(dataset(), masterDescriptor({ id: descriptor().id })), /edition/)
+  assert.throws(() => parseWinRateDataset(masterDataset(), descriptor({ id: masterDescriptor().id })), /edition/)
 })
 
 test('rows are identified by fighter ID while the column order is preserved', () => {
@@ -176,6 +233,24 @@ test('malformed datasets are removed from the request cache so a retry can recov
   assert.equal(count, 2)
 })
 
+test('edition-specific cache failures cannot evict or return the other edition at the same URL', async (t) => {
+  const general = descriptor({ path: 'edition-cache-isolation.json' })
+  const master = masterDescriptor({ id: general.id, path: general.path })
+  let count = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    count += 1
+    return Response.json(count < 3 ? dataset() : masterDataset({ id: master.id }))
+  })
+  const generalResult = await loadWinRateDataset(general)
+  assert.equal(editionOf(generalResult), 'general')
+  await assert.rejects(loadWinRateDataset(master), /edition/)
+  assert.strictEqual(await loadWinRateDataset({ ...general, edition: 'general' }), generalResult)
+  assert.equal(count, 2)
+  assert.equal(editionOf(await loadWinRateDataset(master)), 'master')
+  assert.strictEqual(await loadWinRateDataset(general), generalResult)
+  assert.equal(count, 3)
+})
+
 test('validation checks every registered file and rejects unregistered or absent JSON files', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'sf6-win-rate-validation-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
@@ -189,4 +264,20 @@ test('validation checks every registered file and rejects unregistered or absent
   await rm(unregisteredPath)
   await rm(dataPath)
   await assert.rejects(validateWinRateDirectory(directory), /ENOENT/)
+})
+
+test('directory validation checks master sources by edition while preserving a general manifest source', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'sf6-edition-validation-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  await writeFile(join(directory, 'index.json'), JSON.stringify(manifest([descriptor(), masterDescriptor()])))
+  await writeFile(join(directory, descriptor().path), JSON.stringify(dataset()))
+  const masterPath = join(directory, masterDescriptor().path)
+  await writeFile(masterPath, JSON.stringify(masterDataset()))
+  assert.deepEqual(await validateWinRateDirectory(directory), { datasets: 2, cells: 12 })
+  await writeFile(masterPath, JSON.stringify(masterDataset({ source: dataset().source })))
+  await assert.rejects(validateWinRateDirectory(directory), /source.url/)
+  await writeFile(masterPath, JSON.stringify(masterDataset({
+    source: { ...masterDataset().source, url: 'https://www.streetfighter.com/6/buckler/en/stats/dia_master' },
+  })))
+  await assert.rejects(validateWinRateDirectory(directory), /出典URL/)
 })

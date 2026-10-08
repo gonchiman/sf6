@@ -1,8 +1,7 @@
 import { parseWinRateDataset } from '../../src/lib/winRates.ts'
+import { WIN_RATE_EDITION_LEAGUES, WIN_RATE_EDITION_OPERATION_MODES, WIN_RATE_EDITION_SOURCES } from '../../src/lib/winRateConditions.ts'
 import type { WinRateControlType, WinRateDataset, WinRateOperationMode } from '../../src/types/winRates.ts'
 
-const sourceUrl = 'https://www.streetfighter.com/6/buckler/ja-jp/stats/dia'
-const leagues = new Set(['ROOKIE', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER'])
 type UnknownRecord = Record<string, unknown>
 type Identity = { characterId: string; controlType: WinRateControlType }
 
@@ -52,15 +51,19 @@ export function normalizeBucklerSnapshot(
 ): WinRateDataset {
   const input = record(value, 'snapshot')
   if (input.snapshotVersion !== 1) invalid('snapshotVersion')
-  if (input.sourceUrl !== sourceUrl) invalid('sourceUrl')
+  const edition = input.sourceUrl === WIN_RATE_EDITION_SOURCES.general.url ? 'general'
+    : input.sourceUrl === WIN_RATE_EDITION_SOURCES.master.url ? 'master' : invalid('sourceUrl')
+  if (input.edition !== undefined && input.edition !== edition) invalid('edition: sourceUrl does not match edition')
   const selectedMonth = month(input.month, 'month')
   if (expectedMonth !== undefined && selectedMonth !== month(expectedMonth, 'expectedMonth')) {
     invalid('month: requested month does not match selected month')
   }
-  if (typeof input.league !== 'string' || !leagues.has(input.league)) invalid('league')
+  if (selectedMonth < (edition === 'master' ? '2025-02' : '2023-06')) invalid('month: before first published month')
+  if (typeof input.league !== 'string' || !WIN_RATE_EDITION_LEAGUES[edition].includes(input.league)) invalid('league')
   const league = input.league
   if (input.operationMode !== 'combined' && input.operationMode !== 'separate') invalid('operationMode')
   const mode = input.operationMode
+  if (!WIN_RATE_EDITION_OPERATION_MODES[edition].includes(mode)) invalid('operationMode: unsupported for edition')
   if (input.order !== 'character') invalid('order')
   const columns = array(input.columns, 'columns').map((column, index) =>
     identity(record(column, `columns[${index}]`), mode, `columns[${index}]`))
@@ -90,21 +93,22 @@ export function normalizeBucklerSnapshot(
   })
   const dataset = parseWinRateDataset({
     schemaVersion: 1,
-    id: `${selectedMonth}-${league.toLowerCase()}-${mode}`,
+    id: `${selectedMonth}-${edition === 'master' ? 'master-edition-' : ''}${league.toLowerCase()}-${mode}`,
+    ...(edition === 'master' ? { edition } : {}),
     month: selectedMonth,
     league,
     operationMode: mode,
     capturedAt: input.capturedAt,
     generatedAt,
     source: {
-      url: sourceUrl,
-      title: 'Buckler 総合版 対戦ダイアグラム',
+      ...WIN_RATE_EDITION_SOURCES[edition],
       population: 'ランクマッチ',
       metric: '公式対戦ダイアグラムの掲載値',
       notes: [
         '公式表記の小数3桁を保持。百分率への換算は行っていない。',
         '少数試合の印は公式表の表示に従う。試合数は公開表から取得できていない。',
         '勝ち・対戦の集計単位、Totalの算出方法、引き分け・切断等の扱いは未確認。',
+        ...(edition === 'master' ? ['マスター版の操作タイプ合算を取得。総合版MASTERとは異なる掲載区分として保持。各区分のMR境界と対象プレイヤーの判定時点は未確認。'] : []),
       ],
     },
     fighters: columns.map((column) => ({

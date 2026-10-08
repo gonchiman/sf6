@@ -1,5 +1,6 @@
 export type WinRateOperationMode = 'combined' | 'separate'
 export type WinRateControlType = 'classic' | 'modern' | null
+export type WinRateEdition = 'general' | 'master'
 
 export interface WinRateSource {
   url: string
@@ -7,6 +8,8 @@ export interface WinRateSource {
 }
 
 export interface WinRateDatasetDescriptor {
+  /** Omitted in the existing general-edition data. */
+  edition?: WinRateEdition
   id: string
   month: string
   league: string
@@ -43,6 +46,8 @@ export interface WinRateRow {
 }
 
 export interface WinRateDataset {
+  /** Omitted in the existing general-edition data. */
+  edition?: WinRateEdition
   schemaVersion: 1
   id: string
   month: string

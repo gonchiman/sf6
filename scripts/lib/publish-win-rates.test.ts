@@ -27,6 +27,15 @@ function batch(month = '2026-08', text = '5.000'): WinRateDataset[] {
   }))
 }
 
+function masterBatch(month = '2026-08', text = '5.000'): WinRateDataset[] {
+  const template = batch(month, text).find((dataset) => dataset.operationMode === 'combined')!
+  return ['MASTER', 'HIGH_MASTER', 'GRAND_MASTER', 'ULTIMATE_MASTER'].map((league) => ({
+    ...structuredClone(template), edition: 'master', league,
+    id: `${month}-master-edition-${league.toLowerCase()}-combined`,
+    source: { ...template.source, url: `${source.url}_master`, title: 'Buckler マスター版 対戦ダイアグラム' },
+  }))
+}
+
 async function fixture(t: test.TestContext) {
   const temporaryRoot = resolve('.cache', 'publication-tests')
   await fs.mkdir(temporaryRoot, { recursive: true })
@@ -61,6 +70,44 @@ test('replaces only selected months and preserves the other month files byte for
   assert.equal(JSON.parse(after['2026-08-master-combined.json']).rows[0].total.text, '5.058')
   const manifest = JSON.parse(after['index.json'])
   assert.equal(manifest.datasets.find((item: { id: string }) => item.id === '2026-08-master-combined').capturedAt, changed[0].capturedAt)
+})
+
+test('同月の別版をbyte単位で保持し、総合版とマスター版を相互に更新できる', async (t) => {
+  const options = await fixture(t)
+  await publishWinRateBatch({ ...options, datasets: batch(), months: ['2026-08'] })
+  const generalBefore = await snapshot(options.directory)
+  await publishWinRateBatch({ ...options, edition: 'master', datasets: [...masterBatch('2026-07'), ...masterBatch()], months: ['2026-07', '2026-08'] })
+  const both = await snapshot(options.directory)
+  for (const path of Object.keys(generalBefore).filter((path) => path !== 'index.json')) assert.equal(both[path], generalBefore[path])
+  const result = await publishWinRateBatch({ ...options, datasets: batch('2026-08', '6.000'), months: ['2026-08'] })
+  assert.equal(result.datasets, 24)
+  const generalUpdated = await snapshot(options.directory)
+  for (const path of Object.keys(both).filter((path) => path.includes('-master-edition-'))) assert.equal(generalUpdated[path], both[path])
+  await publishWinRateBatch({ ...options, edition: 'master', datasets: masterBatch('2026-08', '4.000'), months: ['2026-08'] })
+  const masterUpdated = await snapshot(options.directory)
+  for (const path of Object.keys(generalUpdated).filter((path) => path !== 'index.json' && (!path.includes('-master-edition-') || path.startsWith('2026-07-')))) {
+    assert.equal(masterUpdated[path], generalUpdated[path])
+  }
+  const manifest = JSON.parse(masterUpdated['index.json'])
+  assert.equal(manifest.datasets.filter((item: { edition?: string }) => item.edition === 'master').length, 8)
+  assert.equal(manifest.source.url, source.url)
+  assert.equal(JSON.parse(masterUpdated['2026-08-master-edition-master-combined.json']).rows[0].total.text, '4.000')
+})
+
+test('マスター版だけの初回公開と4条件不足・別版混入の拒否', async (t) => {
+  const options = await fixture(t)
+  assert.deepEqual(await publishWinRateBatch({ ...options, edition: 'master', datasets: masterBatch(), months: ['2026-08'] }), { datasets: 4, cells: 24 })
+  const before = await snapshot(options.directory)
+  assert.equal(JSON.parse(before['index.json']).source.url, source.url)
+  const mixed = masterBatch()
+  mixed[0] = batch().find((dataset) => dataset.league === 'MASTER' && dataset.operationMode === 'combined')!
+  for (const datasets of [masterBatch().slice(1), [...masterBatch(), masterBatch()[0]], mixed]) {
+    await assert.rejects(publishWinRateBatch({ ...options, edition: 'master', datasets, months: ['2026-08'] }))
+    assert.deepEqual(await snapshot(options.directory), before)
+  }
+  await assert.rejects(publishWinRateBatch({ ...options, datasets: masterBatch(), months: ['2026-08'] }))
+  await assert.rejects(publishWinRateBatch({ ...options, edition: 'master', datasets: masterBatch('2025-01'), months: ['2025-01'] }), /公開開始前/)
+  assert.deepEqual(await snapshot(options.directory), before)
 })
 
 test('rejects missing, duplicate, extra-month and invalid records without altering existing data', async (t) => {

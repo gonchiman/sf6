@@ -1,8 +1,9 @@
-import type { WinRateCell, WinRateDataset, WinRateDatasetDescriptor } from './winRates.ts'
+import type { WinRateCell, WinRateDataset, WinRateDatasetDescriptor, WinRateEdition } from './winRates.ts'
 
 export type HistoryControlType = 'combined' | 'classic' | 'modern'
 
 export interface WinRateHistorySelection {
+  edition?: WinRateEdition
   league: string
   controlType: HistoryControlType
   fromMonth: string

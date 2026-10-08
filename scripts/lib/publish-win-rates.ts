@@ -3,14 +3,14 @@ import fs from 'node:fs/promises'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseWinRateDataset, parseWinRateManifest } from '../../src/lib/winRates.ts'
-import type { WinRateDataset, WinRateManifest } from '../../src/types/winRates.ts'
+import { editionOf, WIN_RATE_EDITIONS, WIN_RATE_EDITION_LEAGUES, WIN_RATE_EDITION_OPERATION_MODES, WIN_RATE_EDITION_SOURCES } from '../../src/lib/winRateConditions.ts'
+import type { WinRateDataset, WinRateEdition, WinRateManifest } from '../../src/types/winRates.ts'
 import { validateWinRateDirectory } from '../validate-win-rate-data.ts'
 
-const LEAGUES = ['ROOKIE', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER']
-const MODES = ['combined', 'separate']
 const WORK_FILES = new Set(['stage', 'backup', 'journal.json', 'journal.tmp', 'lock', 'reclaim'])
 
 interface PublishOptions {
+  edition?: WinRateEdition
   directory: string
   transactionDirectory?: string
   datasets: WinRateDataset[]
@@ -101,26 +101,33 @@ async function currentManifest(directory: string): Promise<WinRateManifest | nul
 }
 
 function validateBatch(options: PublishOptions): WinRateDataset[] {
+  const edition = editionOf(options)
   if (options.months.length === 0 || new Set(options.months).size !== options.months.length
     || options.months.some((month) => !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month))) {
     throw new Error('対象月は重複のないYYYY-MM形式で指定してください。')
   }
-  const expected = new Set(options.months.flatMap((month) => LEAGUES.flatMap((league) => MODES.map((mode) => `${month}/${league}/${mode}`))))
+  if (options.months.some((month) => month < (edition === 'master' ? '2025-02' : '2023-06'))) {
+    throw new Error('公開開始前の対象月は指定できません。')
+  }
+  const leagues = WIN_RATE_EDITION_LEAGUES[edition]
+  const modes = WIN_RATE_EDITION_OPERATION_MODES[edition]
+  const expected = new Set(options.months.flatMap((month) => leagues.flatMap((league) => modes.map((mode) => `${edition}/${month}/${league}/${mode}`))))
   const datasets = options.datasets.map((value) => {
     const dataset = parseWinRateDataset(value)
-    const key = `${dataset.month}/${dataset.league}/${dataset.operationMode}`
+    const key = `${editionOf(dataset)}/${dataset.month}/${dataset.league}/${dataset.operationMode}`
     if (!expected.delete(key)) throw new Error(`重複または対象外の取得条件です: ${key}`)
     if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(dataset.id)) throw new Error(`保存できないデータIDです: ${dataset.id}`)
     return dataset
   })
-  if (expected.size !== 0) throw new Error(`対象月の16条件が揃っていません: ${[...expected].join(', ')}`)
+  if (expected.size !== 0) throw new Error(`対象月の${leagues.length * modes.length}条件が揃っていません: ${[...expected].join(', ')}`)
   // Also validate IDs, timestamps and output paths before any filesystem changes.
-  parseWinRateManifest({ schemaVersion: 1, generatedAt: options.generatedAt, source: datasets[0].source, datasets: descriptors(datasets) })
+  parseWinRateManifest({ schemaVersion: 1, generatedAt: options.generatedAt, source: WIN_RATE_EDITION_SOURCES.general, datasets: descriptors(datasets) })
   return datasets
 }
 
 function descriptors(datasets: WinRateDataset[]) {
-  return datasets.map(({ id, month, league, operationMode, capturedAt }) => ({
+  return datasets.map(({ id, month, league, operationMode, capturedAt, edition }) => ({
+    ...(edition === undefined ? {} : { edition }),
     id, month, league, operationMode, capturedAt, path: `${id}.json`,
   }))
 }
@@ -263,14 +270,18 @@ export async function publishWinRateBatch(options: PublishOptions): Promise<{ da
     if (hadOriginal) await fs.cp(paths.directory, paths.stage, { recursive: true, errorOnExist: true, force: false })
     else await fs.mkdir(paths.stage)
     const selected = new Set(options.months)
-    const retained = manifest?.datasets.filter((item) => !selected.has(item.month)) ?? []
+    const edition = editionOf(options)
+    const isSelected = (item: { month: string; edition?: WinRateEdition }) => editionOf(item) === edition && selected.has(item.month)
+    const retained = manifest?.datasets.filter((item) => !isSelected(item)) ?? []
     const nextManifest = parseWinRateManifest({
-      schemaVersion: 1, generatedAt: options.generatedAt, source: manifest?.source ?? datasets[0].source,
+      schemaVersion: 1, generatedAt: options.generatedAt, source: manifest?.source ?? WIN_RATE_EDITION_SOURCES.general,
       datasets: [...retained, ...descriptors(datasets)].sort((a, b) => b.month.localeCompare(a.month)
-        || LEAGUES.indexOf(a.league) - LEAGUES.indexOf(b.league) || MODES.indexOf(a.operationMode) - MODES.indexOf(b.operationMode)),
+        || WIN_RATE_EDITIONS.indexOf(editionOf(a)) - WIN_RATE_EDITIONS.indexOf(editionOf(b))
+        || WIN_RATE_EDITION_LEAGUES[editionOf(a)].indexOf(a.league) - WIN_RATE_EDITION_LEAGUES[editionOf(b)].indexOf(b.league)
+        || WIN_RATE_EDITION_OPERATION_MODES[editionOf(a)].indexOf(a.operationMode) - WIN_RATE_EDITION_OPERATION_MODES[editionOf(b)].indexOf(b.operationMode)),
     })
     for (const item of manifest?.datasets ?? []) {
-      if (selected.has(item.month)) {
+      if (isSelected(item)) {
         const path = resolve(paths.stage, item.path)
         if (!contains(paths.stage, path) || path === paths.stage) throw new Error('データの保存先が不正です。')
         await fs.unlink(path)

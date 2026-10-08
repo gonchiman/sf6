@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { resolve, relative, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseWinRateDataset, parseWinRateManifest } from '../src/lib/winRates.ts'
+import { editionOf, WIN_RATE_EDITION_SOURCES } from '../src/lib/winRateConditions.ts'
 
 async function jsonFiles(directory: string, prefix = ''): Promise<string[]> {
   const result: string[] = []
@@ -27,7 +28,8 @@ export async function validateWinRateDirectory(directory: string): Promise<{ dat
     const fromRoot = relative(root, path)
     if (fromRoot.startsWith(`..${sep}`) || fromRoot === '..') throw new Error(`データの保存先が不正です: ${descriptor.path}`)
     const dataset = parseWinRateDataset(JSON.parse(await readFile(path, 'utf8')), descriptor)
-    if (dataset.source.url !== manifest.source.url) throw new Error(`一覧と出典URLが一致しません: ${descriptor.path}`)
+    const expectedSource = editionOf(descriptor) === 'general' ? manifest.source.url : WIN_RATE_EDITION_SOURCES.master.url
+    if (dataset.source.url !== expectedSource) throw new Error(`版の出典URLと一致しません: ${descriptor.path}`)
     cells += dataset.rows.reduce((sum, row) => sum + row.cells.length + 1, 0)
   }
   return { datasets: manifest.datasets.length, cells }

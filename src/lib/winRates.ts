@@ -3,11 +3,13 @@ import type {
   WinRateControlType,
   WinRateDataset,
   WinRateDatasetDescriptor,
+  WinRateEdition,
   WinRateFighter,
   WinRateManifest,
   WinRateOperationMode,
   WinRateSource,
 } from '../types/winRates.ts'
+import { editionOf, WIN_RATE_EDITION_LEAGUES, WIN_RATE_EDITION_OPERATION_MODES } from './winRateConditions.ts'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -65,7 +67,17 @@ function operationMode(value: unknown): WinRateOperationMode {
   return value
 }
 
-function source(value: unknown): WinRateSource {
+function conditions(input: UnknownRecord): Pick<WinRateDatasetDescriptor, 'edition' | 'league' | 'operationMode'> {
+  if (input.edition !== undefined && input.edition !== 'general' && input.edition !== 'master') invalid('edition')
+  const edition = input.edition ?? 'general'
+  const league = string(input.league, 'league')
+  const mode = operationMode(input.operationMode)
+  if (!WIN_RATE_EDITION_LEAGUES[edition].includes(league)) invalid('league')
+  if (!WIN_RATE_EDITION_OPERATION_MODES[edition].includes(mode)) invalid('operationMode')
+  return { ...(input.edition === undefined ? {} : { edition }), league, operationMode: mode }
+}
+
+function source(value: unknown, edition: WinRateEdition = 'general'): WinRateSource {
   const input = record(value, 'source')
   const url = string(input.url, 'source.url')
   let parsed: URL
@@ -74,9 +86,10 @@ function source(value: unknown): WinRateSource {
   } catch {
     return invalid('source.url')
   }
+  const sourcePath = parsed.pathname.match(/^\/6\/buckler\/[a-z]{2}(?:-[a-z]{2})?\/stats\/(dia|dia_master)\/?$/i)
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port
     || !['www.streetfighter.com', 'streetfighter.com'].includes(parsed.hostname)
-    || !/^\/6\/buckler\/[a-z]{2}(?:-[a-z]{2})?\/stats\/dia\/?$/i.test(parsed.pathname)) {
+    || sourcePath?.[1].toLowerCase() !== (edition === 'master' ? 'dia_master' : 'dia')) {
     invalid('source.url')
   }
   return { url, title: string(input.title, 'source.title') }
@@ -95,8 +108,7 @@ function descriptor(value: unknown): WinRateDatasetDescriptor {
   return {
     id: id(input.id, 'id'),
     month: month(input.month),
-    league: string(input.league, 'league'),
-    operationMode: operationMode(input.operationMode),
+    ...conditions(input),
     path: datasetPath(input.path),
     capturedAt: timestamp(input.capturedAt, 'capturedAt'),
   }
@@ -112,7 +124,7 @@ export function parseWinRateManifest(value: unknown): WinRateManifest {
   if (datasets.length === 0) invalid('datasets: empty')
   unique(datasets.map((item) => item.id), 'datasets.id')
   unique(datasets.map((item) => item.path.toLowerCase()), 'datasets.path')
-  unique(datasets.map((item) => JSON.stringify([item.month, item.league, item.operationMode])), 'datasets.conditions')
+  unique(datasets.map((item) => JSON.stringify([editionOf(item), item.month, item.league, item.operationMode])), 'datasets.conditions')
   return {
     schemaVersion: schema(input.schemaVersion),
     generatedAt: timestamp(input.generatedAt, 'generatedAt'),
@@ -143,6 +155,9 @@ function fighter(value: unknown, mode: WinRateOperationMode): WinRateFighter {
 }
 
 function assertMatches(dataset: WinRateDataset, expected: WinRateDatasetDescriptor): void {
+  if (editionOf(dataset) !== editionOf(expected)) {
+    throw new Error('選択した条件と勝率データが一致しません（edition）。ページを再読み込みしてください。')
+  }
   for (const key of ['id', 'month', 'league', 'operationMode', 'capturedAt'] as const) {
     if (dataset[key] !== expected[key]) {
       throw new Error(`選択した条件と勝率データが一致しません（${key}）。ページを再読み込みしてください。`)
@@ -152,7 +167,8 @@ function assertMatches(dataset: WinRateDataset, expected: WinRateDatasetDescript
 
 export function parseWinRateDataset(value: unknown, expected?: WinRateDatasetDescriptor): WinRateDataset {
   const input = record(value, 'dataset')
-  const mode = operationMode(input.operationMode)
+  const selectedConditions = conditions(input)
+  const mode = selectedConditions.operationMode
   const fighters = array(input.fighters, 'fighters').map((item) => fighter(item, mode))
   if (fighters.length === 0) invalid('fighters: empty')
   unique(fighters.map((item) => item.id), 'fighters.id')
@@ -173,12 +189,11 @@ export function parseWinRateDataset(value: unknown, expected?: WinRateDatasetDes
     schemaVersion: schema(input.schemaVersion),
     id: id(input.id, 'id'),
     month: month(input.month),
-    league: string(input.league, 'league'),
-    operationMode: mode,
+    ...selectedConditions,
     capturedAt: timestamp(input.capturedAt, 'capturedAt'),
     generatedAt: timestamp(input.generatedAt, 'generatedAt'),
     source: {
-      ...source(sourceInput),
+      ...source(sourceInput, editionOf(selectedConditions)),
       population: string(sourceInput.population, 'source.population'),
       metric: string(sourceInput.metric, 'source.metric'),
       notes: array(sourceInput.notes, 'source.notes').map((note) => string(note, 'source.notes[]')),
@@ -198,17 +213,17 @@ function dataUrl(path: string): string {
   return `${base.endsWith('/') ? base : `${base}/`}data/win-rates/${path}`
 }
 
-function loadJson<T>(url: string, parse: (value: unknown) => T, cache: Map<string, Promise<T>>): Promise<T> {
-  const existing = cache.get(url)
+function loadJson<T>(url: string, parse: (value: unknown) => T, cache: Map<string, Promise<T>>, cacheKey = url): Promise<T> {
+  const existing = cache.get(cacheKey)
   if (existing) return existing
   const request = Promise.resolve().then(() => fetch(url)).then(async (response) => {
     if (!response.ok) throw new Error('勝率データを読み込めませんでした。もう一度お試しください。')
     return parse(await response.json())
   }).catch((cause) => {
-    if (cache.get(url) === request) cache.delete(url)
+    if (cache.get(cacheKey) === request) cache.delete(cacheKey)
     throw cause
   })
-  cache.set(url, request)
+  cache.set(cacheKey, request)
   return request
 }
 
@@ -219,12 +234,13 @@ export function loadWinRateManifest(): Promise<WinRateManifest> {
 export function loadWinRateDataset(value: WinRateDatasetDescriptor): Promise<WinRateDataset> {
   const expected = descriptor(value)
   const url = `${dataUrl(expected.path)}?v=${encodeURIComponent(expected.capturedAt)}`
-  const request = loadJson(url, parseWinRateDataset, datasetRequests)
+  const cacheKey = `${editionOf(expected)}:${url}`
+  const request = loadJson(url, parseWinRateDataset, datasetRequests, cacheKey)
   return request.then((dataset) => {
     assertMatches(dataset, expected)
     return dataset
   }).catch((cause) => {
-    if (datasetRequests.get(url) === request) datasetRequests.delete(url)
+    if (datasetRequests.get(cacheKey) === request) datasetRequests.delete(cacheKey)
     throw cause
   })
 }

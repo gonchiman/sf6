@@ -3,11 +3,14 @@ import { lstat, readFile, readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { normalizeBucklerSnapshot } from './buckler-snapshot.ts'
 import { publishWinRateBatch } from './publish-win-rates.ts'
-import type { WinRateDataset } from '../../src/types/winRates.ts'
+import { editionOf, WIN_RATE_EDITION_LEAGUES, WIN_RATE_EDITION_OPERATION_MODES } from '../../src/lib/winRateConditions.ts'
+import type { WinRateDataset, WinRateEdition } from '../../src/types/winRates.ts'
 
-const FIRST_MONTH = '2023-06'
-const LEAGUES = ['ROOKIE', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER']
-const MODES = ['combined', 'separate']
+const FIRST_MONTH = { general: '2023-06', master: '2025-02' }
+
+function conditionCount(edition: WinRateEdition): number {
+  return WIN_RATE_EDITION_LEAGUES[edition].length * WIN_RATE_EDITION_OPERATION_MODES[edition].length
+}
 
 export const UPDATE_HELP = `保存した公式表の月別スナップショットから公開用の勝率JSONを更新します。
 
@@ -15,23 +18,27 @@ export const UPDATE_HELP = `保存した公式表の月別スナップショッ�
   npm run data:update -- --month YYYY-MM
   npm run data:update -- --from YYYY-MM --to YYYY-MM
   npm run data:update -- --all
+  npm run data:update -- --edition master --month YYYY-MM
 
 対象の指定は、単月・期間・保存済み全月のいずれか1つです。
 --all は入力先に存在する YYYY-MM.json だけを対象にします。
 
 オプション:
+  --edition EDITION general（総合版・既定）または master（マスター版）
   --input-dir PATH   公式表から書き出した月別JSONの入力先
-  --cache-dir PATH   保存済み入力の場所（既定: .cache/win-rates/snapshots）
+  --cache-dir PATH   保存済み入力の場所（既定: .cache/win-rates/snapshots、マスター版はその中のmaster）
   --output-dir PATH  公開用JSONの出力先（既定: public/data/win-rates）
   --help            この説明を表示
 
 --input-dir がなければ --cache-dir を読みます。入力ファイルは変更・コピーしません。
-各月は snapshotVersion: 1、month、16条件の snapshots を持つJSONです。
-全対象の検証に成功してから更新し、対象外の月は保持します。
+各月は snapshotVersion: 1、month、snapshots を持つJSONです。
+総合版は16条件、マスター版は4リーグの操作タイプ合算4条件が必要です。
+全対象の検証に成功してから更新し、対象外の版・月は保持します。
 ネットワークからの自動取得は行いません。入力不足時は公式表を書き出してください。`
 
 export interface UpdateOptions {
   help: false
+  edition?: WinRateEdition
   months: string[] | null
   inputDirectory: string
   outputDirectory: string
@@ -48,9 +55,9 @@ function currentMonthInJapan(now: Date): string {
   return `${parts.find((part) => part.type === 'year')!.value}-${parts.find((part) => part.type === 'month')!.value}`
 }
 
-function validateMonth(month: string, currentMonth: string): string {
+function validateMonth(month: string, currentMonth: string, edition: WinRateEdition): string {
   if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) throw new Error(`月はYYYY-MM形式で指定してください: ${month}`)
-  if (month < FIRST_MONTH) throw new Error(`${FIRST_MONTH}より前の月は指定できません: ${month}`)
+  if (month < FIRST_MONTH[edition]) throw new Error(`${FIRST_MONTH[edition]}より前の月は指定できません: ${month}`)
   if (month > currentMonth) throw new Error(`未来の月は指定できません: ${month}`)
   return month
 }
@@ -72,7 +79,7 @@ export function parseUpdateArguments(
 ): UpdateOptions | { help: true } {
   if (args.length === 1 && args[0] === '--help') return { help: true }
   const flags = new Set(['--all'])
-  const valued = new Set(['--month', '--from', '--to', '--input-dir', '--cache-dir', '--output-dir'])
+  const valued = new Set(['--month', '--from', '--to', '--input-dir', '--cache-dir', '--output-dir', '--edition'])
   const values = new Map<string, string>()
   for (let index = 0; index < args.length; index += 1) {
     const option = args[index]
@@ -92,14 +99,16 @@ export function parseUpdateArguments(
   if (isRange && (!values.has('--from') || !values.has('--to'))) throw new Error('期間指定には --from と --to の両方が必要です。')
 
   const currentMonth = currentMonthInJapan(now)
-  const months = values.has('--month') ? [validateMonth(values.get('--month')!, currentMonth)]
-    : isRange ? monthRange(validateMonth(values.get('--from')!, currentMonth), validateMonth(values.get('--to')!, currentMonth)) : null
-  const cacheDirectory = resolve(cwd, values.get('--cache-dir') ?? '.cache/win-rates/snapshots')
+  const edition = values.get('--edition') ?? 'general'
+  if (edition !== 'general' && edition !== 'master') throw new Error('--edition は general または master を指定してください。')
+  const months = values.has('--month') ? [validateMonth(values.get('--month')!, currentMonth, edition)]
+    : isRange ? monthRange(validateMonth(values.get('--from')!, currentMonth, edition), validateMonth(values.get('--to')!, currentMonth, edition)) : null
+  const cacheDirectory = resolve(cwd, values.get('--cache-dir') ?? `.cache/win-rates/snapshots${edition === 'master' ? '/master' : ''}`)
   const outputDirectory = resolve(cwd, values.get('--output-dir') ?? 'public/data/win-rates')
   const outputKey = process.platform === 'win32' ? outputDirectory.toLowerCase() : outputDirectory
   const hash = createHash('sha256').update(outputKey).digest('hex').slice(0, 24)
   return {
-    help: false, months, currentMonth, cacheDirectory, outputDirectory,
+    help: false, edition, months, currentMonth, cacheDirectory, outputDirectory,
     inputDirectory: values.has('--input-dir') ? resolve(cwd, values.get('--input-dir')!) : cacheDirectory,
     transactionDirectory: resolve(cwd, '.cache/win-rates/publication', hash),
   }
@@ -109,45 +118,48 @@ function hasCode(error: unknown, code: string): boolean {
   return error !== null && typeof error === 'object' && 'code' in error && error.code === code
 }
 
-function missingInput(path: string): Error {
-  return new Error(`入力ファイルがありません: ${path}\n公式の対戦ダイアグラムをブラウザーで開き、対象月の16条件を書き出してから再実行してください。`)
+function missingInput(path: string, edition: WinRateEdition): Error {
+  return new Error(`入力ファイルがありません: ${path}\n公式の${edition === 'master' ? 'マスター版' : '総合版'}対戦ダイアグラムをブラウザーで開き、対象月の${conditionCount(edition)}条件を書き出してから再実行してください。`)
 }
 
 async function selectedMonths(options: UpdateOptions): Promise<string[]> {
+  const edition = editionOf(options)
   if (options.months) return [...options.months]
   let entries
   try { entries = await readdir(options.inputDirectory, { withFileTypes: true }) } catch (error) {
-    if (hasCode(error, 'ENOENT')) throw missingInput(options.inputDirectory)
+    if (hasCode(error, 'ENOENT')) throw missingInput(options.inputDirectory, edition)
     throw error
   }
   const months = entries.filter((entry) => entry.isFile() && /^\d{4}-\d{2}\.json$/.test(entry.name))
-    .map((entry) => validateMonth(entry.name.slice(0, -5), options.currentMonth)).sort()
+    .map((entry) => validateMonth(entry.name.slice(0, -5), options.currentMonth, edition)).sort()
   if (months.length === 0) throw new Error(`入力先に月別JSONがありません: ${options.inputDirectory}\n公式表を書き出した YYYY-MM.json を配置してください。`)
   return months
 }
 
-function normalizeMonth(value: unknown, month: string, generatedAt: string): WinRateDataset[] {
+function normalizeMonth(value: unknown, month: string, generatedAt: string, edition: WinRateEdition): WinRateDataset[] {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${month}: 月別スナップショットの形式が正しくありません。`)
   const input = value as Record<string, unknown>
-  if (input.snapshotVersion !== 1 || input.month !== month || !Array.isArray(input.snapshots) || input.snapshots.length !== 16) {
-    throw new Error(`${month}: snapshotVersion、対象月、16条件の snapshots を確認してください。`)
+  const count = conditionCount(edition)
+  if (input.snapshotVersion !== 1 || input.month !== month || (input.edition !== undefined && input.edition !== edition)
+    || !Array.isArray(input.snapshots) || input.snapshots.length !== count) {
+    throw new Error(`${month}: snapshotVersion、対象月、版、${count}条件の snapshots を確認してください。`)
   }
-  const expected = new Set(LEAGUES.flatMap((league) => MODES.map((mode) => `${league}/${mode}`)))
+  const expected = new Set(WIN_RATE_EDITION_LEAGUES[edition].flatMap((league) => WIN_RATE_EDITION_OPERATION_MODES[edition].map((mode) => `${league}/${mode}`)))
   const datasets = input.snapshots.map((snapshot) => {
     const dataset = normalizeBucklerSnapshot(snapshot, month, generatedAt)
-    if (dataset.month !== month || !expected.delete(`${dataset.league}/${dataset.operationMode}`)) {
-      throw new Error(`${month}: スナップショットの月・リーグ・操作タイプに重複または不一致があります。`)
+    if (editionOf(dataset) !== edition || dataset.month !== month || !expected.delete(`${dataset.league}/${dataset.operationMode}`)) {
+      throw new Error(`${month}: スナップショットの版・月・リーグ・操作タイプに重複または不一致があります。`)
     }
     return dataset
   })
-  if (expected.size > 0) throw new Error(`${month}: 16条件が揃っていません。`)
+  if (expected.size > 0) throw new Error(`${month}: ${count}条件が揃っていません。`)
   const characterIds = datasets.find((dataset) => dataset.operationMode === 'combined')!.fighters.map((fighter) => fighter.characterId)
   for (const dataset of datasets) {
     const controls = dataset.operationMode === 'combined' ? [null] : ['classic', 'modern']
     const identities = new Set(characterIds.flatMap((characterId) => controls.map((controlType) => JSON.stringify([characterId, controlType]))))
     if (dataset.fighters.length !== identities.size
       || dataset.fighters.some(({ characterId, controlType }) => !identities.has(JSON.stringify([characterId, controlType])))) {
-      throw new Error(`${month}: 月内のキャラクター構成が一致しません（${dataset.league}/${dataset.operationMode}）。全16条件で同じ月の表を取得したか確認してください。`)
+      throw new Error(`${month}: 月内のキャラクター構成が一致しません（${dataset.league}/${dataset.operationMode}）。全${count}条件で同じ月の表を取得したか確認してください。`)
     }
   }
   return datasets
@@ -158,6 +170,7 @@ export async function updateWinRates(options: UpdateOptions, now = new Date()): 
 }> {
   if (!Number.isFinite(now.getTime())) throw new Error('生成日時が正しくありません。')
   const generatedAt = now.toISOString()
+  const edition = editionOf(options)
   const months = await selectedMonths(options)
   // 期間の一部が不足していても、公開先やキャッシュを変更しない。
   for (const month of months) {
@@ -166,7 +179,7 @@ export async function updateWinRates(options: UpdateOptions, now = new Date()): 
       const stat = await lstat(path)
       if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`入力は通常のJSONファイルである必要があります: ${path}`)
     } catch (error) {
-      if (hasCode(error, 'ENOENT')) throw missingInput(path)
+      if (hasCode(error, 'ENOENT')) throw missingInput(path, edition)
       throw error
     }
   }
@@ -175,15 +188,15 @@ export async function updateWinRates(options: UpdateOptions, now = new Date()): 
     const path = resolve(options.inputDirectory, `${month}.json`)
     let value: unknown
     try { value = JSON.parse(await readFile(path, 'utf8')) } catch (error) {
-      if (hasCode(error, 'ENOENT')) throw missingInput(path)
+      if (hasCode(error, 'ENOENT')) throw missingInput(path, edition)
       if (error instanceof SyntaxError) throw new Error(`JSONを読み込めません: ${path}`)
       throw error
     }
-    datasets.push(...normalizeMonth(value, month, generatedAt))
+    datasets.push(...normalizeMonth(value, month, generatedAt, edition))
   }
   const result = await publishWinRateBatch({
     directory: options.outputDirectory, transactionDirectory: options.transactionDirectory,
-    datasets, months, generatedAt,
+    datasets, months, generatedAt, edition,
   })
   return { ...result, months, updatedDatasets: datasets.length, generatedAt }
 }

@@ -39,6 +39,8 @@
   background: var(--surface);
 }
 
+.win-rates-filters .win-rates-league-filter { min-width: 180px; }
+
 .win-rates-load-state {
   min-height: 220px;
   display: grid;

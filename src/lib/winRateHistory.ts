@@ -1,5 +1,6 @@
 import { formatTotalPercent, totalPercentHundredths } from './totalWinRates.ts'
 import { loadWinRateDataset, parseWinRateDataset } from './winRates.ts'
+import { editionOf, WIN_RATE_EDITIONS, WIN_RATE_EDITION_LEAGUES } from './winRateConditions.ts'
 import type { WinRateDataset, WinRateDatasetDescriptor, WinRateManifest } from '../types/winRates.ts'
 import type { HistoryDatasetResult, WinRateHistoryPoint, WinRateHistorySelection } from '../types/winRateHistory.ts'
 
@@ -14,8 +15,10 @@ function indexedMonth(index: number): string {
 }
 
 function selectedMonths(selection: WinRateHistorySelection): string[] {
-  if (!selection.league.trim() || selection.league !== selection.league.trim()
-    || !['combined', 'classic', 'modern'].includes(selection.controlType)) {
+  const edition = editionOf(selection)
+  if (!WIN_RATE_EDITIONS.includes(edition) || !WIN_RATE_EDITION_LEAGUES[edition].includes(selection.league)
+    || !['combined', 'classic', 'modern'].includes(selection.controlType)
+    || (edition === 'master' && selection.controlType !== 'combined')) {
     throw new Error('リーグまたは操作タイプの指定が正しくありません。')
   }
   const from = monthIndex(selection.fromMonth)
@@ -29,7 +32,8 @@ function selectedDescriptors(manifest: WinRateManifest, selection: WinRateHistor
   const mode = selection.controlType === 'combined' ? 'combined' : 'separate'
   const result = new Map<string, WinRateDatasetDescriptor>()
   for (const descriptor of manifest.datasets) {
-    if (!months.has(descriptor.month) || descriptor.league !== selection.league || descriptor.operationMode !== mode) continue
+    if (editionOf(descriptor) !== editionOf(selection) || !months.has(descriptor.month)
+      || descriptor.league !== selection.league || descriptor.operationMode !== mode) continue
     if (result.has(descriptor.month)) throw new Error('同じ月・条件の勝率データが重複しています。')
     result.set(descriptor.month, descriptor)
   }
@@ -37,7 +41,7 @@ function selectedDescriptors(manifest: WinRateManifest, selection: WinRateHistor
 }
 
 function sameDescriptor(left: WinRateDatasetDescriptor, right: WinRateDatasetDescriptor): boolean {
-  return (['id', 'month', 'league', 'operationMode', 'path', 'capturedAt'] as const)
+  return editionOf(left) === editionOf(right) && (['id', 'month', 'league', 'operationMode', 'path', 'capturedAt'] as const)
     .every((key) => left[key] === right[key])
 }
 
@@ -58,11 +62,11 @@ export function historyCalendarMonths(manifest: WinRateManifest): string[] {
 }
 
 export function initialHistorySelection(manifest: WinRateManifest): WinRateHistorySelection {
-  const months = historyMonths(manifest)
+  const months = historyMonths({ ...manifest, datasets: manifest.datasets.filter((item) => editionOf(item) === 'general') })
   if (months.length === 0) throw new Error('表示できる対象月がありません。')
   const toMonth = months[months.length - 1]
   const fromIndex = Math.max(monthIndex(months[0]), monthIndex(toMonth) - 11)
-  return { league: 'MASTER', controlType: 'combined', fromMonth: indexedMonth(fromIndex), toMonth }
+  return { edition: 'general', league: 'MASTER', controlType: 'combined', fromMonth: indexedMonth(fromIndex), toMonth }
 }
 
 /** Load only the selected conditions; cache and retries belong to the existing dataset loader. */

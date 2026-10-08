@@ -2,10 +2,18 @@
 // 対象月は ['2026-08']、['2023-06..2026-08']、または ['ALL']。Escで中止。
 void (async () => {
   const targetMonths = ['2026-08']
+  // 総合版はgeneral、マスター版はmasterを指定し、対応する公式ページで実行する。
+  const targetEdition = 'general'
 
-  const SOURCE_URL = 'https://www.streetfighter.com/6/buckler/ja-jp/stats/dia'
-  const LEAGUES = ['ROOKIE', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER']
-  const MODE_LABELS = { combined: '操作タイプ合算', separate: '操作タイプ別' }
+  if (targetEdition !== 'general' && targetEdition !== 'master') throw new Error('版はgeneralまたはmasterを指定してください。')
+  const isMaster = targetEdition === 'master'
+  const SOURCE_URL = `https://www.streetfighter.com/6/buckler/ja-jp/stats/${isMaster ? 'dia_master' : 'dia'}`
+  const LEAGUES = isMaster ? ['MASTER', 'HIGH_MASTER', 'GRAND_MASTER', 'ULTIMATE_MASTER']
+    : ['ROOKIE', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER']
+  const LEAGUE_POSITIONS = isMaster ? [36, 40, 41, 42] : [1, 2, 3, 4, 5, 6, 7, 8]
+  const leagueAlt = (league) => league.replaceAll('_', ' ')
+  const MODE_LABELS = isMaster ? { combined: '操作タイプ合算' } : { combined: '操作タイプ合算', separate: '操作タイプ別' }
+  const CONDITION_COUNT = LEAGUES.length * Object.keys(MODE_LABELS).length
   const CELL = /^(?:[0-9]\.\d{3}|10\.000|-|-\.---)$/
   const NUMERIC_CELL = /^(?:[0-9]\.\d{3}|10\.000)$/
   const WAIT_MS = 350
@@ -14,7 +22,7 @@ void (async () => {
   const PANEL_ID = 'sf6-buckler-snapshot-downloads'
   const RUN_KEY = '__sf6BucklerSnapshotExportRunning'
   const isSourceLocation = () => location.origin === 'https://www.streetfighter.com'
-    && /^\/6\/buckler\/ja-jp\/stats\/dia(?:\/\d{4}(?:0[1-9]|1[0-2]))?\/?$/.test(location.pathname)
+    && new RegExp(`^/6/buckler/ja-jp/stats/${isMaster ? 'dia_master' : 'dia'}(?:/\\d{4}(?:0[1-9]|1[0-2]))?/?$`).test(location.pathname)
   if (!isSourceLocation()) {
     throw new Error(`このスクリプトは ${SOURCE_URL} で実行してください。`)
   }
@@ -81,13 +89,13 @@ void (async () => {
 
   function uiState() {
     const element = root()
-    const leagueNav = element.querySelector('img[alt="ROOKIE"]')?.closest('ul')
-    const position = leagueNav?.className.match(/league_nav_pos_([1-8])__/)?.[1]
+    const leagueNav = element.querySelector(`img[alt="${leagueAlt(LEAGUES[0])}"]`)?.closest('ul')
+    const position = leagueNav?.className.match(/league_nav_pos_(\d+)__/)?.[1]
     const activeMode = [...element.querySelectorAll('li')].find((item) => item.className.includes('select_nav_current'))?.textContent.trim()
     return {
       month: selectedMonth(),
-      league: position ? LEAGUES[Number(position) - 1] : undefined,
-      operationMode: Object.keys(MODE_LABELS).find((mode) => MODE_LABELS[mode] === activeMode),
+      league: position ? LEAGUES[LEAGUE_POSITIONS.indexOf(Number(position))] : undefined,
+      operationMode: isMaster ? 'combined' : Object.keys(MODE_LABELS).find((mode) => MODE_LABELS[mode] === activeMode),
       order: element.querySelector('li[class*="dia_toggle"]')?.className.includes('dia_ci_sort__') ? 'character' : 'win-rate',
     }
   }
@@ -113,6 +121,7 @@ void (async () => {
     const state = uiState()
     const snapshot = {
       snapshotVersion: 1, sourceUrl: SOURCE_URL, ...state,
+      ...(isMaster ? { edition: 'master' } : {}),
       readyCharacterCount: Number(table.getAttribute('data-character')),
       columns: [...table.querySelectorAll('thead th[data-col]')].slice(1).map(identity),
       rows: [...table.querySelectorAll('tbody tr')].map((row) => {
@@ -188,16 +197,18 @@ void (async () => {
         const state = uiState()
         if (state.month !== month) throw new Error('操作中に対象月が変わりました。')
         if (state.league !== league) {
-          const leagueButton = root().querySelector(`img[alt="${league}"]`)?.closest('li')
+          const leagueButton = root().querySelector(`img[alt="${leagueAlt(league)}"]`)?.closest('li')
           if (!leagueButton) throw new Error('リーグの切替が見つかりません。')
           leagueButton.click()
           await pause()
         }
-        const modeButton = [...root().querySelectorAll('li')].find((item) => item.textContent.trim() === MODE_LABELS[operationMode])
-        if (!modeButton) throw new Error('操作タイプの切替が見つかりません。')
-        if (uiState().operationMode !== operationMode) {
-          modeButton.click()
-          await pause()
+        if (!isMaster) {
+          const modeButton = [...root().querySelectorAll('li')].find((item) => item.textContent.trim() === MODE_LABELS[operationMode])
+          if (!modeButton) throw new Error('操作タイプの切替が見つかりません。')
+          if (uiState().operationMode !== operationMode) {
+            modeButton.click()
+            await pause()
+          }
         }
         const toggle = root().querySelector('li[class*="dia_toggle"]')
         if (!toggle) throw new Error('キャラクター順の切替が見つかりません。')
@@ -219,18 +230,19 @@ void (async () => {
     // Keep the same filters before and after the monthly response, which can
     // reset the official UI to MASTER / separate. Filter changes alone must
     // never count as evidence that the new month's values have arrived.
-    const before = await setCondition(current, 'MASTER', 'separate')
+    const baselineMode = isMaster ? 'combined' : 'separate'
+    const before = await setCondition(current, 'MASTER', baselineMode)
     selectMonth(month)
     // Compare every Total with its fighter identity. A changed select value,
     // changed sort order, or loading placeholders are not sufficient.
     // Identical monthly Totals cause a timeout rather than an assumed success.
-    await waitForSnapshot({ month, league: 'MASTER', operationMode: 'separate' }, totalKey(before), MONTH_TIMEOUT_MS)
+    await waitForSnapshot({ month, league: 'MASTER', operationMode: baselineMode }, totalKey(before), MONTH_TIMEOUT_MS)
   }
 
   function validateMonth(month, snapshots) {
     const conditions = new Set()
     const combined = snapshots.find((item) => item.operationMode === 'combined')?.columns.map((item) => item.characterId)
-    if (!combined || snapshots.length !== 16) throw new Error(`${month}の16条件が揃っていません。`)
+    if (!combined || snapshots.length !== CONDITION_COUNT) throw new Error(`${month}の${CONDITION_COUNT}条件が揃っていません。`)
     const expectedCharacters = new Set(combined)
     for (const snapshot of snapshots) {
       validateSnapshot(snapshot)
@@ -294,8 +306,8 @@ void (async () => {
     for (const month of months) {
       assertRunning()
       await changeMonth(month)
-      // Force a different league before capturing the first ROOKIE table.
-      await setCondition(month, 'MASTER', 'combined')
+      // 最初のリーグとは別の表を表示し、最初の取得でも切替を経由する。
+      await setCondition(month, LEAGUES.at(-1), 'combined')
       const snapshots = []
       for (const league of LEAGUES) {
         for (const mode of Object.keys(MODE_LABELS)) {
@@ -305,15 +317,15 @@ void (async () => {
             throw new Error('取得直後に表示条件または数値が変更されました。')
           }
           snapshots.push(snapshot)
-          console.info(`[Buckler] ${month} ${league} ${MODE_LABELS[mode]} (${snapshots.length}/16)`)
+          console.info(`[Buckler] ${month} ${league} ${MODE_LABELS[mode]} (${snapshots.length}/${CONDITION_COUNT})`)
         }
       }
       validateMonth(month, snapshots)
-      bundles.push({ snapshotVersion: 1, month, snapshots })
+      bundles.push({ snapshotVersion: 1, month, ...(isMaster ? { edition: 'master' } : {}), snapshots })
     }
     assertRunning()
     offerDownloads(bundles)
-    console.info(`[Buckler] ${bundles.length}か月・全${bundles.length * 16}条件の取得が完了しました。右上のリンクから月別JSONを保存してください。`)
+    console.info(`[Buckler] ${bundles.length}か月・全${bundles.length * CONDITION_COUNT}条件の取得が完了しました。右上のリンクから月別JSONを保存してください。`)
   } finally {
     document.removeEventListener('keydown', cancel)
     delete window[RUN_KEY]

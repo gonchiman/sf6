@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { loadWinRateDataset, loadWinRateManifest } from '../lib/winRates'
+import { editionOf, leagueLabel, WIN_RATE_EDITIONS } from '../lib/winRateConditions'
 import type { WinRateDataset, WinRateDatasetDescriptor, WinRateManifest, WinRateOperationMode } from '../types/winRates'
 import { WinRateTable } from './WinRateTable'
 import { TotalWinRateTable } from './TotalWinRateTable'
@@ -7,9 +8,9 @@ import { DataLoadState as LoadState } from './DataLoadState'
 import '../win-rates.css'
 
 type DatasetState =
-  | { id: string; status: 'loading' }
-  | { id: string; status: 'ready'; data: WinRateDataset }
-  | { id: string; status: 'error'; message: string }
+  | { key: string; status: 'loading' }
+  | { key: string; status: 'ready'; data: WinRateDataset }
+  | { key: string; status: 'error'; message: string }
 
 const OPERATION_LABELS: Record<WinRateOperationMode, string> = {
   combined: '合算',
@@ -30,8 +31,13 @@ function chooseDataset(
 }
 
 function initialDataset(manifest: WinRateManifest): WinRateDatasetDescriptor | undefined {
-  const latestMonth = manifest.datasets.map((item) => item.month).sort().at(-1)
-  return chooseDataset(manifest.datasets.filter((item) => item.month === latestMonth))
+  const general = manifest.datasets.filter((item) => editionOf(item) === 'general')
+  const latestMonth = general.map((item) => item.month).sort().at(-1)
+  return chooseDataset(general.filter((item) => item.month === latestMonth))
+}
+
+function datasetKey(descriptor: WinRateDatasetDescriptor): string {
+  return JSON.stringify([editionOf(descriptor), descriptor.id, descriptor.capturedAt])
 }
 
 function monthLabel(month: string): string {
@@ -88,13 +94,14 @@ export function WinRatesPage() {
     if (!selected) return
     let current = true
     const requested = selected
-    setDatasetState({ id: requested.id, status: 'loading' })
+    const key = datasetKey(requested)
+    setDatasetState({ key, status: 'loading' })
     void loadWinRateDataset(requested).then((data) => {
       if (!current) return
-      if (data.id !== requested.id) throw new Error('選択した条件とデータが一致しません。')
-      setDatasetState({ id: requested.id, status: 'ready', data })
+      if (data.id !== requested.id || editionOf(data) !== editionOf(requested)) throw new Error('選択した条件とデータが一致しません。')
+      setDatasetState({ key, status: 'ready', data })
     }).catch((error: unknown) => {
-      if (current) setDatasetState({ id: requested.id, status: 'error', message: errorMessage(error) })
+      if (current) setDatasetState({ key, status: 'error', message: errorMessage(error) })
     })
     return () => { current = false }
   }, [selected, datasetVersion])
@@ -104,14 +111,18 @@ export function WinRatesPage() {
   if (!manifest || manifest.datasets.length === 0) return <LoadState message="表示できるデータはまだ登録されていません。" />
   if (!selected) return <LoadState message="選択した条件のデータが登録されていません。" onRetry={() => setManifestVersion((version) => version + 1)} />
 
-  const months = [...new Set(manifest.datasets.map((item) => item.month))].sort().reverse()
-  const monthDatasets = manifest.datasets.filter((item) => item.month === selected.month)
+  const edition = editionOf(selected)
+  const editions = WIN_RATE_EDITIONS.filter((value) => manifest.datasets.some((item) => editionOf(item) === value))
+  const editionDatasets = manifest.datasets.filter((item) => editionOf(item) === edition)
+  const months = [...new Set(editionDatasets.map((item) => item.month))].sort().reverse()
+  const monthDatasets = editionDatasets.filter((item) => item.month === selected.month)
   const leagues = [...new Set(monthDatasets.map((item) => item.league))]
   const leagueDatasets = monthDatasets.filter((item) => item.league === selected.league)
   const modes = [...new Set(leagueDatasets.map((item) => item.operationMode))]
   // Match the selection while rendering as well: a changed select must never label the previous table.
-  const currentState = datasetState?.id === selected.id ? datasetState : null
-  const dataset = currentState?.status === 'ready' && currentState.data.id === selected.id ? currentState.data : null
+  const currentState = datasetState?.key === datasetKey(selected) ? datasetState : null
+  const dataset = currentState?.status === 'ready' && currentState.data.id === selected.id
+    && editionOf(currentState.data) === edition ? currentState.data : null
 
   return <section className="win-rates-page" aria-label="キャラクター別の勝率">
     <div className="win-rates-view-selector" role="group" aria-label="勝率の表示">
@@ -129,21 +140,33 @@ export function WinRatesPage() {
     </div>
     <div className="win-rates-filters">
       <label>
+        <span>統計</span>
+        <select aria-label="統計" value={edition} onChange={(event) => {
+          const candidates = manifest.datasets.filter((item) => editionOf(item) === event.target.value)
+          const month = candidates.some((item) => item.month === selected.month)
+            ? selected.month : candidates.map((item) => item.month).sort().at(-1)
+          const next = chooseDataset(candidates.filter((item) => item.month === month), { league: 'MASTER', operationMode: 'combined' })
+          setSelectedId(next?.id ?? null)
+        }}>
+          {editions.map((value) => <option value={value} key={value}>{value === 'general' ? '総合版' : 'マスター版'}</option>)}
+        </select>
+      </label>
+      <label>
         <span>対象月</span>
         <select aria-label="対象月" value={selected.month} onChange={(event) => {
-          const next = chooseDataset(manifest.datasets.filter((item) => item.month === event.target.value), selected)
+          const next = chooseDataset(editionDatasets.filter((item) => item.month === event.target.value), selected)
           setSelectedId(next?.id ?? null)
         }}>
           {months.map((month) => <option value={month} key={month}>{monthLabel(month)}</option>)}
         </select>
       </label>
-      <label>
+      <label className="win-rates-league-filter">
         <span>リーグ</span>
         <select aria-label="リーグ" value={selected.league} onChange={(event) => {
           const next = chooseDataset(monthDatasets.filter((item) => item.league === event.target.value), selected)
           setSelectedId(next?.id ?? null)
         }}>
-          {leagues.map((league) => <option value={league} key={league}>{league}</option>)}
+          {leagues.map((league) => <option value={league} key={league}>{leagueLabel(league)}</option>)}
         </select>
       </label>
       <label>
@@ -174,6 +197,7 @@ export function WinRatesPage() {
       <details className="win-rates-details">
         <summary>データの範囲と表記</summary>
         <div className="win-rates-details-content">
+          {edition === 'master' && <p>マスター版は操作タイプを合算した保存データを表示しています。</p>}
           <dl>
             <div><dt>対象</dt><dd>{dataset.source.population}</dd></div>
             <div><dt>指標</dt><dd>{dataset.source.metric}</dd></div>

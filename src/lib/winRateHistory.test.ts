@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
-import type { WinRateDataset, WinRateDatasetDescriptor, WinRateManifest } from '../types/winRates.ts'
+import type { WinRateDataset, WinRateDatasetDescriptor, WinRateEdition, WinRateManifest } from '../types/winRates.ts'
+import { WIN_RATE_EDITION_SOURCES } from './winRateConditions.ts'
 import type { HistoryDatasetResult, WinRateHistorySelection } from '../types/winRateHistory.ts'
 import {
   createWinRateHistoryPoints, formatHistoryValue, historyCalendarMonths, historyMonths, initialHistorySelection,
@@ -11,9 +12,9 @@ import {
 const capturedAt = '2026-10-08T00:00:00.000Z'
 const source = { url: 'https://www.streetfighter.com/6/buckler/ja-jp/stats/dia', title: '対戦ダイアグラム' }
 
-function descriptor(month: string, league = 'MASTER', operationMode: 'combined' | 'separate' = 'combined'): WinRateDatasetDescriptor {
-  const id = `${month}-${league.toLowerCase()}-${operationMode}`
-  return { id, month, league, operationMode, path: `${id}.json`, capturedAt }
+function descriptor(month: string, league = 'MASTER', operationMode: 'combined' | 'separate' = 'combined', edition?: WinRateEdition): WinRateDatasetDescriptor {
+  const id = `${edition === 'master' ? 'master-' : ''}${month}-${league.toLowerCase()}-${operationMode}`
+  return { ...(edition ? { edition } : {}), id, month, league, operationMode, path: `${id}.json`, capturedAt }
 }
 
 function manifest(datasets: WinRateDatasetDescriptor[]): WinRateManifest {
@@ -21,7 +22,7 @@ function manifest(datasets: WinRateDatasetDescriptor[]): WinRateManifest {
 }
 
 function selection(overrides: Partial<WinRateHistorySelection> = {}): WinRateHistorySelection {
-  return { league: 'MASTER', controlType: 'combined', fromMonth: '2026-01', toMonth: '2026-08', ...overrides }
+  return { edition: 'general', league: 'MASTER', controlType: 'combined', fromMonth: '2026-01', toMonth: '2026-08', ...overrides }
 }
 
 function dataset(desc: WinRateDatasetDescriptor, text = '5.058'): WinRateDataset {
@@ -35,9 +36,10 @@ function dataset(desc: WinRateDatasetDescriptor, text = '5.058'): WinRateDataset
       { id: 'second-slot', characterId: 'ryu', name: 'RYU', controlType: 'modern' as const },
     ]
   return {
+    ...(desc.edition ? { edition: desc.edition } : {}),
     schemaVersion: 1, id: desc.id, month: desc.month, league: desc.league,
     operationMode: desc.operationMode, capturedAt: desc.capturedAt, generatedAt: capturedAt,
-    source: { ...source, population: 'ランクマッチ', metric: '公式Total', notes: ['集計詳細は未確認'] },
+    source: { ...(desc.edition === 'master' ? WIN_RATE_EDITION_SOURCES.master : source), population: 'ランクマッチ', metric: '公式Total', notes: ['集計詳細は未確認'] },
     fighters,
     // Deliberately reverse the rows: the index must never replace the fighter ID join.
     rows: fighters.map((fighter, index) => ({
@@ -208,6 +210,8 @@ test('invalid or reversed ranges fail before loading data', async () => {
   for (const selected of [
     selection({ fromMonth: '2026-13' }), selection({ fromMonth: '2026-09', toMonth: '2026-08' }),
     selection({ league: '' }), selection({ controlType: 'separate' as never }),
+    selection({ edition: 'unknown' as never }), selection({ edition: 'master', controlType: 'classic' }),
+    selection({ edition: 'master', controlType: 'modern' }), selection({ edition: 'master', league: 'GOLD' }),
   ]) {
     await assert.rejects(loadWinRateHistory(manifest([descriptor('2026-01')]), selected, async () => {
       assert.fail('invalid selections must not request data')
@@ -217,4 +221,57 @@ test('invalid or reversed ranges fail before loading data', async () => {
   const desc = descriptor('2026-01')
   await assert.rejects(loadWinRateHistory(manifest([desc, { ...desc, id: 'duplicate' }]), selection()), /重複/)
   assert.throws(() => monthLabel('2026-00'), /YYYY-MM/)
+})
+
+test('general defaults ignore a newer master-edition month while the calendar keeps both editions', () => {
+  const input = manifest([
+    descriptor('2023-06'), descriptor('2026-08'), descriptor('2026-09', 'MASTER', 'combined', 'master'),
+  ])
+  assert.deepEqual(initialHistorySelection(input), selection({ fromMonth: '2025-09', toMonth: '2026-08' }))
+  assert.equal(historyCalendarMonths(input).at(-1), '2026-09')
+})
+
+test('the two MASTER populations load separately, with omitted edition remaining general', async () => {
+  const general = descriptor('2026-01')
+  const master = descriptor('2026-01', 'MASTER', 'combined', 'master')
+  const input = manifest([master, general])
+  for (const edition of [undefined, 'general', 'master'] as const) {
+    const calls: string[] = []
+    const selected = selection({ edition, toMonth: '2026-01' })
+    const results = await loadWinRateHistory(input, selected, async (desc) => {
+      calls.push(desc.id)
+      return dataset(desc, desc.edition === 'master' ? '4.500' : '5.058')
+    })
+    assert.deepEqual(calls, [edition === 'master' ? master.id : general.id])
+    const [point] = createWinRateHistoryPoints(input, selected, 'ryu', results)
+    assert.equal(point.percentHundredths, edition === 'master' ? 4500 : 5058)
+    assert.equal(point.source?.url, WIN_RATE_EDITION_SOURCES[edition ?? 'general'].url)
+  }
+})
+
+test('master history retains the full calendar and never substitutes general data before registration', () => {
+  const firstMaster = descriptor('2025-03', 'MASTER', 'combined', 'master')
+  const latestMaster = descriptor('2026-08', 'MASTER', 'combined', 'master')
+  const firstGeneral = descriptor('2023-06')
+  const input = manifest([firstGeneral, firstMaster, latestMaster])
+  const points = createWinRateHistoryPoints(input, selection({ edition: 'master', fromMonth: '2023-06' }), 'ryu', [
+    ready(firstGeneral), ready(firstMaster), ready(latestMaster),
+  ])
+  assert.equal(points.length, 39)
+  assert.equal(points[20].month, '2025-02')
+  assert.ok(points.slice(0, 21).every((point) => point.status === 'unavailable' && point.source === null))
+  assert.equal(points[21].month, '2025-03')
+  assert.equal(points[21].status, 'value')
+  assert.equal(points[21].source?.url, WIN_RATE_EDITION_SOURCES.master.url)
+})
+
+test('a result from another edition is rejected even when other descriptor fields match', async () => {
+  const general = descriptor('2026-01')
+  const mislabeled = { ...general, edition: 'master' as const }
+  const selected = selection({ toMonth: '2026-01' })
+  const input = manifest([general])
+  assert.equal(createWinRateHistoryPoints(input, selected, 'ryu', [ready(mislabeled)])[0].status, 'error')
+  assert.equal(createWinRateHistoryPoints(input, selected, 'ryu', [ready(general, dataset(mislabeled))])[0].status, 'error')
+  const result = await loadWinRateHistory(input, selected, async () => dataset(mislabeled))
+  assert.equal(result[0].status, 'error')
 })

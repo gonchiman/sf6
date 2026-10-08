@@ -34,6 +34,16 @@ function monthSnapshot(month: string, totalText = '5.058') {
   return { snapshotVersion: 1, month, snapshots }
 }
 
+function masterMonthSnapshot(month: string, totalText = '5.058') {
+  const template = monthSnapshot(month, totalText).snapshots.find((snapshot) => snapshot.operationMode === 'combined')!
+  return {
+    snapshotVersion: 1, month, edition: 'master',
+    snapshots: ['MASTER', 'HIGH_MASTER', 'GRAND_MASTER', 'ULTIMATE_MASTER'].map((league) => ({
+      ...structuredClone(template), league, edition: 'master', sourceUrl: `${template.sourceUrl}_master`,
+    })),
+  }
+}
+
 function options(args: string[], cwd: string): UpdateOptions {
   const parsed = parseUpdateArguments(args, { cwd, now })
   assert.equal(parsed.help, false)
@@ -195,4 +205,79 @@ test('空の入力先・未来の保存月・単月ファイル不足では公�
   await writeMonth(input, '2026-11')
   await assert.rejects(updateWinRates(options(['--all'], root), now), /未来/)
   await assert.rejects(fs.stat(output), { code: 'ENOENT' })
+})
+
+test('版の選択は総合版が既定、マスター版は専用cacheと2025-02以降を使う', () => {
+  const cwd = resolve('.cache/argument-tests')
+  assert.equal(options(['--month', '2026-08'], cwd).edition, 'general')
+  const master = options(['--edition', 'master', '--month', '2025-02'], cwd)
+  assert.equal(master.edition, 'master')
+  assert.equal(master.inputDirectory, join(cwd, '.cache/win-rates/snapshots/master'))
+  assert.equal(master.transactionDirectory, options(['--all'], cwd).transactionDirectory)
+  assert.equal(options(['--edition', 'master', '--all', '--cache-dir', 'saved'], cwd).inputDirectory, join(cwd, 'saved'))
+  for (const args of [
+    ['--edition', 'other', '--all'], ['--edition', 'master', '--month', '2025-01'],
+    ['--edition', 'master', '--from', '2025-01', '--to', '2025-02'],
+  ]) assert.throws(() => options(args, cwd))
+})
+
+test('マスター版4条件の一括更新は総合版と別月を保持し、旧APIの版省略も維持する', async (t) => {
+  const { root, input, output } = await fixture(t)
+  await writeMonth(input, '2026-08')
+  const legacy = options(['--month', '2026-08'], root)
+  delete legacy.edition
+  await updateWinRates(legacy, now)
+  const before = await contents(output)
+  const masterInput = join(input, 'master')
+  await fs.mkdir(masterInput)
+  for (const month of ['2026-07', '2026-08']) await fs.writeFile(join(masterInput, `${month}.json`), JSON.stringify(masterMonthSnapshot(month)))
+  const result = await updateWinRates(options(['--edition', 'master', '--all'], root), now)
+  assert.equal(result.updatedDatasets, 8)
+  assert.equal(result.datasets, 24)
+  const both = await contents(output)
+  for (const path of Object.keys(before).filter((path) => path !== 'index.json')) assert.equal(both[path], before[path])
+  const exported = join(root, 'master-export')
+  await fs.mkdir(exported)
+  await fs.writeFile(join(exported, '2026-08.json'), JSON.stringify(masterMonthSnapshot('2026-08', '0.000')))
+  const exportBefore = await contents(exported)
+  const cacheBefore = await contents(masterInput)
+  await updateWinRates(options(['--edition', 'master', '--month', '2026-08', '--input-dir', exported], root), now)
+  const after = await contents(output)
+  for (const path of Object.keys(both).filter((path) => path !== 'index.json' && (!path.includes('-master-edition-') || path.startsWith('2026-07-')))) assert.equal(after[path], both[path])
+  const dataset = JSON.parse(after['2026-08-master-edition-high_master-combined.json'])
+  assert.equal(dataset.rows[0].total.text, '0.000')
+  assert.equal(dataset.edition, 'master')
+  assert.equal(dataset.capturedAt, capturedAt)
+  assert.deepEqual(await contents(exported), exportBefore)
+  assert.deepEqual(await contents(masterInput), cacheBefore)
+})
+
+test('マスター版の欠損月・不足条件・別版混入・同月キャラ不一致は全更新を止める', async (t) => {
+  const { root, input, output } = await fixture(t)
+  await writeMonth(input, '2026-07')
+  await updateWinRates(options(['--month', '2026-07'], root), now)
+  const before = await contents(output)
+  const masterInput = join(input, 'master')
+  await fs.mkdir(masterInput)
+  await fs.writeFile(join(masterInput, '2026-07.json'), JSON.stringify(masterMonthSnapshot('2026-07')))
+  const range = options(['--edition', 'master', '--from', '2026-07', '--to', '2026-08'], root)
+  await assert.rejects(updateWinRates(range, now), /2026-08\.json[\s\S]*4条件/)
+  const incomplete = masterMonthSnapshot('2026-08')
+  incomplete.snapshots.pop()
+  const wrongSource = masterMonthSnapshot('2026-08')
+  wrongSource.snapshots[0].sourceUrl = fixtureDatasets[0].source.url
+  const wrongRoster = masterMonthSnapshot('2026-08')
+  wrongRoster.snapshots[0].columns[0].characterId = 'different-character'
+  wrongRoster.snapshots[0].rows[0].characterId = 'different-character'
+  const wrongWrapper = masterMonthSnapshot('2026-08')
+  wrongWrapper.edition = 'general'
+  for (const body of [incomplete, wrongSource, wrongRoster, wrongWrapper, monthSnapshot('2026-08')]) {
+    await fs.writeFile(join(masterInput, '2026-08.json'), JSON.stringify(body))
+    await assert.rejects(updateWinRates(range, now))
+    assert.deepEqual(await contents(output), before)
+    await assert.rejects(fs.stat(range.transactionDirectory), { code: 'ENOENT' })
+  }
+  await fs.writeFile(join(masterInput, '2025-01.json'), JSON.stringify(masterMonthSnapshot('2025-01')))
+  await assert.rejects(updateWinRates(options(['--edition', 'master', '--all'], root), now), /2025-02より前/)
+  assert.deepEqual(await contents(output), before)
 })

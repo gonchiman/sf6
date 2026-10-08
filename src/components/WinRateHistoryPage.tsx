@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { loadWinRateDataset, loadWinRateManifest } from '../lib/winRates'
+import { editionOf, leagueLabel, WIN_RATE_EDITIONS, WIN_RATE_EDITION_SOURCES } from '../lib/winRateConditions'
 import { createWinRateHistoryPoints, formatHistoryValue, historyCalendarMonths, historyMonths, initialHistorySelection, loadWinRateHistory, monthLabel } from '../lib/winRateHistory'
 import type { HistoryControlType, HistoryDatasetResult, WinRateHistorySelection } from '../types/winRateHistory'
 import type { WinRateFighter, WinRateManifest } from '../types/winRates'
@@ -42,8 +43,9 @@ export function WinRateHistoryPage() {
     let current = true
     setBootstrap({ status: 'loading' })
     void loadWinRateManifest().then(async manifest => {
-      const latestMonth = historyMonths(manifest).at(-1)
-      const candidates = manifest.datasets.filter(item => item.month === latestMonth)
+      const general = manifest.datasets.filter(item => editionOf(item) === 'general')
+      const latestMonth = historyMonths({ ...manifest, datasets: general }).at(-1)
+      const candidates = general.filter(item => item.month === latestMonth)
       const descriptor = candidates.find(item => item.league === 'MASTER' && item.operationMode === 'combined')
         ?? candidates.find(item => item.operationMode === 'combined') ?? candidates[0]
       if (!descriptor) throw new Error('No character roster is registered')
@@ -60,14 +62,15 @@ export function WinRateHistoryPage() {
 
   // Classic and modern use the same files. Character changes only project loaded data.
   const manifest = bootstrap.status === 'ready' ? bootstrap.manifest : null
+  const edition = selection ? editionOf(selection) : 'general'
   const operationMode = selection?.controlType === 'combined' ? 'combined' : 'separate'
   const league = selection?.league
   const fromMonth = selection?.fromMonth
   const toMonth = selection?.toMonth
   const query = useMemo<WinRateHistorySelection | null>(() =>
     league && fromMonth && toMonth ? {
-      league, fromMonth, toMonth, controlType: operationMode === 'combined' ? 'combined' : 'classic',
-    } : null, [league, fromMonth, toMonth, operationMode])
+      edition, league, fromMonth, toMonth, controlType: operationMode === 'combined' ? 'combined' : 'classic',
+    } : null, [edition, league, fromMonth, toMonth, operationMode])
   const requestKey = manifest && query ? JSON.stringify([manifest.generatedAt, query]) : null
 
   useEffect(() => {
@@ -114,9 +117,15 @@ export function WinRateHistoryPage() {
     return <DataLoadState message="期間とキャラを読み込めませんでした。" onRetry={() => setBootstrapVersion(version => version + 1)} />
   }
   const months = historyCalendarMonths(manifest)
-  const leagues = [...new Set(manifest.datasets.map(item => item.league))]
+  const editions = WIN_RATE_EDITIONS.filter(value => manifest.datasets.some(item => editionOf(item) === value))
+  const editionDatasets = manifest.datasets.filter(item => editionOf(item) === edition)
+  const leagues = [...new Set(editionDatasets.map(item => item.league))]
+  const leagueModes = new Set(editionDatasets.filter(item => item.league === selection.league).map(item => item.operationMode))
+  const controls = (Object.keys(CONTROL_LABELS) as HistoryControlType[])
+    .filter(value => (edition !== 'master' || value === 'combined') && leagueModes.has(value === 'combined' ? 'combined' : 'separate'))
   const characterName = characters.find(fighter => fighter.characterId === characterId)?.name ?? (characterId === 'ryu' ? 'RYU' : characterId)
   const failedCount = points.filter(point => point.status === 'error').length
+  const source = selectedPoint?.source ?? WIN_RATE_EDITION_SOURCES[edition]
 
   const changeMonth = (key: 'fromMonth' | 'toMonth', month: string) => setSelection(previous => {
     if (!previous) return previous
@@ -130,15 +139,21 @@ export function WinRateHistoryPage() {
 
   return <section className="win-rate-history-page" aria-label="キャラの勝率推移">
     <div className="win-rates-filters history-filters">
+      <label><span>統計</span><select aria-label="統計" value={edition} onChange={event => {
+        const nextEdition = WIN_RATE_EDITIONS.find(value => value === event.target.value)
+        if (nextEdition) setSelection(previous => previous && { ...previous, edition: nextEdition, league: 'MASTER', controlType: 'combined' })
+      }}>
+        {editions.map(value => <option key={value} value={value}>{value === 'general' ? '総合版' : 'マスター版'}</option>)}
+      </select></label>
       <label><span>キャラクター</span><select aria-label="キャラクター" value={characterId} onChange={event => setCharacterId(event.target.value)}>
         {!characters.some(fighter => fighter.characterId === characterId) && <option value={characterId}>{characterName}</option>}
         {characters.map(fighter => <option key={fighter.characterId} value={fighter.characterId}>{fighter.name}</option>)}
       </select></label>
-      <label><span>リーグ</span><select aria-label="リーグ" value={selection.league} onChange={event => { const value = event.target.value; setSelection(previous => previous && { ...previous, league: value }) }}>
-        {leagues.map(value => <option key={value} value={value}>{value}</option>)}
+      <label className="win-rates-league-filter"><span>リーグ</span><select aria-label="リーグ" value={selection.league} onChange={event => { const value = event.target.value; setSelection(previous => previous && { ...previous, league: value }) }}>
+        {leagues.map(value => <option key={value} value={value}>{leagueLabel(value)}</option>)}
       </select></label>
       <label><span>操作タイプ</span><select aria-label="操作タイプ" value={selection.controlType} onChange={event => { const value = event.target.value as HistoryControlType; setSelection(previous => previous && { ...previous, controlType: value }) }}>
-        {Object.entries(CONTROL_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        {controls.map(value => <option key={value} value={value}>{CONTROL_LABELS[value]}</option>)}
       </select></label>
       <label><span>開始月</span><select aria-label="開始月" value={selection.fromMonth} onChange={event => changeMonth('fromMonth', event.target.value)}>
         {months.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}
@@ -171,9 +186,10 @@ export function WinRateHistoryPage() {
       <dl className="win-rates-source">
         <div><dt>対象期間</dt><dd>{monthLabel(selection.fromMonth)}〜{monthLabel(selection.toMonth)}</dd></div>
         {selectedPoint.capturedAt && <div><dt>選択月の取得日時</dt><dd><time dateTime={selectedPoint.capturedAt}>{timestampLabel(selectedPoint.capturedAt)}</time></dd></div>}
-        <div><dt>出典</dt><dd><a href={manifest.source.url} target="_blank" rel="noreferrer">{manifest.source.title}<span className="win-rates-visually-hidden">（新しいタブ）</span></a></dd></div>
+        <div><dt>出典</dt><dd><a href={source.url} target="_blank" rel="noreferrer">{source.title}<span className="win-rates-visually-hidden">（新しいタブ）</span></a></dd></div>
       </dl>
       <details className="win-rates-details"><summary>データの範囲と表記</summary><div className="win-rates-details-content">
+        {edition === 'master' && <p>マスター版は操作タイプ合算のみです。選択した期間のうち保存データがない月は「未登録」と表示します。</p>}
         {selectedPoint.source && <dl><div><dt>対象</dt><dd>{selectedPoint.source.population}</dd></div><div><dt>指標</dt><dd>{selectedPoint.source.metric}</dd></div></dl>}
         <p>月別の公式Totalを百分率へ換算しています（5.058 → 50.58%）。月同士の平均や独自の総合勝率は計算していません。</p>
         <p>未掲載はその月の表にキャラがない状態、未登録は選んだ条件の保存データがない状態です。「-」「-.---」は公式の欠損表記で、0.00%と区別します。読込失敗は再読み込みできます。</p>

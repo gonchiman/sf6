@@ -8,6 +8,7 @@ type ControlType = 'classic' | 'modern' | null
 type Cell = { text: string; lowSample: boolean }
 type Identity = { characterId: string; controlType: ControlType }
 type Snapshot = {
+  edition?: string
   snapshotVersion: number; sourceUrl: string; month: string; league: string; operationMode: string
   order: string; readyCharacterCount: number; capturedAt: string; columns: Identity[]
   rows: (Identity & { name: string; total: Cell; cells: Cell[] })[]
@@ -137,4 +138,42 @@ test('invalid numbers and absent low-sample flags are rejected rather than repai
   const input = snapshot() as unknown as { rows: { cells: Record<string, unknown>[] }[] }
   delete input.rows[0].cells[0].lowSample
   assert.throws(() => normalizeBucklerSnapshot(input), /lowSample/)
+})
+
+test('マスター版は出典から判別し、4リーグの合算を別IDで保持する', () => {
+  for (const league of ['MASTER', 'HIGH_MASTER', 'GRAND_MASTER', 'ULTIMATE_MASTER']) {
+    const input = snapshot()
+    input.sourceUrl += '_master'
+    input.league = league
+    const result = normalizeBucklerSnapshot(input, input.month, generatedAt)
+    assert.equal(result.edition, 'master')
+    assert.equal(result.id, `2026-08-master-edition-${league.toLowerCase()}-combined`)
+    assert.equal(result.source.url, input.sourceUrl)
+    assert.match(result.source.title, /マスター版/)
+    assert.deepEqual(result.rows.map(({ total, cells }) => ({ total, cells })), input.rows.map(({ total, cells }) => ({ total, cells })))
+  }
+  assert.equal(Object.hasOwn(normalizeBucklerSnapshot(snapshot()), 'edition'), false)
+})
+
+test('マスター版の別操作タイプ・提供前月・版と出典の不一致を拒否する', () => {
+  const wrongMode = separateSnapshot()
+  wrongMode.sourceUrl += '_master'
+  assert.throws(() => normalizeBucklerSnapshot(wrongMode), /operationMode/)
+  const wrongLeague = snapshot()
+  wrongLeague.sourceUrl += '_master'
+  wrongLeague.league = 'DIAMOND'
+  assert.throws(() => normalizeBucklerSnapshot(wrongLeague), /league/)
+  const tooEarly = snapshot()
+  tooEarly.sourceUrl += '_master'
+  tooEarly.month = '2025-01'
+  assert.throws(() => normalizeBucklerSnapshot(tooEarly), /month/)
+  for (const edition of ['master', 'unknown']) {
+    const mismatch = snapshot()
+    mismatch.edition = edition
+    assert.throws(() => normalizeBucklerSnapshot(mismatch), /edition/)
+  }
+  const mismatch = snapshot()
+  mismatch.sourceUrl += '_master'
+  mismatch.edition = 'general'
+  assert.throws(() => normalizeBucklerSnapshot(mismatch), /edition/)
 })
