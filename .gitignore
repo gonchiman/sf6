@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .cache/
+.local/
 /.worktrees/
 *.tsbuildinfo
 .env

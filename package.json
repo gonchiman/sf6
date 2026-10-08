@@ -9,8 +9,9 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc -b",
-    "test": "node --test src/lib/winRates.test.ts src/lib/totalWinRates.test.ts",
-    "validate:data": "node scripts/validate-win-rate-data.ts",
+    "test": "node --test src/lib/winRates.test.ts src/lib/totalWinRates.test.ts src/lib/characters.test.ts src/lib/routes.test.ts scripts/lib/character-snapshot.test.ts",
+    "data:import-characters": "node scripts/import-character-data.ts",
+    "validate:data": "node scripts/validate-win-rate-data.ts && node scripts/validate-character-data.ts",
     "build": "npm run validate:data && tsc -b && vite build",
     "preview": "vite preview"
   },
