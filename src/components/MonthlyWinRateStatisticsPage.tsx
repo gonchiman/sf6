@@ -47,7 +47,7 @@ export function MonthlyWinRateStatisticsPage() {
     setBootstrap({ status: 'loading' })
     void loadWinRateManifest().then(manifest => {
       if (!current) return
-      setSelection(initialHistorySelection(manifest))
+      setSelection(initialHistorySelection(manifest, 'all'))
       setBootstrap({ status: 'ready', manifest })
     }).catch(() => { if (current) setBootstrap({ status: 'error' }) })
     return () => { current = false }
