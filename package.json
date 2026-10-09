@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc -b",
-    "test": "node --test src/lib/winRates.test.ts src/lib/totalWinRates.test.ts src/lib/characters.test.ts src/lib/characterTraits.test.ts src/lib/routes.test.ts src/lib/winRateHistory.test.ts src/lib/monthlyWinRateStatistics.test.ts scripts/lib/character-snapshot.test.ts scripts/lib/character-traits-data.test.ts scripts/lib/buckler-snapshot.test.ts scripts/lib/publish-win-rates.test.ts scripts/lib/update-win-rates.test.ts",
+    "test": "node --test src/lib/winRates.test.ts src/lib/totalWinRates.test.ts src/lib/characters.test.ts src/lib/characterTraits.test.ts src/lib/routes.test.ts src/lib/winRateHistory.test.ts src/lib/monthlyWinRateStatistics.test.ts src/lib/monthlyLineChart.test.ts src/lib/monthlyWinRateStatisticsChart.test.ts scripts/lib/character-snapshot.test.ts scripts/lib/character-traits-data.test.ts scripts/lib/buckler-snapshot.test.ts scripts/lib/publish-win-rates.test.ts scripts/lib/update-win-rates.test.ts",
     "data:update": "node scripts/update-win-rate-data.ts",
     "data:import-characters": "node scripts/import-character-data.ts",
     "data:build-character-traits": "node scripts/build-character-traits.ts",

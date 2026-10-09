@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createMonthlyWinRateStatistics } from '../lib/monthlyWinRateStatistics'
+import { MONTHLY_STATISTIC_METRICS, monthlyStatisticDefinition, monthlyStatisticValueLabel } from '../lib/monthlyWinRateStatisticsChart'
 import { editionOf, WIN_RATE_EDITION_SOURCES } from '../lib/winRateConditions'
 import { initialHistorySelection, loadWinRateHistory, monthLabel } from '../lib/winRateHistory'
 import { loadWinRateManifest } from '../lib/winRates'
-import type { MonthlyWinRateStatisticsMode } from '../types/monthlyWinRateStatistics'
+import type { MonthlyWinRateStatisticMetric, MonthlyWinRateStatisticsMode } from '../types/monthlyWinRateStatistics'
 import type { HistoryDatasetResult, WinRateHistorySelection } from '../types/winRateHistory'
 import type { WinRateManifest } from '../types/winRates'
 import { DataLoadState } from './DataLoadState'
 import { MonthlyWinRateStatisticsTable } from './MonthlyWinRateStatisticsTable'
+import { MonthlyWinRateStatisticsChart } from './MonthlyWinRateStatisticsChart'
+import { StatisticsPanel } from './StatisticsPanel'
 import { WinRateHistoryFilters } from './WinRateHistoryFilters'
 import '../win-rates.css'
 import '../win-rate-history.css'
@@ -34,6 +37,8 @@ export function MonthlyWinRateStatisticsPage() {
   const [bootstrapVersion, setBootstrapVersion] = useState(0)
   const [selection, setSelection] = useState<WinRateHistorySelection | null>(null)
   const [mode, setMode] = useState<MonthlyWinRateStatisticsMode>('monthly')
+  const [metric, setMetric] = useState<MonthlyWinRateStatisticMetric>('standardDeviationPoints')
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
   const [historyState, setHistoryState] = useState<HistoryState | null>(null)
   const [historyVersion, setHistoryVersion] = useState(0)
 
@@ -80,6 +85,16 @@ export function MonthlyWinRateStatisticsPage() {
   const statistics = useMemo(() => manifest && selection && readyResults
     ? createMonthlyWinRateStatistics(manifest, selection, readyResults, mode) : null,
   [manifest, selection, readyResults, mode])
+  const rows = statistics?.rows ?? []
+  const effectiveSelectedMonth = rows.some(row => row.month === selectedMonth)
+    ? selectedMonth : rows.at(-1)?.month ?? null
+  const selectedRow = rows.find(row => row.month === effectiveSelectedMonth)
+  const selectedIndex = rows.findIndex(row => row.month === effectiveSelectedMonth)
+  const metricDefinition = monthlyStatisticDefinition(metric)
+
+  useEffect(() => {
+    if (effectiveSelectedMonth && selectedMonth !== effectiveSelectedMonth) setSelectedMonth(effectiveSelectedMonth)
+  }, [effectiveSelectedMonth, selectedMonth])
 
   if (bootstrap.status === 'loading') return <DataLoadState loading message="期間と条件を読み込み中…" />
   if (bootstrap.status === 'error' || !manifest || !selection) {
@@ -91,32 +106,79 @@ export function MonthlyWinRateStatisticsPage() {
   const resultsByMonth = new Map((readyResults ?? []).map(result => [result.month, result]))
 
   return <section className="monthly-win-rate-statistics-page" aria-label="月別勝率統計">
-    <WinRateHistoryFilters manifest={manifest} selection={selection} onChange={setSelection} />
-    <div className="monthly-statistics-mode">
-      <label><span>集計対象</span><select aria-label="集計対象" value={mode}
-        onChange={event => setMode(event.target.value as MonthlyWinRateStatisticsMode)}>
-        <option value="monthly">各月の掲載キャラ</option>
-        <option value="common">選択期間の共通キャラ</option>
-      </select></label>
-      {statistics && mode === 'common' && statistics.commonCharacterCount !== null &&
-        <span className="monthly-statistics-common-count" role="status">共通 {statistics.commonCharacterCount} キャラ</span>}
-    </div>
+    <StatisticsPanel title="条件選択" headerContent={<span className="monthly-statistics-panel-summary">
+      {monthLabel(selection.fromMonth)}〜{monthLabel(selection.toMonth)}
+    </span>}>
+      <div className="monthly-statistics-condition-fields">
+        <WinRateHistoryFilters manifest={manifest} selection={selection} onChange={setSelection} />
+        <div className="monthly-statistics-mode">
+          <label><span>集計対象</span><select aria-label="集計対象" value={mode}
+            onChange={event => setMode(event.target.value as MonthlyWinRateStatisticsMode)}>
+            <option value="monthly">各月の掲載キャラ</option>
+            <option value="common">選択期間の共通キャラ</option>
+          </select></label>
+          {statistics && mode === 'common' && statistics.commonCharacterCount !== null &&
+            <span className="monthly-statistics-common-count" role="status">共通 {statistics.commonCharacterCount} キャラ</span>}
+        </div>
+      </div>
+    </StatisticsPanel>
 
-    {(!currentState || currentState.status === 'loading') && <DataLoadState loading message="月別の勝率を読み込み中…" />}
-    {currentState?.status === 'error' && <DataLoadState message="月別の勝率を読み込めませんでした。" onRetry={() => setHistoryVersion(version => version + 1)} />}
+    <StatisticsPanel title="グラフ" headerContent={<label className="monthly-statistics-metric">
+      <span>表示する統計量</span><select aria-label="表示する統計量" value={metric} onChange={event => {
+        const next = MONTHLY_STATISTIC_METRICS.find(item => item.key === event.target.value)
+        if (next) setMetric(next.key)
+      }}>{MONTHLY_STATISTIC_METRICS.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</select>
+    </label>}>
+      {(!currentState || currentState.status === 'loading') && <DataLoadState loading message="月別の勝率を読み込み中…" />}
+      {currentState?.status === 'error' && <DataLoadState message="月別の勝率を読み込めませんでした。" onRetry={() => setHistoryVersion(version => version + 1)} />}
+      {statistics && <>
+        {failedCount > 0 && <div className="history-load-error" role="alert">
+          <span>{statistics.rows.length}か月中{failedCount}か月を読み込めませんでした。</span>
+          <button type="button" className="win-rates-button" onClick={() => setHistoryVersion(version => version + 1)}>再読み込み</button>
+        </div>}
+        {mode === 'common' && statistics.commonUnavailable && <div className="monthly-statistics-message" role="status">
+          期間内のデータが揃っていないため、共通キャラの統計を算出できません。
+        </div>}
+        <div className="monthly-statistics-chart-heading">
+          <h3>{metricDefinition.label}の推移</h3>
+          <span>{mode === 'monthly' ? '各月の掲載キャラ' : '選択期間の共通キャラ'}</span>
+        </div>
+        {effectiveSelectedMonth && <MonthlyWinRateStatisticsChart rows={rows} metric={metric}
+          selectedMonth={effectiveSelectedMonth} onSelect={setSelectedMonth} />}
+        {selectedRow && effectiveSelectedMonth && <>
+          <div className="history-selected monthly-statistics-selected" aria-live="polite">
+            <span>{monthLabel(effectiveSelectedMonth)}</span>
+            <div className="monthly-statistics-selected-value">
+              <span>{metricDefinition.label}</span>
+              <strong>{monthlyStatisticValueLabel(selectedRow, metric)}</strong>
+              <span>対象 {selectedRow.validCount ?? '—'}／掲載 {selectedRow.listedCount ?? '—'} キャラ</span>
+            </div>
+          </div>
+          <label className="history-month-slider"><span>確認する月</span>
+            <input type="range" min={0} max={Math.max(0, rows.length - 1)} step={1} value={selectedIndex}
+              disabled={rows.length < 2} aria-label="確認する月"
+              aria-valuetext={`${monthLabel(effectiveSelectedMonth)} ${metricDefinition.label} ${monthlyStatisticValueLabel(selectedRow, metric)}`}
+              onChange={event => setSelectedMonth(rows[Number(event.target.value)].month)} />
+          </label>
+        </>}
+      </>}
+    </StatisticsPanel>
+
+    <StatisticsPanel title="テーブル" headerContent={statistics && <span className="monthly-statistics-panel-summary">
+      {rows.length}か月の数値
+    </span>}>
+      {statistics ? <MonthlyWinRateStatisticsTable rows={rows} selectedMonth={effectiveSelectedMonth}
+        selectedMetric={metric} onSelect={setSelectedMonth} />
+        : <p className="monthly-statistics-table-state" role="status">
+          {currentState?.status === 'error' ? '月別の数値を読み込めませんでした。' : '月別の数値を読み込み中…'}
+        </p>}
+    </StatisticsPanel>
+
     {statistics && <>
-      {failedCount > 0 && <div className="history-load-error" role="alert">
-        <span>{statistics.rows.length}か月中{failedCount}か月を読み込めませんでした。</span>
-        <button type="button" className="win-rates-button" onClick={() => setHistoryVersion(version => version + 1)}>再読み込み</button>
-      </div>}
-      {mode === 'common' && statistics.commonUnavailable && <div className="monthly-statistics-message" role="status">
-        期間内のデータが揃っていないため、共通キャラの統計を算出できません。
-      </div>}
-      <MonthlyWinRateStatisticsTable rows={statistics.rows} />
-
       <details className="win-rates-details"><summary>統計量の見方</summary><div className="win-rates-details-content">
         <p>各月のキャラ別公式Totalを百分率へ換算し、1キャラを1つの値として集計しています（5.058 → 50.58%）。平均はキャラを同じ重みで平均した値で、全試合の勝率ではありません。</p>
         <p>中央値は値を並べた中央の値です。標準偏差は、各値と平均の差を二乗して対象キャラ数Nで割り、平方根を取っています。勝率の1%分の差を1ポイントとして表示します。対象が1キャラだけの場合は標準偏差を算出せず「—」と表示します。</p>
+        <p>グラフは月別の値をつなぎ、数値がない月では線を切ります。平均・中央値・最小・最大には50%の参考線を表示し、標準偏差の縦軸は0ポイントから表示します。</p>
         <p>対象／掲載は集計に使ったキャラ数／その月・条件の掲載キャラ数です。欠損と公式の少数試合の印があるTotalを除外し、0.00%は有効値に含めます。</p>
         <p>「各月の掲載キャラ」は月ごとの有効値を集計します。「選択期間の共通キャラ」は全月に有効値がある同じキャラだけを集計します。未登録や読込失敗の月がある場合、共通キャラの統計は算出しません。</p>
         <p>標準偏差は掲載値のばらつきを表し、勝率の確かさや有意差を表しません。使い手・対戦相手の構成やキャラの追加も数値に影響します。元の試合数、Totalの集計方法、パッチ番号、ミラー戦・引き分け・切断の扱いは未確認です。</p>

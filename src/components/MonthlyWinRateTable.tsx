@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useSelectedRowScroll } from '../hooks/useSelectedRowScroll'
 import { formatHistoryValue, monthLabel } from '../lib/winRateHistory'
 import type { WinRateHistorySeries } from '../types/winRateHistory'
 import { CharacterSeriesKey } from './CharacterSeriesKey'
@@ -12,22 +12,8 @@ type Props = {
 }
 
 export function MonthlyWinRateTable({ series, selectedMonth, onSelect }: Props) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const selectedRowRef = useRef<HTMLTableRowElement>(null)
   const points = series[0]?.points ?? []
-
-  useEffect(() => {
-    const viewport = scrollRef.current
-    const row = selectedRowRef.current
-    if (!viewport || !row) return
-    const viewportBounds = viewport.getBoundingClientRect()
-    const rowBounds = row.getBoundingClientRect()
-    const headingHeight = viewport.querySelector('thead')?.getBoundingClientRect().height ?? 0
-    const visibleTop = viewportBounds.top + viewport.clientTop + headingHeight
-    const visibleBottom = viewportBounds.top + viewport.clientTop + viewport.clientHeight
-    if (rowBounds.top < visibleTop) viewport.scrollTop += rowBounds.top - visibleTop
-    else if (rowBounds.bottom > visibleBottom) viewport.scrollTop += rowBounds.bottom - visibleBottom
-  }, [points, selectedMonth])
+  const { scrollRef, selectedRowRef } = useSelectedRowScroll(points, selectedMonth)
 
   return <div ref={scrollRef} className="data-table-scroll monthly-win-rate-scroll" role="region"
     tabIndex={0} aria-label="月別Total一覧・スクロール領域">
