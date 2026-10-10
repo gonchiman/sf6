@@ -1,0 +1,13 @@
+.expected-matches-chart { min-width: 0; margin: 0; background: var(--surface); }
+.expected-matches-chart-viewport { min-width: 0; }
+.expected-matches-chart-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.expected-matches-chart-scroll:focus-visible { outline-offset: -2px; }
+.expected-matches-chart-svg { display: block; max-width: none; flex: none; }
+.expected-matches-chart-axis-title { fill: var(--text-soft); font-size: 12px; font-weight: 600; }
+.expected-matches-chart-tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.expected-matches-chart-grid { stroke: var(--border); stroke-width: 1; }
+.expected-matches-chart-axis { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+.expected-matches-chart-bar { pointer-events: none; }
+.expected-matches-chart-value { fill: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.expected-matches-chart-name { fill: var(--text-soft); font-size: 12px; pointer-events: none; }
+.expected-matches-chart-empty { margin: 0; padding: 20px 0; color: var(--text-muted); }

@@ -1,0 +1,10 @@
+.monthly-statistics-panel { min-width: 0; border: 1px solid var(--border); background: var(--surface); }
+.monthly-statistics-panel-heading { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-soft); }
+.monthly-statistics-panel-heading h2 { margin: 0; font-size: 14px; font-weight: 500; }
+.monthly-statistics-panel-summary { color: var(--text-muted); font-size: 12px; }
+.monthly-statistics-panel-body { min-width: 0; padding: 16px; }
+
+@media (max-width: 640px) {
+  .monthly-statistics-panel-heading { padding: 10px 12px; }
+  .monthly-statistics-panel-body { padding: 12px; }
+}
