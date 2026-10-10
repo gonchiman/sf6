@@ -3,9 +3,11 @@ import { useSelectedRowScroll } from '../hooks/useSelectedRowScroll'
 import { formatMonthlyStatistic } from '../lib/monthlyWinRateStatistics'
 import { leagueLabel } from '../lib/winRateConditions'
 import { monthLabel } from '../lib/winRateHistory'
+import type { BalanceAdjustmentLoadState } from '../types/balanceAdjustments'
 import type { MonthlyWinRateStatisticMetric, MonthlyWinRateStatisticsRow } from '../types/monthlyWinRateStatistics'
 import type { LeagueStatisticsSeries } from '../types/monthlyWinRateStatisticsComparison'
 import { LeagueSeriesKey } from './LeagueSeriesKey'
+import { BalanceAdjustmentCell } from './BalanceAdjustmentCell'
 import '../table.css'
 import '../win-rate-history-chart.css'
 
@@ -14,6 +16,10 @@ type Props = {
   selectedMonth: string | null
   onSelect: (month: string) => void
   selectedMetric?: MonthlyWinRateStatisticMetric
+  adjustmentState: BalanceAdjustmentLoadState
+  selectedAdjustmentId: string | null
+  adjustmentDetailsId: string
+  onSelectAdjustment: (id: string, triggerId: string) => void
 }
 
 function unavailableLabel(row: MonthlyWinRateStatisticsRow): string {
@@ -27,7 +33,8 @@ function statisticValue(value: number | null) {
   return value === null ? <span aria-label="算出できません">—</span> : formatMonthlyStatistic(value)
 }
 
-export function MonthlyWinRateStatisticsTable({ series, selectedMonth, onSelect, selectedMetric }: Props) {
+export function MonthlyWinRateStatisticsTable({ series, selectedMonth, onSelect, selectedMetric,
+  adjustmentState, selectedAdjustmentId, adjustmentDetailsId, onSelectAdjustment }: Props) {
   const rows = useMemo(() => series.flatMap((item, leagueIndex) => item.statistics.rows.map(row => ({
     league: item.league, leagueIndex, row,
   }))).sort((left, right) => left.row.month.localeCompare(right.row.month) || left.leagueIndex - right.leagueIndex), [series])
@@ -43,6 +50,7 @@ export function MonthlyWinRateStatisticsTable({ series, selectedMonth, onSelect,
         <col className="monthly-statistics-league-column" />
         {Array.from({ length: 5 }, (_, index) => <col key={index} />)}
         <col className="monthly-statistics-count-column" />
+        <col className="monthly-statistics-adjustment-column" />
       </colgroup>
       <thead><tr>
         <th scope="col">対象月</th>
@@ -53,6 +61,7 @@ export function MonthlyWinRateStatisticsTable({ series, selectedMonth, onSelect,
         <th scope="col" className={metricClass('minimumPercent')}>最小（%）</th>
         <th scope="col" className={metricClass('maximumPercent')}>最大（%）</th>
         <th scope="col">対象／掲載<span className="monthly-statistics-unit">（キャラ数）</span></th>
+        <th scope="col">バランス調整</th>
       </tr></thead>
       <tbody>{rows.map(({ league, row }, index) => <tr key={`${row.month}:${league}`}
         ref={index === firstSelectedRowIndex ? selectedRowRef : undefined}
@@ -74,6 +83,8 @@ export function MonthlyWinRateStatisticsTable({ series, selectedMonth, onSelect,
           <td className={metricClass('maximumPercent')}>{statisticValue(row.statistics.maximumPercent)}</td>
         </> : <td colSpan={5} className="monthly-statistics-unavailable">{unavailableLabel(row)}</td>}
         <td>{row.listedCount === null ? '—' : `${row.validCount ?? '—'}／${row.listedCount}`}</td>
+        <td className="monthly-statistics-adjustment-cell"><BalanceAdjustmentCell month={row.month} rowId={`${row.month}-${league}`} state={adjustmentState}
+          selectedId={selectedAdjustmentId} detailsId={adjustmentDetailsId} onSelect={onSelectAdjustment} /></td>
       </tr>)}</tbody>
     </table>
   </div>

@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { loadBalanceAdjustmentCatalog } from '../lib/balanceAdjustments'
 import { createMonthlyStatisticsComparison, loadMonthlyStatisticsComparison } from '../lib/monthlyWinRateStatisticsComparison'
 import { MONTHLY_STATISTIC_METRICS, monthlyStatisticDefinition, monthlyStatisticValueLabel } from '../lib/monthlyWinRateStatisticsChart'
 import { editionOf, leagueLabel, WIN_RATE_EDITION_LEAGUES, WIN_RATE_EDITION_SOURCES } from '../lib/winRateConditions'
 import { initialHistorySelection, monthLabel } from '../lib/winRateHistory'
 import { loadWinRateManifest } from '../lib/winRates'
+import type { BalanceAdjustmentLoadState } from '../types/balanceAdjustments'
 import type { MonthlyWinRateStatisticMetric, MonthlyWinRateStatisticsMode } from '../types/monthlyWinRateStatistics'
 import type { LeagueStatisticsDatasetResults } from '../types/monthlyWinRateStatisticsComparison'
 import type { WinRateHistorySelection } from '../types/winRateHistory'
@@ -35,6 +37,11 @@ function timestampLabel(value: string): string {
   }).format(new Date(value))} JST`
 }
 
+function adjustmentDateLabel(value: string): string {
+  const [year, month, day] = value.split('-').map(Number)
+  return `${year}年${month}月${day}日`
+}
+
 export function MonthlyWinRateStatisticsPage() {
   const [bootstrap, setBootstrap] = useState<BootstrapState>({ status: 'loading' })
   const [bootstrapVersion, setBootstrapVersion] = useState(0)
@@ -45,6 +52,20 @@ export function MonthlyWinRateStatisticsPage() {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
   const [historyState, setHistoryState] = useState<HistoryState | null>(null)
   const [historyVersion, setHistoryVersion] = useState(0)
+  const [adjustmentState, setAdjustmentState] = useState<BalanceAdjustmentLoadState>({ status: 'loading' })
+  const [adjustmentVersion, setAdjustmentVersion] = useState(0)
+  const [selectedAdjustmentId, setSelectedAdjustmentId] = useState<string | null>(null)
+  const adjustmentDetailsId = useId()
+  const adjustmentTriggerId = useRef<string | null>(null)
+
+  useEffect(() => {
+    let current = true
+    setAdjustmentState({ status: 'loading' })
+    void loadBalanceAdjustmentCatalog().then(catalog => {
+      if (current) setAdjustmentState({ status: 'ready', catalog })
+    }).catch(() => { if (current) setAdjustmentState({ status: 'error' }) })
+    return () => { current = false }
+  }, [adjustmentVersion])
 
   useEffect(() => {
     let current = true
@@ -110,6 +131,20 @@ export function MonthlyWinRateStatisticsPage() {
   useEffect(() => {
     if (effectiveSelectedMonth && selectedMonth !== effectiveSelectedMonth) setSelectedMonth(effectiveSelectedMonth)
   }, [effectiveSelectedMonth, selectedMonth])
+  const adjustmentCatalog = adjustmentState.status === 'ready' ? adjustmentState.catalog : null
+  const selectedAdjustment = useMemo(() => adjustmentCatalog && fromMonth && toMonth
+    ? adjustmentCatalog.events.find(event => event.id === selectedAdjustmentId &&
+      event.date.slice(0, 7) >= fromMonth && event.date.slice(0, 7) <= toMonth) ?? null : null,
+  [adjustmentCatalog, fromMonth, toMonth, selectedAdjustmentId])
+
+  useEffect(() => {
+    if (selectedAdjustmentId !== null && !selectedAdjustment) setSelectedAdjustmentId(null)
+  }, [selectedAdjustmentId, selectedAdjustment])
+
+  const closeAdjustmentDetails = () => {
+    if (adjustmentTriggerId.current) document.getElementById(adjustmentTriggerId.current)?.focus({ preventScroll: true })
+    setSelectedAdjustmentId(null)
+  }
 
   if (bootstrap.status === 'loading') return <DataLoadState loading message="期間と条件を読み込み中…" />
   if (bootstrap.status === 'error' || !manifest || !selection) {
@@ -210,14 +245,50 @@ export function MonthlyWinRateStatisticsPage() {
     <StatisticsPanel title="テーブル" headerContent={statistics && <span className="monthly-statistics-panel-summary">
       {statistics.length}リーグ・{rows.length}か月の数値
     </span>}>
+      {statistics && adjustmentState.status === 'error' && <div className="history-load-error" role="alert">
+        <span>バランス調整の履歴を読み込めませんでした。</span>
+        <button type="button" className="win-rates-button" onClick={() => setAdjustmentVersion(version => version + 1)}>調整履歴を再読み込み</button>
+      </div>}
       {statistics ? <MonthlyWinRateStatisticsTable series={statistics} selectedMonth={effectiveSelectedMonth}
-        selectedMetric={metric} onSelect={setSelectedMonth} />
+        selectedMetric={metric} onSelect={setSelectedMonth} adjustmentState={adjustmentState}
+        selectedAdjustmentId={selectedAdjustment?.id ?? null} adjustmentDetailsId={adjustmentDetailsId}
+        onSelectAdjustment={(id, triggerId) => {
+          adjustmentTriggerId.current = triggerId
+          setSelectedAdjustmentId(current => current === id ? null : id)
+        }} />
         : <p className="monthly-statistics-table-state" role="status">
           {currentState?.status === 'error' ? '月別の数値を読み込めませんでした。' : '月別の数値を読み込み中…'}
         </p>}
     </StatisticsPanel>
 
     {statistics && <>
+      <div id={adjustmentDetailsId} hidden={!selectedAdjustment} aria-live="polite" aria-atomic="true">
+        {selectedAdjustment && <section className="monthly-adjustment-details" aria-labelledby={`${adjustmentDetailsId}-title`}>
+          <div className="monthly-adjustment-details-heading">
+            <h3 id={`${adjustmentDetailsId}-title`}><time dateTime={selectedAdjustment.date}>{adjustmentDateLabel(selectedAdjustment.date)}</time><span>{selectedAdjustment.kindLabel}</span></h3>
+            <button type="button" className="win-rates-button" onClick={closeAdjustmentDetails}>閉じる</button>
+          </div>
+          <dl className="win-rates-source">
+            <div><dt>日付</dt><dd>{selectedAdjustment.dateBasis === 'effective' ? '実施日（日本時間）' : 'リスト日（実施日は未確認）'}</dd></div>
+            <div><dt>変更内容</dt><dd><a href={selectedAdjustment.source.url} target="_blank" rel="noreferrer">{selectedAdjustment.source.title}<span className="win-rates-visually-hidden">（新しいタブ）</span></a></dd></div>
+            {selectedAdjustment.announcement && <div><dt>実施告知</dt><dd><a href={selectedAdjustment.announcement.url} target="_blank" rel="noreferrer">{selectedAdjustment.announcement.title}<span className="win-rates-visually-hidden">（新しいタブ）</span></a></dd></div>}
+          </dl>
+        </section>}
+      </div>
+
+      <details className="win-rates-details"><summary>調整日の見方・出典</summary><div className="win-rates-details-content monthly-statistics-data-details">
+        <p>調整日とその種類を表示しています。公式のバトル変更履歴に含まれる不具合修正も表示します。同じ月に複数の変更がある場合は、すべて表示します。</p>
+        <p>月の途中に変更がある場合、その月の勝率には変更前後の試合が含まれます。統計値は月単位のままで、調整前後には分割していません。</p>
+        <p>「—」は確認した範囲内に変更履歴がない月、「履歴未確認」は確認範囲外の月です。「リスト日」は公式の変更リストの日付で、実施日を確認できていません。</p>
+        {adjustmentCatalog && <dl className="win-rates-source">
+          <div><dt>確認範囲</dt><dd>{monthLabel(adjustmentCatalog.coverage.fromMonth)}〜{monthLabel(adjustmentCatalog.coverage.toMonth)}</dd></div>
+          <div><dt>出典</dt><dd><a href={adjustmentCatalog.source.url} target="_blank" rel="noreferrer">{adjustmentCatalog.source.title}<span className="win-rates-visually-hidden">（新しいタブ）</span></a></dd></div>
+          <div><dt>確認日時</dt><dd><time dateTime={adjustmentCatalog.checkedAt}>{timestampLabel(adjustmentCatalog.checkedAt)}</time></dd></div>
+          <div><dt>一覧生成日時</dt><dd><time dateTime={adjustmentCatalog.generatedAt}>{timestampLabel(adjustmentCatalog.generatedAt)}</time></dd></div>
+          <div><dt>データ形式</dt><dd>Version {adjustmentCatalog.schemaVersion}</dd></div>
+        </dl>}
+      </div></details>
+
       <details className="win-rates-details"><summary>統計量の見方</summary><div className="win-rates-details-content">
         <p>各月のキャラ別公式Totalを百分率へ換算し、1キャラを1つの値として集計しています（5.058 → 50.58%）。平均はキャラを同じ重みで平均した値で、全試合の勝率ではありません。</p>
         <p>中央値は値を並べた中央の値です。標準偏差は、各値と平均の差を二乗して対象キャラ数Nで割り、平方根を取っています。勝率の1%分の差を1ポイントとして表示します。対象が1キャラだけの場合は標準偏差を算出せず「—」と表示します。</p>
