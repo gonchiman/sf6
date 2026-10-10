@@ -1,0 +1,51 @@
+.control-type-ratio-page { min-width: 0; display: grid; gap: 16px; }
+.control-ratio-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; padding: 0; border: 0; background: transparent; }
+.control-ratio-filters select { width: 100%; min-width: 0; }
+.control-ratio-view-selector { margin-bottom: 14px; }
+.control-ratio-view-panel { min-width: 0; }
+.control-ratio-month-filter { width: min(100%, 260px); margin-top: 14px; padding: 0; border: 0; background: transparent; }
+.control-ratio-month-filter label { width: 100%; }
+.control-ratio-month-filter select { width: 100%; min-width: 0; }
+.control-ratio-note { margin: 12px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.8; }
+.control-ratio-table-content { min-width: 0; display: grid; gap: 14px; }
+.control-ratio-scroll { max-height: min(70vh, 720px); scroll-padding-left: 140px; scroll-padding-top: 60px; }
+.control-ratio-table { min-width: 860px; table-layout: fixed; }
+.control-ratio-month-column { width: 140px; }
+.control-ratio-status-column { width: 250px; }
+.control-ratio-table tr > :first-child, .control-ratio-details-table tr > :first-child { position: sticky; left: 0; z-index: 1; }
+.control-ratio-table thead tr > :first-child, .control-ratio-details-table thead tr > :first-child { z-index: 3; }
+.control-ratio-table th.monthly-win-rate-month { padding: 0; }
+.control-ratio-table tr.is-selected > * { background: var(--surface-hover); }
+.control-ratio-table tr.is-selected .monthly-win-rate-month-button { color: var(--link); font-weight: 700; box-shadow: inset 3px 0 var(--link); }
+.control-ratio-table td:not(.control-ratio-status) { white-space: nowrap; }
+.control-ratio-table .control-ratio-status { text-align: left; font-size: 12px; overflow-wrap: anywhere; }
+.control-ratio-table .control-ratio-status.is-unavailable { color: var(--text-muted); }
+.control-ratio-unit { display: block; color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.control-ratio-load-error { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 20px; border: 1px solid var(--border); padding: 12px 14px; background: var(--surface-soft); color: var(--text-soft); font-size: 13px; }
+.control-ratio-evidence-content { min-width: 0; display: grid; gap: 12px; }
+.control-ratio-evidence-content p { margin: 0; }
+.control-ratio-evidence-content .win-rates-source { display: flex; }
+.control-ratio-evidence-content .win-rates-source > div { display: flex; }
+.control-ratio-details-scroll { max-height: 480px; scroll-padding-left: 156px; }
+.control-ratio-details-table { min-width: 890px; table-layout: fixed; }
+.control-ratio-character-column { width: 156px; }
+.control-ratio-details-table tbody th { overflow-wrap: anywhere; }
+.control-ratio-details-table td { white-space: nowrap; font-size: 12px; }
+.control-ratio-details-table th:last-child { width: 216px; }
+.control-ratio-formula { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.control-ratio-character-scroll { max-height: min(70vh, 720px); scroll-padding-left: 156px; scroll-padding-top: 68px; }
+.control-ratio-character-table { min-width: 860px; table-layout: fixed; }
+.control-ratio-character-status-column { width: 270px; }
+.control-ratio-character-table tr > :first-child { position: sticky; left: 0; z-index: 1; }
+.control-ratio-character-table thead tr > :first-child { z-index: 3; }
+.control-ratio-character-table tbody th { overflow-wrap: anywhere; }
+.control-ratio-character-table .control-ratio-status { text-align: left; font-size: 12px; overflow-wrap: anywhere; }
+.control-ratio-character-table .control-ratio-status.is-unavailable { color: var(--text-muted); }
+.control-ratio-character-table td:not(.control-ratio-status) { white-space: nowrap; }
+.control-ratio-character-state { margin: 0; border: 1px solid var(--border); padding: 12px 14px; color: var(--text-soft); background: var(--surface-soft); font-size: 13px; }
+
+@media (max-width: 640px) {
+  .control-ratio-filters { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .control-ratio-month-column { width: 116px; }
+  .control-ratio-scroll { scroll-padding-left: 116px; }
+}

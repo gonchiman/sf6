@@ -2,6 +2,7 @@ export type AppRoute =
   | { page: 'win-rates' }
   | { page: 'win-rate-history' }
   | { page: 'monthly-win-rate-statistics' }
+  | { page: 'control-type-ratio' }
   | { page: 'characters'; characterId: string | null }
   | { page: 'character-traits' }
 
@@ -10,6 +11,9 @@ export function characterHash(characterId: string): string {
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#control-type-ratio' || hash === '#control-type-ratio/') {
+    return { page: 'control-type-ratio' }
+  }
   if (hash === '#monthly-win-rate-statistics' || hash === '#monthly-win-rate-statistics/') {
     return { page: 'monthly-win-rate-statistics' }
   }

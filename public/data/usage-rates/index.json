@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-09T06:23:24.818Z",
+  "source": {
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/stats/usagerate",
+    "title": "Buckler 総合版 キャラクター使用率"
+  },
+  "datasets": [
+    {
+      "id": "2026-09-all",
+      "month": "2026-09",
+      "league": "ALL",
+      "path": "2026-09-all.json",
+      "capturedAt": "2026-10-09T05:45:07Z"
+    },
+    {
+      "id": "2026-09-diamond",
+      "month": "2026-09",
+      "league": "DIAMOND",
+      "path": "2026-09-diamond.json",
+      "capturedAt": "2026-10-09T05:45:07Z"
+    },
+    {
+      "id": "2026-09-master",
+      "month": "2026-09",
+      "league": "MASTER",
+      "path": "2026-09-master.json",
+      "capturedAt": "2026-10-09T05:45:07Z"
+    },
+    {
+      "id": "2026-08-all",
+      "month": "2026-08",
+      "league": "ALL",
+      "path": "2026-08-all.json",
+      "capturedAt": "2026-10-09T05:45:07Z"
+    },
+    {
+      "id": "2026-08-diamond",
+      "month": "2026-08",
+      "league": "DIAMOND",
+      "path": "2026-08-diamond.json",
+      "capturedAt": "2026-10-09T05:45:07Z"
+    },
+    {
+      "id": "2026-08-master",
+      "month": "2026-08",
+      "league": "MASTER",
+      "path": "2026-08-master.json",
+      "capturedAt": "2026-10-09T05:45:07Z"
+    },
+    {
+      "id": "2026-07-all",
+      "month": "2026-07",
+      "league": "ALL",
+      "path": "2026-07-all.json",
+      "capturedAt": "2026-10-09T05:45:07Z"
+    },
+    {
+      "id": "2026-07-diamond",
+      "month": "2026-07",
+      "league": "DIAMOND",
+      "path": "2026-07-diamond.json",
+      "capturedAt": "2026-10-09T05:45:07Z"
+    },
+    {
+      "id": "2026-07-master",
+      "month": "2026-07",
+      "league": "MASTER",
+      "path": "2026-07-master.json",
+      "capturedAt": "2026-10-09T05:45:07Z"
+    }
+  ]
+}
