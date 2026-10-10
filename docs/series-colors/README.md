@@ -14,6 +14,7 @@
 
 - アークナイツのMODや潜在に対応する色・分類・濃淡のルールは流用しない。SF6の対象と分類に合わせて定義する。
 - [キャラクター系列の共通定義](../../src/lib/seriesColors.ts) が、勝率データの `characterId` と色・線種・記号の対応を管理する。操作タイプやランクの配色は、この定義の対象外とする。
+- [リーグ系列の共通定義](../../src/lib/leagueSeriesColors.ts) が、勝率データの `league` と色・線種・記号の対応を管理する。キャラクター用の定義・関数をリーグへ流用しない。
 - [配色見本SVG](examples/characters.svg) は、[生成スクリプト](../../scripts/render-series-colors.ts) が共通定義と公開キャラクター一覧から作る実装確認用の見本。SVGを直接編集したり、別のパレットを手作業で管理したりしない。
 
 ## キャラクター系列の固定仕様
@@ -33,6 +34,21 @@ const style = characterSeriesStyle(fighter.characterId)
 // 点はstyle.markerに対応する形で描き、キャラクター名を併記する。
 ```
 
+## リーグ系列の固定仕様
+
+- `leagueSeriesStyle(league)` は `color`、`dashArray`、`marker` を返す。IDは取得元の `ROOKIE`・`IRON`・`BRONZE`・`SILVER`・`GOLD`・`PLATINUM`・`DIAMOND`・`MASTER`・`HIGH_MASTER`・`GRAND_MASTER`・`ULTIMATE_MASTER` をそのまま使う。
+- 色・線種・記号は各IDの固定値とし、選択数、選択順、統計量、月、操作タイプ、統計版によって変更しない。総合版とマスター版の `MASTER` には同じ対応を使う。
+- 名前からの推測、大文字・小文字の自動変換、キャラクター用関数による配色は行わない。未登録IDには専用のグレー・線種・記号を使い、既知リーグの対応を借りない。
+- 白背景とのコントラスト比3:1以上を維持し、リーグ名、線種、記号を併用する。欠損はリーグの色とは別に判定し、そのリーグの欠損月だけ線を切る。
+- [リーグ系列の見本部品](../../src/components/LeagueSeriesKey.tsx) とグラフの線・点に、共通定義が返す値をそのまま渡す。月別勝率統計の凡例が、実装に基づくリーグ配色の表示見本となる。
+
+```ts
+const style = leagueSeriesStyle(series.league)
+// 線・点・凡例・表の見本は同じstyleを使う。
+```
+
+リーグ定義を変更するときは、[配色テスト](../../src/lib/leagueSeriesColors.test.ts)で全リーグIDの網羅性、固定対応、並べ替え後の不変性、未知IDの分離、白背景とのコントラストを確認する。画面でも複数リーグを選び、グラフ・凡例・表の見本が一致することを確認する。リーグ用の画像出力は未実装。
+
 ## 見本の再生成と確認
 
 プロジェクトルートで実行する。Node.jsの対応バージョンは [package.json](../../package.json) に従う。
@@ -49,4 +65,5 @@ node scripts/render-series-colors.ts --check
 ## 適用状況
 
 - 勝率推移の [グラフ](../../src/components/WinRateHistoryChart.tsx) と [系列の見本部品](../../src/components/CharacterSeriesKey.tsx) が共通定義を参照する。
+- 月別勝率統計の [グラフ](../../src/components/MonthlyWinRateStatisticsChart.tsx) と [リーグ系列の見本部品](../../src/components/LeagueSeriesKey.tsx) がリーグ共通定義を参照する。凡例と表のリーグ表示は同じ見本部品を使う。
 - グラフ画像の保存機能は未実装。実装するときは [グラフ画像出力の仕様](../chart-image/README.md) と併用し、プレビュー・保存画像にも同じ定義を渡す。

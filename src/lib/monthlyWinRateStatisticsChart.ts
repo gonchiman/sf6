@@ -1,7 +1,10 @@
 import { formatMonthlyStatistic } from './monthlyWinRateStatistics.ts'
 import { monthlyPercentAxis } from './monthlyLineChart.ts'
-import type { MonthlyLineChartPoint } from '../types/monthlyLineChart.ts'
+import { leagueSeriesStyle } from './leagueSeriesColors.ts'
+import { leagueLabel } from './winRateConditions.ts'
+import type { MonthlyLineChartPoint, MonthlyLineChartSeries } from '../types/monthlyLineChart.ts'
 import type { MonthlyWinRateStatisticMetric, MonthlyWinRateStatisticsRow } from '../types/monthlyWinRateStatistics.ts'
+import type { LeagueStatisticsSeries } from '../types/monthlyWinRateStatisticsComparison.ts'
 
 interface MonthlyStatisticDefinition {
   key: MonthlyWinRateStatisticMetric
@@ -74,6 +77,21 @@ function deviationAxis(values: readonly number[]) {
 export function monthlyStatisticAxis(rows: readonly MonthlyWinRateStatisticsRow[], metric: MonthlyWinRateStatisticMetric) {
   const values = monthlyStatisticPoints(rows, metric).flatMap(point => point.value === null ? [] : [point.value])
   return metric === 'standardDeviationPoints' ? deviationAxis(values) : monthlyPercentAxis(values)
+}
+
+/** Keep each league's observations separate; a missing month only splits that league. */
+export function monthlyLeagueStatisticSeries(
+  series: readonly LeagueStatisticsSeries[], metric: MonthlyWinRateStatisticMetric,
+): MonthlyLineChartSeries[] {
+  return series.map(item => ({
+    id: item.league, label: leagueLabel(item.league), style: leagueSeriesStyle(item.league),
+    points: monthlyStatisticPoints(item.statistics.rows, metric),
+  }))
+}
+
+/** One axis covers every displayed league; these observations are not combined into new statistics. */
+export function monthlyLeagueStatisticAxis(series: readonly LeagueStatisticsSeries[], metric: MonthlyWinRateStatisticMetric) {
+  return monthlyStatisticAxis(series.flatMap(item => item.statistics.rows), metric)
 }
 
 /** Match tick precision to the chosen step so small deviations have distinct labels. */

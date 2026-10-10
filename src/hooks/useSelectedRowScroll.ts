@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
 
-/** Keep a selected table row visible below its sticky column headings. */
+/** Keep a selected row or group visible below its sticky column headings. */
 export function useSelectedRowScroll(
   rows: readonly unknown[],
   selectedKey: string | null,
   resetOnRowsChange = false,
+  selectedRowCount = 1,
 ) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const selectedRowRef = useRef<HTMLTableRowElement>(null)
@@ -29,9 +30,18 @@ export function useSelectedRowScroll(
     const headingHeight = viewport.querySelector('thead')?.getBoundingClientRect().height ?? 0
     const visibleTop = viewportBounds.top + viewport.clientTop + headingHeight
     const visibleBottom = viewportBounds.top + viewport.clientTop + viewport.clientHeight
+    let groupEnd: Element = row
+    for (let index = 1; index < selectedRowCount; index += 1) {
+      const nextRow = groupEnd.nextElementSibling
+      if (!nextRow || nextRow.tagName !== 'TR') break
+      groupEnd = nextRow
+    }
+    const groupBottom = groupEnd.getBoundingClientRect().bottom
+    // A group taller than the viewport still needs its first row to be visible.
+    const targetBottom = groupBottom - rowBounds.top <= visibleBottom - visibleTop ? groupBottom : rowBounds.bottom
     if (rowBounds.top < visibleTop) viewport.scrollTop += rowBounds.top - visibleTop
-    else if (rowBounds.bottom > visibleBottom) viewport.scrollTop += rowBounds.bottom - visibleBottom
-  }, [rows, selectedKey, resetOnRowsChange])
+    else if (targetBottom > visibleBottom) viewport.scrollTop += targetBottom - visibleBottom
+  }, [rows, selectedKey, resetOnRowsChange, selectedRowCount])
 
   return { scrollRef, selectedRowRef }
 }
