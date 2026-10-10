@@ -9,11 +9,12 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc -b",
-    "test": "node --test src/lib/winRates.test.ts src/lib/totalWinRates.test.ts src/lib/characters.test.ts src/lib/characterTraits.test.ts src/lib/routes.test.ts src/lib/winRateHistory.test.ts src/lib/monthlyWinRateStatistics.test.ts src/lib/expectedMatches.test.ts src/lib/expectedMatchData.test.ts src/lib/expectedMatchesChart.test.ts scripts/lib/character-snapshot.test.ts scripts/lib/character-traits-data.test.ts scripts/lib/buckler-snapshot.test.ts scripts/lib/publish-win-rates.test.ts scripts/lib/update-win-rates.test.ts",
+    "test": "node --test src/lib/winRates.test.ts src/lib/totalWinRates.test.ts src/lib/characters.test.ts src/lib/characterTraits.test.ts src/lib/routes.test.ts src/lib/winRateHistory.test.ts src/lib/monthlyWinRateStatistics.test.ts src/lib/expectedMatches.test.ts src/lib/expectedMatchData.test.ts src/lib/expectedMatchesChart.test.ts src/lib/monthlyLineChart.test.ts src/lib/monthlyWinRateStatisticsChart.test.ts src/lib/monthlyWinRateStatisticsComparison.test.ts src/lib/leagueSeriesColors.test.ts src/lib/usageRates.test.ts src/lib/controlTypeRatio.test.ts src/lib/characterControlTypeRatio.test.ts src/lib/balanceAdjustments.test.ts scripts/lib/character-snapshot.test.ts scripts/lib/character-traits-data.test.ts scripts/lib/buckler-snapshot.test.ts scripts/lib/publish-win-rates.test.ts scripts/lib/update-win-rates.test.ts scripts/lib/import-usage-rate-data.test.ts",
     "data:update": "node scripts/update-win-rate-data.ts",
     "data:import-characters": "node scripts/import-character-data.ts",
     "data:build-character-traits": "node scripts/build-character-traits.ts",
-    "validate:data": "node scripts/validate-win-rate-data.ts && node scripts/validate-character-data.ts && node scripts/validate-character-traits.ts",
+    "data:import-usage-rates": "node scripts/import-usage-rate-data.ts",
+    "validate:data": "node scripts/validate-win-rate-data.ts && node scripts/validate-character-data.ts && node scripts/validate-character-traits.ts && node scripts/validate-usage-rate-data.ts && node scripts/validate-balance-adjustments.ts",
     "build": "npm run validate:data && tsc -b && vite build",
     "preview": "vite preview"
   },

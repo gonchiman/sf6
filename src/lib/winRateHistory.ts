@@ -61,11 +61,11 @@ export function historyCalendarMonths(manifest: WinRateManifest): string[] {
   return Array.from({ length: to - from + 1 }, (_, index) => indexedMonth(from + index))
 }
 
-export function initialHistorySelection(manifest: WinRateManifest): WinRateHistorySelection {
+export function initialHistorySelection(manifest: WinRateManifest, period: 'last12Months' | 'all' = 'last12Months'): WinRateHistorySelection {
   const months = historyMonths({ ...manifest, datasets: manifest.datasets.filter((item) => editionOf(item) === 'general') })
   if (months.length === 0) throw new Error('表示できる対象月がありません。')
   const toMonth = months[months.length - 1]
-  const fromIndex = Math.max(monthIndex(months[0]), monthIndex(toMonth) - 11)
+  const fromIndex = period === 'all' ? monthIndex(months[0]) : Math.max(monthIndex(months[0]), monthIndex(toMonth) - 11)
   return { edition: 'general', league: 'MASTER', controlType: 'combined', fromMonth: indexedMonth(fromIndex), toMonth }
 }
 

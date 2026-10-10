@@ -2,6 +2,13 @@ import type { WinRateDataset } from './winRates.ts'
 
 export type MonthlyWinRateStatisticsMode = 'monthly' | 'common'
 
+export type MonthlyWinRateStatisticMetric =
+  | 'meanPercent'
+  | 'medianPercent'
+  | 'standardDeviationPoints'
+  | 'minimumPercent'
+  | 'maximumPercent'
+
 export interface MonthlyWinRateStatisticsValues {
   meanPercent: number | null
   medianPercent: number | null

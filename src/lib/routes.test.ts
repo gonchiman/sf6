@@ -24,6 +24,18 @@ test('勝率推移の直接URLは既存ページと区別して読み取る', ()
   assert.deepEqual(parseHashRoute('#win-rate-history-invalid'), { page: 'win-rates' })
 })
 
+test('操作タイプ比率の直接URLを独立したページとして読み取る', () => {
+  assert.deepEqual(parseHashRoute('#control-type-ratio'), { page: 'control-type-ratio' })
+  assert.deepEqual(parseHashRoute('#control-type-ratio/'), { page: 'control-type-ratio' })
+  assert.deepEqual(parseHashRoute('#control-type-ratio/unknown'), { page: 'win-rates' })
+})
+
+test('期待試合数の直接URLを独立したページとして読み取る', () => {
+  assert.deepEqual(parseHashRoute('#expected-matches'), { page: 'expected-matches' })
+  assert.deepEqual(parseHashRoute('#expected-matches/'), { page: 'expected-matches' })
+  assert.deepEqual(parseHashRoute('#expected-matches/unknown'), { page: 'win-rates' })
+})
+
 test('キャラ分類の直接URLを独立したページとして読み取る', () => {
   assert.deepEqual(parseHashRoute('#character-traits'), { page: 'character-traits' })
   assert.deepEqual(parseHashRoute('#character-traits/'), { page: 'character-traits' })

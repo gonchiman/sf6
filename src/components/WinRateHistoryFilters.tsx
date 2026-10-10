@@ -13,10 +13,11 @@ type Props = {
   manifest: WinRateManifest
   selection: WinRateHistorySelection
   onChange: (selection: WinRateHistorySelection) => void
+  showLeague?: boolean
 }
 
 /** Shared period and population controls for history and monthly statistics. */
-export function WinRateHistoryFilters({ manifest, selection, onChange }: Props) {
+export function WinRateHistoryFilters({ manifest, selection, onChange, showLeague = true }: Props) {
   const edition = editionOf(selection)
   const months = historyCalendarMonths(manifest)
   const editions = WIN_RATE_EDITIONS.filter(value => manifest.datasets.some(item => editionOf(item) === value))
@@ -53,14 +54,14 @@ export function WinRateHistoryFilters({ manifest, selection, onChange }: Props) 
     }}>
       {editions.map(value => <option key={value} value={value}>{value === 'general' ? '総合版' : 'マスター版'}</option>)}
     </select></label>
-    <label className="win-rates-league-filter"><span>リーグ</span><select aria-label="リーグ" value={selection.league} onChange={event => {
+    {showLeague && <label className="win-rates-league-filter"><span>リーグ</span><select aria-label="リーグ" value={selection.league} onChange={event => {
       const league = event.target.value
       const availableControls = controlsFor(edition, league)
       onChange({ ...selection, league, controlType: availableControls.includes(selection.controlType)
         ? selection.controlType : availableControls[0] ?? 'combined' })
     }}>
       {leagues.map(value => <option key={value} value={value}>{leagueLabel(value)}</option>)}
-    </select></label>
+    </select></label>}
     <label><span>操作タイプ</span><select aria-label="操作タイプ" value={selection.controlType}
       onChange={event => onChange({ ...selection, controlType: event.target.value as HistoryControlType })}>
       {controls.map(value => <option key={value} value={value}>{CONTROL_LABELS[value]}</option>)}

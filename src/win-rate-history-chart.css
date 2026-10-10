@@ -1,25 +1,3 @@
-.win-rate-history-chart { min-width: 0; margin: 0; background: var(--surface); }
-.win-rate-history-chart-viewport { min-width: 0; }
-.win-rate-history-chart-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
-.win-rate-history-chart-scroll:focus-visible { outline-offset: -2px; }
-.win-rate-history-chart-svg { display: block; flex: none; }
-.win-rate-history-axis-title { fill: var(--text-soft); font-size: 12px; font-weight: 600; }
-.win-rate-history-tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.win-rate-history-grid { stroke: var(--border); stroke-width: 1; }
-.win-rate-history-month-grid { stroke-dasharray: 2 5; opacity: .55; }
-.win-rate-history-axis { fill: none; stroke: var(--border-strong); stroke-width: 1; }
-.win-rate-history-baseline { stroke: var(--text-muted); stroke-width: 1.25; stroke-dasharray: 6 4; }
-.win-rate-history-baseline-label {
-  fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums;
-  paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round;
-}
-.win-rate-history-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.win-rate-history-point { stroke: var(--surface); stroke-width: 1; }
-.win-rate-history-point.is-selected { stroke-width: 2; }
-.win-rate-history-selection-guide { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 4; opacity: .65; }
-.win-rate-history-month-hit { fill: transparent; cursor: pointer; }
-.win-rate-history-empty { fill: var(--text-muted); font-size: 12px; }
-
 .monthly-win-rate-scroll { max-height: 420px; }
 .monthly-win-rate-table { table-layout: fixed; }
 .monthly-win-rate-table tr > :first-child { position: sticky; left: 0; z-index: 1; }
