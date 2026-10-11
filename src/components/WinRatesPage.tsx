@@ -1,6 +1,8 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import { loadWinRateDataset, loadWinRateManifest } from '../lib/winRates'
 import { createLeagueTotalWinRates } from '../lib/leagueTotalWinRates'
+import { createCharacterLeagueWinRates } from '../lib/characterLeagueWinRates'
+import { CHARACTER_LEAGUE_CHART_RANGES, type CharacterLeagueChartRange } from '../lib/characterLeagueChartAxis'
 import { loadMonthlyStatisticsComparison } from '../lib/monthlyWinRateStatisticsComparison'
 import { editionOf, leagueLabel, WIN_RATE_EDITIONS, WIN_RATE_EDITION_LEAGUES, WIN_RATE_EDITION_SOURCES } from '../lib/winRateConditions'
 import type { LeagueTotalWinRateSelection, LeagueTotalWinRateSort } from '../types/leagueTotalWinRates'
@@ -8,6 +10,7 @@ import type { LeagueStatisticsDatasetResults } from '../types/monthlyWinRateStat
 import type { WinRateDataset, WinRateDatasetDescriptor, WinRateManifest, WinRateOperationMode } from '../types/winRates'
 import { WinRateTable } from './WinRateTable'
 import { LeagueTotalWinRateTable } from './LeagueTotalWinRateTable'
+import { CharacterLeagueWinRateChart } from './CharacterLeagueWinRateChart'
 import { StatisticsPanel } from './StatisticsPanel'
 import { DataLoadState as LoadState } from './DataLoadState'
 import '../win-rates.css'
@@ -82,6 +85,9 @@ export function WinRatesPage() {
   const [comparisonState, setComparisonState] = useState<ComparisonState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
   const [sort, setSort] = useState<LeagueTotalWinRateSort>({ league: 'MASTER', direction: 'descending' })
+  const [selectedCharacter, setSelectedCharacter] = useState({ characterId: 'ryu', name: 'RYU' })
+  const [showChartValues, setShowChartValues] = useState(true)
+  const [chartRange, setChartRange] = useState<CharacterLeagueChartRange>('0-100')
 
   useEffect(() => {
     let current = true
@@ -147,6 +153,11 @@ export function WinRatesPage() {
   const readyResults = currentComparison?.status === 'ready' ? currentComparison.results : null
   const comparison = useMemo(() => manifest && selection && readyResults
     ? createLeagueTotalWinRates(manifest, selection, readyResults) : null, [manifest, selection, readyResults])
+  const chartComparison = useMemo(() => comparison && selection
+    ? createCharacterLeagueWinRates(comparison, selection, selectedCharacter.characterId, selectedCharacter.name)
+    : null, [comparison, selection, selectedCharacter])
+  const chartCharacters = useMemo(() => [...new Map(comparison?.rows.map(row =>
+    [row.characterId, { characterId: row.characterId, name: row.name }]) ?? []).values()], [comparison])
   const currentDataset = selected && datasetState?.key === datasetKey(selected) ? datasetState : null
   const dataset = currentDataset?.status === 'ready' ? currentDataset.data : null
 
@@ -173,6 +184,10 @@ export function WinRatesPage() {
   const metrics = [...new Set(visibleDatasets.map(item => item.source.metric))]
   const notes = [...new Set(visibleDatasets.flatMap(item => item.source.notes))]
   const retry = () => setDatasetVersion(version => version + 1)
+  const chooseCharacter = (characterId: string) => {
+    const character = chartCharacters.find(item => item.characterId === characterId)
+    if (character) setSelectedCharacter(character)
+  }
 
   return <section className="win-rates-page" aria-label="キャラクター別の勝率">
     <div className="win-rates-view-selector" role="group" aria-label="勝率の表示">
@@ -204,14 +219,36 @@ export function WinRatesPage() {
       }}>{modes.map(mode => <option value={mode} key={mode}>{OPERATION_LABELS[mode]}</option>)}</select></label>
     </div>
 
-    <div id={`${contentId}-total`} className="win-rates-view-panel" hidden={view !== 'total'}>
+    <div id={`${contentId}-total`} className="win-rates-view-panel win-rates-total-layout" hidden={view !== 'total'}>
+      <StatisticsPanel title="ランク別勝率" headerContent={<div className="win-rates-chart-controls">
+        <label className="win-rates-character-select"><span>キャラクター</span>
+          <select aria-label="グラフのキャラクター" value={selectedCharacter.characterId} disabled={!comparison}
+            onChange={event => chooseCharacter(event.target.value)}>
+            {!chartCharacters.some(item => item.characterId === selectedCharacter.characterId) &&
+              <option value={selectedCharacter.characterId}>{selectedCharacter.name}</option>}
+            {chartCharacters.map(character => <option value={character.characterId} key={character.characterId}>{character.name}</option>)}
+          </select>
+        </label>
+        <label className="win-rates-character-select"><span>表示範囲</span>
+          <select aria-label="勝率の表示範囲" value={chartRange} onChange={event => setChartRange(event.target.value as CharacterLeagueChartRange)}>
+            {CHARACTER_LEAGUE_CHART_RANGES.map(range => <option value={range.id} key={range.id}>{range.label}</option>)}
+          </select>
+        </label>
+        <label className="win-rates-chart-value-toggle"><input type="checkbox" checked={showChartValues}
+          onChange={event => setShowChartValues(event.target.checked)} />数値を表示</label>
+      </div>}>
+        {(!currentComparison || currentComparison.status === 'loading') && <LoadState loading message="ランク別の勝率を読み込み中…" />}
+        {currentComparison?.status === 'error' && <LoadState message="勝率データを読み込めませんでした。" onRetry={retry} />}
+        {chartComparison && <CharacterLeagueWinRateChart comparison={chartComparison} showValues={showChartValues} range={chartRange} />}
+      </StatisticsPanel>
       <StatisticsPanel title="キャラ別勝率" headerContent={<span className="monthly-statistics-panel-summary">公式Total（%換算）</span>}>
         {(!currentComparison || currentComparison.status === 'loading') && <LoadState loading message="全リーグの勝率を読み込み中…" />}
         {currentComparison?.status === 'error' && <LoadState message="勝率データを読み込めませんでした。" onRetry={retry} />}
         {failedLeagues.length > 0 && <div className="win-rates-comparison-error" role="alert">
           <span>読み込めなかったリーグ：{failedLeagues.join('、')}</span><button type="button" className="win-rates-button" onClick={retry}>再読み込み</button>
         </div>}
-        {comparison && <LeagueTotalWinRateTable comparison={comparison} separateControls={selection.operationMode === 'separate'} sort={sort} onSortChange={setSort} />}
+        {comparison && <LeagueTotalWinRateTable comparison={comparison} separateControls={selection.operationMode === 'separate'} sort={sort} onSortChange={setSort}
+          selectedCharacterId={selectedCharacter.characterId} onCharacterChange={chooseCharacter} />}
       </StatisticsPanel>
     </div>
     <div id={`${contentId}-matchup`} className="win-rates-view-panel" hidden={view !== 'matchup'}>
@@ -230,6 +267,8 @@ export function WinRatesPage() {
         <dl><div><dt>対象</dt><dd>{populations.join('、') || '未確認'}</dd></div><div><dt>指標</dt><dd>{metrics.join('、') || '未確認'}</dd></div></dl>
         {view === 'total' ? <>
           <p>各リーグの保存済み公式Totalを10倍して百分率で表示しています（5.058 → 50.58%）。</p>
+          <p>ランク別勝率の表示範囲は0〜100%・40〜60%・45〜55%から選べます。操作タイプ別ではC／M共通の軸を使います。破線は50%の基準線です。表のキャラ名からもグラフのキャラを選べます。</p>
+          <p>拡大表示では棒の基点が範囲の下限になり、それより下の部分を省略します。範囲外の値には端のマークと矢印付きの実際の勝率を表示します。数値表示をオフにしても範囲外の値は表示します。</p>
           <p>「未登録」はその月・条件のデータがなく、「未掲載」はそのリーグにキャラが掲載されていない状態です。「-」「-.---」は公式の欠損表記です。「読込失敗」は取得または検証に失敗した状態です。</p>
           <p>「i」は公式サイトで試合数が少ないと示されたTotalです。掲載値とともに表示しています。</p>
           <p>元の勝数・試合数、ミラー戦・引き分け・切断の扱いなど、集計方法の詳細は未確認です。</p>

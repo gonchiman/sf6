@@ -55,6 +55,12 @@ const style = leagueSeriesStyle(series.league)
 
 リーグ定義を変更するときは、[配色テスト](../../src/lib/leagueSeriesColors.test.ts)で全リーグIDの網羅性、固定対応、並べ替え後の不変性、未知IDの分離、白背景とのコントラストを確認する。画面でも複数リーグを選び、グラフ・凡例・表の見本が一致することを確認する。リーグ用の画像出力は未実装。
 
+## ランク別勝率の操作タイプ系列
+
+- [操作タイプの棒グラフ共通定義](../../src/lib/controlTypeBarStyles.ts) が、`combined`・`classic`・`modern` の塗り・輪郭・斜線・ラベルを固定する。合算はグレー、クラシックは濃いグレー、モダンは薄いグレーに斜線と輪郭を付ける。
+- [ランク別勝率グラフ](../../src/components/CharacterLeagueWinRateChart.tsx) の棒と凡例は同じ定義を参照する。月、キャラクター、ランク順、縦棒・横棒の切替で操作タイプの対応を変えない。
+- 操作タイプ別ではC・Mと凡例を併記する。欠損には棒を描かず状態を表示し、0%とは区別する。
+
 ## 見本の再生成と確認
 
 プロジェクトルートで実行する。Node.jsの対応バージョンは [package.json](../../package.json) に従う。

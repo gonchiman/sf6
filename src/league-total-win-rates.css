@@ -52,6 +52,19 @@
 .win-rates-metadata-scroll { margin-top: 12px; max-height: 360px; }
 .win-rates-metadata-table { min-width: 680px; }
 .win-rates-metadata-table td { text-align: left; }
+.win-rates-total-layout { display: grid; gap: 16px; }
+.win-rates-chart-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; }
+.win-rates-character-select { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
+.win-rates-character-select select { min-width: 150px; max-width: 100%; min-height: 36px; padding: 6px 28px 6px 10px; border: 1px solid var(--border-strong); border-radius: 0; background: var(--surface); color: var(--text); }
+.win-rates-chart-value-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; color: var(--text-soft); font-size: 12px; cursor: pointer; }
+.win-rates-chart-value-toggle input { margin: 0; accent-color: var(--text); }
+.league-total-win-rate-table .league-total-character-heading { padding: 0; }
+.league-total-character-button { display: block; width: 100%; min-height: 42px; padding: 10px 12px; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.league-total-character-button:hover { background: var(--surface-hover); text-decoration: underline; }
+.league-total-character-button:focus-visible { outline: 2px solid var(--text); outline-offset: -3px; }
+.league-total-win-rate-table .is-selected-character > th,
+.league-total-win-rate-table .is-selected-character > td { background: var(--surface-soft); }
+.league-total-character-button[aria-pressed='true'] { box-shadow: inset 3px 0 var(--text); }
 
 @media (max-width: 640px) {
   .league-total-win-rate-table { --league-total-name-width: 112px; }
@@ -60,4 +73,11 @@
   .league-total-win-rate-scroll { scroll-padding-left: 114px; }
   .league-total-win-rate-scroll.is-separate { scroll-padding-left: 206px; }
   .win-rates-league-summary { flex: 1 1 130px; min-width: 0; }
+  .win-rates-chart-controls { width: 100%; justify-content: space-between; }
+  .win-rates-character-select { flex-wrap: wrap; }
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  .win-rates-character-select select { min-height: 44px; font-size: 16px; }
+  .win-rates-chart-value-toggle, .league-total-character-button { min-height: 44px; }
 }
