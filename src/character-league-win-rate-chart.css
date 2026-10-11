@@ -1,0 +1,22 @@
+.character-league-chart { min-width: 0; margin: 0; background: var(--surface); }
+.character-league-chart-range { margin: 0 0 12px; color: var(--text-soft); font-size: 12px; }
+.character-league-chart-legend { display: flex; flex-wrap: wrap; gap: 10px 22px; margin: 0 0 14px; padding: 0; list-style: none; color: var(--text-soft); font-size: 12px; }
+.character-league-chart-legend li { display: inline-flex; align-items: center; gap: 7px; }
+.character-league-chart-swatch { display: inline-block; width: 18px; height: 12px; border: 1px solid; }
+.character-league-chart-viewport { min-width: 0; }
+.character-league-chart-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.character-league-chart-scroll:focus-visible { outline-offset: -2px; }
+.character-league-chart-svg { display: block; max-width: none; flex: none; }
+.character-league-chart-axis-title { fill: var(--text-soft); font-size: 12px; font-weight: 600; }
+.character-league-chart-tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.character-league-chart-grid { stroke: var(--border); stroke-width: 1; }
+.character-league-chart-reference { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 5 4; }
+.character-league-chart-axis { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+.character-league-chart-axis-break { fill: none; stroke: var(--text-soft); stroke-width: 1.5; }
+.character-league-chart-outside { fill: var(--text-soft); }
+.character-league-chart-bar { shape-rendering: crispEdges; }
+.character-league-chart-zero { stroke-width: 2; }
+.character-league-chart-value { fill: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; }
+.character-league-chart-rank { fill: var(--text-soft); font-size: 11px; }
+.character-league-chart-control { fill: var(--text-muted); font-size: 10px; }
+.character-league-chart-empty { margin: 0; padding: 20px 0; color: var(--text-muted); }

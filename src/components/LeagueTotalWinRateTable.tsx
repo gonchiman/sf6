@@ -12,9 +12,11 @@ type Props = {
   separateControls: boolean
   sort: LeagueTotalWinRateSort
   onSortChange: (sort: LeagueTotalWinRateSort) => void
+  selectedCharacterId: string
+  onCharacterChange: (characterId: string) => void
 }
 
-export function LeagueTotalWinRateTable({ comparison, separateControls, sort, onSortChange }: Props) {
+export function LeagueTotalWinRateTable({ comparison, separateControls, sort, onSortChange, selectedCharacterId, onCharacterChange }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const rows = useMemo(() => sortLeagueTotalWinRateRows(comparison.rows, comparison.leagues, sort), [comparison, sort])
   useEffect(() => {
@@ -50,8 +52,12 @@ export function LeagueTotalWinRateTable({ comparison, separateControls, sort, on
           </th>
         })}
       </tr></thead>
-      <tbody>{rows.map(row => <tr key={row.key}>
-        <th scope="row" className="league-total-fixed-name">{row.name}</th>
+      <tbody>{rows.map(row => <tr key={row.key} className={row.characterId === selectedCharacterId ? 'is-selected-character' : undefined}>
+        <th scope="row" className="league-total-fixed-name league-total-character-heading">
+          <button type="button" className="league-total-character-button" aria-pressed={row.characterId === selectedCharacterId}
+            aria-label={`${row.name}${separateControls ? row.controlType === 'classic' ? '（クラシック）' : '（モダン）' : ''}のランク別勝率を表示`}
+            onClick={() => onCharacterChange(row.characterId)}>{row.name}</button>
+        </th>
         {separateControls && <td className="league-total-fixed-control">{row.controlType === 'classic' ? 'クラシック' : 'モダン'}</td>}
         {row.values.map((point, index) => <td key={comparison.leagues[index]} className="league-total-value">
           {formatHistoryValue(point)}
