@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { characterDisplayName, japaneseCharacterNames } from './characterNames.ts'
 import {
   characterMoveCategories, characterNumericValue, filterCharacterMoves,
   loadCharacterDataset, loadCharacterManifest, parseCharacterDataset,
@@ -10,6 +11,21 @@ import type { CharacterDataset, CharacterDescriptor, CharacterMove } from '../ty
 const capturedAt = '2026-10-08T03:00:00.000Z'
 const generatedAt = '2026-10-08T04:00:00.000Z'
 const descriptor: CharacterDescriptor = { id: 'ryu', name: 'リュウ', englishName: 'RYU', file: 'ryu.json' }
+
+test('Japanese display names join stable statistics IDs including official frame aliases', () => {
+  const names = japaneseCharacterNames([
+    descriptor,
+    { id: 'ehonda', name: 'エドモンド本田', englishName: 'E.HONDA', file: 'ehonda.json' },
+    { id: 'gouki_akuma', name: '豪鬼', englishName: 'AKUMA', file: 'gouki_akuma.json' },
+    { id: 'vega_mbison', name: 'ベガ', englishName: 'M. BISON', file: 'vega_mbison.json' },
+  ])
+  for (const [characterId, expected] of [['ryu', 'リュウ'], ['honda', 'エドモンド本田'], ['gouki', '豪鬼'], ['vega', 'ベガ'], ['gouki_akuma', '豪鬼']]) {
+    assert.equal(characterDisplayName({ characterId, name: 'Original' }, names), expected)
+  }
+  assert.equal(characterDisplayName({ characterId: 'ryu', name: 'RYU' }, null), 'RYU')
+  // An unknown ID retains its source name even when that text resembles a known name.
+  assert.equal(characterDisplayName({ characterId: 'new-character', name: 'RYU' }, names), 'RYU')
+})
 
 function move(overrides: Partial<CharacterMove> = {}): CharacterMove {
   return {

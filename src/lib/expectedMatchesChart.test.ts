@@ -25,12 +25,14 @@ test('scale adapts to changed model results without rounding observations', () =
   assert.deepEqual(axis, { maximum: 15000, ticks: [0, 5000, 10000, 15000] })
   assert.equal(expectedMatchValue(item), 12345.678)
   assert.equal(expectedMatchResultText(item), '12,345.7')
+  assert.equal(expectedMatchResultText(item, 0), '12,346')
 })
 
 test('real zero remains a numeric observation with a nonzero axis span', () => {
   const item = finite(0)
   assert.equal(expectedMatchValue(item), 0)
   assert.equal(expectedMatchResultText(item), '0')
+  assert.equal(expectedMatchResultText(item, 0), '0')
   assert.deepEqual(expectedMatchesAxis([item]), { maximum: 1, ticks: [0, 1] })
 })
 
@@ -44,6 +46,7 @@ test('infinite, missing, failed and invalid numeric results are labels without n
   for (const [item, label] of cases) {
     assert.equal(expectedMatchValue(item), null)
     assert.equal(expectedMatchResultText(item), label)
+    assert.equal(expectedMatchResultText(item, 0), label)
   }
   assert.deepEqual(expectedMatchesAxis(cases.map(([item]) => item)), { maximum: 1, ticks: [0, 1] })
 })

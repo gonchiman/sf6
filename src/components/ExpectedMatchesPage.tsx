@@ -1,4 +1,6 @@
-import { useId, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
+import { characterDisplayName, japaneseCharacterNames } from '../lib/characterNames'
+import { loadCharacterManifest } from '../lib/characters'
 import { useExpectedMatches } from '../hooks/useExpectedMatches'
 import { DEFAULT_EXPECTED_MATCH_MODEL, EXPECTED_MATCH_RANK_THRESHOLDS } from '../lib/expectedMatches'
 import { DEFAULT_EXPECTED_MATCH_SETTINGS, EXPECTED_MATCH_RULE_SOURCES } from '../lib/expectedMatchModel'
@@ -81,6 +83,22 @@ export function ExpectedMatchesPage() {
   const [platinumUpperStreakBonus, setPlatinumUpperStreakBonus] = useState(String(DEFAULT_EXPECTED_MATCH_SETTINGS.platinumUpperStreakBonus))
   const [diamondStreakBonus, setDiamondStreakBonus] = useState(String(DEFAULT_EXPECTED_MATCH_SETTINGS.diamondStreakBonus))
   const [selectedCharacterId, setSelectedCharacterId] = useState('ryu')
+  const [useJapaneseNames, setUseJapaneseNames] = useState(false)
+  const [showChartValues, setShowChartValues] = useState(true)
+  const [nameState, setNameState] = useState<{ status: 'loading' | 'error' } | { status: 'ready'; names: ReadonlyMap<string, string> }>({ status: 'loading' })
+  const [nameVersion, setNameVersion] = useState(0)
+
+  useEffect(() => {
+    let current = true
+    setNameState({ status: 'loading' })
+    void loadCharacterManifest().then(manifest => {
+      if (current) setNameState({ status: 'ready', names: japaneseCharacterNames(manifest.characters) })
+    }).catch(() => { if (current) setNameState({ status: 'error' }) })
+    return () => { current = false }
+  }, [nameVersion])
+
+  const displayNames = useJapaneseNames && nameState.status === 'ready' ? nameState.names : null
+  const displayName = (fighter: ExpectedMatchRow['character']['fighter']) => characterDisplayName(fighter, displayNames)
   const errors = {
     startLp: integerError(startLp, '開始LP', 0, DEFAULT_EXPECTED_MATCH_MODEL.targetLp),
     winLp: integerError(winLp, '勝利時のLP', 1, 1000),
@@ -191,12 +209,20 @@ export function ExpectedMatchesPage() {
     {data && calculation.status === 'idle' && <p className="expected-matches-status" role="status">未計算</p>}
 
     {data && completed && <>
-      <StatisticsPanel title="期待試合数" headerContent={<span className="monthly-statistics-panel-summary">
+      <StatisticsPanel title="期待試合数" headerContent={<div className="expected-matches-chart-controls">
+      <span className="monthly-statistics-panel-summary">
         {rows.length}キャラ · {integerFormat.format(completed.model.startLp)} → 25,000 LP · 基本 +{completed.model.winLp} / −{completed.model.lossLp} · 連勝{completed.model.useWinStreakBonus ? 'あり' : 'なし'}
-      </span>}>
+      </span>
+      <label className="expected-matches-color-toggle"><input type="checkbox" checked={showChartValues}
+        onChange={event => setShowChartValues(event.target.checked)} />数値を表示</label>
+      <label className="expected-matches-color-toggle"><input type="checkbox" checked={useJapaneseNames}
+        disabled={nameState.status !== 'ready'} onChange={event => setUseJapaneseNames(event.target.checked)} />キャラ名を日本語で表示</label>
+      </div>}>
         <div className="expected-matches-chart-content">
           {stale && <p className="expected-matches-status" role="status">条件変更あり・計算で反映</p>}
-          <ExpectedMatchesChart rows={rows} scaleRows={rows} />
+          {nameState.status === 'loading' && <p className="expected-matches-status" role="status">日本語名を読み込み中…</p>}
+          {nameState.status === 'error' && <DataLoadState message="日本語名を読み込めませんでした。" onRetry={() => setNameVersion(value => value + 1)} />}
+          <ExpectedMatchesChart rows={rows} scaleRows={rows} displayName={displayName} showValues={showChartValues} />
         </div>
       </StatisticsPanel>
       <div className="expected-matches-layout">
@@ -210,7 +236,7 @@ export function ExpectedMatchesPage() {
                 const selected = row.character.fighter.characterId === detailCharacterId
                 return <tr key={row.character.fighter.characterId} data-selected={selected || undefined} onClick={() => setSelectedCharacterId(row.character.fighter.characterId)}>
                   <th scope="row"><button type="button" className="expected-matches-row-button" aria-pressed={selected} aria-controls={selectedRow ? rankPanelId : undefined}
-                    onClick={() => setSelectedCharacterId(row.character.fighter.characterId)}>{row.character.fighter.name}</button></th>
+                    onClick={() => setSelectedCharacterId(row.character.fighter.characterId)}>{displayName(row.character.fighter)}</button></th>
                   <td>{expectedMatchResultText(row)}</td>
                 </tr>
               })}</tbody>
@@ -219,10 +245,10 @@ export function ExpectedMatchesPage() {
         </StatisticsPanel>
         {selectedRow && <StatisticsPanel title="ランク別Total" headerContent={<select className="expected-matches-detail-select" aria-label="詳細キャラ"
           value={detailCharacterId} onChange={event => setSelectedCharacterId(event.target.value)}>
-          {rows.map(row => <option key={row.character.fighter.characterId} value={row.character.fighter.characterId}>{row.character.fighter.name}</option>)}
+          {rows.map(row => <option key={row.character.fighter.characterId} value={row.character.fighter.characterId}>{displayName(row.character.fighter)}</option>)}
         </select>}>
-          <div className="expected-matches-ranks" id={rankPanelId} aria-label={`${selectedRow.character.fighter.name}のランク別Total`} aria-live="polite">
-          <div className="data-table-scroll" role="region" tabIndex={0} aria-label={`${selectedRow.character.fighter.name}のランク別Total・スクロール領域`}>
+          <div className="expected-matches-ranks" id={rankPanelId} aria-label={`${displayName(selectedRow.character.fighter)}のランク別Total`} aria-live="polite">
+          <div className="data-table-scroll" role="region" tabIndex={0} aria-label={`${displayName(selectedRow.character.fighter)}のランク別Total・スクロール領域`}>
             <table className="data-table expected-matches-rank-table">
               <caption className="win-rates-visually-hidden">計算に入力したランクごとの公式Totalの百分率換算とデータの状態</caption>
               <colgroup><col /><col className="expected-matches-rank-value-column" /><col className="expected-matches-rank-status-column" /></colgroup>
@@ -232,7 +258,7 @@ export function ExpectedMatchesPage() {
               </tr>)}</tbody>
             </table>
           </div>
-          <p className="expected-matches-rank-caption">{selectedRow.character.fighter.name} · {expectedMatchResultText(selectedRow)}{selectedRow.result.status === 'finite' ? ' 試合' : ''}</p>
+          <p className="expected-matches-rank-caption">{displayName(selectedRow.character.fighter)} · {expectedMatchResultText(selectedRow)}{selectedRow.result.status === 'finite' ? ' 試合' : ''}</p>
           </div>
         </StatisticsPanel>}
       </div>
@@ -256,7 +282,7 @@ export function ExpectedMatchesPage() {
         <p>PLATINUMは15,400 LPを境界に追加LPを切り替えます。★1〜2と★3〜5の勝利確率には、同じPLATINUMのTotalを使用します。</p>
         <p>昇格直後の1回の降格保護、対戦相手とのLP差、別キャラでのMASTER達成ボーナス、認定戦、プレイヤーの上達は含みません。</p>
         <p>対象月は勝率データの期間です。LP・連勝設定は月ごとのゲーム仕様へ自動で切り替えず、選んだ月の勝率に同じ設定を適用します。</p>
-        <p>期待試合数は小数第1位までの表示です。「∞」はこのモデルで有限の期待試合数を持たない状態、「計算不能」は数値の不安定さや計算量の上限により完了できない状態です。有限の結果だけを期待試合数の昇順に並べています。</p>
+        <p>期待試合数は、グラフでは整数に四捨五入し、表・内訳では小数第1位まで表示します。計算・並び順には丸める前の値を使用します。「∞」はこのモデルで有限の期待試合数を持たない状態、「計算不能」は数値の不安定さや計算量の上限により完了できない状態です。有限の結果だけを期待試合数の昇順に並べています。</p>
         <p>「欠損」は公式の「-」「-.---」、「未掲載」は対象ランクの表にキャラがない状態、「未登録」は保存データがない状態です。読込失敗も含め、欠けた値を0%や別ランクの値で補完しません。「少数試合」は元データの注意表示で、数値が掲載されている場合はその値を使用します。</p>
         <p>開始LPが25,000未満の場合、ROOKIEからDIAMONDまで7ランクすべての数値を必要とし、揃わないキャラは「データ不足」と表示します。開始LPが25,000なら期待試合数は0です。</p>
         <p>ランクの開始LPもモデル上の仮定です。ROOKIE 0、IRON 1,000、BRONZE 3,000、SILVER 5,000、GOLD 9,000、PLATINUM 13,000、DIAMOND 19,000として計算します。</p>

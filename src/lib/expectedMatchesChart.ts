@@ -1,6 +1,7 @@
 import type { ExpectedMatchRow } from '../types/expectedMatchData.ts'
 
 const numberFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 })
+const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 })
 
 /** Missing or failed results never become zero-height numeric observations. */
 export function expectedMatchValue(row: ExpectedMatchRow): number | null {
@@ -8,9 +9,9 @@ export function expectedMatchValue(row: ExpectedMatchRow): number | null {
     && row.result.expectedMatches >= 0 ? row.result.expectedMatches : null
 }
 
-export function expectedMatchResultText(row: ExpectedMatchRow): string {
+export function expectedMatchResultText(row: ExpectedMatchRow, fractionDigits: 0 | 1 = 1): string {
   const value = expectedMatchValue(row)
-  if (value !== null) return numberFormat.format(value)
+  if (value !== null) return (fractionDigits === 0 ? integerFormat : numberFormat).format(value)
   if (row.result.status === 'infinite') return '∞'
   if (row.result.status === 'missing-data') return 'データ不足'
   return '計算不能'
