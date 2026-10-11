@@ -2,8 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { expectedMatchResultText, expectedMatchesAxis, expectedMatchValue } from './expectedMatchesChart.ts'
 import type { ExpectedMatchRow } from '../types/expectedMatchData.ts'
-import { characterBarSeriesStyle } from './characterBarColors.ts'
-import { CHARACTER_SERIES_STYLES, CHARACTER_SERIES_ALIASES, UNKNOWN_CHARACTER_SERIES_STYLE } from './seriesColors.ts'
 
 function row(result: ExpectedMatchRow['result'], characterId = 'ryu'): ExpectedMatchRow {
   return { character: { fighter: { id: characterId, characterId, name: characterId.toUpperCase(), controlType: null }, ranks: [], available: true }, result }
@@ -56,35 +54,4 @@ test('axis arithmetic stays finite for very large finite results', () => {
   assert.equal(axis.ticks[0], 0)
   assert.ok(axis.ticks.every(Number.isFinite))
   assert.equal(axis.ticks.at(-1), axis.maximum)
-})
-
-test('muted and monochrome fills retain readable contrast and canonical character identities', () => {
-  const original = JSON.stringify(CHARACTER_SERIES_STYLES)
-  const contrastOnWhite = (color: string) => {
-    const channels = [1, 3, 5].map(start => {
-      const value = Number.parseInt(color.slice(start, start + 2), 16) / 255
-      return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4
-    })
-    return 1.05 / (.2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2] + .05)
-  }
-  assert.equal(characterBarSeriesStyle('ryu').color, '#87909b')
-  for (const [id, series] of Object.entries(CHARACTER_SERIES_STYLES).toReversed()) {
-    for (const colored of [true, false]) {
-      const result = characterBarSeriesStyle(id, colored)
-      assert.ok(contrastOnWhite(result.color) >= 3, `${id} contrast`)
-      assert.equal(result.marker, series.marker)
-      assert.equal(result.dashArray, series.dashArray)
-      assert.ok(Object.isFrozen(result))
-      if (!colored) assert.equal(result.color, '#8c8c8c')
-    }
-  }
-  for (const [alias, id] of Object.entries(CHARACTER_SERIES_ALIASES)) {
-    assert.deepEqual(characterBarSeriesStyle(alias), characterBarSeriesStyle(id))
-    assert.deepEqual(characterBarSeriesStyle(alias, false), characterBarSeriesStyle(id, false))
-  }
-  for (const id of ['unknown', '', 'toString', '__proto__', 'RYU']) {
-    assert.equal(characterBarSeriesStyle(id), UNKNOWN_CHARACTER_SERIES_STYLE)
-    assert.equal(characterBarSeriesStyle(id, false), UNKNOWN_CHARACTER_SERIES_STYLE)
-  }
-  assert.equal(JSON.stringify(CHARACTER_SERIES_STYLES), original)
 })

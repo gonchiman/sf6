@@ -34,13 +34,11 @@ const style = characterSeriesStyle(fighter.characterId)
 // 点はstyle.markerに対応する形で描き、キャラクター名を併記する。
 ```
 
-## 棒グラフの控えめな配色
+## 期待試合数の棒グラフ
 
-- [棒グラフ用の派生定義](../../src/lib/characterBarColors.ts) の `characterBarSeriesStyle(characterId, useCharacterColors)` は、共通のキャラ色をグレーに寄せた色と、元の線種・記号を返す。棒の大きな塗り面に使い、元の系列定義は変更しない。
-- 第2引数の初期値は `true`。`false` では既知キャラの色を同じグレーにする。別名IDは元の対応を引き継ぎ、未登録IDは専用のグレー・線種・記号を維持する。
-- 期待試合数ページの棒・凡例に適用する。グラフは表示専用で、棒からキャラを選択しない。「キャラ色を使う」の切り替えは表示用で、計算値や棒の高さ、比較するキャラを変えない。
-- 凡例は `CharacterSeriesKey` の `seriesStyle` に同じ派生定義を渡す。省略すると既存の配色を使う。線グラフや既存の配色見本SVGは元の系列定義を使う。
-- 変更時は `src/lib/expectedMatchesChart.test.ts` で全既知色の白背景とのコントラスト3:1以上、ID・別名の対応、無色時の統一、元の定義が変わらないことを確認し、画面でも棒と凡例の一致を確認する。
+- 期待試合数ページはキャラ色を使わず、全キャラの棒を同じグレーで表示する。塗りは [グラフのCSS](../../src/expected-matches-chart.css) の `.expected-matches-chart-bar` で管理する。
+- キャラ名を併記し、全キャラを表示する。棒からキャラを選択しない。
+- 線グラフや既存の配色見本SVGは、キャラクター系列の共通定義を使う。
 
 ## リーグ系列の固定仕様
 

@@ -1,26 +1,24 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { expectedMatchResultText, expectedMatchesAxis, expectedMatchValue } from '../lib/expectedMatchesChart'
-import { characterBarSeriesStyle } from '../lib/characterBarColors'
 import type { ExpectedMatchRow } from '../types/expectedMatchData'
 import '../expected-matches-chart.css'
 
 type Props = {
   rows: readonly ExpectedMatchRow[]
   scaleRows: readonly ExpectedMatchRow[]
-  useCharacterColors: boolean
 }
 
-const HEIGHT = 364
-const TOP = 48
-const BOTTOM = 302
-const RIGHT = 20
+const HEIGHT = 401
+const TOP = 36
+const BOTTOM = 298
+const RIGHT = 25
 const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 })
 
 function textWidth(text: string): number {
   return Array.from(text).reduce((width, character) => width + (character.charCodeAt(0) < 128 ? 7 : 12), 0)
 }
 
-export function ExpectedMatchesChart({ rows, scaleRows, useCharacterColors }: Props) {
+export function ExpectedMatchesChart({ rows, scaleRows }: Props) {
   const titleId = useId()
   const descriptionId = useId()
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -37,15 +35,16 @@ export function ExpectedMatchesChart({ rows, scaleRows, useCharacterColors }: Pr
     return () => observer.disconnect()
   }, [rows.length])
 
-  if (rows.length === 0) return <p className="expected-matches-chart-empty" role="status">比較するキャラを選択してください。</p>
+  if (rows.length === 0) return <p className="expected-matches-chart-empty" role="status">表示できるキャラがありません。</p>
 
   const tickTexts = axis.ticks.map(tick => integerFormat.format(tick))
   const left = Math.max(58, ...tickTexts.map(text => textWidth(text) + 16))
-  const bandWidth = Math.max(96, ...rows.map(row => Math.max(textWidth(row.character.fighter.name), textWidth(expectedMatchResultText(row))) + 24))
-  const width = Math.max(availableWidth, left + RIGHT + rows.length * bandWidth)
+  const minimumSlot = availableWidth < 590 ? 34 : 20
+  const width = Math.max(availableWidth, left + RIGHT + rows.length * minimumSlot)
   const right = width - RIGHT
   const slot = (right - left) / rows.length
-  const barWidth = Math.min(68, slot * .56)
+  const barWidth = Math.min(32, slot * .68)
+  const showValues = rows.every(row => textWidth(expectedMatchResultText(row)) + 12 <= slot)
   const y = (value: number) => BOTTOM - (value / axis.maximum) * (BOTTOM - TOP)
 
   return <figure className="expected-matches-chart" aria-labelledby={titleId}>
@@ -54,8 +53,8 @@ export function ExpectedMatchesChart({ rows, scaleRows, useCharacterColors }: Pr
         tabIndex={availableWidth < width ? 0 : undefined}>
         <svg className="expected-matches-chart-svg" width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`}
           role="group" aria-labelledby={`${titleId} ${descriptionId}`}>
-          <title id={titleId}>選択キャラクターのMASTERまでの期待試合数</title>
-          <desc id={descriptionId}>簡易モデルによる計算値。棒は0からの試合数を表し、数値がない結果には棒を描きません。</desc>
+          <title id={titleId}>全キャラクターのMASTERまでの期待試合数</title>
+          <desc id={descriptionId}>簡易モデルによる計算値。棒は0からの試合数を表し、数値がない結果には棒を描きません。数値は各キャラのツールチップと下の表で確認できます。</desc>
           <g aria-hidden="true">
             <text className="expected-matches-chart-axis-title" x={left} y="17">期待試合数（試合）</text>
             {axis.ticks.map((tick, index) => <g key={tick}>
@@ -67,7 +66,6 @@ export function ExpectedMatchesChart({ rows, scaleRows, useCharacterColors }: Pr
           </g>
           {rows.map((row, index) => {
             const { characterId, name } = row.character.fighter
-            const style = characterBarSeriesStyle(characterId, useCharacterColors)
             const value = expectedMatchValue(row)
             const valueText = expectedMatchResultText(row)
             const x = left + slot * (index + .5)
@@ -77,9 +75,13 @@ export function ExpectedMatchesChart({ rows, scaleRows, useCharacterColors }: Pr
               <title>{`${name}：${valueText}${value === null ? '' : '試合'}`}</title>
               <g aria-hidden="true">
                 {value !== null && <rect className="expected-matches-chart-bar" x={x - barWidth / 2} y={top}
-                  width={barWidth} height={BOTTOM - top} fill={style.color} />}
-                <text className="expected-matches-chart-value" x={x} y={top - 10} textAnchor="middle">{valueText}</text>
-                <text className="expected-matches-chart-name" x={x} y={BOTTOM + 23} textAnchor="middle">{name}</text>
+                  width={barWidth} height={BOTTOM - top} />}
+                {(showValues || value === null) && <text className="expected-matches-chart-value"
+                  x={showValues ? x : undefined} y={showValues ? top - 10 : undefined}
+                  transform={showValues ? undefined : `translate(${x},${BOTTOM - 10}) rotate(-60)`}
+                  textAnchor={showValues ? 'middle' : 'start'}>{valueText}</text>}
+                <text className="expected-matches-chart-name" transform={`translate(${x + 3},${BOTTOM + 17}) rotate(-60)`}
+                  textAnchor="end">{name}</text>
               </g>
             </g>
           })}

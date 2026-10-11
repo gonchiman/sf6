@@ -12,6 +12,15 @@ export interface ExpectedMatchSettings {
   targetLp: number
   winLp: number
   lossLp: number
+  startWinStreak: number
+  useRankRules: boolean
+  useWinStreakBonus: boolean
+  lowRankBonusStep: number
+  /** Additional LP from 10 wins, for PLATINUM stars 1–2. */
+  platinumStreakBonus: number
+  /** Additional LP from 10 wins, for PLATINUM stars 3–5. */
+  platinumUpperStreakBonus: number
+  diamondStreakBonus: number
 }
 
 export interface ExpectedMatchRankInput {

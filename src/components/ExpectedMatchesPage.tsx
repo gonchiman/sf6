@@ -1,8 +1,8 @@
 import { useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useExpectedMatches } from '../hooks/useExpectedMatches'
 import { DEFAULT_EXPECTED_MATCH_MODEL, EXPECTED_MATCH_RANK_THRESHOLDS } from '../lib/expectedMatches'
+import { DEFAULT_EXPECTED_MATCH_SETTINGS, EXPECTED_MATCH_RULE_SOURCES } from '../lib/expectedMatchModel'
 import { expectedMatchResultText } from '../lib/expectedMatchesChart'
-import { characterBarSeriesStyle } from '../lib/characterBarColors'
 import { timestampLabel } from '../lib/dateTime'
 import { formatTotalPercent } from '../lib/totalWinRates'
 import { WIN_RATE_EDITION_SOURCES, leagueLabel } from '../lib/winRateConditions'
@@ -10,8 +10,7 @@ import { monthLabel } from '../lib/winRateHistory'
 import type { ExpectedMatchRankInput, ExpectedMatchRow, ExpectedMatchSettings } from '../types/expectedMatchData'
 import { DataLoadState } from './DataLoadState'
 import { ExpectedMatchesChart } from './ExpectedMatchesChart'
-import { CharacterSeriesKey } from './CharacterSeriesKey'
-import { HistoryCharacterSelection } from './HistoryCharacterSelection'
+import { ExpectedMatchLpReference } from './ExpectedMatchLpReference'
 import { StatisticsPanel } from './StatisticsPanel'
 import '../table.css'
 import '../win-rates.css'
@@ -22,7 +21,6 @@ const START_PRESETS = EXPECTED_MATCH_RANK_THRESHOLDS.map(rank => ({
   value: rank.minimumLp, label: `${leagueLabel(rank.id)} · ${rank.minimumLp.toLocaleString('ja-JP')} LP`,
 }))
 const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 })
-const DEFAULT_COMPARISON_IDS = ['honda', 'luke', 'ryu', 'ken', 'cammy', 'jamie']
 
 function sortRows(rows: readonly ExpectedMatchRow[]): ExpectedMatchRow[] {
   return rows.map((row, index) => ({ row, index })).sort((left, right) => {
@@ -75,34 +73,42 @@ export function ExpectedMatchesPage() {
   const [customStart, setCustomStart] = useState(false)
   const [winLp, setWinLp] = useState(String(DEFAULT_EXPECTED_MATCH_MODEL.winLp))
   const [lossLp, setLossLp] = useState(String(DEFAULT_EXPECTED_MATCH_MODEL.lossLp))
+  const [startWinStreak, setStartWinStreak] = useState(String(DEFAULT_EXPECTED_MATCH_SETTINGS.startWinStreak))
+  const [useRankRules, setUseRankRules] = useState(DEFAULT_EXPECTED_MATCH_SETTINGS.useRankRules)
+  const [useWinStreakBonus, setUseWinStreakBonus] = useState(DEFAULT_EXPECTED_MATCH_SETTINGS.useWinStreakBonus)
+  const [lowRankBonusStep, setLowRankBonusStep] = useState(String(DEFAULT_EXPECTED_MATCH_SETTINGS.lowRankBonusStep))
+  const [platinumStreakBonus, setPlatinumStreakBonus] = useState(String(DEFAULT_EXPECTED_MATCH_SETTINGS.platinumStreakBonus))
+  const [platinumUpperStreakBonus, setPlatinumUpperStreakBonus] = useState(String(DEFAULT_EXPECTED_MATCH_SETTINGS.platinumUpperStreakBonus))
+  const [diamondStreakBonus, setDiamondStreakBonus] = useState(String(DEFAULT_EXPECTED_MATCH_SETTINGS.diamondStreakBonus))
   const [selectedCharacterId, setSelectedCharacterId] = useState('ryu')
-  const [comparedCharacterIds, setComparedCharacterIds] = useState(DEFAULT_COMPARISON_IDS)
-  const [useCharacterColors, setUseCharacterColors] = useState(true)
   const errors = {
     startLp: integerError(startLp, '開始LP', 0, DEFAULT_EXPECTED_MATCH_MODEL.targetLp),
     winLp: integerError(winLp, '勝利時のLP', 1, 1000),
     lossLp: integerError(lossLp, '敗北時の減少LP', 0, 1000),
+    startWinStreak: useWinStreakBonus ? integerError(startWinStreak, '開始時の連勝数', 0, 10) : null,
+    lowRankBonusStep: useWinStreakBonus ? integerError(lowRankBonusStep, '低ランクのボーナス増分', 0, 125) : null,
+    platinumStreakBonus: useWinStreakBonus ? integerError(platinumStreakBonus, 'PLATINUM ★1〜2の連勝ボーナス', 0, 1000) : null,
+    platinumUpperStreakBonus: useWinStreakBonus ? integerError(platinumUpperStreakBonus, 'PLATINUM ★3〜5の連勝ボーナス', 0, 1000) : null,
+    diamondStreakBonus: useWinStreakBonus ? integerError(diamondStreakBonus, 'DIAMONDの連勝ボーナス', 0, 1000) : null,
   }
-  const inputError = errors.startLp ?? errors.winLp ?? errors.lossLp
+  const inputError = Object.values(errors).find(error => error !== null) ?? null
   const model: ExpectedMatchSettings | null = inputError ? null : {
     startLp: Number(startLp), targetLp: DEFAULT_EXPECTED_MATCH_MODEL.targetLp,
     winLp: Number(winLp), lossLp: Number(lossLp),
+    useRankRules, useWinStreakBonus,
+    startWinStreak: useWinStreakBonus ? Number(startWinStreak) : 0,
+    lowRankBonusStep: useWinStreakBonus ? Number(lowRankBonusStep) : 0,
+    platinumStreakBonus: useWinStreakBonus ? Number(platinumStreakBonus) : 0,
+    platinumUpperStreakBonus: useWinStreakBonus ? Number(platinumUpperStreakBonus) : 0,
+    diamondStreakBonus: useWinStreakBonus ? Number(diamondStreakBonus) : 0,
   }
   const data = dataState.status === 'ready' ? dataState.data : null
   const completed = calculation.status === 'ready' ? calculation : null
   const rows = useMemo(() => completed ? sortRows(completed.rows) : [], [completed])
   const selectedRow = rows.find(row => row.character.fighter.characterId === selectedCharacterId) ?? rows[0]
   const detailCharacterId = selectedRow?.character.fighter.characterId ?? selectedCharacterId
-  const characters = useMemo(() => {
-    const fighters = data?.characters.map(character => character.fighter)
-      ?? (bootstrap.status === 'ready' ? bootstrap.roster : [])
-    return [...new Map(fighters.map(fighter => [fighter.characterId, fighter])).values()]
-  }, [data, bootstrap])
-  const validComparedIds = comparedCharacterIds.filter(id => characters.some(fighter => fighter.characterId === id))
-  const comparisonIds = validComparedIds.length ? validComparedIds : characters.slice(0, 1).map(fighter => fighter.characterId)
-  const comparisonRows = rows.filter(row => comparisonIds.includes(row.character.fighter.characterId))
   const running = calculation.status === 'running'
-  const stale = completed !== null && (!model || (['startLp', 'winLp', 'lossLp'] as const)
+  const stale = completed !== null && (!model || (Object.keys(DEFAULT_EXPECTED_MATCH_SETTINGS) as (keyof ExpectedMatchSettings)[])
     .some(key => model[key] !== completed.model[key]))
   const submittedModel = completed?.model ?? model
   const source = data?.datasets[0]?.source ?? WIN_RATE_EDITION_SOURCES.general
@@ -146,15 +152,30 @@ export function ExpectedMatchesPage() {
         </div>
       </div>
       <details className="win-rates-details expected-matches-settings">
-        <summary>LP設定（仮定）</summary>
+        <summary>LP・連勝設定（仮定）</summary>
+        <div className="expected-matches-rule-toggles">
+          <label className="expected-matches-color-toggle"><input type="checkbox" checked={useRankRules} onChange={event => setUseRankRules(event.target.checked)} />ランク別の敗北LP・下限</label>
+          <label className="expected-matches-color-toggle"><input type="checkbox" checked={useWinStreakBonus} onChange={event => setUseWinStreakBonus(event.target.checked)} />連勝ボーナス</label>
+        </div>
         <div className="win-rates-filters">
-          <label><span>勝利時のLP</span><input className="expected-matches-number" type="number" inputMode="numeric" min={1} max={1000} step={1} value={winLp}
+          <label><span>勝利時の基本LP</span><input className="expected-matches-number" type="number" inputMode="numeric" min={1} max={1000} step={1} value={winLp}
             aria-invalid={Boolean(errors.winLp)} aria-describedby={errors.winLp ? inputErrorId : undefined} onChange={event => setWinLp(event.target.value)} /></label>
           <label><span>敗北時の減少LP</span><input className="expected-matches-number" type="number" inputMode="numeric" min={0} max={1000} step={1} value={lossLp}
             aria-invalid={Boolean(errors.lossLp)} aria-describedby={errors.lossLp ? inputErrorId : undefined} onChange={event => setLossLp(event.target.value)} /></label>
+          <label><span>開始時の連勝数（10以上は10）</span><input className="expected-matches-number" type="number" inputMode="numeric" min={0} max={10} step={1} value={startWinStreak} disabled={!useWinStreakBonus}
+            aria-invalid={Boolean(errors.startWinStreak)} aria-describedby={errors.startWinStreak ? inputErrorId : undefined} onChange={event => setStartWinStreak(event.target.value)} /></label>
+          <label><span>ROOKIE〜GOLD・追加LPの増分</span><input className="expected-matches-number" type="number" inputMode="numeric" min={0} max={125} step={1} value={lowRankBonusStep} disabled={!useWinStreakBonus}
+            aria-invalid={Boolean(errors.lowRankBonusStep)} aria-describedby={errors.lowRankBonusStep ? inputErrorId : undefined} onChange={event => setLowRankBonusStep(event.target.value)} /></label>
+          <label><span>PLATINUM ★1〜2・10連勝〜の追加LP</span><input className="expected-matches-number" type="number" inputMode="numeric" min={0} max={1000} step={1} value={platinumStreakBonus} disabled={!useWinStreakBonus}
+            aria-invalid={Boolean(errors.platinumStreakBonus)} aria-describedby={errors.platinumStreakBonus ? inputErrorId : undefined} onChange={event => setPlatinumStreakBonus(event.target.value)} /></label>
+          <label><span>PLATINUM ★3〜5・10連勝〜の追加LP</span><input className="expected-matches-number" type="number" inputMode="numeric" min={0} max={1000} step={1} value={platinumUpperStreakBonus} disabled={!useWinStreakBonus}
+            aria-invalid={Boolean(errors.platinumUpperStreakBonus)} aria-describedby={errors.platinumUpperStreakBonus ? inputErrorId : undefined} onChange={event => setPlatinumUpperStreakBonus(event.target.value)} /></label>
+          <label><span>DIAMOND・10連勝〜の追加LP</span><input className="expected-matches-number" type="number" inputMode="numeric" min={0} max={1000} step={1} value={diamondStreakBonus} disabled={!useWinStreakBonus}
+            aria-invalid={Boolean(errors.diamondStreakBonus)} aria-describedby={errors.diamondStreakBonus ? inputErrorId : undefined} onChange={event => setDiamondStreakBonus(event.target.value)} /></label>
         </div>
-        <p className="expected-matches-settings-note">初期値の +60 / −40 LPは計算例の仮定です。実際のランクマッチのLPルールを再現する設定ではありません。</p>
+        <p className="expected-matches-settings-note">低ランクは3連勝で増分1回分、以後1勝ごとに増え、10連勝以降は8回分。高ランクの初期値は参考資料に基づく暫定値です。高ランクの追加LPは勝利後の連勝数が10以上のときに加え、PLATINUM ★3の境界は15,400 LPとして扱います。</p>
       </details>
+      <ExpectedMatchLpReference settings={model} calculatedSettings={completed?.model ?? null} stale={stale} />
       {inputError && <p id={inputErrorId} className="expected-matches-input-error" role="alert">{inputError}</p>}
     </form>
     </StatisticsPanel>
@@ -170,17 +191,12 @@ export function ExpectedMatchesPage() {
     {data && calculation.status === 'idle' && <p className="expected-matches-status" role="status">未計算</p>}
 
     {data && completed && <>
-      <StatisticsPanel title="期待試合数" headerContent={<><span className="monthly-statistics-panel-summary">
-        {comparisonRows.length}キャラ · {integerFormat.format(completed.model.startLp)} → 25,000 LP · +{completed.model.winLp} / −{completed.model.lossLp}
-      </span><label className="expected-matches-color-toggle">
-        <input type="checkbox" checked={useCharacterColors} onChange={event => setUseCharacterColors(event.target.checked)} />
-        キャラ色を使う
-      </label></>}>
+      <StatisticsPanel title="期待試合数" headerContent={<span className="monthly-statistics-panel-summary">
+        {rows.length}キャラ · {integerFormat.format(completed.model.startLp)} → 25,000 LP · 基本 +{completed.model.winLp} / −{completed.model.lossLp} · 連勝{completed.model.useWinStreakBonus ? 'あり' : 'なし'}
+      </span>}>
         <div className="expected-matches-chart-content">
           {stale && <p className="expected-matches-status" role="status">条件変更あり・計算で反映</p>}
-          <HistoryCharacterSelection characters={characters} selectedIds={comparisonIds} onChange={setComparedCharacterIds}
-            renderKey={id => <CharacterSeriesKey characterId={id} seriesStyle={characterBarSeriesStyle(id, useCharacterColors)} />} />
-          <ExpectedMatchesChart rows={comparisonRows} scaleRows={rows} useCharacterColors={useCharacterColors} />
+          <ExpectedMatchesChart rows={rows} scaleRows={rows} />
         </div>
       </StatisticsPanel>
       <div className="expected-matches-layout">
@@ -233,13 +249,20 @@ export function ExpectedMatchesPage() {
       <details className="win-rates-details expected-matches-help"><summary>計算の前提・データの範囲</summary><div className="win-rates-details-content">
         <p>この表は、保存されたランク別の公式Totalを各試合の勝率と仮定した簡易モデルの計算値です。実際の昇格所要試合数や初心者個人の勝率を予測するものではありません。</p>
         <p>公式Totalを10倍して百分率で表示し、100で割った値を勝利確率に使用します（5.058 → 50.58% → 0.5058）。元の勝数・試合数、ゲーム単位かセット単位か、Totalの集計方法、ミラー戦・引き分け・切断の扱い、パッチ番号は未確認です。</p>
-        <p>勝利で指定LPを加え、敗北で指定LPを引きます。LPの下限は0、25,000 LP以上で終了とし、現在のLPが属するランクの勝利確率を使用します。連勝ボーナス、降格保護、対戦相手のLP、プレイヤーの上達は含みません。</p>
+        <p>LPと連勝数を状態にした吸収マルコフ連鎖の期待吸収時間を、連立一次方程式で求めます。乱数によるシミュレーションや平均LP増分での割り算は使いません。25,000 LP以上で終了し、各試合の直前のLPが属するランクの勝利確率・ボーナスを使用します。勝利確率は連勝数や個人の履歴によらず、そのランクの掲載値に固定します。</p>
+        <p>勝利で基本LPと設定した連勝ボーナスを加え、連勝数を1増やします。敗北で指定LPを引き、連勝数を0に戻します。連勝数はランクをまたいでも引き継ぎ、10以上は同じボーナスなので10として扱います。</p>
+        <p>「ランク別の敗北LP・下限」が有効な場合、ROOKIEの敗北LP減少を0とし、IRON〜GOLDではそのリーグの開始LPを下限にします。PLATINUM・DIAMONDからの降格は認め、GOLDの開始LPを下限にします。無効なら全ランクで指定の敗北LPを引き、下限は0です。</p>
+        <p>基本LPの初期値は+50 / −40、ROOKIE〜GOLDの連勝ボーナスは3連勝で+50、以後+50ずつ増えて10連勝以降+400の仮定です。PLATINUM ★1〜2は+500、★3〜5とDIAMONDは+1,000を10連勝以降の追加LPの初期値にします。これらは参考資料に基づく暫定値で、任意の値に変更できます。現行ゲームの確定値として扱いません。<a href={EXPECTED_MATCH_RULE_SOURCES.bonusAssumptions} target="_blank" rel="noreferrer">数値の参考資料</a>・<a href={EXPECTED_MATCH_RULE_SOURCES.rankRules} target="_blank" rel="noreferrer">ROOKIE・リーグ降格の公式資料</a></p>
+        <p>PLATINUMは15,400 LPを境界に追加LPを切り替えます。★1〜2と★3〜5の勝利確率には、同じPLATINUMのTotalを使用します。</p>
+        <p>昇格直後の1回の降格保護、対戦相手とのLP差、別キャラでのMASTER達成ボーナス、認定戦、プレイヤーの上達は含みません。</p>
+        <p>対象月は勝率データの期間です。LP・連勝設定は月ごとのゲーム仕様へ自動で切り替えず、選んだ月の勝率に同じ設定を適用します。</p>
         <p>期待試合数は小数第1位までの表示です。「∞」はこのモデルで有限の期待試合数を持たない状態、「計算不能」は数値の不安定さや計算量の上限により完了できない状態です。有限の結果だけを期待試合数の昇順に並べています。</p>
         <p>「欠損」は公式の「-」「-.---」、「未掲載」は対象ランクの表にキャラがない状態、「未登録」は保存データがない状態です。読込失敗も含め、欠けた値を0%や別ランクの値で補完しません。「少数試合」は元データの注意表示で、数値が掲載されている場合はその値を使用します。</p>
         <p>開始LPが25,000未満の場合、ROOKIEからDIAMONDまで7ランクすべての数値を必要とし、揃わないキャラは「データ不足」と表示します。開始LPが25,000なら期待試合数は0です。</p>
         <p>ランクの開始LPもモデル上の仮定です。ROOKIE 0、IRON 1,000、BRONZE 3,000、SILVER 5,000、GOLD 9,000、PLATINUM 13,000、DIAMOND 19,000として計算します。</p>
         <dl>
-          <div><dt>計算条件</dt><dd>{submittedModel ? `開始 ${integerFormat.format(submittedModel.startLp)} LP・目標 ${integerFormat.format(submittedModel.targetLp)} LP・勝利 +${submittedModel.winLp} LP・敗北 −${submittedModel.lossLp} LP` : '未確定'}</dd></div>
+          <div><dt>計算条件</dt><dd>{submittedModel ? `開始 ${integerFormat.format(submittedModel.startLp)} LP・目標 ${integerFormat.format(submittedModel.targetLp)} LP・基本勝利 +${submittedModel.winLp} LP・敗北 −${submittedModel.lossLp} LP・ランク下限 ${submittedModel.useRankRules ? 'あり' : 'なし'}・連勝ボーナス ${submittedModel.useWinStreakBonus ? 'あり' : 'なし'}` : '未確定'}</dd></div>
+          {submittedModel?.useWinStreakBonus && <div><dt>連勝設定</dt><dd>開始{ submittedModel.startWinStreak }連勝・ROOKIE〜GOLDの増分 +{submittedModel.lowRankBonusStep} LP・PLATINUM ★1〜2 +{submittedModel.platinumStreakBonus} LP・★3〜5 +{submittedModel.platinumUpperStreakBonus} LP・DIAMOND +{submittedModel.diamondStreakBonus} LP</dd></div>}
           <div><dt>データ形式</dt><dd>{[...new Set(data.datasets.map(dataset => `Version ${dataset.schemaVersion}`))].join('、') || '—'}</dd></div>
         </dl>
         <div className="data-table-scroll" role="region" tabIndex={0} aria-label="ランク別のデータ取得情報・スクロール領域">
