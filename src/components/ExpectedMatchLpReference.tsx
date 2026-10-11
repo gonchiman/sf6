@@ -4,6 +4,7 @@ import { EXPECTED_MATCH_RANK_THRESHOLDS } from '../lib/expectedMatches'
 import { EXPECTED_MATCH_RULE_REFERENCE } from '../lib/expectedMatchRuleReference'
 import { leagueLabel } from '../lib/winRateConditions'
 import type { ExpectedMatchSettings } from '../types/expectedMatchData'
+import { ExpectedMatchLpRangeChart } from './ExpectedMatchLpRangeChart'
 
 type Props = {
   settings: ExpectedMatchSettings | null
@@ -22,16 +23,19 @@ function ModelRules({ settings, label }: { settings: ExpectedMatchSettings; labe
   const config = createExpectedMatchConfig(settings, referenceRanks)
   const platinumSplit = config.ranks.some(rank => rank.id === 'PLATINUM_STAR_3_5')
   return <>
+    <ExpectedMatchLpRangeChart config={config} label={label} />
     <div className="data-table-scroll" role="region" tabIndex={0} aria-label={`${label}のLPルール・スクロール領域`}>
       <table className="data-table expected-matches-lp-model-table">
-        <caption className="win-rates-visually-hidden">{label}のランク別LPルール</caption>
-        <thead><tr><th scope="col">ランク</th><th scope="col">基本勝利LP</th><th scope="col">敗北LP</th><th scope="col">連勝の追加LP</th><th scope="col">敗北時の下限LP</th></tr></thead>
+        <caption className="win-rates-visually-hidden">{label}のランク別LP範囲とLPルール</caption>
+        <thead><tr><th scope="col">ランク</th><th scope="col">LP範囲</th><th scope="col">基本勝利LP</th><th scope="col">敗北LP</th><th scope="col">連勝の追加LP</th><th scope="col">敗北時の下限LP</th></tr></thead>
         <tbody>{config.ranks.map((rank, index) => {
           const bonuses = rank.winStreakBonuses
           const lowRank = index < 5
+          const maximumLp = (config.ranks[index + 1]?.minimumLp ?? config.targetLp) - 1
           return <tr key={rank.id}>
             <th scope="row">{rank.id === 'PLATINUM_STAR_3_5' ? 'PLATINUM ★3〜5'
               : rank.id === 'PLATINUM' && platinumSplit ? 'PLATINUM ★1〜2' : leagueLabel(rank.id)}</th>
+            <td className="expected-matches-lp-range">{format.format(rank.minimumLp)}〜{format.format(maximumLp)}</td>
             <td>{plus(config.winLp)}</td>
             <td>{(rank.lossLp ?? config.lossLp) === 0 ? '0' : `−${format.format(rank.lossLp ?? config.lossLp)}`}</td>
             {(!lowRank || index === 0) && <td rowSpan={lowRank ? 5 : undefined} className="expected-matches-lp-bonus-cell">
@@ -41,7 +45,13 @@ function ModelRules({ settings, label }: { settings: ExpectedMatchSettings; labe
             </td>}
             <td>{format.format(rank.lossFloorLp ?? 0)}</td>
           </tr>
-        })}</tbody>
+        })}
+          <tr>
+            <th scope="row">{leagueLabel('MASTER')}</th>
+            <td className="expected-matches-lp-range">{format.format(config.targetLp)}で到達</td>
+            <td>—</td><td>—</td><td>—</td><td>—</td>
+          </tr>
+        </tbody>
       </table>
     </div>
     <dl className="expected-matches-lp-model-summary">
