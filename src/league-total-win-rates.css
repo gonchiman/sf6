@@ -1,0 +1,63 @@
+.league-total-win-rate-scroll {
+  max-height: min(70vh, 720px);
+  scroll-padding-top: 56px;
+  scroll-padding-left: 142px;
+}
+.league-total-win-rate-scroll.is-separate { scroll-padding-left: 252px; }
+
+.league-total-win-rate-table {
+  width: 100%;
+  min-width: calc(var(--league-total-name-width) + var(--league-total-control-width) + var(--league-total-value-width) * var(--league-total-league-count));
+  table-layout: fixed;
+  --league-total-name-width: 140px;
+  --league-total-control-width: 0px;
+  --league-total-value-width: 98px;
+}
+.league-total-win-rate-table.is-separate { --league-total-control-width: 110px; }
+
+.league-total-name-column { width: var(--league-total-name-width); }
+.league-total-control-column { width: 110px; }
+.league-total-win-rate-table th, .league-total-win-rate-table td { min-width: var(--league-total-value-width); }
+.league-total-win-rate-table thead { font-size: 12px; }
+.league-total-win-rate-table .league-total-sort-heading { padding: 0; }
+.league-total-win-rate-table .league-total-fixed-name {
+  position: sticky;
+  left: 0;
+  width: var(--league-total-name-width);
+  min-width: var(--league-total-name-width);
+  max-width: var(--league-total-name-width);
+  overflow-wrap: anywhere;
+  z-index: 1;
+}
+.league-total-win-rate-table .league-total-fixed-control {
+  position: sticky;
+  left: var(--league-total-name-width);
+  width: 110px;
+  min-width: 110px;
+  z-index: 1;
+  text-align: left;
+}
+.league-total-win-rate-table thead .league-total-fixed-name,
+.league-total-win-rate-table thead .league-total-fixed-control { z-index: 3; }
+.league-total-win-rate-table .total-win-rate-sort-button { min-height: 48px; }
+.league-total-win-rate-table th[aria-sort='ascending'] .total-win-rate-sort-button,
+.league-total-win-rate-table th[aria-sort='descending'] .total-win-rate-sort-button,
+.league-total-win-rate-table th[aria-sort='other'] .total-win-rate-sort-button { font-weight: 700; }
+.league-total-value { white-space: nowrap; }
+.league-total-win-rate-table .league-total-empty { text-align: left; white-space: normal; }
+.win-rates-league-summary { min-width: 160px; display: grid; gap: 6px; align-self: stretch; align-content: start; }
+.win-rates-league-summary span { color: var(--text-soft); font-size: 12px; }
+.win-rates-league-summary strong { min-height: 36px; display: flex; align-items: center; font-size: 14px; font-weight: 500; }
+.win-rates-comparison-error { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 12px; font-size: 12px; }
+.win-rates-metadata-scroll { margin-top: 12px; max-height: 360px; }
+.win-rates-metadata-table { min-width: 680px; }
+.win-rates-metadata-table td { text-align: left; }
+
+@media (max-width: 640px) {
+  .league-total-win-rate-table { --league-total-name-width: 112px; }
+  .league-total-win-rate-table.is-separate { --league-total-control-width: 92px; }
+  .league-total-control-column, .league-total-win-rate-table .league-total-fixed-control { width: 92px; min-width: 92px; }
+  .league-total-win-rate-scroll { scroll-padding-left: 114px; }
+  .league-total-win-rate-scroll.is-separate { scroll-padding-left: 206px; }
+  .win-rates-league-summary { flex: 1 1 130px; min-width: 0; }
+}
