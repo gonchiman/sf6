@@ -3,6 +3,7 @@ import { controlTypeBarStyle } from '../lib/controlTypeBarStyles'
 import { characterLeagueChartAxis, characterLeagueChartValue, type CharacterLeagueChartRange } from '../lib/characterLeagueChartAxis'
 import { leagueLabel } from '../lib/winRateConditions'
 import { formatHistoryValue } from '../lib/winRateHistory'
+import { chartTextWidth as textWidth } from '../lib/chartTextWidth'
 import type { CharacterLeagueWinRates } from '../types/characterLeagueWinRates'
 import type { WinRateHistoryPoint } from '../types/winRateHistory'
 import '../character-league-win-rate-chart.css'
@@ -11,10 +12,6 @@ type Props = { comparison: CharacterLeagueWinRates; showValues: boolean; range: 
 
 function pointLabel(point: WinRateHistoryPoint | undefined): string {
   return point ? formatHistoryValue(point) : '未登録'
-}
-
-function textWidth(text: string): number {
-  return Array.from(text).reduce((width, character) => width + (character.charCodeAt(0) < 128 ? 7 : 12), 0)
 }
 
 function RankLabel({ league, x, y, anchor = 'middle' }: {

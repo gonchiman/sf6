@@ -54,6 +54,7 @@
 .win-rates-metadata-table td { text-align: left; }
 .win-rates-total-layout { display: grid; gap: 16px; }
 .win-rates-chart-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; }
+.win-rates-character-comparison-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 16px; }
 .win-rates-character-select { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
 .win-rates-character-select select { min-width: 150px; max-width: 100%; min-height: 36px; padding: 6px 28px 6px 10px; border: 1px solid var(--border-strong); border-radius: 0; background: var(--surface); color: var(--text); }
 .win-rates-chart-value-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; color: var(--text-soft); font-size: 12px; cursor: pointer; }
