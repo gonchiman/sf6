@@ -36,6 +36,13 @@ test('期待試合数の直接URLを独立したページとして読み取る',
   assert.deepEqual(parseHashRoute('#expected-matches/unknown'), { page: 'win-rates' })
 })
 
+test('新規参入観測の直接URLを独立したページとして読み取る', () => {
+  assert.deepEqual(parseHashRoute('#new-account-observation'), { page: 'new-account-observation' })
+  assert.deepEqual(parseHashRoute('#new-account-observation/'), { page: 'new-account-observation' })
+  assert.deepEqual(parseHashRoute('#new-account-observation/unknown'), { page: 'win-rates' })
+  assert.deepEqual(parseHashRoute('#new-account-observation-invalid'), { page: 'win-rates' })
+})
+
 test('キャラ分類の直接URLを独立したページとして読み取る', () => {
   assert.deepEqual(parseHashRoute('#character-traits'), { page: 'character-traits' })
   assert.deepEqual(parseHashRoute('#character-traits/'), { page: 'character-traits' })

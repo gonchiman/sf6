@@ -326,6 +326,22 @@ npm run validate:data
 生成処理は全ソースを検証してから出力する。検証処理はキャラ順・全判定・技ID・原文を再計算した結果と照合する。
 元データや規則だけを更新して分類JSONを更新し忘れた場合は、ビルドを停止する。
 
+## 新規参入観測
+
+`#new-account-observation` に条件選択・観測結果・取得詳細を表示する。グラフは含めない。
+指標は実際の参入人数ではなく、通算CFN ID履歴で初めて確認したアカウント数。
+初期データは2026年10月13日の2回の部分取得記録で、基準走査中のため新規数は算出前。
+初回・部分取得・失敗・欠測を0件で補完しない。
+
+通常画面で保存した取得記録を非公開SQLiteへ取り込み、IDを含まない集計JSONを事前生成する。
+取得記録の作成、取り込み、再開、公開は [新規参入観測の仕様と更新手順](docs/player-observations/README.md) を参照。
+直接JSON取得や毎日の全件自動取得は設定していない。
+
+```sh
+npm run test:player-observations
+npm run validate:player-observations
+```
+
 ## GitHub Pages
 
 Viteの `base` は `/sf6/`。配信を開始するときはリポジトリのSettings → PagesでSourceをGitHub Actionsに設定する。
