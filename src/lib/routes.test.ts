@@ -30,6 +30,13 @@ test('操作タイプ比率の直接URLを独立したページとして読み�
   assert.deepEqual(parseHashRoute('#control-type-ratio/unknown'), { page: 'win-rates' })
 })
 
+test('ランク分布の直接URLを独立したページとして読み取る', () => {
+  assert.deepEqual(parseHashRoute('#rank-distribution'), { page: 'rank-distribution' })
+  assert.deepEqual(parseHashRoute('#rank-distribution/'), { page: 'rank-distribution' })
+  assert.deepEqual(parseHashRoute('#rank-distribution/unknown'), { page: 'win-rates' })
+  assert.deepEqual(parseHashRoute('#rank-distribution-invalid'), { page: 'win-rates' })
+})
+
 test('期待試合数の直接URLを独立したページとして読み取る', () => {
   assert.deepEqual(parseHashRoute('#expected-matches'), { page: 'expected-matches' })
   assert.deepEqual(parseHashRoute('#expected-matches/'), { page: 'expected-matches' })

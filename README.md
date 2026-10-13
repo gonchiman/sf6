@@ -252,6 +252,37 @@ npm run build
 選択した全入力を検証してから作業フォルダーへ出力し、全保存データの検証後に反映する。
 同じ月・リーグだけを置き換え、他の条件は保持する。更新中の失敗時は既存データへ戻し、同時取り込みはロックで拒否する。
 
+## ランク分布
+
+`#rank-distribution` で、最大LPのランキング掲載アカウントの分布を表示する。
+条件選択とテーブルを縦に配置し、ROOKIE〜MASTERの8帯と、ROOKIE〜DIAMONDの★別内訳を切り替える。
+割合と「このランク以上」の累積割合は、どちらも同じ取得条件の全掲載アカウント数を分母にする。
+★別内訳をそのランク内だけで100%へ換算しない。総数0では件数0、割合は「—」で表示する。
+共通パネル、テーブルの外枠・縦横罫線、読込・再試行の表示を再利用している。
+
+取得元は [Buckler リーグランキング](https://www.streetfighter.com/6/buckler/ja-jp/ranking/league)。
+リーグ「総合」・キャラクター「最大LP」・全地域・全プラットフォーム・全ユーザーを対象とする。
+実人数や直近のランクマッチの活動人口とは区別し、同じ人の複数プラットフォーム・アカウントは統合しない。
+個別リーグと最大LPの同時フィルターは使用しない。
+
+2026年10月13日の取得検証では、先頭・最終ページともメンテナンス表示となり、完全集計を取得できなかった。
+初期一覧は `public/data/rank-distribution/index.json` の空データセットと取得失敗の確認記録のみで、仮の人口データは配信していない。
+取得状況の確認日時は保存した記録であり、ページ表示時に公式サイトの稼働状況を自動確認しているわけではない。
+取得日が複数登録されている場合にのみ選択欄を表示する。過去の日付は保存済みデータに限る。
+
+最大LP一覧のページ位置でランク境界を探す処理、専用JSONの検証・取り込みを用意している。
+実際の取得アダプター、深いページの読取、LPとランクIDの対応、アカウント単位、未ランクの掲載状況は復旧後の確認が必要。
+認証や個人のユーザーコードを公開JSONへ含めず、アプリは検証済みの集計JSONだけを読み込む。
+取得中の総数変動や境界の不一致、欠けた区分を検出した場合は公開値を更新しない。
+検証済みデータを追加する手順と形式は [ランク分布の仕様](docs/rank-distribution/README.md) を参照する。
+
+```sh
+npm run data:import-rank-distribution -- "C:/path/to/verified-rank-distribution.json"
+npm run validate:data
+npm test
+npm run build
+```
+
 ## キャラ・技データ
 
 出典は [公式フレームデータ](https://www.streetfighter.com/6/ja-jp/character/ryu/frame)。
@@ -342,10 +373,19 @@ npm run test:player-observations
 npm run validate:player-observations
 ```
 
+## Bucklerの認証・閲覧検証
+
+Bucklerの手動ログイン後、同じ実行内の認証再利用を調べるローカル検証ツールは
+[認証・閲覧検証の手順](docs/rank-distribution/auth-probe.md)を参照。
+`npm run data:probe-buckler-auth`で起動する。メンテナンス中は検証を停止し、状態だけ記録する。
+別起動・自動ログイン・週次実行・GitHub Actionsの認証は未検証。
+
 ## GitHub Pages
 
 Viteの `base` は `/sf6/`。配信を開始するときはリポジトリのSettings → PagesでSourceをGitHub Actionsに設定する。
-Actionsはpull requestでビルドを確認し、mainへのpushまたはmain上での手動実行で `dist/` を配信する。
+Actionsはpull requestとmainへのpushでテスト・ビルドを確認する。
+現在はローカル利用を前提とし、自動公開は行わない。
+公開するときだけ、main上の手動実行で「GitHub Pagesへ公開する」を選択して `dist/` を配信する。
 
 設定方法は [Viteの配信ガイド](https://vite.dev/guide/static-deploy.html#github-pages) を参照。
 ローカルで初期構成を保存しただけでは公開されない。
