@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { expectedMatchResultText, expectedMatchesAxis, expectedMatchValue } from '../lib/expectedMatchesChart'
 import type { ExpectedMatchRow } from '../types/expectedMatchData'
+import { chartTextWidth as textWidth } from '../lib/chartTextWidth'
 import '../expected-matches-chart.css'
 
 type Props = {
@@ -13,10 +14,6 @@ type Props = {
 const PLOT_HEIGHT = 262
 const RIGHT = 25
 const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 })
-
-function textWidth(text: string): number {
-  return Array.from(text).reduce((width, character) => width + (character.charCodeAt(0) < 128 ? 7 : 12), 0)
-}
 
 export function ExpectedMatchesChart({ rows, scaleRows, displayName, showValues }: Props) {
   const titleId = useId()

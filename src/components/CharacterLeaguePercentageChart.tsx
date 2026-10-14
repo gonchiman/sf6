@@ -2,6 +2,7 @@ import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from 're
 import { controlTypeBarStyle } from '../lib/controlTypeBarStyles'
 import { leaguePercentageChartTicks, leaguePercentageChartValue } from '../lib/leaguePercentageChart'
 import { leagueLabel } from '../lib/winRateConditions'
+import { chartTextWidth as textWidth } from '../lib/chartTextWidth'
 import type { LeaguePercentageChartComparison } from '../types/leaguePercentageChart'
 import type { MonthlyLineChartAxis } from '../types/monthlyLineChart'
 import '../character-league-win-rate-chart.css'
@@ -15,10 +16,6 @@ type Props = {
   valuePrecision: number
   referenceValue?: number
   leagueName?: (league: string) => string
-}
-
-function textWidth(text: string): number {
-  return Array.from(text).reduce((width, character) => width + (character.charCodeAt(0) < 128 ? 7 : 12), 0)
 }
 
 function RankLabel({ label, x, y, anchor = 'middle' }: {

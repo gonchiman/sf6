@@ -1,0 +1,50 @@
+.player-observation-page { min-width: 0; display: grid; gap: 16px; }
+.player-observation-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; border: 0; padding: 0; background: transparent; }
+.player-observation-filters input, .player-observation-filters select { width: 100%; min-width: 0; }
+.player-observation-filters input { min-height: 36px; border: 1px solid var(--border-strong); border-radius: 0; padding: 6px 10px; color: var(--text); background: var(--surface); }
+.player-observation-filters input:disabled, .player-observation-filters select:disabled { color: var(--text-muted); background: var(--surface-soft); }
+.player-observation-target, .player-observation-note { margin: 12px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.player-observation-results, .player-observation-details-content { min-width: 0; display: grid; gap: 14px; }
+.player-observation-results > .player-observation-note, .player-observation-details-content > .player-observation-note { margin: 0; }
+.player-observation-summary { margin: 0; color: var(--text-soft); font-size: 13px; line-height: 1.8; }
+.player-observation-message { margin: 0; border: 1px solid var(--border); padding: 12px 14px; background: var(--surface-soft); color: var(--text-soft); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.player-observation-scroll { max-height: min(70vh, 720px); scroll-padding-left: 190px; scroll-padding-top: 60px; }
+.player-observation-table { min-width: 720px; table-layout: fixed; }
+.player-observation-run-column { width: 190px; }
+.player-observation-status-column { width: 205px; }
+.player-observation-table tr > :first-child { position: sticky; left: 0; z-index: 1; }
+.player-observation-table thead tr > :first-child { z-index: 3; }
+.player-observation-table th.player-observation-run-cell { padding: 0; }
+.player-observation-table tr.is-selected > * { background: var(--surface-hover); }
+.player-observation-run-button { display: block; width: 100%; border: 0; border-radius: 0; padding: 8px 10px; color: var(--link); background: transparent; text-align: left; font: inherit; font-size: 12px; line-height: 1.7; cursor: pointer; }
+.player-observation-run-button > span { display: block; color: var(--text-muted); }
+.player-observation-run-button:hover { background: var(--surface-hover); }
+.is-selected .player-observation-run-button { box-shadow: inset 3px 0 var(--link); font-weight: 700; }
+.player-observation-run-button time { white-space: nowrap; }
+.player-observation-unit { display: block; color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.player-observation-table .player-observation-status { text-align: left; font-size: 12px; overflow-wrap: anywhere; }
+.player-observation-table .player-observation-count { overflow-wrap: anywhere; }
+.player-observation-table .is-unavailable { color: var(--text-muted); }
+.player-observation-details { display: grid; gap: 7px; margin: 0; font-size: 13px; line-height: 1.8; font-variant-numeric: tabular-nums; }
+.player-observation-details > div { display: grid; grid-template-columns: 165px minmax(0, 1fr); gap: 8px 18px; }
+.player-observation-details dt { color: var(--text-muted); }
+.player-observation-details dd { min-width: 0; margin: 0; color: var(--text-soft); overflow-wrap: anywhere; }
+.player-observation-warnings { margin: 0; padding-left: 18px; color: var(--text-muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.player-observation-evidence { display: grid; gap: 12px; }
+.player-observation-evidence p, .player-observation-evidence ul { margin: 0; }
+.player-observation-evidence dl.player-observation-details > div { grid-template-columns: 165px minmax(0, 1fr); gap: 8px 18px; }
+.player-observation-source { font-size: 12px; }
+.player-observation-empty-detail { margin: 0; }
+
+@media (max-width: 640px) {
+  .player-observation-filters { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .player-observation-run-column { width: 146px; }
+  .player-observation-scroll { scroll-padding-left: 146px; }
+  .player-observation-details > div, .player-observation-evidence dl.player-observation-details > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .player-observation-details > div + div { margin-top: 5px; }
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  .player-observation-filters input, .player-observation-filters select { min-height: 44px; font-size: 16px; }
+  .player-observation-run-button { min-height: 44px; }
+}

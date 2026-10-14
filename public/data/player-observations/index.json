@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "definitionVersion": 1,
+  "seriesId": "buckler-max-lp-v1",
+  "generatedAt": "2026-10-13T04:03:59.631Z",
+  "source": {
+    "title": "Buckler’s Boot Camp リーグランキング",
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/league",
+    "population": "総合・最大LP・全地域・全プラットフォーム・全ユーザーのランキングで観測したCFNアカウント",
+    "metric": "通算の観測履歴で初めて確認したCFNアカウント数",
+    "unit": "cfn-account",
+    "notes": [
+      "初観測は実際の参入日時・初プレイ日時・実人数を示しません。",
+      "基準走査中の件数、欠測、取得失敗を0件として補完しません。",
+      "全対象ページの訪問後も、走査中のランキング変動により単一時点の完全な名簿にはなりません。"
+    ]
+  },
+  "conditions": {
+    "league": "all",
+    "character": "max-lp",
+    "region": "all",
+    "platform": "all",
+    "users": "all"
+  },
+  "baseline": {
+    "status": "preparing",
+    "completedAt": null
+  },
+  "runs": [
+    {
+      "id": "probe-2026-10-13-first",
+      "phase": "baseline",
+      "status": "partial",
+      "scope": "probe",
+      "scheduledAt": "2026-10-13T01:04:47.614Z",
+      "startedAt": "2026-10-13T01:04:47.614Z",
+      "endedAt": "2026-10-13T01:09:12.740Z",
+      "observedIdCount": 60,
+      "newObservedCount": null,
+      "newObservedLowerBound": null,
+      "pages": {
+        "expectedAtStart": 152759,
+        "expectedAtEnd": 152759,
+        "succeeded": 3,
+        "failed": 0,
+        "sampledPages": [
+          1,
+          2,
+          3
+        ]
+      },
+      "coverage": "sample",
+      "reportedTotalAtStart": 3055169,
+      "reportedTotalAtEnd": 3055172,
+      "warnings": [
+        "走査中に表示総件数が変わりました。単一時点の名簿ではありません。",
+        "一部ページの検証記録です。全件を観測していません。"
+      ],
+      "failureReason": "全対象ページの有効な記録が揃っていません。"
+    },
+    {
+      "id": "probe-2026-10-13-additional",
+      "phase": "baseline",
+      "status": "partial",
+      "scope": "probe",
+      "scheduledAt": "2026-10-13T01:26:06.971Z",
+      "startedAt": "2026-10-13T01:26:06.971Z",
+      "endedAt": "2026-10-13T01:30:27.615Z",
+      "observedIdCount": 28,
+      "newObservedCount": null,
+      "newObservedLowerBound": null,
+      "pages": {
+        "expectedAtStart": 152760,
+        "expectedAtEnd": 152760,
+        "succeeded": 2,
+        "failed": 0,
+        "sampledPages": [
+          1,
+          152760
+        ]
+      },
+      "coverage": "sample",
+      "reportedTotalAtStart": 3055185,
+      "reportedTotalAtEnd": 3055188,
+      "warnings": [
+        "走査中に表示総件数が変わりました。単一時点の名簿ではありません。",
+        "一部ページの検証記録です。全件を観測していません。"
+      ],
+      "failureReason": "全対象ページの有効な記録が揃っていません。"
+    }
+  ]
+}

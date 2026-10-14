@@ -67,6 +67,7 @@ const style = leagueSeriesStyle(series.league)
 
 - [操作タイプの棒グラフ共通定義](../../src/lib/controlTypeBarStyles.ts) が、`combined`・`classic`・`modern` の塗り・輪郭・斜線・ラベルを固定する。合算はグレー、クラシックは濃いグレー、モダンは薄いグレーに斜線と輪郭を付ける。
 - [ランク別勝率グラフ](../../src/components/CharacterLeagueWinRateChart.tsx) の棒と凡例は同じ定義を参照する。月、キャラクター、ランク順、縦棒・横棒の切替で操作タイプの対応を変えない。
+- [全キャラの勝率比較グラフ](../../src/components/CharacterWinRateComparisonChart.tsx) も同じ操作タイプ定義と表示範囲の処理を使う。全キャラを表示し、棒からキャラを選択しない。勝率順でもC／Mの対応を変えない。
 - 操作タイプ別ではC・Mと凡例を併記する。欠損には棒を描かず状態を表示し、0%とは区別する。
 
 ## 見本の再生成と確認
