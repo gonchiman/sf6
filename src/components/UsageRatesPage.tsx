@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { createLeagueUsageRates, leagueUsageRateComparisonKey, loadLeagueUsageRates, selectLeagueUsageRateConditions } from '../lib/leagueUsageRates'
 import { timestampLabel } from '../lib/dateTime'
+import { loadCharacterManifest } from '../lib/characters'
+import { selectUsageRateHistoryConditions } from '../lib/usageRateHistory'
 import {
   loadUsageRateManifest, usageRateEditionOf, usageRateMonths, USAGE_RATE_EDITIONS,
   USAGE_RATE_EDITION_LEAGUES, USAGE_RATE_EDITION_OPERATION_MODES, USAGE_RATE_EDITION_SOURCES,
@@ -8,35 +10,53 @@ import {
 import { USAGE_RATE_CHART_RANGES, type UsageRateChartRange } from '../lib/usageRateChartAxis'
 import { monthLabel } from '../lib/winRateHistory'
 import type { LeagueUsageRateMetadata, LeagueUsageRateSelection, LeagueUsageRateSort } from '../types/leagueUsageRates'
-import type { UsageRateEdition, UsageRateManifest } from '../types/usageRates'
+import type { UsageRateEdition, UsageRateManifest, UsageRateSelection } from '../types/usageRates'
+import type { CharacterManifest } from '../types/characters'
 import { CharacterLeagueUsageRateChart } from './CharacterLeagueUsageRateChart'
 import { LeagueUsageRateTable } from './LeagueUsageRateTable'
 import { StatisticsPanel } from './StatisticsPanel'
 import { DataLoadState as LoadState } from './DataLoadState'
 import { usageRateLeagueLabel } from './controlTypeRatioFormatting'
+import { UsageRateHistoryPeriodFilters, UsageRateHistoryView } from './UsageRateHistoryView'
 import '../win-rates.css'
 import '../league-total-win-rates.css'
 
 type ComparisonState =
-  | { key: string; status: 'loading' }
-  | { key: string; status: 'ready'; metadata: LeagueUsageRateMetadata[] }
-  | { key: string; status: 'error' }
+  | { key: string; version: number; status: 'loading' }
+  | { key: string; version: number; status: 'ready'; metadata: LeagueUsageRateMetadata[] }
+  | { key: string; version: number; status: 'error' }
 
 const OPERATION_LABELS = { combined: '合算', separate: '操作タイプ別' } as const
 const DISTRIBUTION_LABELS = { all: '合算', classic: 'クラシック', modern: 'モダン' } as const
 
 export function UsageRatesPage() {
+  const viewId = useId()
+  const [view, setView] = useState<'rank' | 'history'>('rank')
+  const [hasViewedHistory, setHasViewedHistory] = useState(false)
   const [manifest, setManifest] = useState<UsageRateManifest | null>(null)
+  const [characterManifest, setCharacterManifest] = useState<CharacterManifest | null>(null)
+  const [characterError, setCharacterError] = useState(false)
+  const [characterVersion, setCharacterVersion] = useState(0)
   const [manifestLoading, setManifestLoading] = useState(true)
   const [manifestError, setManifestError] = useState(false)
   const [manifestVersion, setManifestVersion] = useState(0)
   const [preferredSelection, setPreferredSelection] = useState<Partial<LeagueUsageRateSelection>>({ edition: 'general', operationMode: 'combined' })
+  const [historyPreferred, setHistoryPreferred] = useState<Partial<UsageRateSelection>>({ league: 'MASTER' })
   const [comparisonState, setComparisonState] = useState<ComparisonState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
   const [sort, setSort] = useState<LeagueUsageRateSort>({ league: 'MASTER', direction: 'descending' })
   const [selectedCharacter, setSelectedCharacter] = useState({ characterId: 'ryu', name: 'リュウ' })
   const [showChartValues, setShowChartValues] = useState(true)
   const [chartRange, setChartRange] = useState<UsageRateChartRange>('0-20')
+
+  useEffect(() => {
+    let current = true
+    setCharacterError(false)
+    void loadCharacterManifest().then(next => {
+      if (current) setCharacterManifest(next)
+    }).catch(() => { if (current) setCharacterError(true) })
+    return () => { current = false }
+  }, [characterVersion])
 
   useEffect(() => {
     let current = true
@@ -56,29 +76,40 @@ export function UsageRatesPage() {
   const selection = useMemo(() => manifest ? selectLeagueUsageRateConditions(manifest, preferredSelection) : null,
     [manifest, preferredSelection])
   const edition = usageRateEditionOf(selection ?? {})
+  const historySelection = useMemo(() => manifest ? selectUsageRateHistoryConditions(manifest, edition, historyPreferred) : null,
+    [manifest, edition, historyPreferred])
   const selectedMonth = selection?.month
   const comparisonKey = manifest && selection ? leagueUsageRateComparisonKey(manifest, selection) : null
 
   useEffect(() => {
-    if (!manifest || !selectedMonth || !comparisonKey) return
+    if (view !== 'rank' || !manifest || !selectedMonth || !comparisonKey) return
+    // Reentering an unchanged view preserves its ready table and scroll position.
+    if (comparisonState?.key === comparisonKey && comparisonState.version === datasetVersion && comparisonState.status === 'ready') return
     let current = true
     const key = comparisonKey
-    setComparisonState({ key, status: 'loading' })
+    setComparisonState({ key, version: datasetVersion, status: 'loading' })
     void loadLeagueUsageRates(manifest, selectedMonth, edition).then(metadata => {
-      if (current) setComparisonState({ key, status: 'ready', metadata })
+      if (current) setComparisonState({ key, version: datasetVersion, status: 'ready', metadata })
     }).catch(() => {
-      if (current) setComparisonState({ key, status: 'error' })
+      if (current) setComparisonState({ key, version: datasetVersion, status: 'error' })
     })
     return () => { current = false }
-  }, [manifest, selectedMonth, edition, comparisonKey, datasetVersion])
+  }, [view, manifest, selectedMonth, edition, comparisonKey, datasetVersion])
 
   // Check both edition and month before effects can replace the previous conditions' data.
   const currentComparison = comparisonState?.key === comparisonKey ? comparisonState : null
   const readyMetadata = currentComparison?.status === 'ready' ? currentComparison.metadata : null
   const comparison = useMemo(() => manifest && selection && readyMetadata
     ? createLeagueUsageRates(manifest, selection, readyMetadata) : null, [manifest, selection, readyMetadata])
-  const chartCharacters = useMemo(() => [...new Map(comparison?.rows.map(row =>
-    [row.characterId, { characterId: row.characterId, name: row.name }]) ?? []).values()], [comparison])
+  const chartCharacters = useMemo(() => {
+    const names = new Map(characterManifest?.characters.map(item => [item.id, item.name]) ?? [])
+    const characters = new Map(comparison?.rows.map(row => [row.characterId,
+      { characterId: row.characterId, name: names.get(row.characterId) ?? row.name }]) ?? [])
+    for (const item of characterManifest?.characters ?? []) {
+      if (!characters.has(item.id)) characters.set(item.id, { characterId: item.id, name: item.name })
+    }
+    return [...characters.values()]
+  }, [comparison, characterManifest])
 
   if (manifestLoading) return <LoadState loading message="期間と条件を読み込み中…" />
   if (manifestError) return <LoadState message="期間と条件を読み込めませんでした。" onRetry={() => setManifestVersion(version => version + 1)} />
@@ -108,7 +139,15 @@ export function UsageRatesPage() {
     if (character) setSelectedCharacter(character)
   }
 
-  return <section className="win-rates-page" aria-label="キャラクター別の使用率">
+  return <section className="win-rates-page usage-rates-page" aria-label="キャラクター別の使用率">
+    <div className="win-rates-view-selector" role="group" aria-label="使用率の表示">
+      {([['rank', 'ランク比較'], ['history', '月別推移']] as const).map(([value, label]) =>
+        <button type="button" className="win-rates-button" key={value} aria-pressed={view === value}
+          aria-controls={`${viewId}-${value}`} onClick={() => {
+            if (value === 'history') setHasViewedHistory(true)
+            setView(value)
+          }}>{label}</button>)}
+    </div>
     <div className="win-rates-filters">
       <label><span>統計区分</span><select aria-label="統計区分" value={edition}
         onChange={event => {
@@ -120,18 +159,31 @@ export function UsageRatesPage() {
         }}>
         {editions.map(value => <option value={value} key={value}>{value === 'general' ? '総合版' : 'マスター版'}</option>)}
       </select></label>
-      <label><span>対象月</span><select aria-label="対象月" value={selection.month}
+      {view === 'rank' && <label><span>対象月</span><select aria-label="対象月" value={selection.month}
         onChange={event => setPreferredSelection(previous => ({ ...previous, month: event.target.value }))}>
         {months.map(month => <option value={month} key={month}>{monthLabel(month)}</option>)}
-      </select></label>
-      <div className="win-rates-league-summary"><span>リーグ</span><strong>{edition === 'general' ? `全体＋${leagues.length - 1}リーグ` : `全${leagues.length}リーグ`}</strong></div>
+      </select></label>}
+      {view === 'rank' && <div className="win-rates-league-summary"><span>リーグ</span><strong>{edition === 'general' ? `全体＋${leagues.length - 1}リーグ` : `全${leagues.length}リーグ`}</strong></div>}
       <label><span>操作タイプ</span><select aria-label="操作タイプ" value={selection.operationMode}
         disabled={operationModes.length === 1}
         onChange={event => setPreferredSelection(previous => ({ ...previous, operationMode: event.target.value as LeagueUsageRateSelection['operationMode'] }))}>
         {operationModes.map(mode => <option value={mode} key={mode}>{OPERATION_LABELS[mode]}</option>)}
       </select></label>
+      {view === 'history' && <UsageRateHistoryPeriodFilters manifest={manifest} edition={edition}
+        selection={historySelection} onChange={setHistoryPreferred} />}
     </div>
-
+    {characterError && <div className="win-rates-comparison-error" role="alert">
+      <span>キャラクター一覧を読み込めませんでした。</span>
+      <button type="button" className="win-rates-button" onClick={() => setCharacterVersion(version => version + 1)}>再読み込み</button>
+    </div>}
+    <div id={`${viewId}-history`} hidden={view !== 'history'}>
+      {hasViewedHistory && <UsageRateHistoryView active={view === 'history'} manifest={manifest} edition={edition}
+        selection={historySelection} onSelectionChange={setHistoryPreferred}
+        operationMode={selection.operationMode} character={selectedCharacter} characters={chartCharacters}
+        onCharacterChange={chooseCharacter} />}
+    </div>
+    <div id={`${viewId}-rank`} hidden={view !== 'rank'}>
+    <div className="usage-rates-rank-view">
     <div className="win-rates-view-panel win-rates-total-layout">
       <StatisticsPanel title="ランク別使用率" headerContent={<div className="win-rates-chart-controls">
         <label className="win-rates-character-select"><span>キャラクター</span>
@@ -208,5 +260,7 @@ export function UsageRatesPage() {
         {notes.length > 0 && <><p>保存データの注記</p><ul>{notes.map(note => <li key={note}>{note}</li>)}</ul></>}
       </div></details>
     </>}
+    </div>
+    </div>
   </section>
 }
