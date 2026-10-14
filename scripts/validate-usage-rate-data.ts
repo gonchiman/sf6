@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { parseUsageRateDataset, parseUsageRateManifest } from '../src/lib/usageRates.ts'
+import { parseUsageRateDataset, parseUsageRateManifest, usageRateEditionOf, USAGE_RATE_EDITION_SOURCES } from '../src/lib/usageRates.ts'
 
 export function usagePathWithin(directory: string, path: string): boolean {
   const fromRoot = relative(resolve(directory), resolve(path))
@@ -34,7 +34,8 @@ export async function validateUsageRateDirectory(directory: string): Promise<{ d
     const path = resolve(root, descriptor.path)
     if (!usagePathWithin(root, path)) throw new Error(`使用率データの保存先が不正です: ${descriptor.path}`)
     const dataset = parseUsageRateDataset(JSON.parse(await readFile(path, 'utf8')), descriptor)
-    if (dataset.source.url !== manifest.source.url) throw new Error(`使用率の出典URLが一覧と一致しません: ${descriptor.path}`)
+    const expectedSource = usageRateEditionOf(descriptor) === 'master' ? USAGE_RATE_EDITION_SOURCES.master : manifest.source
+    if (dataset.source.url !== expectedSource.url) throw new Error(`使用率の出典URLが一覧の版と一致しません: ${descriptor.path}`)
     if (Date.parse(dataset.capturedAt) > Date.parse(dataset.generatedAt)) throw new Error(`取得日時がデータ生成日時より後です: ${descriptor.path}`)
     if (Date.parse(dataset.generatedAt) > Date.parse(manifest.generatedAt)) throw new Error(`データの生成日時が一覧より後です: ${descriptor.path}`)
     entries += dataset.distributions.reduce((sum, distribution) => sum + distribution.entries.length, 0)

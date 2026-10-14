@@ -1,5 +1,6 @@
 import type { MonthlyLineChartAxis } from '../types/monthlyLineChart.ts'
 import type { WinRateHistoryPoint } from '../types/winRateHistory.ts'
+import { leaguePercentageChartValue } from './leaguePercentageChart.ts'
 
 export type CharacterLeagueChartRange = '0-100' | '40-60' | '45-55'
 
@@ -44,10 +45,5 @@ export function characterLeagueChartValue(
     || !Number.isFinite(axis.start) || !Number.isFinite(axis.end) || axis.start >= axis.end) {
     return { value: null, displayValue: null, outside: null }
   }
-  const value = hundredths / 100
-  return {
-    value,
-    displayValue: Math.min(axis.end, Math.max(axis.start, value)),
-    outside: value < axis.start ? 'below' : value > axis.end ? 'above' : null,
-  }
+  return leaguePercentageChartValue(hundredths / 100, axis)
 }

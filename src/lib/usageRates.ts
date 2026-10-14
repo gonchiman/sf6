@@ -1,13 +1,26 @@
 import type {
   UsageRateControlType, UsageRateDataset, UsageRateDatasetDescriptor, UsageRateDistribution,
-  UsageRateEntry, UsageRateHistoryResult, UsageRateManifest, UsageRateSelection, UsageRateSource,
+  UsageRateEdition, UsageRateEntry, UsageRateHistoryResult, UsageRateManifest, UsageRateSelection, UsageRateSource, UsageRateTotalMismatch,
 } from '../types/usageRates.ts'
 import { WIN_RATE_EDITION_LEAGUES } from './winRateConditions.ts'
 
-export const USAGE_RATE_LEAGUES: readonly string[] = ['ALL', ...WIN_RATE_EDITION_LEAGUES.general]
-export const USAGE_RATE_SOURCE: UsageRateSource = {
-  url: 'https://www.streetfighter.com/6/buckler/ja-jp/stats/usagerate',
-  title: 'Buckler 総合版 キャラクター使用率',
+export const USAGE_RATE_EDITIONS = ['general', 'master'] as const
+export const USAGE_RATE_EDITION_LEAGUES: Readonly<Record<UsageRateEdition, readonly string[]>> = {
+  general: ['ALL', ...WIN_RATE_EDITION_LEAGUES.general],
+  master: WIN_RATE_EDITION_LEAGUES.master,
+}
+export const USAGE_RATE_EDITION_OPERATION_MODES: Readonly<Record<UsageRateEdition, readonly ('combined' | 'separate')[]>> = {
+  general: ['combined', 'separate'], master: ['combined'],
+}
+export const USAGE_RATE_EDITION_SOURCES: Readonly<Record<UsageRateEdition, UsageRateSource>> = {
+  general: { url: 'https://www.streetfighter.com/6/buckler/ja-jp/stats/usagerate', title: 'Buckler 総合版 キャラクター使用率' },
+  master: { url: 'https://www.streetfighter.com/6/buckler/ja-jp/stats/usagerate_master', title: 'Buckler マスター版 キャラクター使用率' },
+}
+export const USAGE_RATE_LEAGUES = USAGE_RATE_EDITION_LEAGUES.general
+export const USAGE_RATE_SOURCE = USAGE_RATE_EDITION_SOURCES.general
+
+export function usageRateEditionOf(value: { edition?: UsageRateEdition }): UsageRateEdition {
+  return value.edition ?? 'general'
 }
 type UnknownRecord = Record<string, unknown>
 
@@ -51,10 +64,16 @@ function month(value: unknown): string {
   return result
 }
 
-function league(value: unknown): string {
+function league(value: unknown, edition: UsageRateEdition = 'general'): string {
   const result = string(value, 'league')
-  if (!USAGE_RATE_LEAGUES.includes(result)) invalid('league')
+  if (!USAGE_RATE_EDITION_LEAGUES[edition].includes(result)) invalid('league')
   return result
+}
+
+function conditions(input: UnknownRecord): Pick<UsageRateDatasetDescriptor, 'edition' | 'league'> {
+  if (input.edition !== undefined && input.edition !== 'general' && input.edition !== 'master') invalid('edition')
+  const edition = input.edition ?? 'general'
+  return { ...(input.edition === undefined ? {} : { edition }), league: league(input.league, edition) }
 }
 
 function timestamp(value: unknown, field: string): string {
@@ -70,14 +89,15 @@ function timestamp(value: unknown, field: string): string {
   return result
 }
 
-function source(value: unknown): UsageRateSource {
+function source(value: unknown, edition: UsageRateEdition = 'general'): UsageRateSource {
   const input = record(value, 'source')
   const url = string(input.url, 'source.url')
   let parsed: URL
   try { parsed = new URL(url) } catch { return invalid('source.url') }
+  const sourcePath = parsed.pathname.match(/^\/6\/buckler\/[a-z]{2}(?:-[a-z]{2})?\/stats\/(usagerate|usagerate_master)\/?$/i)
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || parsed.search || parsed.hash
     || !['www.streetfighter.com', 'streetfighter.com'].includes(parsed.hostname)
-    || !/^\/6\/buckler\/[a-z]{2}(?:-[a-z]{2})?\/stats\/usagerate\/?$/i.test(parsed.pathname)) invalid('source.url')
+    || sourcePath?.[1].toLowerCase() !== (edition === 'master' ? 'usagerate_master' : 'usagerate')) invalid('source.url')
   return { url, title: string(input.title, 'source.title') }
 }
 
@@ -91,7 +111,7 @@ function datasetPath(value: unknown): string {
 export function parseUsageRateDescriptor(value: unknown): UsageRateDatasetDescriptor {
   const input = record(value, 'dataset descriptor')
   return {
-    id: id(input.id, 'id'), month: month(input.month), league: league(input.league),
+    id: id(input.id, 'id'), month: month(input.month), ...conditions(input),
     path: datasetPath(input.path), capturedAt: timestamp(input.capturedAt, 'capturedAt'),
   }
 }
@@ -102,7 +122,7 @@ export function parseUsageRateManifest(value: unknown): UsageRateManifest {
   if (!datasets.length) invalid('datasets: empty')
   unique(datasets.map((item) => item.id), 'datasets.id')
   unique(datasets.map((item) => item.path.toLowerCase()), 'datasets.path')
-  unique(datasets.map((item) => `${item.month}:${item.league}`), 'datasets.conditions')
+  unique(datasets.map((item) => `${usageRateEditionOf(item)}:${item.month}:${item.league}`), 'datasets.conditions')
   return {
     schemaVersion: schema(input.schemaVersion), generatedAt: timestamp(input.generatedAt, 'generatedAt'),
     source: source(input.source), datasets,
@@ -127,22 +147,59 @@ function entry(value: unknown): UsageRateEntry {
   return { characterId: id(input.characterId, 'entry.characterId'), name: string(input.name, 'entry.name'), text, percentThousandths }
 }
 
-function distribution(value: unknown): UsageRateDistribution {
+function totalMismatch(
+  value: unknown,
+  observedTotal: number,
+  context: { month: string; sourceUrl: string; generatedAt: string },
+): UsageRateTotalMismatch {
+  const input = record(value, 'distribution.totalMismatch')
+  if (!Number.isSafeInteger(input.observedPercentThousandths) || input.observedPercentThousandths !== observedTotal) {
+    invalid('distribution.totalMismatch.observedPercentThousandths: mismatch')
+  }
+  const verifiedAt = timestamp(input.verifiedAt, 'distribution.totalMismatch.verifiedAt')
+  if (Date.parse(verifiedAt) > Date.parse(context.generatedAt)) invalid('distribution.totalMismatch.verifiedAt: later than generation')
+  const sourceUrl = string(input.sourceUrl, 'distribution.totalMismatch.sourceUrl')
+  let parsed: URL
+  try { parsed = new URL(sourceUrl) } catch { return invalid('distribution.totalMismatch.sourceUrl') }
+  const datasetSource = new URL(context.sourceUrl)
+  const canonicalPath = datasetSource.pathname.replace(/\/$/, '')
+  const evidencePath = parsed.pathname.replace(/\/$/, '')
+  if (parsed.origin !== datasetSource.origin || parsed.username || parsed.password || parsed.port || parsed.search || parsed.hash
+    || (evidencePath !== canonicalPath && evidencePath !== `${canonicalPath}/${context.month.replace('-', '')}`)) {
+    invalid('distribution.totalMismatch.sourceUrl: conditions mismatch')
+  }
+  return { observedPercentThousandths: observedTotal, verifiedAt, sourceUrl, reason: string(input.reason, 'distribution.totalMismatch.reason') }
+}
+
+function distribution(
+  value: unknown,
+  edition: UsageRateEdition,
+  context: { month: string; sourceUrl: string; generatedAt: string },
+): UsageRateDistribution {
   const input = record(value, 'distribution')
   if (!['all', 'classic', 'modern'].includes(input.controlType as string)) invalid('distribution.controlType')
   const entries = array(input.entries, 'distribution.entries').map(entry)
   if (!entries.length) invalid('distribution.entries: empty')
   unique(entries.map((item) => item.characterId), 'distribution.entries.characterId')
   // Three-decimal rounding may change the total by at most 0.0005 points per character.
-  // Keep the published values intact; a partial positive-share distribution must not be normalized.
-  if (entries.every((item) => item.percentThousandths !== null)) {
-    const total = entries.reduce((sum, item) => sum + item.percentThousandths!, 0)
-    if (Math.abs(total - 100000) > entries.length * .5) invalid('distribution.total: incomplete or inconsistent')
+  // Preserve exceptional official totals only when their explicit, source-linked recheck matches.
+  // All unacknowledged partial or inconsistent distributions retain the strict sum check.
+  const complete = entries.every((item) => item.percentThousandths !== null)
+  const total = complete ? entries.reduce((sum, item) => sum + item.percentThousandths!, 0) : null
+  const mismatched = total !== null && Math.abs(total - 100000) > entries.length * .5
+  const acknowledgement = input.totalMismatch !== undefined
+  if (mismatched && !acknowledgement) invalid('distribution.total: incomplete or inconsistent')
+  if (acknowledgement && !mismatched) invalid('distribution.totalMismatch: no complete out-of-tolerance total')
+  return {
+    controlType: input.controlType as UsageRateControlType, month: month(input.month), league: league(input.league, edition), entries,
+    ...(acknowledgement ? { totalMismatch: totalMismatch(input.totalMismatch, total!, context) } : {}),
   }
-  return { controlType: input.controlType as UsageRateControlType, month: month(input.month), league: league(input.league), entries }
 }
 
 function assertMatches(dataset: UsageRateDataset, expected: UsageRateDatasetDescriptor): void {
+  if (usageRateEditionOf(dataset) !== usageRateEditionOf(expected)) {
+    throw new Error('選択した条件と使用率データが一致しません（edition）。ページを再読み込みしてください。')
+  }
   for (const key of ['id', 'month', 'league', 'capturedAt'] as const) {
     if (dataset[key] !== expected[key]) {
       throw new Error(`選択した条件と使用率データが一致しません（${key}）。ページを再読み込みしてください。`)
@@ -153,23 +210,25 @@ function assertMatches(dataset: UsageRateDataset, expected: UsageRateDatasetDesc
 export function parseUsageRateDataset(value: unknown, expected?: UsageRateDatasetDescriptor): UsageRateDataset {
   const input = record(value, 'dataset')
   const datasetMonth = month(input.month)
-  const datasetLeague = league(input.league)
-  const distributions = array(input.distributions, 'distributions').map(distribution)
-  if (distributions.length !== 3) invalid('distributions: ALL/CLASSIC/MODERN required')
+  const selectedConditions = conditions(input)
+  const edition = usageRateEditionOf(selectedConditions)
+  const datasetLeague = selectedConditions.league
+  const sourceInput = record(input.source, 'source')
+  const datasetSource = source(sourceInput, edition)
+  const generatedAt = timestamp(input.generatedAt, 'generatedAt')
+  const distributionContext = { month: datasetMonth, sourceUrl: datasetSource.url, generatedAt }
+  const distributions = array(input.distributions, 'distributions').map((value) => distribution(value, edition, distributionContext))
+  if (edition === 'general' && distributions.length !== 3) invalid('distributions: ALL/CLASSIC/MODERN required')
+  if (edition === 'master' && (distributions.length !== 1 || distributions[0].controlType !== 'all')) invalid('distributions: MASTER ALL required')
   unique(distributions.map((item) => item.controlType), 'distributions.controlType')
-  const allIds = new Set(distributions[0].entries.map((item) => item.characterId))
   for (const item of distributions) {
     if (item.month !== datasetMonth || item.league !== datasetLeague) invalid('distribution.conditions: mismatch')
-    if (item.entries.length !== allIds.size || item.entries.some((entry) => !allIds.has(entry.characterId))) {
-      invalid('distribution.characterIds: mismatch')
-    }
   }
-  const sourceInput = record(input.source, 'source')
   const dataset: UsageRateDataset = {
-    schemaVersion: schema(input.schemaVersion), id: id(input.id, 'id'), month: datasetMonth, league: datasetLeague,
-    capturedAt: timestamp(input.capturedAt, 'capturedAt'), generatedAt: timestamp(input.generatedAt, 'generatedAt'),
+    schemaVersion: schema(input.schemaVersion), id: id(input.id, 'id'), month: datasetMonth, ...selectedConditions,
+    capturedAt: timestamp(input.capturedAt, 'capturedAt'), generatedAt,
     source: {
-      ...source(sourceInput), population: string(sourceInput.population, 'source.population'),
+      ...datasetSource, population: string(sourceInput.population, 'source.population'),
       metric: string(sourceInput.metric, 'source.metric'), unit: string(sourceInput.unit, 'source.unit'),
       notes: array(sourceInput.notes, 'source.notes').map((note) => string(note, 'source.notes[]')),
     },
@@ -187,17 +246,17 @@ function dataUrl(path: string): string {
   return `${base.endsWith('/') ? base : `${base}/`}data/usage-rates/${path}`
 }
 
-function loadJson<T>(url: string, parse: (value: unknown) => T, cache: Map<string, Promise<T>>): Promise<T> {
-  const existing = cache.get(url)
+function loadJson<T>(url: string, parse: (value: unknown) => T, cache: Map<string, Promise<T>>, cacheKey = url): Promise<T> {
+  const existing = cache.get(cacheKey)
   if (existing) return existing
   const request = Promise.resolve().then(() => fetch(url)).then(async (response) => {
     if (!response.ok) throw new Error('使用率データを読み込めませんでした。もう一度お試しください。')
     return parse(await response.json())
   }).catch((cause) => {
-    if (cache.get(url) === request) cache.delete(url)
+    if (cache.get(cacheKey) === request) cache.delete(cacheKey)
     throw cause
   })
-  cache.set(url, request)
+  cache.set(cacheKey, request)
   return request
 }
 
@@ -205,14 +264,26 @@ export function loadUsageRateManifest(): Promise<UsageRateManifest> {
   return loadJson(dataUrl('index.json'), parseUsageRateManifest, manifestRequests)
 }
 
-export function loadUsageRateDataset(value: UsageRateDatasetDescriptor, publicationVersion?: string): Promise<UsageRateDataset> {
+export function loadUsageRateDataset(
+  value: UsageRateDatasetDescriptor,
+  publicationVersion?: string,
+  expectedSource?: UsageRateSource,
+): Promise<UsageRateDataset> {
   const expected = parseUsageRateDescriptor(value)
   const versionQuery = publicationVersion === undefined ? ''
     : `&published=${encodeURIComponent(string(publicationVersion, 'publicationVersion'))}`
-  const url = `${dataUrl(expected.path)}?v=${encodeURIComponent(expected.capturedAt)}${versionQuery}`
-  const request = loadJson(url, parseUsageRateDataset, datasetRequests)
+  const edition = usageRateEditionOf(expected)
+  const selectedSource = expectedSource === undefined ? undefined : source(expectedSource, edition)
+  const sourceQuery = selectedSource === undefined ? '' : `&source=${encodeURIComponent(selectedSource.url)}`
+  const url = `${dataUrl(expected.path)}?v=${encodeURIComponent(expected.capturedAt)}${versionQuery}${sourceQuery}`
+  const cacheKey = `${edition}:${url}`
+  const request = loadJson(url, (value) => {
+    const dataset = parseUsageRateDataset(value)
+    if (selectedSource && dataset.source.url !== selectedSource.url) invalid('source.url: mismatch')
+    return dataset
+  }, datasetRequests, cacheKey)
   return request.then((dataset) => { assertMatches(dataset, expected); return dataset }).catch((cause) => {
-    if (datasetRequests.get(url) === request) datasetRequests.delete(url)
+    if (datasetRequests.get(cacheKey) === request) datasetRequests.delete(cacheKey)
     throw cause
   })
 }
@@ -227,26 +298,26 @@ function indexedMonth(index: number): string {
   return `${String(Math.floor(index / 12)).padStart(4, '0')}-${String(index % 12 + 1).padStart(2, '0')}`
 }
 
-export function usageRateMonths(manifest: UsageRateManifest, selectedLeague?: string): string[] {
-  return [...new Set(manifest.datasets.filter((item) => !selectedLeague || item.league === selectedLeague).map((item) => month(item.month)))].sort()
+export function usageRateMonths(manifest: UsageRateManifest, selectedLeague?: string, edition: UsageRateEdition = 'general'): string[] {
+  return [...new Set(manifest.datasets.filter((item) => usageRateEditionOf(item) === edition && (!selectedLeague || item.league === selectedLeague)).map((item) => month(item.month)))].sort()
 }
 
-export function usageRateCalendarMonths(manifest: UsageRateManifest): string[] {
-  const months = usageRateMonths(manifest)
+export function usageRateCalendarMonths(manifest: UsageRateManifest, edition: UsageRateEdition = 'general'): string[] {
+  const months = usageRateMonths(manifest, undefined, edition)
   if (!months.length) return []
   const from = monthIndex(months[0])
   const to = monthIndex(months[months.length - 1])
   return Array.from({ length: to - from + 1 }, (_, index) => indexedMonth(from + index))
 }
 
-export function initialUsageRateSelection(manifest: UsageRateManifest): UsageRateSelection {
-  const months = usageRateMonths(manifest, 'MASTER').slice(-12)
+export function initialUsageRateSelection(manifest: UsageRateManifest, edition: UsageRateEdition = 'general'): UsageRateSelection {
+  const months = usageRateMonths(manifest, 'MASTER', edition).slice(-12)
   if (!months.length) throw new Error('MASTERの使用率データが登録されていません。')
-  return { league: 'MASTER', fromMonth: months[0], toMonth: months[months.length - 1] }
+  return { ...(edition === 'master' ? { edition } : {}), league: 'MASTER', fromMonth: months[0], toMonth: months[months.length - 1] }
 }
 
 export function usageRateSelectedMonths(selection: UsageRateSelection): string[] {
-  league(selection.league)
+  conditions({ edition: selection.edition, league: selection.league })
   const from = monthIndex(selection.fromMonth)
   const to = monthIndex(selection.toMonth)
   if (from > to) throw new Error('開始月は終了月以前にしてください。')
@@ -258,13 +329,15 @@ export async function loadUsageRateHistory(
   manifest: UsageRateManifest,
   selection: UsageRateSelection,
   loader: (descriptor: UsageRateDatasetDescriptor) => Promise<UsageRateDataset> =
-    (descriptor) => loadUsageRateDataset(descriptor, manifest.generatedAt),
+    (descriptor) => loadUsageRateDataset(descriptor, manifest.generatedAt,
+      usageRateEditionOf(descriptor) === 'master' ? USAGE_RATE_EDITION_SOURCES.master : manifest.source),
 ): Promise<UsageRateHistoryResult[]> {
   const months = usageRateSelectedMonths(selection)
   const selected = new Set(months)
+  const edition = usageRateEditionOf(selection)
   const descriptors = new Map<string, UsageRateDatasetDescriptor>()
   for (const item of manifest.datasets) {
-    if (item.league !== selection.league || !selected.has(item.month)) continue
+    if (usageRateEditionOf(item) !== edition || item.league !== selection.league || !selected.has(item.month)) continue
     if (descriptors.has(item.month)) throw new Error('同じ月・リーグの使用率データが重複しています。')
     descriptors.set(item.month, item)
   }
@@ -278,6 +351,8 @@ export async function loadUsageRateHistory(
       if (!descriptor) { results[index] = { month: selectedMonth, status: 'missing' }; continue }
       try {
         const dataset = parseUsageRateDataset(await loader(descriptor), descriptor)
+        const expectedSource = edition === 'master' ? USAGE_RATE_EDITION_SOURCES.master : manifest.source
+        if (dataset.source.url !== expectedSource.url) invalid('source.url: mismatch')
         results[index] = { month: selectedMonth, descriptor, status: 'ready', dataset }
       } catch {
         results[index] = { month: selectedMonth, descriptor, status: 'error' }

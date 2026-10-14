@@ -36,10 +36,30 @@ test('調整一覧の直接URLを独立したページとして読み取る', ()
   assert.deepEqual(parseHashRoute('#balance-adjustments/unknown'), { page: 'win-rates' })
 })
 
+test('使用率の直接URLを独立したページとして読み取り、壊れたURLを混ぜない', () => {
+  assert.deepEqual(parseHashRoute('#usage-rates'), { page: 'usage-rates' })
+  assert.deepEqual(parseHashRoute('#usage-rates/'), { page: 'usage-rates' })
+  assert.deepEqual(parseHashRoute('#usage-rates/unknown'), { page: 'win-rates' })
+})
+
+test('ランク分布の直接URLを独立したページとして読み取る', () => {
+  assert.deepEqual(parseHashRoute('#rank-distribution'), { page: 'rank-distribution' })
+  assert.deepEqual(parseHashRoute('#rank-distribution/'), { page: 'rank-distribution' })
+  assert.deepEqual(parseHashRoute('#rank-distribution/unknown'), { page: 'win-rates' })
+  assert.deepEqual(parseHashRoute('#rank-distribution-invalid'), { page: 'win-rates' })
+})
+
 test('期待試合数の直接URLを独立したページとして読み取る', () => {
   assert.deepEqual(parseHashRoute('#expected-matches'), { page: 'expected-matches' })
   assert.deepEqual(parseHashRoute('#expected-matches/'), { page: 'expected-matches' })
   assert.deepEqual(parseHashRoute('#expected-matches/unknown'), { page: 'win-rates' })
+})
+
+test('新規参入観測の直接URLを独立したページとして読み取る', () => {
+  assert.deepEqual(parseHashRoute('#new-account-observation'), { page: 'new-account-observation' })
+  assert.deepEqual(parseHashRoute('#new-account-observation/'), { page: 'new-account-observation' })
+  assert.deepEqual(parseHashRoute('#new-account-observation/unknown'), { page: 'win-rates' })
+  assert.deepEqual(parseHashRoute('#new-account-observation-invalid'), { page: 'win-rates' })
 })
 
 test('キャラ分類の直接URLを独立したページとして読み取る', () => {

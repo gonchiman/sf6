@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-09T06:23:24.818Z",
+  "generatedAt": "2026-10-14T09:48:03.268Z",
   "source": {
     "url": "https://www.streetfighter.com/6/buckler/ja-jp/stats/usagerate",
     "title": "Buckler 総合版 キャラクター使用率"
@@ -11,63 +11,3160 @@
       "month": "2026-09",
       "league": "ALL",
       "path": "2026-09-all.json",
-      "capturedAt": "2026-10-09T05:45:07Z"
+      "capturedAt": "2026-10-14T09:40:29.618Z"
+    },
+    {
+      "id": "2026-09-bronze",
+      "month": "2026-09",
+      "league": "BRONZE",
+      "path": "2026-09-bronze.json",
+      "capturedAt": "2026-10-14T09:40:29.618Z"
     },
     {
       "id": "2026-09-diamond",
       "month": "2026-09",
       "league": "DIAMOND",
       "path": "2026-09-diamond.json",
-      "capturedAt": "2026-10-09T05:45:07Z"
+      "capturedAt": "2026-10-14T09:40:29.618Z"
+    },
+    {
+      "id": "2026-09-gold",
+      "month": "2026-09",
+      "league": "GOLD",
+      "path": "2026-09-gold.json",
+      "capturedAt": "2026-10-14T09:40:29.618Z"
+    },
+    {
+      "id": "2026-09-iron",
+      "month": "2026-09",
+      "league": "IRON",
+      "path": "2026-09-iron.json",
+      "capturedAt": "2026-10-14T09:40:29.618Z"
     },
     {
       "id": "2026-09-master",
       "month": "2026-09",
       "league": "MASTER",
       "path": "2026-09-master.json",
-      "capturedAt": "2026-10-09T05:45:07Z"
+      "capturedAt": "2026-10-14T09:40:29.618Z"
+    },
+    {
+      "id": "2026-09-platinum",
+      "month": "2026-09",
+      "league": "PLATINUM",
+      "path": "2026-09-platinum.json",
+      "capturedAt": "2026-10-14T09:40:29.618Z"
+    },
+    {
+      "id": "2026-09-rookie",
+      "month": "2026-09",
+      "league": "ROOKIE",
+      "path": "2026-09-rookie.json",
+      "capturedAt": "2026-10-14T09:40:29.618Z"
+    },
+    {
+      "id": "2026-09-silver",
+      "month": "2026-09",
+      "league": "SILVER",
+      "path": "2026-09-silver.json",
+      "capturedAt": "2026-10-14T09:40:29.618Z"
+    },
+    {
+      "id": "2026-09-master-edition-grand_master",
+      "month": "2026-09",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2026-09-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:39:58.635Z"
+    },
+    {
+      "id": "2026-09-master-edition-high_master",
+      "month": "2026-09",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2026-09-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:39:58.635Z"
+    },
+    {
+      "id": "2026-09-master-edition-master",
+      "month": "2026-09",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2026-09-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:39:58.635Z"
+    },
+    {
+      "id": "2026-09-master-edition-ultimate_master",
+      "month": "2026-09",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2026-09-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:39:58.635Z"
     },
     {
       "id": "2026-08-all",
       "month": "2026-08",
       "league": "ALL",
       "path": "2026-08-all.json",
-      "capturedAt": "2026-10-09T05:45:07Z"
+      "capturedAt": "2026-10-14T09:40:31.028Z"
+    },
+    {
+      "id": "2026-08-bronze",
+      "month": "2026-08",
+      "league": "BRONZE",
+      "path": "2026-08-bronze.json",
+      "capturedAt": "2026-10-14T09:40:31.028Z"
     },
     {
       "id": "2026-08-diamond",
       "month": "2026-08",
       "league": "DIAMOND",
       "path": "2026-08-diamond.json",
-      "capturedAt": "2026-10-09T05:45:07Z"
+      "capturedAt": "2026-10-14T09:40:31.028Z"
+    },
+    {
+      "id": "2026-08-gold",
+      "month": "2026-08",
+      "league": "GOLD",
+      "path": "2026-08-gold.json",
+      "capturedAt": "2026-10-14T09:40:31.028Z"
+    },
+    {
+      "id": "2026-08-iron",
+      "month": "2026-08",
+      "league": "IRON",
+      "path": "2026-08-iron.json",
+      "capturedAt": "2026-10-14T09:40:31.028Z"
     },
     {
       "id": "2026-08-master",
       "month": "2026-08",
       "league": "MASTER",
       "path": "2026-08-master.json",
-      "capturedAt": "2026-10-09T05:45:07Z"
+      "capturedAt": "2026-10-14T09:40:31.028Z"
+    },
+    {
+      "id": "2026-08-platinum",
+      "month": "2026-08",
+      "league": "PLATINUM",
+      "path": "2026-08-platinum.json",
+      "capturedAt": "2026-10-14T09:40:31.028Z"
+    },
+    {
+      "id": "2026-08-rookie",
+      "month": "2026-08",
+      "league": "ROOKIE",
+      "path": "2026-08-rookie.json",
+      "capturedAt": "2026-10-14T09:40:31.028Z"
+    },
+    {
+      "id": "2026-08-silver",
+      "month": "2026-08",
+      "league": "SILVER",
+      "path": "2026-08-silver.json",
+      "capturedAt": "2026-10-14T09:40:31.028Z"
+    },
+    {
+      "id": "2026-08-master-edition-grand_master",
+      "month": "2026-08",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2026-08-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:39:58.734Z"
+    },
+    {
+      "id": "2026-08-master-edition-high_master",
+      "month": "2026-08",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2026-08-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:39:58.734Z"
+    },
+    {
+      "id": "2026-08-master-edition-master",
+      "month": "2026-08",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2026-08-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:39:58.734Z"
+    },
+    {
+      "id": "2026-08-master-edition-ultimate_master",
+      "month": "2026-08",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2026-08-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:39:58.734Z"
     },
     {
       "id": "2026-07-all",
       "month": "2026-07",
       "league": "ALL",
       "path": "2026-07-all.json",
-      "capturedAt": "2026-10-09T05:45:07Z"
+      "capturedAt": "2026-10-14T09:40:32.971Z"
+    },
+    {
+      "id": "2026-07-bronze",
+      "month": "2026-07",
+      "league": "BRONZE",
+      "path": "2026-07-bronze.json",
+      "capturedAt": "2026-10-14T09:40:32.971Z"
     },
     {
       "id": "2026-07-diamond",
       "month": "2026-07",
       "league": "DIAMOND",
       "path": "2026-07-diamond.json",
-      "capturedAt": "2026-10-09T05:45:07Z"
+      "capturedAt": "2026-10-14T09:40:32.971Z"
+    },
+    {
+      "id": "2026-07-gold",
+      "month": "2026-07",
+      "league": "GOLD",
+      "path": "2026-07-gold.json",
+      "capturedAt": "2026-10-14T09:40:32.971Z"
+    },
+    {
+      "id": "2026-07-iron",
+      "month": "2026-07",
+      "league": "IRON",
+      "path": "2026-07-iron.json",
+      "capturedAt": "2026-10-14T09:40:32.971Z"
     },
     {
       "id": "2026-07-master",
       "month": "2026-07",
       "league": "MASTER",
       "path": "2026-07-master.json",
-      "capturedAt": "2026-10-09T05:45:07Z"
+      "capturedAt": "2026-10-14T09:40:32.971Z"
+    },
+    {
+      "id": "2026-07-platinum",
+      "month": "2026-07",
+      "league": "PLATINUM",
+      "path": "2026-07-platinum.json",
+      "capturedAt": "2026-10-14T09:40:32.971Z"
+    },
+    {
+      "id": "2026-07-rookie",
+      "month": "2026-07",
+      "league": "ROOKIE",
+      "path": "2026-07-rookie.json",
+      "capturedAt": "2026-10-14T09:40:32.971Z"
+    },
+    {
+      "id": "2026-07-silver",
+      "month": "2026-07",
+      "league": "SILVER",
+      "path": "2026-07-silver.json",
+      "capturedAt": "2026-10-14T09:40:32.971Z"
+    },
+    {
+      "id": "2026-07-master-edition-grand_master",
+      "month": "2026-07",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2026-07-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:39:59.665Z"
+    },
+    {
+      "id": "2026-07-master-edition-high_master",
+      "month": "2026-07",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2026-07-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:39:59.665Z"
+    },
+    {
+      "id": "2026-07-master-edition-master",
+      "month": "2026-07",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2026-07-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:39:59.665Z"
+    },
+    {
+      "id": "2026-07-master-edition-ultimate_master",
+      "month": "2026-07",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2026-07-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:39:59.665Z"
+    },
+    {
+      "id": "2026-06-all",
+      "month": "2026-06",
+      "league": "ALL",
+      "path": "2026-06-all.json",
+      "capturedAt": "2026-10-14T09:40:34.531Z"
+    },
+    {
+      "id": "2026-06-bronze",
+      "month": "2026-06",
+      "league": "BRONZE",
+      "path": "2026-06-bronze.json",
+      "capturedAt": "2026-10-14T09:40:34.531Z"
+    },
+    {
+      "id": "2026-06-diamond",
+      "month": "2026-06",
+      "league": "DIAMOND",
+      "path": "2026-06-diamond.json",
+      "capturedAt": "2026-10-14T09:40:34.531Z"
+    },
+    {
+      "id": "2026-06-gold",
+      "month": "2026-06",
+      "league": "GOLD",
+      "path": "2026-06-gold.json",
+      "capturedAt": "2026-10-14T09:40:34.531Z"
+    },
+    {
+      "id": "2026-06-iron",
+      "month": "2026-06",
+      "league": "IRON",
+      "path": "2026-06-iron.json",
+      "capturedAt": "2026-10-14T09:40:34.531Z"
+    },
+    {
+      "id": "2026-06-master",
+      "month": "2026-06",
+      "league": "MASTER",
+      "path": "2026-06-master.json",
+      "capturedAt": "2026-10-14T09:40:34.531Z"
+    },
+    {
+      "id": "2026-06-platinum",
+      "month": "2026-06",
+      "league": "PLATINUM",
+      "path": "2026-06-platinum.json",
+      "capturedAt": "2026-10-14T09:40:34.531Z"
+    },
+    {
+      "id": "2026-06-rookie",
+      "month": "2026-06",
+      "league": "ROOKIE",
+      "path": "2026-06-rookie.json",
+      "capturedAt": "2026-10-14T09:40:34.531Z"
+    },
+    {
+      "id": "2026-06-silver",
+      "month": "2026-06",
+      "league": "SILVER",
+      "path": "2026-06-silver.json",
+      "capturedAt": "2026-10-14T09:40:34.531Z"
+    },
+    {
+      "id": "2026-06-master-edition-grand_master",
+      "month": "2026-06",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2026-06-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:39:59.810Z"
+    },
+    {
+      "id": "2026-06-master-edition-high_master",
+      "month": "2026-06",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2026-06-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:39:59.810Z"
+    },
+    {
+      "id": "2026-06-master-edition-master",
+      "month": "2026-06",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2026-06-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:39:59.810Z"
+    },
+    {
+      "id": "2026-06-master-edition-ultimate_master",
+      "month": "2026-06",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2026-06-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:39:59.810Z"
+    },
+    {
+      "id": "2026-05-all",
+      "month": "2026-05",
+      "league": "ALL",
+      "path": "2026-05-all.json",
+      "capturedAt": "2026-10-14T09:40:35.896Z"
+    },
+    {
+      "id": "2026-05-bronze",
+      "month": "2026-05",
+      "league": "BRONZE",
+      "path": "2026-05-bronze.json",
+      "capturedAt": "2026-10-14T09:40:35.896Z"
+    },
+    {
+      "id": "2026-05-diamond",
+      "month": "2026-05",
+      "league": "DIAMOND",
+      "path": "2026-05-diamond.json",
+      "capturedAt": "2026-10-14T09:40:35.896Z"
+    },
+    {
+      "id": "2026-05-gold",
+      "month": "2026-05",
+      "league": "GOLD",
+      "path": "2026-05-gold.json",
+      "capturedAt": "2026-10-14T09:40:35.896Z"
+    },
+    {
+      "id": "2026-05-iron",
+      "month": "2026-05",
+      "league": "IRON",
+      "path": "2026-05-iron.json",
+      "capturedAt": "2026-10-14T09:40:35.896Z"
+    },
+    {
+      "id": "2026-05-master",
+      "month": "2026-05",
+      "league": "MASTER",
+      "path": "2026-05-master.json",
+      "capturedAt": "2026-10-14T09:40:35.896Z"
+    },
+    {
+      "id": "2026-05-platinum",
+      "month": "2026-05",
+      "league": "PLATINUM",
+      "path": "2026-05-platinum.json",
+      "capturedAt": "2026-10-14T09:40:35.896Z"
+    },
+    {
+      "id": "2026-05-rookie",
+      "month": "2026-05",
+      "league": "ROOKIE",
+      "path": "2026-05-rookie.json",
+      "capturedAt": "2026-10-14T09:40:35.896Z"
+    },
+    {
+      "id": "2026-05-silver",
+      "month": "2026-05",
+      "league": "SILVER",
+      "path": "2026-05-silver.json",
+      "capturedAt": "2026-10-14T09:40:35.896Z"
+    },
+    {
+      "id": "2026-05-master-edition-grand_master",
+      "month": "2026-05",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2026-05-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:39:59.972Z"
+    },
+    {
+      "id": "2026-05-master-edition-high_master",
+      "month": "2026-05",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2026-05-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:39:59.972Z"
+    },
+    {
+      "id": "2026-05-master-edition-master",
+      "month": "2026-05",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2026-05-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:39:59.972Z"
+    },
+    {
+      "id": "2026-05-master-edition-ultimate_master",
+      "month": "2026-05",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2026-05-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:39:59.972Z"
+    },
+    {
+      "id": "2026-04-all",
+      "month": "2026-04",
+      "league": "ALL",
+      "path": "2026-04-all.json",
+      "capturedAt": "2026-10-14T09:40:37.021Z"
+    },
+    {
+      "id": "2026-04-bronze",
+      "month": "2026-04",
+      "league": "BRONZE",
+      "path": "2026-04-bronze.json",
+      "capturedAt": "2026-10-14T09:40:37.021Z"
+    },
+    {
+      "id": "2026-04-diamond",
+      "month": "2026-04",
+      "league": "DIAMOND",
+      "path": "2026-04-diamond.json",
+      "capturedAt": "2026-10-14T09:40:37.021Z"
+    },
+    {
+      "id": "2026-04-gold",
+      "month": "2026-04",
+      "league": "GOLD",
+      "path": "2026-04-gold.json",
+      "capturedAt": "2026-10-14T09:40:37.021Z"
+    },
+    {
+      "id": "2026-04-iron",
+      "month": "2026-04",
+      "league": "IRON",
+      "path": "2026-04-iron.json",
+      "capturedAt": "2026-10-14T09:40:37.021Z"
+    },
+    {
+      "id": "2026-04-master",
+      "month": "2026-04",
+      "league": "MASTER",
+      "path": "2026-04-master.json",
+      "capturedAt": "2026-10-14T09:40:37.021Z"
+    },
+    {
+      "id": "2026-04-platinum",
+      "month": "2026-04",
+      "league": "PLATINUM",
+      "path": "2026-04-platinum.json",
+      "capturedAt": "2026-10-14T09:40:37.021Z"
+    },
+    {
+      "id": "2026-04-rookie",
+      "month": "2026-04",
+      "league": "ROOKIE",
+      "path": "2026-04-rookie.json",
+      "capturedAt": "2026-10-14T09:40:37.021Z"
+    },
+    {
+      "id": "2026-04-silver",
+      "month": "2026-04",
+      "league": "SILVER",
+      "path": "2026-04-silver.json",
+      "capturedAt": "2026-10-14T09:40:37.021Z"
+    },
+    {
+      "id": "2026-04-master-edition-grand_master",
+      "month": "2026-04",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2026-04-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:00.135Z"
+    },
+    {
+      "id": "2026-04-master-edition-high_master",
+      "month": "2026-04",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2026-04-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:00.135Z"
+    },
+    {
+      "id": "2026-04-master-edition-master",
+      "month": "2026-04",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2026-04-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:00.135Z"
+    },
+    {
+      "id": "2026-04-master-edition-ultimate_master",
+      "month": "2026-04",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2026-04-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:00.135Z"
+    },
+    {
+      "id": "2026-03-all",
+      "month": "2026-03",
+      "league": "ALL",
+      "path": "2026-03-all.json",
+      "capturedAt": "2026-10-14T09:40:38.178Z"
+    },
+    {
+      "id": "2026-03-bronze",
+      "month": "2026-03",
+      "league": "BRONZE",
+      "path": "2026-03-bronze.json",
+      "capturedAt": "2026-10-14T09:40:38.178Z"
+    },
+    {
+      "id": "2026-03-diamond",
+      "month": "2026-03",
+      "league": "DIAMOND",
+      "path": "2026-03-diamond.json",
+      "capturedAt": "2026-10-14T09:40:38.178Z"
+    },
+    {
+      "id": "2026-03-gold",
+      "month": "2026-03",
+      "league": "GOLD",
+      "path": "2026-03-gold.json",
+      "capturedAt": "2026-10-14T09:40:38.178Z"
+    },
+    {
+      "id": "2026-03-iron",
+      "month": "2026-03",
+      "league": "IRON",
+      "path": "2026-03-iron.json",
+      "capturedAt": "2026-10-14T09:40:38.178Z"
+    },
+    {
+      "id": "2026-03-master",
+      "month": "2026-03",
+      "league": "MASTER",
+      "path": "2026-03-master.json",
+      "capturedAt": "2026-10-14T09:40:38.178Z"
+    },
+    {
+      "id": "2026-03-platinum",
+      "month": "2026-03",
+      "league": "PLATINUM",
+      "path": "2026-03-platinum.json",
+      "capturedAt": "2026-10-14T09:40:38.178Z"
+    },
+    {
+      "id": "2026-03-rookie",
+      "month": "2026-03",
+      "league": "ROOKIE",
+      "path": "2026-03-rookie.json",
+      "capturedAt": "2026-10-14T09:40:38.178Z"
+    },
+    {
+      "id": "2026-03-silver",
+      "month": "2026-03",
+      "league": "SILVER",
+      "path": "2026-03-silver.json",
+      "capturedAt": "2026-10-14T09:40:38.178Z"
+    },
+    {
+      "id": "2026-03-master-edition-grand_master",
+      "month": "2026-03",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2026-03-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:00.243Z"
+    },
+    {
+      "id": "2026-03-master-edition-high_master",
+      "month": "2026-03",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2026-03-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:00.243Z"
+    },
+    {
+      "id": "2026-03-master-edition-master",
+      "month": "2026-03",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2026-03-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:00.243Z"
+    },
+    {
+      "id": "2026-03-master-edition-ultimate_master",
+      "month": "2026-03",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2026-03-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:00.243Z"
+    },
+    {
+      "id": "2026-02-all",
+      "month": "2026-02",
+      "league": "ALL",
+      "path": "2026-02-all.json",
+      "capturedAt": "2026-10-14T09:40:39.729Z"
+    },
+    {
+      "id": "2026-02-bronze",
+      "month": "2026-02",
+      "league": "BRONZE",
+      "path": "2026-02-bronze.json",
+      "capturedAt": "2026-10-14T09:40:39.729Z"
+    },
+    {
+      "id": "2026-02-diamond",
+      "month": "2026-02",
+      "league": "DIAMOND",
+      "path": "2026-02-diamond.json",
+      "capturedAt": "2026-10-14T09:40:39.729Z"
+    },
+    {
+      "id": "2026-02-gold",
+      "month": "2026-02",
+      "league": "GOLD",
+      "path": "2026-02-gold.json",
+      "capturedAt": "2026-10-14T09:40:39.729Z"
+    },
+    {
+      "id": "2026-02-iron",
+      "month": "2026-02",
+      "league": "IRON",
+      "path": "2026-02-iron.json",
+      "capturedAt": "2026-10-14T09:40:39.729Z"
+    },
+    {
+      "id": "2026-02-master",
+      "month": "2026-02",
+      "league": "MASTER",
+      "path": "2026-02-master.json",
+      "capturedAt": "2026-10-14T09:40:39.729Z"
+    },
+    {
+      "id": "2026-02-platinum",
+      "month": "2026-02",
+      "league": "PLATINUM",
+      "path": "2026-02-platinum.json",
+      "capturedAt": "2026-10-14T09:40:39.729Z"
+    },
+    {
+      "id": "2026-02-rookie",
+      "month": "2026-02",
+      "league": "ROOKIE",
+      "path": "2026-02-rookie.json",
+      "capturedAt": "2026-10-14T09:40:39.729Z"
+    },
+    {
+      "id": "2026-02-silver",
+      "month": "2026-02",
+      "league": "SILVER",
+      "path": "2026-02-silver.json",
+      "capturedAt": "2026-10-14T09:40:39.729Z"
+    },
+    {
+      "id": "2026-02-master-edition-grand_master",
+      "month": "2026-02",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2026-02-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:00.393Z"
+    },
+    {
+      "id": "2026-02-master-edition-high_master",
+      "month": "2026-02",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2026-02-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:00.393Z"
+    },
+    {
+      "id": "2026-02-master-edition-master",
+      "month": "2026-02",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2026-02-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:00.393Z"
+    },
+    {
+      "id": "2026-02-master-edition-ultimate_master",
+      "month": "2026-02",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2026-02-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:00.393Z"
+    },
+    {
+      "id": "2026-01-all",
+      "month": "2026-01",
+      "league": "ALL",
+      "path": "2026-01-all.json",
+      "capturedAt": "2026-10-14T09:40:41.287Z"
+    },
+    {
+      "id": "2026-01-bronze",
+      "month": "2026-01",
+      "league": "BRONZE",
+      "path": "2026-01-bronze.json",
+      "capturedAt": "2026-10-14T09:40:41.287Z"
+    },
+    {
+      "id": "2026-01-diamond",
+      "month": "2026-01",
+      "league": "DIAMOND",
+      "path": "2026-01-diamond.json",
+      "capturedAt": "2026-10-14T09:40:41.287Z"
+    },
+    {
+      "id": "2026-01-gold",
+      "month": "2026-01",
+      "league": "GOLD",
+      "path": "2026-01-gold.json",
+      "capturedAt": "2026-10-14T09:40:41.287Z"
+    },
+    {
+      "id": "2026-01-iron",
+      "month": "2026-01",
+      "league": "IRON",
+      "path": "2026-01-iron.json",
+      "capturedAt": "2026-10-14T09:40:41.287Z"
+    },
+    {
+      "id": "2026-01-master",
+      "month": "2026-01",
+      "league": "MASTER",
+      "path": "2026-01-master.json",
+      "capturedAt": "2026-10-14T09:40:41.287Z"
+    },
+    {
+      "id": "2026-01-platinum",
+      "month": "2026-01",
+      "league": "PLATINUM",
+      "path": "2026-01-platinum.json",
+      "capturedAt": "2026-10-14T09:40:41.287Z"
+    },
+    {
+      "id": "2026-01-rookie",
+      "month": "2026-01",
+      "league": "ROOKIE",
+      "path": "2026-01-rookie.json",
+      "capturedAt": "2026-10-14T09:40:41.287Z"
+    },
+    {
+      "id": "2026-01-silver",
+      "month": "2026-01",
+      "league": "SILVER",
+      "path": "2026-01-silver.json",
+      "capturedAt": "2026-10-14T09:40:41.287Z"
+    },
+    {
+      "id": "2026-01-master-edition-grand_master",
+      "month": "2026-01",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2026-01-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:00.834Z"
+    },
+    {
+      "id": "2026-01-master-edition-high_master",
+      "month": "2026-01",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2026-01-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:00.834Z"
+    },
+    {
+      "id": "2026-01-master-edition-master",
+      "month": "2026-01",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2026-01-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:00.834Z"
+    },
+    {
+      "id": "2026-01-master-edition-ultimate_master",
+      "month": "2026-01",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2026-01-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:00.834Z"
+    },
+    {
+      "id": "2025-12-all",
+      "month": "2025-12",
+      "league": "ALL",
+      "path": "2025-12-all.json",
+      "capturedAt": "2026-10-14T09:40:42.492Z"
+    },
+    {
+      "id": "2025-12-bronze",
+      "month": "2025-12",
+      "league": "BRONZE",
+      "path": "2025-12-bronze.json",
+      "capturedAt": "2026-10-14T09:40:42.492Z"
+    },
+    {
+      "id": "2025-12-diamond",
+      "month": "2025-12",
+      "league": "DIAMOND",
+      "path": "2025-12-diamond.json",
+      "capturedAt": "2026-10-14T09:40:42.492Z"
+    },
+    {
+      "id": "2025-12-gold",
+      "month": "2025-12",
+      "league": "GOLD",
+      "path": "2025-12-gold.json",
+      "capturedAt": "2026-10-14T09:40:42.492Z"
+    },
+    {
+      "id": "2025-12-iron",
+      "month": "2025-12",
+      "league": "IRON",
+      "path": "2025-12-iron.json",
+      "capturedAt": "2026-10-14T09:40:42.492Z"
+    },
+    {
+      "id": "2025-12-master",
+      "month": "2025-12",
+      "league": "MASTER",
+      "path": "2025-12-master.json",
+      "capturedAt": "2026-10-14T09:40:42.492Z"
+    },
+    {
+      "id": "2025-12-platinum",
+      "month": "2025-12",
+      "league": "PLATINUM",
+      "path": "2025-12-platinum.json",
+      "capturedAt": "2026-10-14T09:40:42.492Z"
+    },
+    {
+      "id": "2025-12-rookie",
+      "month": "2025-12",
+      "league": "ROOKIE",
+      "path": "2025-12-rookie.json",
+      "capturedAt": "2026-10-14T09:40:42.492Z"
+    },
+    {
+      "id": "2025-12-silver",
+      "month": "2025-12",
+      "league": "SILVER",
+      "path": "2025-12-silver.json",
+      "capturedAt": "2026-10-14T09:40:42.492Z"
+    },
+    {
+      "id": "2025-12-master-edition-grand_master",
+      "month": "2025-12",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-12-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:00.987Z"
+    },
+    {
+      "id": "2025-12-master-edition-high_master",
+      "month": "2025-12",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-12-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:00.987Z"
+    },
+    {
+      "id": "2025-12-master-edition-master",
+      "month": "2025-12",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-12-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:00.987Z"
+    },
+    {
+      "id": "2025-12-master-edition-ultimate_master",
+      "month": "2025-12",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-12-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:00.987Z"
+    },
+    {
+      "id": "2025-11-all",
+      "month": "2025-11",
+      "league": "ALL",
+      "path": "2025-11-all.json",
+      "capturedAt": "2026-10-14T09:40:43.881Z"
+    },
+    {
+      "id": "2025-11-bronze",
+      "month": "2025-11",
+      "league": "BRONZE",
+      "path": "2025-11-bronze.json",
+      "capturedAt": "2026-10-14T09:40:43.881Z"
+    },
+    {
+      "id": "2025-11-diamond",
+      "month": "2025-11",
+      "league": "DIAMOND",
+      "path": "2025-11-diamond.json",
+      "capturedAt": "2026-10-14T09:40:43.881Z"
+    },
+    {
+      "id": "2025-11-gold",
+      "month": "2025-11",
+      "league": "GOLD",
+      "path": "2025-11-gold.json",
+      "capturedAt": "2026-10-14T09:40:43.881Z"
+    },
+    {
+      "id": "2025-11-iron",
+      "month": "2025-11",
+      "league": "IRON",
+      "path": "2025-11-iron.json",
+      "capturedAt": "2026-10-14T09:40:43.881Z"
+    },
+    {
+      "id": "2025-11-master",
+      "month": "2025-11",
+      "league": "MASTER",
+      "path": "2025-11-master.json",
+      "capturedAt": "2026-10-14T09:40:43.881Z"
+    },
+    {
+      "id": "2025-11-platinum",
+      "month": "2025-11",
+      "league": "PLATINUM",
+      "path": "2025-11-platinum.json",
+      "capturedAt": "2026-10-14T09:40:43.881Z"
+    },
+    {
+      "id": "2025-11-rookie",
+      "month": "2025-11",
+      "league": "ROOKIE",
+      "path": "2025-11-rookie.json",
+      "capturedAt": "2026-10-14T09:40:43.881Z"
+    },
+    {
+      "id": "2025-11-silver",
+      "month": "2025-11",
+      "league": "SILVER",
+      "path": "2025-11-silver.json",
+      "capturedAt": "2026-10-14T09:40:43.881Z"
+    },
+    {
+      "id": "2025-11-master-edition-grand_master",
+      "month": "2025-11",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-11-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:10.551Z"
+    },
+    {
+      "id": "2025-11-master-edition-high_master",
+      "month": "2025-11",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-11-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:10.551Z"
+    },
+    {
+      "id": "2025-11-master-edition-master",
+      "month": "2025-11",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-11-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:10.551Z"
+    },
+    {
+      "id": "2025-11-master-edition-ultimate_master",
+      "month": "2025-11",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-11-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:10.551Z"
+    },
+    {
+      "id": "2025-10-all",
+      "month": "2025-10",
+      "league": "ALL",
+      "path": "2025-10-all.json",
+      "capturedAt": "2026-10-14T09:40:44.970Z"
+    },
+    {
+      "id": "2025-10-bronze",
+      "month": "2025-10",
+      "league": "BRONZE",
+      "path": "2025-10-bronze.json",
+      "capturedAt": "2026-10-14T09:40:44.970Z"
+    },
+    {
+      "id": "2025-10-diamond",
+      "month": "2025-10",
+      "league": "DIAMOND",
+      "path": "2025-10-diamond.json",
+      "capturedAt": "2026-10-14T09:40:44.970Z"
+    },
+    {
+      "id": "2025-10-gold",
+      "month": "2025-10",
+      "league": "GOLD",
+      "path": "2025-10-gold.json",
+      "capturedAt": "2026-10-14T09:40:44.970Z"
+    },
+    {
+      "id": "2025-10-iron",
+      "month": "2025-10",
+      "league": "IRON",
+      "path": "2025-10-iron.json",
+      "capturedAt": "2026-10-14T09:40:44.970Z"
+    },
+    {
+      "id": "2025-10-master",
+      "month": "2025-10",
+      "league": "MASTER",
+      "path": "2025-10-master.json",
+      "capturedAt": "2026-10-14T09:40:44.970Z"
+    },
+    {
+      "id": "2025-10-platinum",
+      "month": "2025-10",
+      "league": "PLATINUM",
+      "path": "2025-10-platinum.json",
+      "capturedAt": "2026-10-14T09:40:44.970Z"
+    },
+    {
+      "id": "2025-10-rookie",
+      "month": "2025-10",
+      "league": "ROOKIE",
+      "path": "2025-10-rookie.json",
+      "capturedAt": "2026-10-14T09:40:44.970Z"
+    },
+    {
+      "id": "2025-10-silver",
+      "month": "2025-10",
+      "league": "SILVER",
+      "path": "2025-10-silver.json",
+      "capturedAt": "2026-10-14T09:40:44.970Z"
+    },
+    {
+      "id": "2025-10-master-edition-grand_master",
+      "month": "2025-10",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-10-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:10.838Z"
+    },
+    {
+      "id": "2025-10-master-edition-high_master",
+      "month": "2025-10",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-10-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:10.838Z"
+    },
+    {
+      "id": "2025-10-master-edition-master",
+      "month": "2025-10",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-10-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:10.838Z"
+    },
+    {
+      "id": "2025-10-master-edition-ultimate_master",
+      "month": "2025-10",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-10-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:10.838Z"
+    },
+    {
+      "id": "2025-09-all",
+      "month": "2025-09",
+      "league": "ALL",
+      "path": "2025-09-all.json",
+      "capturedAt": "2026-10-14T09:41:02.383Z"
+    },
+    {
+      "id": "2025-09-bronze",
+      "month": "2025-09",
+      "league": "BRONZE",
+      "path": "2025-09-bronze.json",
+      "capturedAt": "2026-10-14T09:41:02.383Z"
+    },
+    {
+      "id": "2025-09-diamond",
+      "month": "2025-09",
+      "league": "DIAMOND",
+      "path": "2025-09-diamond.json",
+      "capturedAt": "2026-10-14T09:41:02.383Z"
+    },
+    {
+      "id": "2025-09-gold",
+      "month": "2025-09",
+      "league": "GOLD",
+      "path": "2025-09-gold.json",
+      "capturedAt": "2026-10-14T09:41:02.383Z"
+    },
+    {
+      "id": "2025-09-iron",
+      "month": "2025-09",
+      "league": "IRON",
+      "path": "2025-09-iron.json",
+      "capturedAt": "2026-10-14T09:41:02.383Z"
+    },
+    {
+      "id": "2025-09-master",
+      "month": "2025-09",
+      "league": "MASTER",
+      "path": "2025-09-master.json",
+      "capturedAt": "2026-10-14T09:41:02.383Z"
+    },
+    {
+      "id": "2025-09-platinum",
+      "month": "2025-09",
+      "league": "PLATINUM",
+      "path": "2025-09-platinum.json",
+      "capturedAt": "2026-10-14T09:41:02.383Z"
+    },
+    {
+      "id": "2025-09-rookie",
+      "month": "2025-09",
+      "league": "ROOKIE",
+      "path": "2025-09-rookie.json",
+      "capturedAt": "2026-10-14T09:41:02.383Z"
+    },
+    {
+      "id": "2025-09-silver",
+      "month": "2025-09",
+      "league": "SILVER",
+      "path": "2025-09-silver.json",
+      "capturedAt": "2026-10-14T09:41:02.383Z"
+    },
+    {
+      "id": "2025-09-master-edition-grand_master",
+      "month": "2025-09",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-09-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:11.285Z"
+    },
+    {
+      "id": "2025-09-master-edition-high_master",
+      "month": "2025-09",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-09-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:11.285Z"
+    },
+    {
+      "id": "2025-09-master-edition-master",
+      "month": "2025-09",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-09-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:11.285Z"
+    },
+    {
+      "id": "2025-09-master-edition-ultimate_master",
+      "month": "2025-09",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-09-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:11.285Z"
+    },
+    {
+      "id": "2025-08-all",
+      "month": "2025-08",
+      "league": "ALL",
+      "path": "2025-08-all.json",
+      "capturedAt": "2026-10-14T09:41:03.479Z"
+    },
+    {
+      "id": "2025-08-bronze",
+      "month": "2025-08",
+      "league": "BRONZE",
+      "path": "2025-08-bronze.json",
+      "capturedAt": "2026-10-14T09:41:03.479Z"
+    },
+    {
+      "id": "2025-08-diamond",
+      "month": "2025-08",
+      "league": "DIAMOND",
+      "path": "2025-08-diamond.json",
+      "capturedAt": "2026-10-14T09:41:03.479Z"
+    },
+    {
+      "id": "2025-08-gold",
+      "month": "2025-08",
+      "league": "GOLD",
+      "path": "2025-08-gold.json",
+      "capturedAt": "2026-10-14T09:41:03.479Z"
+    },
+    {
+      "id": "2025-08-iron",
+      "month": "2025-08",
+      "league": "IRON",
+      "path": "2025-08-iron.json",
+      "capturedAt": "2026-10-14T09:41:03.479Z"
+    },
+    {
+      "id": "2025-08-master",
+      "month": "2025-08",
+      "league": "MASTER",
+      "path": "2025-08-master.json",
+      "capturedAt": "2026-10-14T09:41:03.479Z"
+    },
+    {
+      "id": "2025-08-platinum",
+      "month": "2025-08",
+      "league": "PLATINUM",
+      "path": "2025-08-platinum.json",
+      "capturedAt": "2026-10-14T09:41:03.479Z"
+    },
+    {
+      "id": "2025-08-rookie",
+      "month": "2025-08",
+      "league": "ROOKIE",
+      "path": "2025-08-rookie.json",
+      "capturedAt": "2026-10-14T09:41:03.479Z"
+    },
+    {
+      "id": "2025-08-silver",
+      "month": "2025-08",
+      "league": "SILVER",
+      "path": "2025-08-silver.json",
+      "capturedAt": "2026-10-14T09:41:03.479Z"
+    },
+    {
+      "id": "2025-08-master-edition-grand_master",
+      "month": "2025-08",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-08-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:11.665Z"
+    },
+    {
+      "id": "2025-08-master-edition-high_master",
+      "month": "2025-08",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-08-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:11.665Z"
+    },
+    {
+      "id": "2025-08-master-edition-master",
+      "month": "2025-08",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-08-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:11.665Z"
+    },
+    {
+      "id": "2025-08-master-edition-ultimate_master",
+      "month": "2025-08",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-08-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:11.665Z"
+    },
+    {
+      "id": "2025-07-all",
+      "month": "2025-07",
+      "league": "ALL",
+      "path": "2025-07-all.json",
+      "capturedAt": "2026-10-14T09:41:04.662Z"
+    },
+    {
+      "id": "2025-07-bronze",
+      "month": "2025-07",
+      "league": "BRONZE",
+      "path": "2025-07-bronze.json",
+      "capturedAt": "2026-10-14T09:41:04.662Z"
+    },
+    {
+      "id": "2025-07-diamond",
+      "month": "2025-07",
+      "league": "DIAMOND",
+      "path": "2025-07-diamond.json",
+      "capturedAt": "2026-10-14T09:41:04.662Z"
+    },
+    {
+      "id": "2025-07-gold",
+      "month": "2025-07",
+      "league": "GOLD",
+      "path": "2025-07-gold.json",
+      "capturedAt": "2026-10-14T09:41:04.662Z"
+    },
+    {
+      "id": "2025-07-iron",
+      "month": "2025-07",
+      "league": "IRON",
+      "path": "2025-07-iron.json",
+      "capturedAt": "2026-10-14T09:41:04.662Z"
+    },
+    {
+      "id": "2025-07-master",
+      "month": "2025-07",
+      "league": "MASTER",
+      "path": "2025-07-master.json",
+      "capturedAt": "2026-10-14T09:41:04.662Z"
+    },
+    {
+      "id": "2025-07-platinum",
+      "month": "2025-07",
+      "league": "PLATINUM",
+      "path": "2025-07-platinum.json",
+      "capturedAt": "2026-10-14T09:41:04.662Z"
+    },
+    {
+      "id": "2025-07-rookie",
+      "month": "2025-07",
+      "league": "ROOKIE",
+      "path": "2025-07-rookie.json",
+      "capturedAt": "2026-10-14T09:41:04.662Z"
+    },
+    {
+      "id": "2025-07-silver",
+      "month": "2025-07",
+      "league": "SILVER",
+      "path": "2025-07-silver.json",
+      "capturedAt": "2026-10-14T09:41:04.662Z"
+    },
+    {
+      "id": "2025-07-master-edition-grand_master",
+      "month": "2025-07",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-07-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:11.824Z"
+    },
+    {
+      "id": "2025-07-master-edition-high_master",
+      "month": "2025-07",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-07-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:11.824Z"
+    },
+    {
+      "id": "2025-07-master-edition-master",
+      "month": "2025-07",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-07-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:11.824Z"
+    },
+    {
+      "id": "2025-07-master-edition-ultimate_master",
+      "month": "2025-07",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-07-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:11.824Z"
+    },
+    {
+      "id": "2025-06-all",
+      "month": "2025-06",
+      "league": "ALL",
+      "path": "2025-06-all.json",
+      "capturedAt": "2026-10-14T09:41:05.725Z"
+    },
+    {
+      "id": "2025-06-bronze",
+      "month": "2025-06",
+      "league": "BRONZE",
+      "path": "2025-06-bronze.json",
+      "capturedAt": "2026-10-14T09:41:05.725Z"
+    },
+    {
+      "id": "2025-06-diamond",
+      "month": "2025-06",
+      "league": "DIAMOND",
+      "path": "2025-06-diamond.json",
+      "capturedAt": "2026-10-14T09:41:05.725Z"
+    },
+    {
+      "id": "2025-06-gold",
+      "month": "2025-06",
+      "league": "GOLD",
+      "path": "2025-06-gold.json",
+      "capturedAt": "2026-10-14T09:41:05.725Z"
+    },
+    {
+      "id": "2025-06-iron",
+      "month": "2025-06",
+      "league": "IRON",
+      "path": "2025-06-iron.json",
+      "capturedAt": "2026-10-14T09:41:05.725Z"
+    },
+    {
+      "id": "2025-06-master",
+      "month": "2025-06",
+      "league": "MASTER",
+      "path": "2025-06-master.json",
+      "capturedAt": "2026-10-14T09:41:05.725Z"
+    },
+    {
+      "id": "2025-06-platinum",
+      "month": "2025-06",
+      "league": "PLATINUM",
+      "path": "2025-06-platinum.json",
+      "capturedAt": "2026-10-14T09:41:05.725Z"
+    },
+    {
+      "id": "2025-06-rookie",
+      "month": "2025-06",
+      "league": "ROOKIE",
+      "path": "2025-06-rookie.json",
+      "capturedAt": "2026-10-14T09:41:05.725Z"
+    },
+    {
+      "id": "2025-06-silver",
+      "month": "2025-06",
+      "league": "SILVER",
+      "path": "2025-06-silver.json",
+      "capturedAt": "2026-10-14T09:41:05.725Z"
+    },
+    {
+      "id": "2025-06-master-edition-grand_master",
+      "month": "2025-06",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-06-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:12.326Z"
+    },
+    {
+      "id": "2025-06-master-edition-high_master",
+      "month": "2025-06",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-06-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:12.326Z"
+    },
+    {
+      "id": "2025-06-master-edition-master",
+      "month": "2025-06",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-06-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:12.326Z"
+    },
+    {
+      "id": "2025-06-master-edition-ultimate_master",
+      "month": "2025-06",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-06-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:12.326Z"
+    },
+    {
+      "id": "2025-05-all",
+      "month": "2025-05",
+      "league": "ALL",
+      "path": "2025-05-all.json",
+      "capturedAt": "2026-10-14T09:42:03.979Z"
+    },
+    {
+      "id": "2025-05-bronze",
+      "month": "2025-05",
+      "league": "BRONZE",
+      "path": "2025-05-bronze.json",
+      "capturedAt": "2026-10-14T09:42:03.979Z"
+    },
+    {
+      "id": "2025-05-diamond",
+      "month": "2025-05",
+      "league": "DIAMOND",
+      "path": "2025-05-diamond.json",
+      "capturedAt": "2026-10-14T09:42:03.979Z"
+    },
+    {
+      "id": "2025-05-gold",
+      "month": "2025-05",
+      "league": "GOLD",
+      "path": "2025-05-gold.json",
+      "capturedAt": "2026-10-14T09:42:03.979Z"
+    },
+    {
+      "id": "2025-05-iron",
+      "month": "2025-05",
+      "league": "IRON",
+      "path": "2025-05-iron.json",
+      "capturedAt": "2026-10-14T09:42:03.979Z"
+    },
+    {
+      "id": "2025-05-master",
+      "month": "2025-05",
+      "league": "MASTER",
+      "path": "2025-05-master.json",
+      "capturedAt": "2026-10-14T09:42:03.979Z"
+    },
+    {
+      "id": "2025-05-platinum",
+      "month": "2025-05",
+      "league": "PLATINUM",
+      "path": "2025-05-platinum.json",
+      "capturedAt": "2026-10-14T09:42:03.979Z"
+    },
+    {
+      "id": "2025-05-rookie",
+      "month": "2025-05",
+      "league": "ROOKIE",
+      "path": "2025-05-rookie.json",
+      "capturedAt": "2026-10-14T09:42:03.979Z"
+    },
+    {
+      "id": "2025-05-silver",
+      "month": "2025-05",
+      "league": "SILVER",
+      "path": "2025-05-silver.json",
+      "capturedAt": "2026-10-14T09:42:03.979Z"
+    },
+    {
+      "id": "2025-05-master-edition-grand_master",
+      "month": "2025-05",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-05-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:13.646Z"
+    },
+    {
+      "id": "2025-05-master-edition-high_master",
+      "month": "2025-05",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-05-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:13.646Z"
+    },
+    {
+      "id": "2025-05-master-edition-master",
+      "month": "2025-05",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-05-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:13.646Z"
+    },
+    {
+      "id": "2025-05-master-edition-ultimate_master",
+      "month": "2025-05",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-05-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:13.646Z"
+    },
+    {
+      "id": "2025-04-all",
+      "month": "2025-04",
+      "league": "ALL",
+      "path": "2025-04-all.json",
+      "capturedAt": "2026-10-14T09:42:08.413Z"
+    },
+    {
+      "id": "2025-04-bronze",
+      "month": "2025-04",
+      "league": "BRONZE",
+      "path": "2025-04-bronze.json",
+      "capturedAt": "2026-10-14T09:42:08.413Z"
+    },
+    {
+      "id": "2025-04-diamond",
+      "month": "2025-04",
+      "league": "DIAMOND",
+      "path": "2025-04-diamond.json",
+      "capturedAt": "2026-10-14T09:42:08.413Z"
+    },
+    {
+      "id": "2025-04-gold",
+      "month": "2025-04",
+      "league": "GOLD",
+      "path": "2025-04-gold.json",
+      "capturedAt": "2026-10-14T09:42:08.413Z"
+    },
+    {
+      "id": "2025-04-iron",
+      "month": "2025-04",
+      "league": "IRON",
+      "path": "2025-04-iron.json",
+      "capturedAt": "2026-10-14T09:42:08.413Z"
+    },
+    {
+      "id": "2025-04-master",
+      "month": "2025-04",
+      "league": "MASTER",
+      "path": "2025-04-master.json",
+      "capturedAt": "2026-10-14T09:42:08.413Z"
+    },
+    {
+      "id": "2025-04-platinum",
+      "month": "2025-04",
+      "league": "PLATINUM",
+      "path": "2025-04-platinum.json",
+      "capturedAt": "2026-10-14T09:42:08.413Z"
+    },
+    {
+      "id": "2025-04-rookie",
+      "month": "2025-04",
+      "league": "ROOKIE",
+      "path": "2025-04-rookie.json",
+      "capturedAt": "2026-10-14T09:42:08.413Z"
+    },
+    {
+      "id": "2025-04-silver",
+      "month": "2025-04",
+      "league": "SILVER",
+      "path": "2025-04-silver.json",
+      "capturedAt": "2026-10-14T09:42:08.413Z"
+    },
+    {
+      "id": "2025-04-master-edition-grand_master",
+      "month": "2025-04",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-04-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:13.949Z"
+    },
+    {
+      "id": "2025-04-master-edition-high_master",
+      "month": "2025-04",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-04-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:13.949Z"
+    },
+    {
+      "id": "2025-04-master-edition-master",
+      "month": "2025-04",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-04-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:13.949Z"
+    },
+    {
+      "id": "2025-04-master-edition-ultimate_master",
+      "month": "2025-04",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-04-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:13.949Z"
+    },
+    {
+      "id": "2025-03-all",
+      "month": "2025-03",
+      "league": "ALL",
+      "path": "2025-03-all.json",
+      "capturedAt": "2026-10-14T09:42:10.206Z"
+    },
+    {
+      "id": "2025-03-bronze",
+      "month": "2025-03",
+      "league": "BRONZE",
+      "path": "2025-03-bronze.json",
+      "capturedAt": "2026-10-14T09:42:10.206Z"
+    },
+    {
+      "id": "2025-03-diamond",
+      "month": "2025-03",
+      "league": "DIAMOND",
+      "path": "2025-03-diamond.json",
+      "capturedAt": "2026-10-14T09:42:10.206Z"
+    },
+    {
+      "id": "2025-03-gold",
+      "month": "2025-03",
+      "league": "GOLD",
+      "path": "2025-03-gold.json",
+      "capturedAt": "2026-10-14T09:42:10.206Z"
+    },
+    {
+      "id": "2025-03-iron",
+      "month": "2025-03",
+      "league": "IRON",
+      "path": "2025-03-iron.json",
+      "capturedAt": "2026-10-14T09:42:10.206Z"
+    },
+    {
+      "id": "2025-03-master",
+      "month": "2025-03",
+      "league": "MASTER",
+      "path": "2025-03-master.json",
+      "capturedAt": "2026-10-14T09:42:10.206Z"
+    },
+    {
+      "id": "2025-03-platinum",
+      "month": "2025-03",
+      "league": "PLATINUM",
+      "path": "2025-03-platinum.json",
+      "capturedAt": "2026-10-14T09:42:10.206Z"
+    },
+    {
+      "id": "2025-03-rookie",
+      "month": "2025-03",
+      "league": "ROOKIE",
+      "path": "2025-03-rookie.json",
+      "capturedAt": "2026-10-14T09:42:10.206Z"
+    },
+    {
+      "id": "2025-03-silver",
+      "month": "2025-03",
+      "league": "SILVER",
+      "path": "2025-03-silver.json",
+      "capturedAt": "2026-10-14T09:42:10.206Z"
+    },
+    {
+      "id": "2025-03-master-edition-grand_master",
+      "month": "2025-03",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-03-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:14.508Z"
+    },
+    {
+      "id": "2025-03-master-edition-high_master",
+      "month": "2025-03",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-03-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:14.508Z"
+    },
+    {
+      "id": "2025-03-master-edition-master",
+      "month": "2025-03",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-03-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:14.508Z"
+    },
+    {
+      "id": "2025-03-master-edition-ultimate_master",
+      "month": "2025-03",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-03-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:14.508Z"
+    },
+    {
+      "id": "2025-02-all",
+      "month": "2025-02",
+      "league": "ALL",
+      "path": "2025-02-all.json",
+      "capturedAt": "2026-10-14T09:42:11.876Z"
+    },
+    {
+      "id": "2025-02-bronze",
+      "month": "2025-02",
+      "league": "BRONZE",
+      "path": "2025-02-bronze.json",
+      "capturedAt": "2026-10-14T09:42:11.876Z"
+    },
+    {
+      "id": "2025-02-diamond",
+      "month": "2025-02",
+      "league": "DIAMOND",
+      "path": "2025-02-diamond.json",
+      "capturedAt": "2026-10-14T09:42:11.876Z"
+    },
+    {
+      "id": "2025-02-gold",
+      "month": "2025-02",
+      "league": "GOLD",
+      "path": "2025-02-gold.json",
+      "capturedAt": "2026-10-14T09:42:11.876Z"
+    },
+    {
+      "id": "2025-02-iron",
+      "month": "2025-02",
+      "league": "IRON",
+      "path": "2025-02-iron.json",
+      "capturedAt": "2026-10-14T09:42:11.876Z"
+    },
+    {
+      "id": "2025-02-master",
+      "month": "2025-02",
+      "league": "MASTER",
+      "path": "2025-02-master.json",
+      "capturedAt": "2026-10-14T09:42:11.876Z"
+    },
+    {
+      "id": "2025-02-platinum",
+      "month": "2025-02",
+      "league": "PLATINUM",
+      "path": "2025-02-platinum.json",
+      "capturedAt": "2026-10-14T09:42:11.876Z"
+    },
+    {
+      "id": "2025-02-rookie",
+      "month": "2025-02",
+      "league": "ROOKIE",
+      "path": "2025-02-rookie.json",
+      "capturedAt": "2026-10-14T09:42:11.876Z"
+    },
+    {
+      "id": "2025-02-silver",
+      "month": "2025-02",
+      "league": "SILVER",
+      "path": "2025-02-silver.json",
+      "capturedAt": "2026-10-14T09:42:11.876Z"
+    },
+    {
+      "id": "2025-02-master-edition-grand_master",
+      "month": "2025-02",
+      "edition": "master",
+      "league": "GRAND_MASTER",
+      "path": "2025-02-master-edition-grand_master.json",
+      "capturedAt": "2026-10-14T09:40:15.515Z"
+    },
+    {
+      "id": "2025-02-master-edition-high_master",
+      "month": "2025-02",
+      "edition": "master",
+      "league": "HIGH_MASTER",
+      "path": "2025-02-master-edition-high_master.json",
+      "capturedAt": "2026-10-14T09:40:15.515Z"
+    },
+    {
+      "id": "2025-02-master-edition-master",
+      "month": "2025-02",
+      "edition": "master",
+      "league": "MASTER",
+      "path": "2025-02-master-edition-master.json",
+      "capturedAt": "2026-10-14T09:40:15.515Z"
+    },
+    {
+      "id": "2025-02-master-edition-ultimate_master",
+      "month": "2025-02",
+      "edition": "master",
+      "league": "ULTIMATE_MASTER",
+      "path": "2025-02-master-edition-ultimate_master.json",
+      "capturedAt": "2026-10-14T09:40:15.515Z"
+    },
+    {
+      "id": "2025-01-all",
+      "month": "2025-01",
+      "league": "ALL",
+      "path": "2025-01-all.json",
+      "capturedAt": "2026-10-14T09:42:13.838Z"
+    },
+    {
+      "id": "2025-01-bronze",
+      "month": "2025-01",
+      "league": "BRONZE",
+      "path": "2025-01-bronze.json",
+      "capturedAt": "2026-10-14T09:42:13.838Z"
+    },
+    {
+      "id": "2025-01-diamond",
+      "month": "2025-01",
+      "league": "DIAMOND",
+      "path": "2025-01-diamond.json",
+      "capturedAt": "2026-10-14T09:42:13.838Z"
+    },
+    {
+      "id": "2025-01-gold",
+      "month": "2025-01",
+      "league": "GOLD",
+      "path": "2025-01-gold.json",
+      "capturedAt": "2026-10-14T09:42:13.838Z"
+    },
+    {
+      "id": "2025-01-iron",
+      "month": "2025-01",
+      "league": "IRON",
+      "path": "2025-01-iron.json",
+      "capturedAt": "2026-10-14T09:42:13.838Z"
+    },
+    {
+      "id": "2025-01-master",
+      "month": "2025-01",
+      "league": "MASTER",
+      "path": "2025-01-master.json",
+      "capturedAt": "2026-10-14T09:42:13.838Z"
+    },
+    {
+      "id": "2025-01-platinum",
+      "month": "2025-01",
+      "league": "PLATINUM",
+      "path": "2025-01-platinum.json",
+      "capturedAt": "2026-10-14T09:42:13.838Z"
+    },
+    {
+      "id": "2025-01-rookie",
+      "month": "2025-01",
+      "league": "ROOKIE",
+      "path": "2025-01-rookie.json",
+      "capturedAt": "2026-10-14T09:42:13.838Z"
+    },
+    {
+      "id": "2025-01-silver",
+      "month": "2025-01",
+      "league": "SILVER",
+      "path": "2025-01-silver.json",
+      "capturedAt": "2026-10-14T09:42:13.838Z"
+    },
+    {
+      "id": "2024-12-all",
+      "month": "2024-12",
+      "league": "ALL",
+      "path": "2024-12-all.json",
+      "capturedAt": "2026-10-14T09:42:16.680Z"
+    },
+    {
+      "id": "2024-12-bronze",
+      "month": "2024-12",
+      "league": "BRONZE",
+      "path": "2024-12-bronze.json",
+      "capturedAt": "2026-10-14T09:42:16.680Z"
+    },
+    {
+      "id": "2024-12-diamond",
+      "month": "2024-12",
+      "league": "DIAMOND",
+      "path": "2024-12-diamond.json",
+      "capturedAt": "2026-10-14T09:42:16.680Z"
+    },
+    {
+      "id": "2024-12-gold",
+      "month": "2024-12",
+      "league": "GOLD",
+      "path": "2024-12-gold.json",
+      "capturedAt": "2026-10-14T09:42:16.680Z"
+    },
+    {
+      "id": "2024-12-iron",
+      "month": "2024-12",
+      "league": "IRON",
+      "path": "2024-12-iron.json",
+      "capturedAt": "2026-10-14T09:42:16.680Z"
+    },
+    {
+      "id": "2024-12-master",
+      "month": "2024-12",
+      "league": "MASTER",
+      "path": "2024-12-master.json",
+      "capturedAt": "2026-10-14T09:42:16.680Z"
+    },
+    {
+      "id": "2024-12-platinum",
+      "month": "2024-12",
+      "league": "PLATINUM",
+      "path": "2024-12-platinum.json",
+      "capturedAt": "2026-10-14T09:42:16.680Z"
+    },
+    {
+      "id": "2024-12-rookie",
+      "month": "2024-12",
+      "league": "ROOKIE",
+      "path": "2024-12-rookie.json",
+      "capturedAt": "2026-10-14T09:42:16.680Z"
+    },
+    {
+      "id": "2024-12-silver",
+      "month": "2024-12",
+      "league": "SILVER",
+      "path": "2024-12-silver.json",
+      "capturedAt": "2026-10-14T09:42:16.680Z"
+    },
+    {
+      "id": "2024-11-all",
+      "month": "2024-11",
+      "league": "ALL",
+      "path": "2024-11-all.json",
+      "capturedAt": "2026-10-14T09:42:18.542Z"
+    },
+    {
+      "id": "2024-11-bronze",
+      "month": "2024-11",
+      "league": "BRONZE",
+      "path": "2024-11-bronze.json",
+      "capturedAt": "2026-10-14T09:42:18.542Z"
+    },
+    {
+      "id": "2024-11-diamond",
+      "month": "2024-11",
+      "league": "DIAMOND",
+      "path": "2024-11-diamond.json",
+      "capturedAt": "2026-10-14T09:42:18.542Z"
+    },
+    {
+      "id": "2024-11-gold",
+      "month": "2024-11",
+      "league": "GOLD",
+      "path": "2024-11-gold.json",
+      "capturedAt": "2026-10-14T09:42:18.542Z"
+    },
+    {
+      "id": "2024-11-iron",
+      "month": "2024-11",
+      "league": "IRON",
+      "path": "2024-11-iron.json",
+      "capturedAt": "2026-10-14T09:42:18.542Z"
+    },
+    {
+      "id": "2024-11-master",
+      "month": "2024-11",
+      "league": "MASTER",
+      "path": "2024-11-master.json",
+      "capturedAt": "2026-10-14T09:42:18.542Z"
+    },
+    {
+      "id": "2024-11-platinum",
+      "month": "2024-11",
+      "league": "PLATINUM",
+      "path": "2024-11-platinum.json",
+      "capturedAt": "2026-10-14T09:42:18.542Z"
+    },
+    {
+      "id": "2024-11-rookie",
+      "month": "2024-11",
+      "league": "ROOKIE",
+      "path": "2024-11-rookie.json",
+      "capturedAt": "2026-10-14T09:42:18.542Z"
+    },
+    {
+      "id": "2024-11-silver",
+      "month": "2024-11",
+      "league": "SILVER",
+      "path": "2024-11-silver.json",
+      "capturedAt": "2026-10-14T09:42:18.542Z"
+    },
+    {
+      "id": "2024-10-all",
+      "month": "2024-10",
+      "league": "ALL",
+      "path": "2024-10-all.json",
+      "capturedAt": "2026-10-14T09:42:20.142Z"
+    },
+    {
+      "id": "2024-10-bronze",
+      "month": "2024-10",
+      "league": "BRONZE",
+      "path": "2024-10-bronze.json",
+      "capturedAt": "2026-10-14T09:42:20.142Z"
+    },
+    {
+      "id": "2024-10-diamond",
+      "month": "2024-10",
+      "league": "DIAMOND",
+      "path": "2024-10-diamond.json",
+      "capturedAt": "2026-10-14T09:42:20.142Z"
+    },
+    {
+      "id": "2024-10-gold",
+      "month": "2024-10",
+      "league": "GOLD",
+      "path": "2024-10-gold.json",
+      "capturedAt": "2026-10-14T09:42:20.142Z"
+    },
+    {
+      "id": "2024-10-iron",
+      "month": "2024-10",
+      "league": "IRON",
+      "path": "2024-10-iron.json",
+      "capturedAt": "2026-10-14T09:42:20.142Z"
+    },
+    {
+      "id": "2024-10-master",
+      "month": "2024-10",
+      "league": "MASTER",
+      "path": "2024-10-master.json",
+      "capturedAt": "2026-10-14T09:42:20.142Z"
+    },
+    {
+      "id": "2024-10-platinum",
+      "month": "2024-10",
+      "league": "PLATINUM",
+      "path": "2024-10-platinum.json",
+      "capturedAt": "2026-10-14T09:42:20.142Z"
+    },
+    {
+      "id": "2024-10-rookie",
+      "month": "2024-10",
+      "league": "ROOKIE",
+      "path": "2024-10-rookie.json",
+      "capturedAt": "2026-10-14T09:42:20.142Z"
+    },
+    {
+      "id": "2024-10-silver",
+      "month": "2024-10",
+      "league": "SILVER",
+      "path": "2024-10-silver.json",
+      "capturedAt": "2026-10-14T09:42:20.142Z"
+    },
+    {
+      "id": "2024-09-all",
+      "month": "2024-09",
+      "league": "ALL",
+      "path": "2024-09-all.json",
+      "capturedAt": "2026-10-14T09:42:22.928Z"
+    },
+    {
+      "id": "2024-09-bronze",
+      "month": "2024-09",
+      "league": "BRONZE",
+      "path": "2024-09-bronze.json",
+      "capturedAt": "2026-10-14T09:42:22.928Z"
+    },
+    {
+      "id": "2024-09-diamond",
+      "month": "2024-09",
+      "league": "DIAMOND",
+      "path": "2024-09-diamond.json",
+      "capturedAt": "2026-10-14T09:42:22.928Z"
+    },
+    {
+      "id": "2024-09-gold",
+      "month": "2024-09",
+      "league": "GOLD",
+      "path": "2024-09-gold.json",
+      "capturedAt": "2026-10-14T09:42:22.928Z"
+    },
+    {
+      "id": "2024-09-iron",
+      "month": "2024-09",
+      "league": "IRON",
+      "path": "2024-09-iron.json",
+      "capturedAt": "2026-10-14T09:42:22.928Z"
+    },
+    {
+      "id": "2024-09-master",
+      "month": "2024-09",
+      "league": "MASTER",
+      "path": "2024-09-master.json",
+      "capturedAt": "2026-10-14T09:42:22.928Z"
+    },
+    {
+      "id": "2024-09-platinum",
+      "month": "2024-09",
+      "league": "PLATINUM",
+      "path": "2024-09-platinum.json",
+      "capturedAt": "2026-10-14T09:42:22.928Z"
+    },
+    {
+      "id": "2024-09-rookie",
+      "month": "2024-09",
+      "league": "ROOKIE",
+      "path": "2024-09-rookie.json",
+      "capturedAt": "2026-10-14T09:42:22.928Z"
+    },
+    {
+      "id": "2024-09-silver",
+      "month": "2024-09",
+      "league": "SILVER",
+      "path": "2024-09-silver.json",
+      "capturedAt": "2026-10-14T09:42:22.928Z"
+    },
+    {
+      "id": "2024-08-all",
+      "month": "2024-08",
+      "league": "ALL",
+      "path": "2024-08-all.json",
+      "capturedAt": "2026-10-14T09:42:24.470Z"
+    },
+    {
+      "id": "2024-08-bronze",
+      "month": "2024-08",
+      "league": "BRONZE",
+      "path": "2024-08-bronze.json",
+      "capturedAt": "2026-10-14T09:42:24.470Z"
+    },
+    {
+      "id": "2024-08-diamond",
+      "month": "2024-08",
+      "league": "DIAMOND",
+      "path": "2024-08-diamond.json",
+      "capturedAt": "2026-10-14T09:42:24.470Z"
+    },
+    {
+      "id": "2024-08-gold",
+      "month": "2024-08",
+      "league": "GOLD",
+      "path": "2024-08-gold.json",
+      "capturedAt": "2026-10-14T09:42:24.470Z"
+    },
+    {
+      "id": "2024-08-iron",
+      "month": "2024-08",
+      "league": "IRON",
+      "path": "2024-08-iron.json",
+      "capturedAt": "2026-10-14T09:42:24.470Z"
+    },
+    {
+      "id": "2024-08-master",
+      "month": "2024-08",
+      "league": "MASTER",
+      "path": "2024-08-master.json",
+      "capturedAt": "2026-10-14T09:42:24.470Z"
+    },
+    {
+      "id": "2024-08-platinum",
+      "month": "2024-08",
+      "league": "PLATINUM",
+      "path": "2024-08-platinum.json",
+      "capturedAt": "2026-10-14T09:42:24.470Z"
+    },
+    {
+      "id": "2024-08-rookie",
+      "month": "2024-08",
+      "league": "ROOKIE",
+      "path": "2024-08-rookie.json",
+      "capturedAt": "2026-10-14T09:42:24.470Z"
+    },
+    {
+      "id": "2024-08-silver",
+      "month": "2024-08",
+      "league": "SILVER",
+      "path": "2024-08-silver.json",
+      "capturedAt": "2026-10-14T09:42:24.470Z"
+    },
+    {
+      "id": "2024-07-all",
+      "month": "2024-07",
+      "league": "ALL",
+      "path": "2024-07-all.json",
+      "capturedAt": "2026-10-14T09:42:26.067Z"
+    },
+    {
+      "id": "2024-07-bronze",
+      "month": "2024-07",
+      "league": "BRONZE",
+      "path": "2024-07-bronze.json",
+      "capturedAt": "2026-10-14T09:42:26.067Z"
+    },
+    {
+      "id": "2024-07-diamond",
+      "month": "2024-07",
+      "league": "DIAMOND",
+      "path": "2024-07-diamond.json",
+      "capturedAt": "2026-10-14T09:42:26.067Z"
+    },
+    {
+      "id": "2024-07-gold",
+      "month": "2024-07",
+      "league": "GOLD",
+      "path": "2024-07-gold.json",
+      "capturedAt": "2026-10-14T09:42:26.067Z"
+    },
+    {
+      "id": "2024-07-iron",
+      "month": "2024-07",
+      "league": "IRON",
+      "path": "2024-07-iron.json",
+      "capturedAt": "2026-10-14T09:42:26.067Z"
+    },
+    {
+      "id": "2024-07-master",
+      "month": "2024-07",
+      "league": "MASTER",
+      "path": "2024-07-master.json",
+      "capturedAt": "2026-10-14T09:42:26.067Z"
+    },
+    {
+      "id": "2024-07-platinum",
+      "month": "2024-07",
+      "league": "PLATINUM",
+      "path": "2024-07-platinum.json",
+      "capturedAt": "2026-10-14T09:42:26.067Z"
+    },
+    {
+      "id": "2024-07-rookie",
+      "month": "2024-07",
+      "league": "ROOKIE",
+      "path": "2024-07-rookie.json",
+      "capturedAt": "2026-10-14T09:42:26.067Z"
+    },
+    {
+      "id": "2024-07-silver",
+      "month": "2024-07",
+      "league": "SILVER",
+      "path": "2024-07-silver.json",
+      "capturedAt": "2026-10-14T09:42:26.067Z"
+    },
+    {
+      "id": "2024-06-all",
+      "month": "2024-06",
+      "league": "ALL",
+      "path": "2024-06-all.json",
+      "capturedAt": "2026-10-14T09:42:28.685Z"
+    },
+    {
+      "id": "2024-06-bronze",
+      "month": "2024-06",
+      "league": "BRONZE",
+      "path": "2024-06-bronze.json",
+      "capturedAt": "2026-10-14T09:42:28.685Z"
+    },
+    {
+      "id": "2024-06-diamond",
+      "month": "2024-06",
+      "league": "DIAMOND",
+      "path": "2024-06-diamond.json",
+      "capturedAt": "2026-10-14T09:42:28.685Z"
+    },
+    {
+      "id": "2024-06-gold",
+      "month": "2024-06",
+      "league": "GOLD",
+      "path": "2024-06-gold.json",
+      "capturedAt": "2026-10-14T09:42:28.685Z"
+    },
+    {
+      "id": "2024-06-iron",
+      "month": "2024-06",
+      "league": "IRON",
+      "path": "2024-06-iron.json",
+      "capturedAt": "2026-10-14T09:42:28.685Z"
+    },
+    {
+      "id": "2024-06-master",
+      "month": "2024-06",
+      "league": "MASTER",
+      "path": "2024-06-master.json",
+      "capturedAt": "2026-10-14T09:42:28.685Z"
+    },
+    {
+      "id": "2024-06-platinum",
+      "month": "2024-06",
+      "league": "PLATINUM",
+      "path": "2024-06-platinum.json",
+      "capturedAt": "2026-10-14T09:42:28.685Z"
+    },
+    {
+      "id": "2024-06-rookie",
+      "month": "2024-06",
+      "league": "ROOKIE",
+      "path": "2024-06-rookie.json",
+      "capturedAt": "2026-10-14T09:42:28.685Z"
+    },
+    {
+      "id": "2024-06-silver",
+      "month": "2024-06",
+      "league": "SILVER",
+      "path": "2024-06-silver.json",
+      "capturedAt": "2026-10-14T09:42:28.685Z"
+    },
+    {
+      "id": "2024-05-all",
+      "month": "2024-05",
+      "league": "ALL",
+      "path": "2024-05-all.json",
+      "capturedAt": "2026-10-14T09:42:45.565Z"
+    },
+    {
+      "id": "2024-05-bronze",
+      "month": "2024-05",
+      "league": "BRONZE",
+      "path": "2024-05-bronze.json",
+      "capturedAt": "2026-10-14T09:42:45.565Z"
+    },
+    {
+      "id": "2024-05-diamond",
+      "month": "2024-05",
+      "league": "DIAMOND",
+      "path": "2024-05-diamond.json",
+      "capturedAt": "2026-10-14T09:42:45.565Z"
+    },
+    {
+      "id": "2024-05-gold",
+      "month": "2024-05",
+      "league": "GOLD",
+      "path": "2024-05-gold.json",
+      "capturedAt": "2026-10-14T09:42:45.565Z"
+    },
+    {
+      "id": "2024-05-iron",
+      "month": "2024-05",
+      "league": "IRON",
+      "path": "2024-05-iron.json",
+      "capturedAt": "2026-10-14T09:42:45.565Z"
+    },
+    {
+      "id": "2024-05-master",
+      "month": "2024-05",
+      "league": "MASTER",
+      "path": "2024-05-master.json",
+      "capturedAt": "2026-10-14T09:42:45.565Z"
+    },
+    {
+      "id": "2024-05-platinum",
+      "month": "2024-05",
+      "league": "PLATINUM",
+      "path": "2024-05-platinum.json",
+      "capturedAt": "2026-10-14T09:42:45.565Z"
+    },
+    {
+      "id": "2024-05-rookie",
+      "month": "2024-05",
+      "league": "ROOKIE",
+      "path": "2024-05-rookie.json",
+      "capturedAt": "2026-10-14T09:42:45.565Z"
+    },
+    {
+      "id": "2024-05-silver",
+      "month": "2024-05",
+      "league": "SILVER",
+      "path": "2024-05-silver.json",
+      "capturedAt": "2026-10-14T09:42:45.565Z"
+    },
+    {
+      "id": "2024-04-all",
+      "month": "2024-04",
+      "league": "ALL",
+      "path": "2024-04-all.json",
+      "capturedAt": "2026-10-14T09:42:47.413Z"
+    },
+    {
+      "id": "2024-04-bronze",
+      "month": "2024-04",
+      "league": "BRONZE",
+      "path": "2024-04-bronze.json",
+      "capturedAt": "2026-10-14T09:42:47.413Z"
+    },
+    {
+      "id": "2024-04-diamond",
+      "month": "2024-04",
+      "league": "DIAMOND",
+      "path": "2024-04-diamond.json",
+      "capturedAt": "2026-10-14T09:42:47.413Z"
+    },
+    {
+      "id": "2024-04-gold",
+      "month": "2024-04",
+      "league": "GOLD",
+      "path": "2024-04-gold.json",
+      "capturedAt": "2026-10-14T09:42:47.413Z"
+    },
+    {
+      "id": "2024-04-iron",
+      "month": "2024-04",
+      "league": "IRON",
+      "path": "2024-04-iron.json",
+      "capturedAt": "2026-10-14T09:42:47.413Z"
+    },
+    {
+      "id": "2024-04-master",
+      "month": "2024-04",
+      "league": "MASTER",
+      "path": "2024-04-master.json",
+      "capturedAt": "2026-10-14T09:42:47.413Z"
+    },
+    {
+      "id": "2024-04-platinum",
+      "month": "2024-04",
+      "league": "PLATINUM",
+      "path": "2024-04-platinum.json",
+      "capturedAt": "2026-10-14T09:42:47.413Z"
+    },
+    {
+      "id": "2024-04-rookie",
+      "month": "2024-04",
+      "league": "ROOKIE",
+      "path": "2024-04-rookie.json",
+      "capturedAt": "2026-10-14T09:42:47.413Z"
+    },
+    {
+      "id": "2024-04-silver",
+      "month": "2024-04",
+      "league": "SILVER",
+      "path": "2024-04-silver.json",
+      "capturedAt": "2026-10-14T09:42:47.413Z"
+    },
+    {
+      "id": "2024-03-all",
+      "month": "2024-03",
+      "league": "ALL",
+      "path": "2024-03-all.json",
+      "capturedAt": "2026-10-14T09:42:49.073Z"
+    },
+    {
+      "id": "2024-03-bronze",
+      "month": "2024-03",
+      "league": "BRONZE",
+      "path": "2024-03-bronze.json",
+      "capturedAt": "2026-10-14T09:42:49.073Z"
+    },
+    {
+      "id": "2024-03-diamond",
+      "month": "2024-03",
+      "league": "DIAMOND",
+      "path": "2024-03-diamond.json",
+      "capturedAt": "2026-10-14T09:42:49.073Z"
+    },
+    {
+      "id": "2024-03-gold",
+      "month": "2024-03",
+      "league": "GOLD",
+      "path": "2024-03-gold.json",
+      "capturedAt": "2026-10-14T09:42:49.073Z"
+    },
+    {
+      "id": "2024-03-iron",
+      "month": "2024-03",
+      "league": "IRON",
+      "path": "2024-03-iron.json",
+      "capturedAt": "2026-10-14T09:42:49.073Z"
+    },
+    {
+      "id": "2024-03-master",
+      "month": "2024-03",
+      "league": "MASTER",
+      "path": "2024-03-master.json",
+      "capturedAt": "2026-10-14T09:42:49.073Z"
+    },
+    {
+      "id": "2024-03-platinum",
+      "month": "2024-03",
+      "league": "PLATINUM",
+      "path": "2024-03-platinum.json",
+      "capturedAt": "2026-10-14T09:42:49.073Z"
+    },
+    {
+      "id": "2024-03-rookie",
+      "month": "2024-03",
+      "league": "ROOKIE",
+      "path": "2024-03-rookie.json",
+      "capturedAt": "2026-10-14T09:42:49.073Z"
+    },
+    {
+      "id": "2024-03-silver",
+      "month": "2024-03",
+      "league": "SILVER",
+      "path": "2024-03-silver.json",
+      "capturedAt": "2026-10-14T09:42:49.073Z"
+    },
+    {
+      "id": "2024-02-all",
+      "month": "2024-02",
+      "league": "ALL",
+      "path": "2024-02-all.json",
+      "capturedAt": "2026-10-14T09:42:50.600Z"
+    },
+    {
+      "id": "2024-02-bronze",
+      "month": "2024-02",
+      "league": "BRONZE",
+      "path": "2024-02-bronze.json",
+      "capturedAt": "2026-10-14T09:42:50.600Z"
+    },
+    {
+      "id": "2024-02-diamond",
+      "month": "2024-02",
+      "league": "DIAMOND",
+      "path": "2024-02-diamond.json",
+      "capturedAt": "2026-10-14T09:42:50.600Z"
+    },
+    {
+      "id": "2024-02-gold",
+      "month": "2024-02",
+      "league": "GOLD",
+      "path": "2024-02-gold.json",
+      "capturedAt": "2026-10-14T09:42:50.600Z"
+    },
+    {
+      "id": "2024-02-iron",
+      "month": "2024-02",
+      "league": "IRON",
+      "path": "2024-02-iron.json",
+      "capturedAt": "2026-10-14T09:42:50.600Z"
+    },
+    {
+      "id": "2024-02-master",
+      "month": "2024-02",
+      "league": "MASTER",
+      "path": "2024-02-master.json",
+      "capturedAt": "2026-10-14T09:42:50.600Z"
+    },
+    {
+      "id": "2024-02-platinum",
+      "month": "2024-02",
+      "league": "PLATINUM",
+      "path": "2024-02-platinum.json",
+      "capturedAt": "2026-10-14T09:42:50.600Z"
+    },
+    {
+      "id": "2024-02-rookie",
+      "month": "2024-02",
+      "league": "ROOKIE",
+      "path": "2024-02-rookie.json",
+      "capturedAt": "2026-10-14T09:42:50.600Z"
+    },
+    {
+      "id": "2024-02-silver",
+      "month": "2024-02",
+      "league": "SILVER",
+      "path": "2024-02-silver.json",
+      "capturedAt": "2026-10-14T09:42:50.600Z"
+    },
+    {
+      "id": "2024-01-all",
+      "month": "2024-01",
+      "league": "ALL",
+      "path": "2024-01-all.json",
+      "capturedAt": "2026-10-14T09:42:53.613Z"
+    },
+    {
+      "id": "2024-01-bronze",
+      "month": "2024-01",
+      "league": "BRONZE",
+      "path": "2024-01-bronze.json",
+      "capturedAt": "2026-10-14T09:42:53.613Z"
+    },
+    {
+      "id": "2024-01-diamond",
+      "month": "2024-01",
+      "league": "DIAMOND",
+      "path": "2024-01-diamond.json",
+      "capturedAt": "2026-10-14T09:42:53.613Z"
+    },
+    {
+      "id": "2024-01-gold",
+      "month": "2024-01",
+      "league": "GOLD",
+      "path": "2024-01-gold.json",
+      "capturedAt": "2026-10-14T09:42:53.613Z"
+    },
+    {
+      "id": "2024-01-iron",
+      "month": "2024-01",
+      "league": "IRON",
+      "path": "2024-01-iron.json",
+      "capturedAt": "2026-10-14T09:42:53.613Z"
+    },
+    {
+      "id": "2024-01-master",
+      "month": "2024-01",
+      "league": "MASTER",
+      "path": "2024-01-master.json",
+      "capturedAt": "2026-10-14T09:42:53.613Z"
+    },
+    {
+      "id": "2024-01-platinum",
+      "month": "2024-01",
+      "league": "PLATINUM",
+      "path": "2024-01-platinum.json",
+      "capturedAt": "2026-10-14T09:42:53.613Z"
+    },
+    {
+      "id": "2024-01-rookie",
+      "month": "2024-01",
+      "league": "ROOKIE",
+      "path": "2024-01-rookie.json",
+      "capturedAt": "2026-10-14T09:42:53.613Z"
+    },
+    {
+      "id": "2024-01-silver",
+      "month": "2024-01",
+      "league": "SILVER",
+      "path": "2024-01-silver.json",
+      "capturedAt": "2026-10-14T09:42:53.613Z"
+    },
+    {
+      "id": "2023-12-all",
+      "month": "2023-12",
+      "league": "ALL",
+      "path": "2023-12-all.json",
+      "capturedAt": "2026-10-14T09:42:55.364Z"
+    },
+    {
+      "id": "2023-12-bronze",
+      "month": "2023-12",
+      "league": "BRONZE",
+      "path": "2023-12-bronze.json",
+      "capturedAt": "2026-10-14T09:42:55.364Z"
+    },
+    {
+      "id": "2023-12-diamond",
+      "month": "2023-12",
+      "league": "DIAMOND",
+      "path": "2023-12-diamond.json",
+      "capturedAt": "2026-10-14T09:42:55.364Z"
+    },
+    {
+      "id": "2023-12-gold",
+      "month": "2023-12",
+      "league": "GOLD",
+      "path": "2023-12-gold.json",
+      "capturedAt": "2026-10-14T09:42:55.364Z"
+    },
+    {
+      "id": "2023-12-iron",
+      "month": "2023-12",
+      "league": "IRON",
+      "path": "2023-12-iron.json",
+      "capturedAt": "2026-10-14T09:42:55.364Z"
+    },
+    {
+      "id": "2023-12-master",
+      "month": "2023-12",
+      "league": "MASTER",
+      "path": "2023-12-master.json",
+      "capturedAt": "2026-10-14T09:42:55.364Z"
+    },
+    {
+      "id": "2023-12-platinum",
+      "month": "2023-12",
+      "league": "PLATINUM",
+      "path": "2023-12-platinum.json",
+      "capturedAt": "2026-10-14T09:42:55.364Z"
+    },
+    {
+      "id": "2023-12-rookie",
+      "month": "2023-12",
+      "league": "ROOKIE",
+      "path": "2023-12-rookie.json",
+      "capturedAt": "2026-10-14T09:42:55.364Z"
+    },
+    {
+      "id": "2023-12-silver",
+      "month": "2023-12",
+      "league": "SILVER",
+      "path": "2023-12-silver.json",
+      "capturedAt": "2026-10-14T09:42:55.364Z"
+    },
+    {
+      "id": "2023-11-all",
+      "month": "2023-11",
+      "league": "ALL",
+      "path": "2023-11-all.json",
+      "capturedAt": "2026-10-14T09:42:58.020Z"
+    },
+    {
+      "id": "2023-11-bronze",
+      "month": "2023-11",
+      "league": "BRONZE",
+      "path": "2023-11-bronze.json",
+      "capturedAt": "2026-10-14T09:42:58.020Z"
+    },
+    {
+      "id": "2023-11-diamond",
+      "month": "2023-11",
+      "league": "DIAMOND",
+      "path": "2023-11-diamond.json",
+      "capturedAt": "2026-10-14T09:42:58.020Z"
+    },
+    {
+      "id": "2023-11-gold",
+      "month": "2023-11",
+      "league": "GOLD",
+      "path": "2023-11-gold.json",
+      "capturedAt": "2026-10-14T09:42:58.020Z"
+    },
+    {
+      "id": "2023-11-iron",
+      "month": "2023-11",
+      "league": "IRON",
+      "path": "2023-11-iron.json",
+      "capturedAt": "2026-10-14T09:42:58.020Z"
+    },
+    {
+      "id": "2023-11-master",
+      "month": "2023-11",
+      "league": "MASTER",
+      "path": "2023-11-master.json",
+      "capturedAt": "2026-10-14T09:42:58.020Z"
+    },
+    {
+      "id": "2023-11-platinum",
+      "month": "2023-11",
+      "league": "PLATINUM",
+      "path": "2023-11-platinum.json",
+      "capturedAt": "2026-10-14T09:42:58.020Z"
+    },
+    {
+      "id": "2023-11-rookie",
+      "month": "2023-11",
+      "league": "ROOKIE",
+      "path": "2023-11-rookie.json",
+      "capturedAt": "2026-10-14T09:42:58.020Z"
+    },
+    {
+      "id": "2023-11-silver",
+      "month": "2023-11",
+      "league": "SILVER",
+      "path": "2023-11-silver.json",
+      "capturedAt": "2026-10-14T09:42:58.020Z"
+    },
+    {
+      "id": "2023-10-all",
+      "month": "2023-10",
+      "league": "ALL",
+      "path": "2023-10-all.json",
+      "capturedAt": "2026-10-14T09:43:00.257Z"
+    },
+    {
+      "id": "2023-10-bronze",
+      "month": "2023-10",
+      "league": "BRONZE",
+      "path": "2023-10-bronze.json",
+      "capturedAt": "2026-10-14T09:43:00.257Z"
+    },
+    {
+      "id": "2023-10-diamond",
+      "month": "2023-10",
+      "league": "DIAMOND",
+      "path": "2023-10-diamond.json",
+      "capturedAt": "2026-10-14T09:43:00.257Z"
+    },
+    {
+      "id": "2023-10-gold",
+      "month": "2023-10",
+      "league": "GOLD",
+      "path": "2023-10-gold.json",
+      "capturedAt": "2026-10-14T09:43:00.257Z"
+    },
+    {
+      "id": "2023-10-iron",
+      "month": "2023-10",
+      "league": "IRON",
+      "path": "2023-10-iron.json",
+      "capturedAt": "2026-10-14T09:43:00.257Z"
+    },
+    {
+      "id": "2023-10-master",
+      "month": "2023-10",
+      "league": "MASTER",
+      "path": "2023-10-master.json",
+      "capturedAt": "2026-10-14T09:43:00.257Z"
+    },
+    {
+      "id": "2023-10-platinum",
+      "month": "2023-10",
+      "league": "PLATINUM",
+      "path": "2023-10-platinum.json",
+      "capturedAt": "2026-10-14T09:43:00.257Z"
+    },
+    {
+      "id": "2023-10-rookie",
+      "month": "2023-10",
+      "league": "ROOKIE",
+      "path": "2023-10-rookie.json",
+      "capturedAt": "2026-10-14T09:43:00.257Z"
+    },
+    {
+      "id": "2023-10-silver",
+      "month": "2023-10",
+      "league": "SILVER",
+      "path": "2023-10-silver.json",
+      "capturedAt": "2026-10-14T09:43:00.257Z"
+    },
+    {
+      "id": "2023-09-all",
+      "month": "2023-09",
+      "league": "ALL",
+      "path": "2023-09-all.json",
+      "capturedAt": "2026-10-14T09:43:01.891Z"
+    },
+    {
+      "id": "2023-09-bronze",
+      "month": "2023-09",
+      "league": "BRONZE",
+      "path": "2023-09-bronze.json",
+      "capturedAt": "2026-10-14T09:43:01.891Z"
+    },
+    {
+      "id": "2023-09-diamond",
+      "month": "2023-09",
+      "league": "DIAMOND",
+      "path": "2023-09-diamond.json",
+      "capturedAt": "2026-10-14T09:43:01.891Z"
+    },
+    {
+      "id": "2023-09-gold",
+      "month": "2023-09",
+      "league": "GOLD",
+      "path": "2023-09-gold.json",
+      "capturedAt": "2026-10-14T09:43:01.891Z"
+    },
+    {
+      "id": "2023-09-iron",
+      "month": "2023-09",
+      "league": "IRON",
+      "path": "2023-09-iron.json",
+      "capturedAt": "2026-10-14T09:43:01.891Z"
+    },
+    {
+      "id": "2023-09-master",
+      "month": "2023-09",
+      "league": "MASTER",
+      "path": "2023-09-master.json",
+      "capturedAt": "2026-10-14T09:43:01.891Z"
+    },
+    {
+      "id": "2023-09-platinum",
+      "month": "2023-09",
+      "league": "PLATINUM",
+      "path": "2023-09-platinum.json",
+      "capturedAt": "2026-10-14T09:43:01.891Z"
+    },
+    {
+      "id": "2023-09-rookie",
+      "month": "2023-09",
+      "league": "ROOKIE",
+      "path": "2023-09-rookie.json",
+      "capturedAt": "2026-10-14T09:43:01.891Z"
+    },
+    {
+      "id": "2023-09-silver",
+      "month": "2023-09",
+      "league": "SILVER",
+      "path": "2023-09-silver.json",
+      "capturedAt": "2026-10-14T09:43:01.891Z"
+    },
+    {
+      "id": "2023-08-all",
+      "month": "2023-08",
+      "league": "ALL",
+      "path": "2023-08-all.json",
+      "capturedAt": "2026-10-14T09:43:03.444Z"
+    },
+    {
+      "id": "2023-08-bronze",
+      "month": "2023-08",
+      "league": "BRONZE",
+      "path": "2023-08-bronze.json",
+      "capturedAt": "2026-10-14T09:43:03.444Z"
+    },
+    {
+      "id": "2023-08-diamond",
+      "month": "2023-08",
+      "league": "DIAMOND",
+      "path": "2023-08-diamond.json",
+      "capturedAt": "2026-10-14T09:43:03.444Z"
+    },
+    {
+      "id": "2023-08-gold",
+      "month": "2023-08",
+      "league": "GOLD",
+      "path": "2023-08-gold.json",
+      "capturedAt": "2026-10-14T09:43:03.444Z"
+    },
+    {
+      "id": "2023-08-iron",
+      "month": "2023-08",
+      "league": "IRON",
+      "path": "2023-08-iron.json",
+      "capturedAt": "2026-10-14T09:43:03.444Z"
+    },
+    {
+      "id": "2023-08-master",
+      "month": "2023-08",
+      "league": "MASTER",
+      "path": "2023-08-master.json",
+      "capturedAt": "2026-10-14T09:43:03.444Z"
+    },
+    {
+      "id": "2023-08-platinum",
+      "month": "2023-08",
+      "league": "PLATINUM",
+      "path": "2023-08-platinum.json",
+      "capturedAt": "2026-10-14T09:43:03.444Z"
+    },
+    {
+      "id": "2023-08-rookie",
+      "month": "2023-08",
+      "league": "ROOKIE",
+      "path": "2023-08-rookie.json",
+      "capturedAt": "2026-10-14T09:43:03.444Z"
+    },
+    {
+      "id": "2023-08-silver",
+      "month": "2023-08",
+      "league": "SILVER",
+      "path": "2023-08-silver.json",
+      "capturedAt": "2026-10-14T09:43:03.444Z"
+    },
+    {
+      "id": "2023-07-all",
+      "month": "2023-07",
+      "league": "ALL",
+      "path": "2023-07-all.json",
+      "capturedAt": "2026-10-14T09:43:06.089Z"
+    },
+    {
+      "id": "2023-07-bronze",
+      "month": "2023-07",
+      "league": "BRONZE",
+      "path": "2023-07-bronze.json",
+      "capturedAt": "2026-10-14T09:43:06.089Z"
+    },
+    {
+      "id": "2023-07-diamond",
+      "month": "2023-07",
+      "league": "DIAMOND",
+      "path": "2023-07-diamond.json",
+      "capturedAt": "2026-10-14T09:43:06.089Z"
+    },
+    {
+      "id": "2023-07-gold",
+      "month": "2023-07",
+      "league": "GOLD",
+      "path": "2023-07-gold.json",
+      "capturedAt": "2026-10-14T09:43:06.089Z"
+    },
+    {
+      "id": "2023-07-iron",
+      "month": "2023-07",
+      "league": "IRON",
+      "path": "2023-07-iron.json",
+      "capturedAt": "2026-10-14T09:43:06.089Z"
+    },
+    {
+      "id": "2023-07-master",
+      "month": "2023-07",
+      "league": "MASTER",
+      "path": "2023-07-master.json",
+      "capturedAt": "2026-10-14T09:43:06.089Z"
+    },
+    {
+      "id": "2023-07-platinum",
+      "month": "2023-07",
+      "league": "PLATINUM",
+      "path": "2023-07-platinum.json",
+      "capturedAt": "2026-10-14T09:43:06.089Z"
+    },
+    {
+      "id": "2023-07-rookie",
+      "month": "2023-07",
+      "league": "ROOKIE",
+      "path": "2023-07-rookie.json",
+      "capturedAt": "2026-10-14T09:43:06.089Z"
+    },
+    {
+      "id": "2023-07-silver",
+      "month": "2023-07",
+      "league": "SILVER",
+      "path": "2023-07-silver.json",
+      "capturedAt": "2026-10-14T09:43:06.089Z"
+    },
+    {
+      "id": "2023-06-all",
+      "month": "2023-06",
+      "league": "ALL",
+      "path": "2023-06-all.json",
+      "capturedAt": "2026-10-14T09:43:07.641Z"
+    },
+    {
+      "id": "2023-06-bronze",
+      "month": "2023-06",
+      "league": "BRONZE",
+      "path": "2023-06-bronze.json",
+      "capturedAt": "2026-10-14T09:43:07.641Z"
+    },
+    {
+      "id": "2023-06-diamond",
+      "month": "2023-06",
+      "league": "DIAMOND",
+      "path": "2023-06-diamond.json",
+      "capturedAt": "2026-10-14T09:43:07.641Z"
+    },
+    {
+      "id": "2023-06-gold",
+      "month": "2023-06",
+      "league": "GOLD",
+      "path": "2023-06-gold.json",
+      "capturedAt": "2026-10-14T09:43:07.641Z"
+    },
+    {
+      "id": "2023-06-iron",
+      "month": "2023-06",
+      "league": "IRON",
+      "path": "2023-06-iron.json",
+      "capturedAt": "2026-10-14T09:43:07.641Z"
+    },
+    {
+      "id": "2023-06-master",
+      "month": "2023-06",
+      "league": "MASTER",
+      "path": "2023-06-master.json",
+      "capturedAt": "2026-10-14T09:43:07.641Z"
+    },
+    {
+      "id": "2023-06-platinum",
+      "month": "2023-06",
+      "league": "PLATINUM",
+      "path": "2023-06-platinum.json",
+      "capturedAt": "2026-10-14T09:43:07.641Z"
+    },
+    {
+      "id": "2023-06-rookie",
+      "month": "2023-06",
+      "league": "ROOKIE",
+      "path": "2023-06-rookie.json",
+      "capturedAt": "2026-10-14T09:43:07.641Z"
+    },
+    {
+      "id": "2023-06-silver",
+      "month": "2023-06",
+      "league": "SILVER",
+      "path": "2023-06-silver.json",
+      "capturedAt": "2026-10-14T09:43:07.641Z"
     }
   ]
 }
