@@ -1,4 +1,5 @@
 export type UsageRateControlType = 'all' | 'classic' | 'modern'
+export type UsageRateEdition = 'general' | 'master'
 
 export interface UsageRateSource {
   url: string
@@ -7,6 +8,8 @@ export interface UsageRateSource {
 
 export interface UsageRateDatasetDescriptor {
   id: string
+  /** Omitted in existing publications; an omitted edition means general. */
+  edition?: UsageRateEdition
   month: string
   league: string
   path: string
@@ -29,17 +32,27 @@ export interface UsageRateEntry {
   percentThousandths: number | null
 }
 
+/** An explicitly rechecked official sum outside the three-decimal rounding tolerance. */
+export interface UsageRateTotalMismatch {
+  observedPercentThousandths: number
+  verifiedAt: string
+  sourceUrl: string
+  reason: string
+}
+
 export interface UsageRateDistribution {
   controlType: UsageRateControlType
   month: string
   league: string
   entries: UsageRateEntry[]
+  totalMismatch?: UsageRateTotalMismatch
 }
 
-/** One complete set of ALL, CLASSIC and MODERN for the same month and league. */
+/** Published distributions for one edition, month and league; unlisted characters are not zero-filled. */
 export interface UsageRateDataset {
   schemaVersion: 1
   id: string
+  edition?: UsageRateEdition
   month: string
   league: string
   capturedAt: string
@@ -54,6 +67,7 @@ export interface UsageRateDataset {
 }
 
 export interface UsageRateSelection {
+  edition?: UsageRateEdition
   league: string
   fromMonth: string
   toMonth: string

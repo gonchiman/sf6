@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import type { UsageRateDataset } from '../../src/types/usageRates.ts'
-import { USAGE_RATE_SOURCE } from '../../src/lib/usageRates.ts'
+import { USAGE_RATE_SOURCE, USAGE_RATE_EDITION_SOURCES } from '../../src/lib/usageRates.ts'
 import { importUsageRateData } from '../import-usage-rate-data.ts'
 import { validateUsageRateDirectory } from '../validate-usage-rate-data.ts'
 
@@ -107,4 +107,32 @@ test('accepts a directory of standalone dataset JSON and refuses unregistered st
   const before = await snapshot(paths.output)
   await assert.rejects(importUsageRateData(inputRoot, paths.output, generatedAt), /一覧に登録されていない/)
   assert.deepEqual(await snapshot(paths.output), before)
+})
+
+test('imports mixed editions and updates master edition without replacing general MASTER', async (t) => {
+  const paths = await fixture(t)
+  const master = { ...dataset(), edition: 'master' as const, id: '2026-09-master-edition-master',
+    source: { ...dataset().source, ...USAGE_RATE_EDITION_SOURCES.master }, distributions: dataset().distributions.slice(0, 1) }
+  await writeInput(paths.input, [dataset(), master])
+  assert.deepEqual(await importUsageRateData(paths.input, paths.output, generatedAt), { datasets: 2, entries: 8 })
+  const before = await snapshot(paths.output)
+  master.distributions[0].entries[0] = { ...master.distributions[0].entries[0], text: '2.500', percentThousandths: 2500 }
+  master.distributions[0].entries[1] = { ...master.distributions[0].entries[1], text: '97.500', percentThousandths: 97500 }
+  await writeInput(paths.input, [master])
+  await importUsageRateData(paths.input, paths.output, generatedAt)
+  const after = await snapshot(paths.output)
+  assert.equal(after['2026-09-master.json'], before['2026-09-master.json'])
+  assert.notEqual(after['2026-09-master-edition-master.json'], before['2026-09-master-edition-master.json'])
+  assert.deepEqual(await validateUsageRateDirectory(paths.output), { datasets: 2, entries: 8 })
+})
+
+test('imports historical control distributions with different published rosters without zero filling', async (t) => {
+  const paths = await fixture(t)
+  const value = dataset('2023-06')
+  value.distributions[2].entries = [value.distributions[2].entries[1]]
+  await writeInput(paths.input, [value])
+  assert.deepEqual(await importUsageRateData(paths.input, paths.output, generatedAt), { datasets: 1, entries: 5 })
+  const stored = JSON.parse(await readFile(join(paths.output, '2023-06-master.json'), 'utf8'))
+  assert.equal(stored.distributions[2].entries.length, 1)
+  assert.equal(stored.distributions[2].entries[0].characterId, 'ken')
 })

@@ -1,7 +1,7 @@
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { parseUsageRateDataset, parseUsageRateManifest } from '../src/lib/usageRates.ts'
+import { parseUsageRateDataset, parseUsageRateManifest, usageRateEditionOf, USAGE_RATE_EDITION_SOURCES, USAGE_RATE_SOURCE } from '../src/lib/usageRates.ts'
 import type { UsageRateDataset, UsageRateManifest } from '../src/types/usageRates.ts'
 import { usagePathWithin, validateUsageRateDirectory } from './validate-usage-rate-data.ts'
 
@@ -23,6 +23,17 @@ async function checkParents(path: string): Promise<void> {
       if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`使用率の保存先が不正です: ${current}`)
     }
     if (current === dirname(current)) return
+  }
+}
+
+// Windows indexers may briefly keep directory handles open after validation.
+// Retry the same atomic rename, never replace it with a partial file-by-file copy.
+async function renameDirectory(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try { await rename(from, to); return } catch (error) {
+      if (attempt >= 6 || !['EPERM', 'EACCES', 'EBUSY'].some((value) => code(error, value))) throw error
+      await new Promise((done) => setTimeout(done, 100 * (attempt + 1)))
+    }
   }
 }
 
@@ -49,17 +60,17 @@ async function readInput(input: string): Promise<UsageRateDataset[]> {
 }
 
 function descriptors(datasets: UsageRateDataset[]) {
-  return datasets.map(({ id, month, league, capturedAt }) => ({ id, month, league, capturedAt, path: `${id}.json` }))
+  return datasets.map(({ id, edition, month, league, capturedAt }) => ({ id, ...(edition === undefined ? {} : { edition }), month, league, capturedAt, path: `${id}.json` }))
 }
 
-/** Validate the complete batch before staging, then publish only its month/league conditions. */
+/** Validate the complete batch before staging, then publish only its edition/month/league conditions. */
 export async function importUsageRateData(input: string, output: string, generatedAt = new Date().toISOString()): Promise<{ datasets: number; entries: number }> {
   const datasets = await readInput(input)
   if (datasets.length === 0) throw new Error('取り込む使用率データがありません。')
   // This also rejects duplicate IDs/conditions and unsafe names before creating files.
-  const batch = parseUsageRateManifest({ schemaVersion: 1, generatedAt, source: datasets[0].source, datasets: descriptors(datasets) })
+  const batch = parseUsageRateManifest({ schemaVersion: 1, generatedAt, source: USAGE_RATE_SOURCE, datasets: descriptors(datasets) })
   for (const dataset of datasets) {
-    if (dataset.source.url !== batch.source.url) throw new Error('入力の使用率データは同じ出典URLに揃えてください。')
+    if (dataset.source.url !== USAGE_RATE_EDITION_SOURCES[usageRateEditionOf(dataset)].url) throw new Error('入力の使用率データの出典URLが版と一致しません。')
     if (Date.parse(dataset.generatedAt) > Date.parse(generatedAt)) throw new Error('入力の生成日時が一覧の生成日時より後です。')
     if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(dataset.id)) throw new Error(`保存できない使用率IDです: ${dataset.id}`)
   }
@@ -86,12 +97,13 @@ export async function importUsageRateData(input: string, output: string, generat
       current = parseUsageRateManifest(JSON.parse(await readFile(resolve(directory, 'index.json'), 'utf8')))
       if (current.source.url !== batch.source.url) throw new Error('既存使用率データと取り込みデータの出典URLが異なります。')
     }
-    const selected = new Set(datasets.map((dataset) => `${dataset.month}/${dataset.league}`))
-    const isSelected = (descriptor: { month: string; league: string }) => selected.has(`${descriptor.month}/${descriptor.league}`)
+    const key = (descriptor: Pick<UsageRateDataset, 'edition' | 'month' | 'league'>) => `${usageRateEditionOf(descriptor)}/${descriptor.month}/${descriptor.league}`
+    const selected = new Set(datasets.map(key))
+    const isSelected = (descriptor: Pick<UsageRateDataset, 'edition' | 'month' | 'league'>) => selected.has(key(descriptor))
     const next = parseUsageRateManifest({
       schemaVersion: 1, generatedAt, source: current?.source ?? batch.source,
       datasets: [...(current?.datasets.filter((descriptor) => !isSelected(descriptor)) ?? []), ...batch.datasets]
-        .sort((a, b) => b.month.localeCompare(a.month) || a.league.localeCompare(b.league)),
+        .sort((a, b) => b.month.localeCompare(a.month) || usageRateEditionOf(a).localeCompare(usageRateEditionOf(b)) || a.league.localeCompare(b.league)),
     })
     work = await mkdtemp(resolve(parent, `.${basename(directory)}-import-`))
     if (!usagePathWithin(parent, work)) throw new Error('使用率の作業先が不正です。')
@@ -113,13 +125,14 @@ export async function importUsageRateData(input: string, output: string, generat
     }
     await writeFile(resolve(stage, 'index.json'), `${JSON.stringify(next, null, 2)}\n`)
     const result = await validateUsageRateDirectory(stage)
-    if (hadOriginal) { await rename(directory, backup); movedOriginal = true }
-    await rename(stage, directory)
+    if (!usagePathWithin(parent, directory) || !usagePathWithin(work, stage) || !usagePathWithin(work, backup)) throw new Error('使用率の切替先が作業フォルダーの外です。')
+    if (hadOriginal) { await renameDirectory(directory, backup); movedOriginal = true }
+    await renameDirectory(stage, directory)
     committed = true
     return result
   } catch (error) {
     if (movedOriginal && !committed && work) {
-      try { await rename(resolve(work, 'backup'), directory); movedOriginal = false } catch (restoreError) {
+      try { await renameDirectory(resolve(work, 'backup'), directory); movedOriginal = false } catch (restoreError) {
         throw new AggregateError([error, restoreError], `使用率の復旧に失敗しました。既存データのbackupを保持しています: ${work}`)
       }
     }

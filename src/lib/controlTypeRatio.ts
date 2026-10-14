@@ -1,6 +1,6 @@
 import type { ControlTypeRatioDetail, ControlTypeRatioEstimate, ControlTypeRatioRow } from '../types/controlTypeRatio.ts'
 import type { UsageRateDataset, UsageRateHistoryResult } from '../types/usageRates.ts'
-import { parseUsageRateDataset } from './usageRates.ts'
+import { parseUsageRateDataset, usageRateEditionOf } from './usageRates.ts'
 
 function unavailable(characterCount: number, reason: string): ControlTypeRatioEstimate {
   return {
@@ -16,8 +16,19 @@ export function estimateControlTypeRatio(value: UsageRateDataset): ControlTypeRa
     return unavailable(0, cause instanceof Error ? cause.message : '使用率データの形式を確認できません。')
   }
   const all = dataset.distributions.find((item) => item.controlType === 'all')!.entries
+  const mismatch = dataset.distributions.find((item) => item.totalMismatch)?.totalMismatch
+  if (mismatch) {
+    return unavailable(all.length, `公式使用率の合計が${(mismatch.observedPercentThousandths / 1000).toFixed(3)}%で、100%の丸め誤差の範囲を超えています。値を補正せず、操作タイプ比率は推定しません。`)
+  }
+  if (usageRateEditionOf(dataset) === 'master') {
+    return unavailable(all.length, 'マスター版は操作タイプ別の使用率を公開していないため、混合比率を推定できません。')
+  }
   const classic = new Map(dataset.distributions.find((item) => item.controlType === 'classic')!.entries.map((item) => [item.characterId, item]))
   const modern = new Map(dataset.distributions.find((item) => item.controlType === 'modern')!.entries.map((item) => [item.characterId, item]))
+  if (classic.size !== all.length || modern.size !== all.length
+    || all.some((entry) => !classic.has(entry.characterId) || !modern.has(entry.characterId))) {
+    return unavailable(all.length, 'ALL・CLASSIC・MODERNのキャラクター集合が異なります。全キャラクターがそろった分布が必要です。')
+  }
   if (dataset.distributions.some((item) => item.entries.some((entry) => entry.percentThousandths === null))) {
     return unavailable(all.length, 'ALL・CLASSIC・MODERNの使用率に欠損があります。全キャラクターの値が必要です。')
   }

@@ -1,0 +1,407 @@
+{
+  "schemaVersion": 1,
+  "id": "2024-01-rookie",
+  "month": "2024-01",
+  "league": "ROOKIE",
+  "capturedAt": "2026-10-14T09:42:53.613Z",
+  "generatedAt": "2026-10-14T09:47:52.452Z",
+  "source": {
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/stats/usagerate",
+    "title": "Buckler 総合版 キャラクター使用率",
+    "population": "公式のランクマッチ統計（選択月・掲載リーグ）",
+    "metric": "ALL・CLASSIC・MODERNそれぞれのキャラクター使用率",
+    "unit": "公開された割合（%）。1使用の集計単位と分母の詳細は未確認。",
+    "notes": [
+      "公式ページの掲載値を読み取り、小数第3位をそのまま保存。合計100%への再正規化は行わない。",
+      "未掲載のキャラクターは0%として補完しない。操作タイプごとの掲載キャラクター数が異なる場合がある。",
+      "プレイヤー人数・試合数・割合の分母は取得していない。人数比や正確な件数は復元しない。",
+      "パッチ・地域・その他の除外条件はこの公開表から未確認。",
+      "BucklerのGOUKI/VEGAはキャラクター一覧のAKUMA/M. BISONに明示対応して識別する。",
+      "各表示の取得日時（UTC）: ALL: 2026-10-14T09:42:52.666Z / CLASSIC: 2026-10-14T09:42:53.207Z / MODERN: 2026-10-14T09:42:53.613Z",
+      "取得時のページURL: https://www.streetfighter.com/6/buckler/ja-jp/stats/usagerate/202401"
+    ]
+  },
+  "distributions": [
+    {
+      "controlType": "all",
+      "month": "2024-01",
+      "league": "ROOKIE",
+      "entries": [
+        {
+          "characterId": "juri",
+          "name": "ジュリ",
+          "text": "17.681",
+          "percentThousandths": 17681
+        },
+        {
+          "characterId": "cammy",
+          "name": "キャミィ",
+          "text": "15.656",
+          "percentThousandths": 15656
+        },
+        {
+          "characterId": "ken",
+          "name": "ケン",
+          "text": "11.072",
+          "percentThousandths": 11072
+        },
+        {
+          "characterId": "luke",
+          "name": "ルーク",
+          "text": "10.573",
+          "percentThousandths": 10573
+        },
+        {
+          "characterId": "jamie",
+          "name": "ジェイミー",
+          "text": "8.298",
+          "percentThousandths": 8298
+        },
+        {
+          "characterId": "chunli",
+          "name": "春麗",
+          "text": "6.090",
+          "percentThousandths": 6090
+        },
+        {
+          "characterId": "ryu",
+          "name": "リュウ",
+          "text": "4.408",
+          "percentThousandths": 4408
+        },
+        {
+          "characterId": "marisa",
+          "name": "マリーザ",
+          "text": "3.715",
+          "percentThousandths": 3715
+        },
+        {
+          "characterId": "jp",
+          "name": "JP",
+          "text": "3.385",
+          "percentThousandths": 3385
+        },
+        {
+          "characterId": "deejay",
+          "name": "ディージェイ",
+          "text": "2.953",
+          "percentThousandths": 2953
+        },
+        {
+          "characterId": "manon",
+          "name": "マノン",
+          "text": "2.924",
+          "percentThousandths": 2924
+        },
+        {
+          "characterId": "kimberly",
+          "name": "キンバリー",
+          "text": "2.397",
+          "percentThousandths": 2397
+        },
+        {
+          "characterId": "guile",
+          "name": "ガイル",
+          "text": "1.985",
+          "percentThousandths": 1985
+        },
+        {
+          "characterId": "zangief",
+          "name": "ザンギエフ",
+          "text": "1.806",
+          "percentThousandths": 1806
+        },
+        {
+          "characterId": "aki",
+          "name": "A.K.I.",
+          "text": "1.778",
+          "percentThousandths": 1778
+        },
+        {
+          "characterId": "rashid",
+          "name": "ラシード",
+          "text": "1.290",
+          "percentThousandths": 1290
+        },
+        {
+          "characterId": "lily",
+          "name": "リリー",
+          "text": "1.287",
+          "percentThousandths": 1287
+        },
+        {
+          "characterId": "ehonda",
+          "name": "エドモンド本田",
+          "text": "0.946",
+          "percentThousandths": 946
+        },
+        {
+          "characterId": "blanka",
+          "name": "ブランカ",
+          "text": "0.897",
+          "percentThousandths": 897
+        },
+        {
+          "characterId": "dhalsim",
+          "name": "ダルシム",
+          "text": "0.857",
+          "percentThousandths": 857
+        }
+      ]
+    },
+    {
+      "controlType": "classic",
+      "month": "2024-01",
+      "league": "ROOKIE",
+      "entries": [
+        {
+          "characterId": "juri",
+          "name": "ジュリ",
+          "text": "16.562",
+          "percentThousandths": 16562
+        },
+        {
+          "characterId": "ken",
+          "name": "ケン",
+          "text": "13.137",
+          "percentThousandths": 13137
+        },
+        {
+          "characterId": "cammy",
+          "name": "キャミィ",
+          "text": "12.830",
+          "percentThousandths": 12830
+        },
+        {
+          "characterId": "jamie",
+          "name": "ジェイミー",
+          "text": "9.717",
+          "percentThousandths": 9717
+        },
+        {
+          "characterId": "luke",
+          "name": "ルーク",
+          "text": "7.270",
+          "percentThousandths": 7270
+        },
+        {
+          "characterId": "ryu",
+          "name": "リュウ",
+          "text": "6.474",
+          "percentThousandths": 6474
+        },
+        {
+          "characterId": "chunli",
+          "name": "春麗",
+          "text": "6.055",
+          "percentThousandths": 6055
+        },
+        {
+          "characterId": "jp",
+          "name": "JP",
+          "text": "4.783",
+          "percentThousandths": 4783
+        },
+        {
+          "characterId": "manon",
+          "name": "マノン",
+          "text": "3.639",
+          "percentThousandths": 3639
+        },
+        {
+          "characterId": "deejay",
+          "name": "ディージェイ",
+          "text": "3.133",
+          "percentThousandths": 3133
+        },
+        {
+          "characterId": "kimberly",
+          "name": "キンバリー",
+          "text": "2.965",
+          "percentThousandths": 2965
+        },
+        {
+          "characterId": "marisa",
+          "name": "マリーザ",
+          "text": "2.729",
+          "percentThousandths": 2729
+        },
+        {
+          "characterId": "aki",
+          "name": "A.K.I.",
+          "text": "2.428",
+          "percentThousandths": 2428
+        },
+        {
+          "characterId": "guile",
+          "name": "ガイル",
+          "text": "1.911",
+          "percentThousandths": 1911
+        },
+        {
+          "characterId": "rashid",
+          "name": "ラシード",
+          "text": "1.474",
+          "percentThousandths": 1474
+        },
+        {
+          "characterId": "zangief",
+          "name": "ザンギエフ",
+          "text": "1.447",
+          "percentThousandths": 1447
+        },
+        {
+          "characterId": "dhalsim",
+          "name": "ダルシム",
+          "text": "1.084",
+          "percentThousandths": 1084
+        },
+        {
+          "characterId": "lily",
+          "name": "リリー",
+          "text": "0.930",
+          "percentThousandths": 930
+        },
+        {
+          "characterId": "blanka",
+          "name": "ブランカ",
+          "text": "0.752",
+          "percentThousandths": 752
+        },
+        {
+          "characterId": "ehonda",
+          "name": "エドモンド本田",
+          "text": "0.681",
+          "percentThousandths": 681
+        }
+      ]
+    },
+    {
+      "controlType": "modern",
+      "month": "2024-01",
+      "league": "ROOKIE",
+      "entries": [
+        {
+          "characterId": "juri",
+          "name": "ジュリ",
+          "text": "18.450",
+          "percentThousandths": 18450
+        },
+        {
+          "characterId": "cammy",
+          "name": "キャミィ",
+          "text": "17.597",
+          "percentThousandths": 17597
+        },
+        {
+          "characterId": "luke",
+          "name": "ルーク",
+          "text": "12.842",
+          "percentThousandths": 12842
+        },
+        {
+          "characterId": "ken",
+          "name": "ケン",
+          "text": "9.654",
+          "percentThousandths": 9654
+        },
+        {
+          "characterId": "jamie",
+          "name": "ジェイミー",
+          "text": "7.324",
+          "percentThousandths": 7324
+        },
+        {
+          "characterId": "chunli",
+          "name": "春麗",
+          "text": "6.114",
+          "percentThousandths": 6114
+        },
+        {
+          "characterId": "marisa",
+          "name": "マリーザ",
+          "text": "4.392",
+          "percentThousandths": 4392
+        },
+        {
+          "characterId": "ryu",
+          "name": "リュウ",
+          "text": "2.989",
+          "percentThousandths": 2989
+        },
+        {
+          "characterId": "deejay",
+          "name": "ディージェイ",
+          "text": "2.830",
+          "percentThousandths": 2830
+        },
+        {
+          "characterId": "manon",
+          "name": "マノン",
+          "text": "2.433",
+          "percentThousandths": 2433
+        },
+        {
+          "characterId": "jp",
+          "name": "JP",
+          "text": "2.425",
+          "percentThousandths": 2425
+        },
+        {
+          "characterId": "zangief",
+          "name": "ザンギエフ",
+          "text": "2.053",
+          "percentThousandths": 2053
+        },
+        {
+          "characterId": "guile",
+          "name": "ガイル",
+          "text": "2.036",
+          "percentThousandths": 2036
+        },
+        {
+          "characterId": "kimberly",
+          "name": "キンバリー",
+          "text": "2.007",
+          "percentThousandths": 2007
+        },
+        {
+          "characterId": "lily",
+          "name": "リリー",
+          "text": "1.533",
+          "percentThousandths": 1533
+        },
+        {
+          "characterId": "aki",
+          "name": "A.K.I.",
+          "text": "1.333",
+          "percentThousandths": 1333
+        },
+        {
+          "characterId": "rashid",
+          "name": "ラシード",
+          "text": "1.164",
+          "percentThousandths": 1164
+        },
+        {
+          "characterId": "ehonda",
+          "name": "エドモンド本田",
+          "text": "1.128",
+          "percentThousandths": 1128
+        },
+        {
+          "characterId": "blanka",
+          "name": "ブランカ",
+          "text": "0.997",
+          "percentThousandths": 997
+        },
+        {
+          "characterId": "dhalsim",
+          "name": "ダルシム",
+          "text": "0.701",
+          "percentThousandths": 701
+        }
+      ]
+    }
+  ]
+}

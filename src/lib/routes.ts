@@ -1,5 +1,6 @@
 export type AppRoute =
   | { page: 'win-rates' }
+  | { page: 'usage-rates' }
   | { page: 'win-rate-history' }
   | { page: 'expected-matches' }
   | { page: 'monthly-win-rate-statistics' }
@@ -12,6 +13,9 @@ export function characterHash(characterId: string): string {
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#usage-rates' || hash === '#usage-rates/') {
+    return { page: 'usage-rates' }
+  }
   if (hash === '#expected-matches' || hash === '#expected-matches/') {
     return { page: 'expected-matches' }
   }

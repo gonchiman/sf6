@@ -3,6 +3,7 @@ import { AppShell } from './components/AppShell'
 import { CharactersPage } from './components/CharactersPage'
 import { CharacterTraitsPage } from './components/CharacterTraitsPage'
 import { WinRatesPage } from './components/WinRatesPage'
+import { UsageRatesPage } from './components/UsageRatesPage'
 import { WinRateHistoryPage } from './components/WinRateHistoryPage'
 import { MonthlyWinRateStatisticsPage } from './components/MonthlyWinRateStatisticsPage'
 import { ExpectedMatchesPage } from './components/ExpectedMatchesPage'
@@ -20,14 +21,15 @@ export default function App() {
   }, [])
 
   return (
-    <AppShell activePage={route.page} title={route.page === 'expected-matches' ? 'マスターまでの期待試合数' : route.page === 'characters' ? 'キャラ情報' : route.page === 'character-traits' ? 'キャラ分類' : route.page === 'win-rate-history' ? '勝率推移' : route.page === 'monthly-win-rate-statistics' ? '月別勝率統計' : route.page === 'control-type-ratio' ? '操作タイプ比率（推定）' : '勝率'}>
+    <AppShell activePage={route.page} title={route.page === 'usage-rates' ? '使用率' : route.page === 'expected-matches' ? 'マスターまでの期待試合数' : route.page === 'characters' ? 'キャラ情報' : route.page === 'character-traits' ? 'キャラ分類' : route.page === 'win-rate-history' ? '勝率推移' : route.page === 'monthly-win-rate-statistics' ? '月別勝率統計' : route.page === 'control-type-ratio' ? '操作タイプ比率（推定）' : '勝率'}>
       {route.page === 'characters'
         ? <CharactersPage characterId={route.characterId} onCharacterChange={(id) => { window.location.hash = characterHash(id) }} />
         : route.page === 'character-traits' ? <CharacterTraitsPage />
           : route.page === 'win-rate-history' ? <WinRateHistoryPage />
             : route.page === 'monthly-win-rate-statistics' ? <MonthlyWinRateStatisticsPage />
               : route.page === 'expected-matches' ? <ExpectedMatchesPage />
-                : route.page === 'control-type-ratio' ? <ControlTypeRatioPage /> : <WinRatesPage />}
+                : route.page === 'control-type-ratio' ? <ControlTypeRatioPage />
+                  : route.page === 'usage-rates' ? <UsageRatesPage /> : <WinRatesPage />}
     </AppShell>
   )
 }

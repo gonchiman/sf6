@@ -2,6 +2,7 @@ export const HOME_HREF = import.meta.env.BASE_URL
 
 export const APP_NAV_ITEMS = [
   { id: 'win-rates', label: '勝率', href: '#win-rates' },
+  { id: 'usage-rates', label: '使用率', href: '#usage-rates' },
   { id: 'characters', label: 'キャラ情報', href: '#characters' },
   { id: 'win-rate-history', label: '勝率推移', href: '#win-rate-history' },
   { id: 'expected-matches', label: '期待試合数', href: '#expected-matches' },

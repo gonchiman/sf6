@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import type { UsageRateDataset } from '../types/usageRates.ts'
 import { createCharacterControlTypeRatioRows, sortCharacterControlTypeRatioRows } from './characterControlTypeRatio.ts'
 import { estimateControlTypeRatio } from './controlTypeRatio.ts'
-import { parseUsageRateDataset, USAGE_RATE_SOURCE } from './usageRates.ts'
+import { parseUsageRateDataset, USAGE_RATE_EDITION_SOURCES, USAGE_RATE_SOURCE } from './usageRates.ts'
 
 function fixture(all: number[], classic: number[], modern: number[]): UsageRateDataset {
   return {
@@ -70,6 +70,29 @@ test('global missing, indistinguishable distributions and invalid mixtures retai
   }
   assert.equal(createCharacterControlTypeRatioRows(missing)[0].allText, '-')
   assert.equal(createCharacterControlTypeRatioRows(missing)[0].allPercent, null)
+})
+
+test('master and unequal-roster publications retain ALL evidence with explicit unavailable ratios', () => {
+  const fewer = fixture([34000, 66000], [40000, 60000], [100000])
+  const master = fixture([34000, 66000], [40000, 60000], [10000, 90000])
+  master.edition = 'master'
+  master.source = { ...master.source, ...USAGE_RATE_EDITION_SOURCES.master }
+  master.distributions = master.distributions.slice(0, 1)
+  for (const [input, reason] of [[fewer, /キャラクター集合/], [master, /マスター版/]] as const) {
+    const untouched = structuredClone(input)
+    const rows = createCharacterControlTypeRatioRows(input)
+    assert.equal(rows.length, 2)
+    assert.deepEqual(rows.map((row) => row.allText), ['34.000', '66.000'])
+    for (const row of rows) {
+      assert.equal(row.status, 'unavailable')
+      assert.equal(row.classicWithinCharacterRatio, null)
+      assert.equal(row.modernWithinCharacterRatio, null)
+      assert.match(row.reason!, reason)
+    }
+    assert.equal(rows[1].modernText, null)
+    assert.equal(rows[1].modernPercent, null)
+    assert.deepEqual(input, untouched)
+  }
 })
 
 test('zero contributions produce valid 0% and 100%, while zero reconstructed ALL remains unavailable', () => {

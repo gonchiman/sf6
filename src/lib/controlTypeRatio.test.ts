@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { UsageRateDataset, UsageRateDatasetDescriptor } from '../types/usageRates.ts'
 import { createControlTypeRatioRows, estimateControlTypeRatio } from './controlTypeRatio.ts'
-import { USAGE_RATE_SOURCE } from './usageRates.ts'
+import { USAGE_RATE_EDITION_SOURCES, USAGE_RATE_SOURCE } from './usageRates.ts'
 
 const capturedAt = '2026-10-09T05:00:00Z'
 const descriptor: UsageRateDatasetDescriptor = { id: '2026-09-master', month: '2026-09', league: 'MASTER', path: '2026-09-master.json', capturedAt }
@@ -66,7 +66,61 @@ test('matches characters by ID instead of distribution order and rejects inconsi
   assert.match(estimateControlTypeRatio(input).reason!, /conditions/)
   input.distributions[2].month = descriptor.month
   input.distributions[2].entries[0].characterId = 'unknown'
-  assert.match(estimateControlTypeRatio(input).reason!, /characterIds/)
+  assert.match(estimateControlTypeRatio(input).reason!, /キャラクター集合/)
+})
+
+test('master publications without separate control distributions remain readable but cannot be estimated', () => {
+  const input = fixture([33600, 66400], [40000, 60000], [0, 100000])
+  input.edition = 'master'
+  input.source = { ...input.source, ...USAGE_RATE_EDITION_SOURCES.master }
+  input.distributions = input.distributions.slice(0, 1)
+  const result = estimateControlTypeRatio(input)
+  assert.equal(result.status, 'unavailable')
+  assert.equal(result.characterCount, 2)
+  assert.equal(result.modernRatio, null)
+  assert.deepEqual(result.details, [])
+  assert.match(result.reason!, /マスター版.*操作タイプ別/)
+  const rows = createControlTypeRatioRows([{ month: input.month, descriptor: { ...descriptor, edition: 'master' }, status: 'ready', dataset: input }])
+  assert.equal(rows[0].status, 'unavailable')
+  assert.equal(rows[0].dataset!.distributions.length, 1)
+})
+
+test('unequal official rosters never zero-fill or estimate from an intersection', () => {
+  const fewer = fixture([33600, 66400], [40000, 60000], [100000])
+  const otherIds = fixture([33600, 66400], [40000, 60000], [0, 100000])
+  otherIds.distributions[2].entries[0].characterId = 'other-character'
+  for (const input of [fewer, otherIds]) {
+    const untouched = structuredClone(input)
+    const result = estimateControlTypeRatio(input)
+    assert.equal(result.status, 'unavailable')
+    assert.equal(result.characterCount, 2)
+    assert.equal(result.classicRatio, null)
+    assert.equal(result.modernRatio, null)
+    assert.match(result.reason!, /キャラクター集合/)
+    assert.deepEqual(result.details, [])
+    assert.deepEqual(input, untouched)
+  }
+})
+
+test('explicitly rechecked exceptional official totals remain readable and never feed mixture estimates', () => {
+  const input = fixture([33735, 66400], [40000, 60000], [0, 100000])
+  input.distributions[0].totalMismatch = {
+    observedPercentThousandths: 100135, verifiedAt: capturedAt, sourceUrl: USAGE_RATE_SOURCE.url,
+    reason: '公式ページ再確認済み。掲載値の合計100.135%を補正せず保存。',
+  }
+  input.source.notes.push(input.distributions[0].totalMismatch.reason)
+  const before = structuredClone(input)
+  const result = estimateControlTypeRatio(input)
+  assert.equal(result.status, 'unavailable')
+  assert.equal(result.characterCount, 2)
+  assert.equal(result.modernRatio, null)
+  assert.deepEqual(result.details, [])
+  assert.match(result.reason!, /合計が100\.135%.*推定しません/)
+  const rows = createControlTypeRatioRows([{ month: input.month, descriptor, status: 'ready', dataset: input }])
+  assert.equal(rows[0].status, 'unavailable')
+  assert.equal(rows[0].dataset!.distributions[0].entries[0].percentThousandths, 33735)
+  assert.equal(rows[0].dataset!.distributions[0].totalMismatch!.observedPercentThousandths, 100135)
+  assert.deepEqual(input, before)
 })
 
 test('uses rounded official percentages directly and reports residuals without renormalizing', () => {
