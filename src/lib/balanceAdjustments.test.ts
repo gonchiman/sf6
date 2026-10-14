@@ -59,6 +59,19 @@ test('日本の暦日を月に対応させ、月境界と同月の複数調整�
   assert.deepEqual(input, before)
 })
 
+test('旧形式の公式実施告知を保持し、確認済みの日付にリスト日を付けない', () => {
+  const announcement = { url: 'https://www.streetfighter.com/6/buckler/ja-jp/information/detail/mainte20230724', title: 'アップデートのお知らせ' }
+  const output = parseBalanceAdjustmentCatalog(catalog({ coverage: { fromMonth: '2023-07', toMonth: '2023-07' }, events: [event({
+    id: 'battle-change-20230724', date: '2023-07-24', announcement,
+    source: { url: 'https://www.streetfighter.com/6/buckler/ja-jp/battle_change/20230724', title: 'バトル変更リスト' },
+  })] }))
+  assert.deepEqual(output.events[0].announcement, announcement)
+  assert.equal(balanceAdjustmentShortDate(output.events[0]), '7/24')
+  for (const url of [announcement.url.replace('mainte20230724', 'mainte'), announcement.url.replace('mainte20230724', 'mainte20230724?preview=1')]) {
+    assert.throws(() => parseBalanceAdjustmentCatalog(catalog({ events: [event({ announcement: { ...announcement, url } })] })), /announcement.url/)
+  }
+})
+
 test('確認済み範囲の変更なしを未確認の月と区別し、範囲の両端を含める', () => {
   const input = catalog()
   for (const month of ['2025-09', '2026-01', '2026-08']) {

@@ -1,0 +1,31 @@
+.balance-adjustments-page { min-width: 0; display: grid; gap: 16px; }
+.balance-adjustment-table-content, .balance-adjustment-detail-content { min-width: 0; display: grid; gap: 14px; }
+.balance-adjustment-state { margin: 0; color: var(--text-muted); font-size: 13px; }
+.balance-adjustment-scroll, .balance-adjustment-detail-scroll { position: relative; }
+.balance-adjustment-scroll { max-height: min(70vh, 720px); scroll-padding-left: 156px; scroll-padding-top: 60px; }
+.balance-adjustment-overview-table, .balance-adjustment-character-table { min-width: 860px; table-layout: fixed; }
+.balance-adjustment-date-column { width: 180px; }
+.balance-adjustment-character-column { width: 156px; }
+.balance-adjustment-source-column { width: 120px; }
+.balance-adjustment-category-column { width: 140px; }
+.balance-adjustment-count-column { width: 80px; }
+.balance-adjustment-overview-table td, .balance-adjustment-character-table td { text-align: left; overflow-wrap: anywhere; }
+.balance-adjustment-character-table td.balance-adjustment-count { text-align: right; }
+.balance-adjustment-overview-table tr > :first-child, .balance-adjustment-character-table tr > :first-child { position: sticky; left: 0; z-index: 1; }
+.balance-adjustment-overview-table thead tr > :first-child, .balance-adjustment-character-table thead tr > :first-child { z-index: 3; }
+.balance-adjustment-overview-table th.monthly-win-rate-month, .balance-adjustment-character-table th.monthly-win-rate-month { padding: 0; }
+.balance-adjustment-overview-table tr.is-selected > *, .balance-adjustment-character-table tr.is-selected > * { background: var(--surface-hover); }
+.balance-adjustment-overview-table tr.is-selected .monthly-win-rate-month-button, .balance-adjustment-character-table tr.is-selected .monthly-win-rate-month-button { color: var(--link); font-weight: 500; box-shadow: inset 3px 0 var(--link); }
+.balance-adjustment-detail-scroll { max-height: min(70vh, 720px); }
+.balance-adjustment-detail-table { min-width: 1000px; table-layout: fixed; }
+.balance-adjustment-detail-character-column { width: 120px; }
+.balance-adjustment-target-column { width: 250px; }
+.balance-adjustment-detail-table td { text-align: left; overflow-wrap: anywhere; }
+.balance-adjustment-description { white-space: pre-line; overflow-wrap: anywhere; }
+.balance-adjustment-detail-content > p { margin: 0; }
+.balance-adjustment-detail-content .win-rates-source { display: flex; }
+.balance-adjustment-detail-content .win-rates-source > div { display: flex; }
+@media (max-width: 640px) {
+  .balance-adjustment-scroll { scroll-padding-left: 140px; }
+  .balance-adjustment-date-column, .balance-adjustment-character-column { width: 140px; }
+}

@@ -6,12 +6,16 @@ export type AppRoute =
   | { page: 'control-type-ratio' }
   | { page: 'characters'; characterId: string | null }
   | { page: 'character-traits' }
+  | { page: 'balance-adjustments' }
 
 export function characterHash(characterId: string): string {
   return `#characters/${encodeURIComponent(characterId)}`
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#balance-adjustments' || hash === '#balance-adjustments/') {
+    return { page: 'balance-adjustments' }
+  }
   if (hash === '#expected-matches' || hash === '#expected-matches/') {
     return { page: 'expected-matches' }
   }

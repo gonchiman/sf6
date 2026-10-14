@@ -70,7 +70,7 @@ function event(value: unknown, index: number): BalanceAdjustment {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) invalid(`${field}.id`)
   if (input.dateBasis !== 'effective' && input.dateBasis !== 'list') invalid(`${field}.dateBasis`)
   const announcement = input.announcement === null ? null : source(
-    input.announcement, `${field}.announcement`, /^\/6\/buckler\/ja-jp\/information\/detail\/update\d{8}\/?$/,
+    input.announcement, `${field}.announcement`, /^\/6\/buckler\/ja-jp\/information\/detail\/(?:update|mainte)\d{8}\/?$/,
   )
   if (input.dateBasis === 'effective' && announcement === null) invalid(`${field}.announcement`)
   return {
