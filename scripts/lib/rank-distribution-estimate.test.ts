@@ -104,8 +104,8 @@ test('accepts changing totals and within-rank identities while recording every o
 test('uses bounded local refinement when an old hint moved', async () => {
   const initial = Array.from({ length: 36 }, () => 40)
   const moved = [...initial]
-  moved[0] -= 5
-  moved[1] += 5
+  moved[0] -= 25
+  moved[1] += 25
   let moving = false
   let boundaryPageReads = 0
   const source = reader({
@@ -249,11 +249,32 @@ test('saved boundary positions shorten a large search while all 35 boundaries re
   assert.doesNotMatch(JSON.stringify(snapshots), /private-identity|accountKey|leaguePoint|entries/)
 })
 
+test('fresh internal boundaries resolve small shifts of all 35 saved positions within ninety reads', async t => {
+  for (const masterExtra of [0, 180_715]) {
+    const previousCounts = Array.from({ length: 36 }, () => 80_000)
+    previousCounts[35] += masterExtra
+    const counts = [...previousCounts]
+    counts[35] += 3 // Three new MASTER rows shift every saved cumulative position.
+    const saved = checkpoint(previousCounts)
+    const source = reader({ counts })
+    const result = await collectRankDistributionEstimate({ ...options(source.fetchPage), checkpoint: saved })
+    assert.deepEqual(result.entries.map(entry => entry.count), counts)
+    assert.equal(result.observation!.boundaries.length, 35)
+    assert.ok(result.observation!.boundaries.every(boundary => Date.parse(boundary.observedAt) >= start))
+    for (const boundary of result.observation!.boundaries) {
+      assert.equal(boundary.countAtOrAbove, saved.hints.find(hint => hint.rankId === boundary.rankId)!.countAtOrAbove + 3)
+    }
+    assert.ok(source.requests <= 90, `Used ${source.requests} reads for shifted positions`)
+    assert.ok(source.requests >= 39, 'No saved position can replace a fresh boundary observation')
+    t.diagnostic(`Synthetic only: ${source.requests} reads for ${result.totalCount} rows, 35 shifted boundaries, old offset ${saved.hints[0].countAtOrAbove % 20}`)
+  }
+})
+
 test('a stale saved position is disproved and refined rather than accepted as a current boundary', async () => {
   const oldCounts = Array.from({ length: 36 }, () => 40)
   const counts = [...oldCounts]
-  counts[0] -= 5
-  counts[1] += 5
+  counts[0] -= 25
+  counts[1] += 25
   const source = reader({ counts })
   const old = checkpoint(oldCounts)
   const result = await collectRankDistributionEstimate({ ...options(source.fetchPage), checkpoint: old })

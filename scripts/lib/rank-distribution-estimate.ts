@@ -170,13 +170,30 @@ export async function collectRankDistributionEstimate(
   async function confirmBoundary(rankId: number, candidate: number): Promise<{
     confirmed: boolean; candidate: number; totalCount: number
   }> {
+    // A newly read page can show the moved boundary directly, without another
+    // nearby search and duplicate confirmation of those same adjacent rows.
+    const withinFreshPage = (page: RankBoundaryPage): number | null => {
+      const prefix = page.entries.findIndex(entry => entry.rankId < rankId)
+      if (prefix <= 0 || prefix >= page.entries.length) return null
+      const left = page.entries[prefix - 1]
+      const right = page.entries[prefix]
+      if (left.rankId < rankId || right.rankId >= rankId
+        || left.leaguePoint < right.leaguePoint || left.rankId < right.rankId) fail('observation-changed')
+      return (page.page - 1) * page.pageSize + prefix
+    }
     const position = Math.max(0, Math.min(candidate, latestTotal))
     const beforePageNumber = Math.floor(Math.max(0, position - 1) / first.pageSize) + 1
     const before = await readPage(beforePageNumber, true)
+    const beforeBoundary = withinFreshPage(before)
+    if (beforeBoundary !== null) return { confirmed: true, candidate: beforeBoundary, totalCount: before.totalCount }
     const actualPosition = Math.min(position, before.totalCount)
     const afterPageNumber = Math.floor(actualPosition / first.pageSize) + 1
     const after = actualPosition === before.totalCount || afterPageNumber === before.page
       ? before : await readPage(afterPageNumber, true)
+    if (after !== before) {
+      const afterBoundary = withinFreshPage(after)
+      if (afterBoundary !== null) return { confirmed: true, candidate: afterBoundary, totalCount: after.totalCount }
+    }
     const left = actualPosition > 0 ? before.entries[(actualPosition - 1) % first.pageSize] : null
     const right = actualPosition < after.totalCount ? after.entries[actualPosition % first.pageSize] : null
     if (actualPosition > 0 && !left) return { confirmed: false, candidate: actualPosition, totalCount: after.totalCount }
