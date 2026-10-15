@@ -295,7 +295,7 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
         if (now() >= deadline) break
         await wait(250)
       } while (true)
-      if (latest?.loginRequired === true || latest?.loginRequiredHeading === true || latest?.signedIn === false) throw new RankDistributionDomError('login-required')
+      if (latest?.loginRequired === true || latest?.loginRequiredHeading === true) throw new RankDistributionDomError('login-required')
       if (latest?.signedIn !== true) throw new RankDistributionDomError('authentication-unconfirmed')
       throw new RankDistributionDomError(latest?.selectedPage !== pageNumber ? 'page-mismatch' : 'unsupported-dom')
     } catch (error) {

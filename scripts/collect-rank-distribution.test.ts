@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import type { RankDistributionDataset } from '../src/types/rankDistribution.ts'
 import { parseRankDistributionDataset } from '../src/lib/rankDistribution.ts'
-import { RankDistributionDomError } from './lib/rank-distribution-dom.ts'
+import { createRankDistributionPageReader, RankDistributionDomError } from './lib/rank-distribution-dom.ts'
 import type { RankBoundaryPage } from './lib/rank-distribution-boundaries.ts'
 import type { RankDistributionPageReaderDiagnostics } from './lib/rank-distribution-dom.ts'
 import { RANK_BOUNDARY_SOURCE_URL } from './lib/rank-distribution-boundaries.ts'
@@ -428,6 +428,84 @@ test('one fresh same-page read recovers only transient DOM failures, counting ev
     assert.equal(input.calls.publish, 1)
     assert.equal(input.calls.close, 1)
   }
+})
+
+/** Actual pure reader/CLI coupling with a fake page; no browser or authentication is accessed. */
+function incompleteLoginControlFixture(failedNavigations: readonly number[]) {
+  const input = fixture()
+  const attemptedPages: number[] = []
+  let currentUrl = ''
+  let pageNumber = 1
+  let clock = 0
+  const page = {
+    async goto(url: string) {
+      currentUrl = url
+      pageNumber = Number(new URL(url).searchParams.get('page'))
+      attemptedPages.push(pageNumber)
+      return { status: () => 200 }
+    },
+    url: () => currentUrl,
+    async evaluate() {
+      const from = (pageNumber - 1) * 20 + 1
+      const to = Math.min(pageNumber * 20, input.values.length)
+      const failed = failedNavigations.includes(attemptedPages.length)
+      return {
+        maintenance: false, signedIn: !failed,
+        authenticationEvidence: failed ? 'login-control' : 'logout-control',
+        loginRequired: false, loginRequiredHeading: false,
+        conditionsMatch: true, leagueLabelsMatch: true, selectedPage: pageNumber,
+        range: { from, to, total: input.values.length }, rankIcons: failed ? 'pending' : 'ready',
+        entries: failed ? null : structuredClone(input.values.slice(from - 1, to)),
+      }
+    },
+  }
+  const reader = createRankDistributionPageReader(page as unknown as Parameters<typeof createRankDistributionPageReader>[0], {
+    totalCountPolicy: 'record', allowReadablePagesAfterSignIn: true,
+    minIntervalMs: 250, timeoutMs: 10_000, now: () => clock, wait: async milliseconds => { clock += milliseconds },
+  })
+  input.deps.launch = async () => {
+    input.calls.launch++
+    return { ...reader, close: input.transport.close }
+  }
+  return { ...input, attemptedPages, reader }
+}
+
+test('a heading-free login-control page with incomplete rows recovers through one bounded fresh same-page read', async () => {
+  const input = incompleteLoginControlFixture([3])
+  const report = await runRankDistributionCollection(estimateOptions, input.deps)
+  assert.equal(report.status, 'succeeded')
+  assert.equal(report.retryCount, 1)
+  assert.equal(report.readFailureCode, 'authentication-unconfirmed')
+  assert.equal(report.requestCount, input.attemptedPages.length)
+  assert.equal(report.successfulReadCount, report.requestCount - 1)
+  assert.deepEqual(input.attemptedPages.slice(0, 4), [1, 4, 1, 1])
+  assert.deepEqual(input.waits, [500])
+  assert.equal(report.confirmedBoundaryCount, 35)
+  assert.equal(report.readableWithoutSignInReadCount, 0)
+  assert.equal(input.calls.publish, 1)
+  assert.equal(input.calls.close, 1)
+})
+
+test('two heading-free login-control pages with incomplete rows stop without publishing or claiming session expiry', async () => {
+  const input = incompleteLoginControlFixture([3, 4])
+  const report = await runRankDistributionCollection(estimateOptions, input.deps)
+  assert.equal(report.status, 'failed')
+  assert.equal(report.reason, 'authentication-unconfirmed')
+  assert.equal(report.readFailureCode, 'authentication-unconfirmed')
+  assert.equal(report.requestCount, 4)
+  assert.equal(report.successfulReadCount, 2)
+  assert.equal(report.retryCount, 1)
+  assert.deepEqual(input.attemptedPages, [1, 4, 1, 1])
+  assert.deepEqual(input.waits, [500])
+  assert.equal(report.lastHttpStatus, 200)
+  assert.equal(report.lastAuthenticationEvidence, 'login-control')
+  assert.equal(report.lastLoginRequiredHeading, false)
+  assert.equal(report.lastRankingReadable, false)
+  assert.equal(report.readableWithoutSignInReadCount, 0)
+  assert.equal(input.statuses[0].reason, 'authentication-unconfirmed')
+  assert.equal(input.calls.save, 0)
+  assert.equal(input.calls.publish, 0)
+  assert.equal(input.calls.close, 1)
 })
 
 test('a transient server error receives one fresh same-page read after five seconds', async () => {

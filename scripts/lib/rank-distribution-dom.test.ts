@@ -328,7 +328,7 @@ const loginControlPage = (page: number): RankDistributionDomObservation => ({ ..
 
 test('readable login-control pages cannot bootstrap the opt-in reader without a signed-in first page', async () => {
   const anonymous = harness(page => loginControlPage(page), 200, { allowReadablePagesAfterSignIn: true, timeoutMs: 10_000 })
-  await assert.rejects(anonymous.reader.fetchPage(1, pageUrl(1)), errorCode('login-required'))
+  await assert.rejects(anonymous.reader.fetchPage(1, pageUrl(1)), errorCode('authentication-unconfirmed'))
   assert.equal(anonymous.reader.getDiagnostics().successfulReadCount, 0)
   assert.equal(anonymous.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
   assert.equal(anonymous.navigations.length, 1)
@@ -379,7 +379,7 @@ test('malformed layouts, changed URLs, HTTP denial and maintenance remain refusa
     const blocked = harness(page => page === 1 ? observation(page) : { ...loginControlPage(page), ...patch }, 200,
       { allowReadablePagesAfterSignIn: true })
     await blocked.reader.fetchPage(1, pageUrl(1))
-    await assert.rejects(blocked.reader.fetchPage(2, pageUrl(2)), errorCode('login-required'))
+    await assert.rejects(blocked.reader.fetchPage(2, pageUrl(2)), errorCode('authentication-unconfirmed'))
     assert.equal(blocked.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
   }
   const moved = harness(page => page === 1 ? observation(page) : loginControlPage(page), 200,
@@ -406,7 +406,7 @@ test('default and explicitly disabled readers still require signed-in UI on ever
   for (const options of [{}, { allowReadablePagesAfterSignIn: false }]) {
     const strict = harness(page => page === 1 ? observation(page) : loginControlPage(page), 200, options)
     await strict.reader.fetchPage(1, pageUrl(1))
-    await assert.rejects(strict.reader.fetchPage(2, pageUrl(2)), errorCode('login-required'))
+    await assert.rejects(strict.reader.fetchPage(2, pageUrl(2)), errorCode('authentication-unconfirmed'))
     assert.equal(strict.reader.getDiagnostics().successfulReadCount, 1)
     assert.equal(strict.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
   }
@@ -486,7 +486,7 @@ test('HTTP 5xx and other HTTP errors stop before reading DOM and retain their nu
 
 test('failed authentication diagnostics distinguish readable login-button pages, explicit gates and missing controls or rows', async () => {
   const cases: Array<{ patch: Partial<RankDistributionDomObservation>; code: RankDistributionDomErrorCode; readable: boolean }> = [
-    { patch: { signedIn: false, authenticationEvidence: 'login-control', loginRequiredHeading: false }, code: 'login-required', readable: true },
+    { patch: { signedIn: false, authenticationEvidence: 'login-control', loginRequiredHeading: false }, code: 'authentication-unconfirmed', readable: true },
     { patch: { signedIn: false, authenticationEvidence: 'login-control', loginRequiredHeading: true,
       loginRequired: true, rankIcons: 'pending', entries: null }, code: 'login-required', readable: false },
     { patch: { signedIn: null, authenticationEvidence: 'no-control', loginRequiredHeading: false }, code: 'authentication-unconfirmed', readable: true },
