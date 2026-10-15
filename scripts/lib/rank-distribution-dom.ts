@@ -154,6 +154,8 @@ export interface RankDistributionPageReaderDiagnostics {
   lastLoginRequiredHeading?: boolean | null
   /** Valid rendered ranking layout, separately from authentication confirmation. */
   lastRankingReadable?: boolean | null
+  /** Fully validated login-control pages accepted after a signed-in first page. */
+  readableWithoutSignInReadCount?: number
   minimumObservedTotal?: number | null
   maximumObservedTotal?: number | null
   rankMappingConfirmed: boolean
@@ -169,6 +171,8 @@ export interface RankDistributionPageReaderOptions {
   signal?: AbortSignal
   /** Recording a changing total is only for the explicitly labelled interval estimate. */
   totalCountPolicy?: 'stable' | 'record'
+  /** Estimate-only opt-in; requires a signed-in complete first page in this reader. */
+  allowReadablePagesAfterSignIn?: boolean
   /** Delay between navigations, not an automatic retry policy. */
   minIntervalMs?: number
   timeoutMs?: number
@@ -201,7 +205,8 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
   const totalCountPolicy = options.totalCountPolicy ?? 'stable'
   if (!Number.isSafeInteger(minInterval) || minInterval < 250 || minInterval > 10_000
     || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 10_000
-    || !['stable', 'record'].includes(totalCountPolicy)) throw new RankDistributionDomError('invalid-request')
+    || !['stable', 'record'].includes(totalCountPolicy)
+    || options.allowReadablePagesAfterSignIn !== undefined && typeof options.allowReadablePagesAfterSignIn !== 'boolean') throw new RankDistributionDomError('invalid-request')
   const now = options.now ?? Date.now
   const wait = options.wait ?? (async (milliseconds: number) => { await delay(milliseconds, undefined, { signal: options.signal }) })
   const salt = randomBytes(32).toString('hex')
@@ -209,12 +214,14 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
     requestCount: 0, successfulReadCount: 0, pageSize: null, totalCount: null, lastPage: null,
     lastObservedTotal: null, lastAttemptedPage: null, lastHttpStatus: null,
     lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null,
+    readableWithoutSignInReadCount: 0,
     minimumObservedTotal: null, maximumObservedTotal: null,
     rankMappingConfirmed: false, observedRankIds: [], tailRankIds: [],
     leagueLabelsConfirmed: false, displayedConditionsConfirmed: false, userStatusEvidence: 'fixed-url-only',
   }
   let running = false
   let lastNavigation: number | null = null
+  let signedInFirstPageConfirmed = false
   function checkCancelled(): void { if (options.signal?.aborted) throw new RankDistributionDomError('cancelled') }
   function confirmedUrl(url: string, pageNumber: number): boolean {
     try {
@@ -261,7 +268,13 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
         if (!confirmedUrl(page.url(), pageNumber)) throw new RankDistributionDomError('page-mismatch')
         if (latest.conditionsMatch === false || latest.leagueLabelsMatch === false) throw new RankDistributionDomError('condition-mismatch')
         if (latest.rankIcons === 'unsupported') throw new RankDistributionDomError('unsupported-rank-icon')
-        if (latest.signedIn === true && latest.loginRequiredHeading !== true && latest.loginRequired !== true && layout) {
+        const signedInReadable = latest.signedIn === true && latest.loginRequiredHeading !== true && latest.loginRequired !== true
+        // Only a complete normal page may be read after the full hydration wait.
+        // This does not assert that its login state remains confirmed.
+        const readableWithoutSignIn = options.allowReadablePagesAfterSignIn === true && signedInFirstPageConfirmed
+          && now() >= deadline && latest.signedIn === false && latest.authenticationEvidence === 'login-control'
+          && latest.loginRequiredHeading === false && latest.loginRequired === false
+        if ((signedInReadable || readableWithoutSignIn) && layout) {
           diagnostics.lastObservedTotal = layout.totalCount
           diagnostics.minimumObservedTotal = Math.min(diagnostics.minimumObservedTotal ?? layout.totalCount, layout.totalCount)
           diagnostics.maximumObservedTotal = Math.max(diagnostics.maximumObservedTotal ?? layout.totalCount, layout.totalCount)
@@ -271,6 +284,8 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
           diagnostics.lastPage = layout.page
           diagnostics.rankMappingConfirmed = true
           diagnostics.successfulReadCount++
+          if (signedInReadable && pageNumber === 1 && latest.loginRequiredHeading === false && latest.loginRequired === false) signedInFirstPageConfirmed = true
+          if (readableWithoutSignIn) diagnostics.readableWithoutSignInReadCount = (diagnostics.readableWithoutSignInReadCount ?? 0) + 1
           diagnostics.displayedConditionsConfirmed = true
           diagnostics.leagueLabelsConfirmed = true
           diagnostics.observedRankIds = [...new Set([...diagnostics.observedRankIds, ...layout.entries.map(entry => entry.rankId)])].sort((a, b) => a - b)
@@ -279,7 +294,7 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
         }
         if (now() >= deadline) break
         await wait(250)
-      } while (now() < deadline)
+      } while (true)
       if (latest?.loginRequired === true || latest?.loginRequiredHeading === true || latest?.signedIn === false) throw new RankDistributionDomError('login-required')
       if (latest?.signedIn !== true) throw new RankDistributionDomError('authentication-unconfirmed')
       throw new RankDistributionDomError(latest?.selectedPage !== pageNumber ? 'page-mismatch' : 'unsupported-dom')

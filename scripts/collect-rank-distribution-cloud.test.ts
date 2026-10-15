@@ -171,6 +171,7 @@ test('synthetic complete collection consumes the secret, isolates browser env an
   assert.equal(setup.launches[0].channel, 'msedge')
   assert.equal(setup.launches[0].minIntervalMs, 5000)
   assert.equal(setup.launches[0].totalCountPolicy, 'record')
+  assert.equal(setup.launches[0].allowReadablePagesAfterSignIn, true)
   assert.equal(setup.launches[0].storageState.cookies[0].value, SECRET)
   for (const key of [BUCKLER_CLOUD_SESSION_ENV, 'DEBUG', 'NODE_OPTIONS', 'PWDEBUG', 'PW_TRACE_DIR', 'PLAYWRIGHT_LOG_PATH']) {
     assert.equal(key in setup.env, false)
@@ -283,8 +284,35 @@ test('an invalid checkpoint cannot be copied into Artifacts or count as a succes
   assert.equal(result.succeeded, false)
   assert.equal(result.report.checkpointExport, 'failed')
   assert.equal(result.report.checkpointStaged, false)
+  assert.equal(result.artifactReady, false)
+  assert.equal(result.report.artifactReady, false)
+  assert.equal(setup.artifactReadyCalls(), 0)
   assert.equal(setup.outputs.has(RANK_DISTRIBUTION_CLOUD_CHECKPOINT_PATH), false)
   assert.ok(!JSON.stringify([result, [...setup.outputs]]).includes(SECRET))
+})
+
+test('a partially written checkpoint suppresses the whole artifact upload, retaining only the safe report for log diagnosis', async () => {
+  const setup = fixture()
+  const write = setup.dependencies.outputIo!.write
+  setup.dependencies.outputIo!.write = async (path, text) => {
+    if (path === RANK_DISTRIBUTION_CLOUD_CHECKPOINT_PATH) {
+      await write(path, text.slice(0, 12))
+      throw new Error(`synthetic interrupted checkpoint write ${SECRET}`)
+    }
+    await write(path, text)
+  }
+  const result = await runRankDistributionCloudCollection(['--saved-session'], setup.dependencies)
+  assert.equal(result.report.capture.status, 'succeeded')
+  assert.equal(result.report.datasetStaged, true)
+  assert.equal(result.succeeded, false)
+  assert.equal(result.report.checkpointExport, 'failed')
+  assert.equal(result.artifactReady, false)
+  assert.equal(result.report.artifactReady, false)
+  assert.equal(setup.artifactReadyCalls(), 0)
+  assert.throws(() => JSON.parse(setup.outputs.get(RANK_DISTRIBUTION_CLOUD_CHECKPOINT_PATH)!))
+  const safeReport = JSON.parse(setup.outputs.get(RANK_DISTRIBUTION_CLOUD_REPORT_PATH)!)
+  assert.equal(safeReport.artifactReady, false)
+  assert.ok(!JSON.stringify(result).includes(SECRET))
 })
 
 test('credentials and diagnostics are removed even when arguments, runner guard or state validation fail', async () => {
@@ -371,4 +399,13 @@ test('browser environment is a platform allowlist and summary drops unknown diag
   assert.equal(raw.lastLoginRequiredHeading, null)
   assert.equal(raw.lastRankingReadable, null)
   assert.ok(!JSON.stringify(raw).includes(SECRET))
+})
+
+test('cloud summary keeps only a nonnegative safe-integer readable-page count', () => {
+  for (const value of [SECRET, '7', -1, 0.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, null, undefined, 0, 7, Number.MAX_SAFE_INTEGER]) {
+    const result = summarizeRankDistributionCloudCapture({ readableWithoutSignInReadCount: value })
+    const expected = typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0
+    assert.equal(result.readableWithoutSignInReadCount, expected)
+    assert.ok(!JSON.stringify(result).includes(SECRET))
+  }
 })

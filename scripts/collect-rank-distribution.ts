@@ -117,6 +117,7 @@ export interface RankDistributionCaptureReport {
   lastAuthenticationEvidence: 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control' | null
   lastLoginRequiredHeading: boolean | null
   lastRankingReadable: boolean | null
+  readableWithoutSignInReadCount: number
   totalMin: number | null
   totalMax: number | null
   totalAtEnd: number | null
@@ -177,13 +178,14 @@ type CaptureDiagnostics = RankDistributionPageReaderDiagnostics & {
   lastObservedTotal: number | null; lastAttemptedPage: number | null; lastHttpStatus: number | null
   lastAuthenticationEvidence: 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control' | null
   lastLoginRequiredHeading: boolean | null; lastRankingReadable: boolean | null
+  readableWithoutSignInReadCount: number
 }
 function emptyDiagnostics(): CaptureDiagnostics {
   return { requestCount: 0, successfulReadCount: 0, totalCount: null, pageSize: null, lastPage: null,
     rankMappingConfirmed: false, leagueLabelsConfirmed: false, displayedConditionsConfirmed: false,
     userStatusEvidence: 'fixed-url-only', observedRankIds: [], tailRankIds: [], lastObservedTotal: null,
     lastAttemptedPage: null, lastHttpStatus: null, lastAuthenticationEvidence: null,
-    lastLoginRequiredHeading: null, lastRankingReadable: null }
+    lastLoginRequiredHeading: null, lastRankingReadable: null, readableWithoutSignInReadCount: 0 }
 }
 /** Copy a fixed scalar allowlist, never arbitrary transport objects or private row fields. */
 function safeDiagnostics(transport?: RankDistributionCaptureTransport): CaptureDiagnostics {
@@ -209,6 +211,7 @@ function safeDiagnostics(transport?: RankDistributionCaptureTransport): CaptureD
     for (const key of ['lastLoginRequiredHeading', 'lastRankingReadable'] as const) {
       if (typeof input[key] === 'boolean') result[key] = input[key]
     }
+    if (integer(input.readableWithoutSignInReadCount)) result.readableWithoutSignInReadCount = input.readableWithoutSignInReadCount
     for (const key of ['rankMappingConfirmed', 'leagueLabelsConfirmed', 'displayedConditionsConfirmed'] as const) result[key] = input[key] === true
     for (const key of ['observedRankIds', 'tailRankIds'] as const) {
       if (Array.isArray(input[key])) result[key] = [...new Set(input[key].filter(knownRank))].sort((a, b) => a - b)
@@ -289,6 +292,7 @@ export async function runRankDistributionCollection(
   let successfulReadCount = 0
   let sessionState: StorageState | undefined
   let browserStartedAt: number | null = null
+  let retiredReadableWithoutSignInReadCount = 0
   let checkpoint: RankDistributionCheckpoint | undefined
   const elapsedNow = deps.elapsedNow ?? (() => performance.now())
   const observedRankIds = new Set<number>()
@@ -374,11 +378,14 @@ export async function runRankDistributionCollection(
     if (current - browserStartedAt < SESSION_REFRESH_MS) return
     checkCancelled(signal)
     if (requestCount >= options.maxRequests) fail('request-limit')
-    const expectedPageSize = safeDiagnostics(transport).pageSize
+    const previousDiagnostics = safeDiagnostics(transport)
+    const expectedPageSize = previousDiagnostics.pageSize
     rememberDiagnostics()
     await close()
     // A failed close must not leave an old owned browser running beside a new one.
     if (!report.browserClosed) fail('read-failed')
+    const retiredReadCount = retiredReadableWithoutSignInReadCount + previousDiagnostics.readableWithoutSignInReadCount
+    retiredReadableWithoutSignInReadCount = integer(retiredReadCount) ? retiredReadCount : 0
     transport = undefined
     closing = undefined
     checkCancelled(signal)
@@ -516,6 +523,8 @@ export async function runRankDistributionCollection(
     sessionState = undefined
   }
   const diagnostics = safeDiagnostics(transport)
+  const readableReadCount = retiredReadableWithoutSignInReadCount + diagnostics.readableWithoutSignInReadCount
+  diagnostics.readableWithoutSignInReadCount = integer(readableReadCount) ? readableReadCount : 0
   rememberDiagnostics()
   diagnostics.observedRankIds = [...observedRankIds].sort((a, b) => a - b)
   if (!diagnostics.tailRankIds.length) diagnostics.tailRankIds = confirmedTailRankIds
@@ -523,7 +532,7 @@ export async function runRankDistributionCollection(
   report.stage = stage
   report.requestCount = requestCount
   report.successfulReadCount = successfulReadCount
-  for (const key of ['pageSize', 'totalCount', 'lastPage', 'rankMappingConfirmed', 'leagueLabelsConfirmed', 'displayedConditionsConfirmed', 'observedRankIds', 'tailRankIds', 'lastObservedTotal', 'lastAttemptedPage', 'lastHttpStatus', 'lastAuthenticationEvidence', 'lastLoginRequiredHeading', 'lastRankingReadable'] as const) {
+  for (const key of ['pageSize', 'totalCount', 'lastPage', 'rankMappingConfirmed', 'leagueLabelsConfirmed', 'displayedConditionsConfirmed', 'observedRankIds', 'tailRankIds', 'lastObservedTotal', 'lastAttemptedPage', 'lastHttpStatus', 'lastAuthenticationEvidence', 'lastLoginRequiredHeading', 'lastRankingReadable', 'readableWithoutSignInReadCount'] as const) {
     Object.assign(report, { [key]: diagnostics[key] })
   }
   try { report.endedAt = timestamp(now) } catch { report.endedAt = startedAt }
@@ -621,7 +630,7 @@ async function launchFixedEdge(state: StorageState, signal: AbortSignal, accurac
     const context = await browser.newContext({ locale: 'ja-JP', acceptDownloads: false, storageState: state })
     const page = await context.newPage()
     const reader = createRankDistributionPageReader(page, { signal, minIntervalMs: accuracy === 'estimate' ? 5000 : 500,
-      totalCountPolicy: accuracy === 'estimate' ? 'record' : 'stable' })
+      totalCountPolicy: accuracy === 'estimate' ? 'record' : 'stable', allowReadablePagesAfterSignIn: accuracy === 'estimate' })
     return { ...reader, close: async () => { await browser.close() } }
   } catch (error) { await browser.close().catch(() => {}); throw error }
 }

@@ -98,6 +98,7 @@ export interface RankDistributionCloudLaunchOptions {
   headless: false
   minIntervalMs: 5000
   totalCountPolicy: 'record'
+  allowReadablePagesAfterSignIn: true
 }
 
 export interface RankDistributionCloudOutputIo {
@@ -184,6 +185,7 @@ export interface RankDistributionCloudCaptureSummary {
   lastAuthenticationEvidence: 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control' | null
   lastLoginRequiredHeading: boolean | null
   lastRankingReadable: boolean | null
+  readableWithoutSignInReadCount: number
 }
 
 /** Fixed enums, dates, counts and booleans only; never serialize an arbitrary report. */
@@ -199,7 +201,7 @@ export function summarizeRankDistributionCloudCapture(value: unknown): RankDistr
     datasetSaved: input.datasetSaved === true, published: input.published === true, browserClosed: input.browserClosed === true,
     totalMin: null, totalMax: null, totalAtEnd: null, lastObservedTotal: null, lastAttemptedPage: null, lastHttpStatus: null,
     readFailureCode: readCodes.includes(input.readFailureCode as never) ? input.readFailureCode as typeof readCodes[number] : null,
-    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null, readableWithoutSignInReadCount: 0,
   }
   for (const key of ['requestCount', 'successfulReadCount', 'retryCount', 'sessionRefreshCount'] as const) {
     if (integer(input[key]) && input[key] <= 1000) result[key] = input[key]
@@ -217,6 +219,7 @@ export function summarizeRankDistributionCloudCapture(value: unknown): RankDistr
   for (const key of ['lastLoginRequiredHeading', 'lastRankingReadable'] as const) {
     if (typeof input[key] === 'boolean') result[key] = input[key]
   }
+  if (integer(input.readableWithoutSignInReadCount)) result.readableWithoutSignInReadCount = input.readableWithoutSignInReadCount
   return result
 }
 
@@ -227,6 +230,8 @@ export interface RankDistributionCloudReport {
   appImported: false
   deployed: false
   artifactUploaded: false
+  /** False suppresses the complete artifact upload, even if a dataset was completed. */
+  artifactReady: boolean
   manualLoginPerformed: false
   sessionLifetime: 'not-tested'
   weeklyExecution: 'not-tested'
@@ -276,14 +281,15 @@ async function launchCloudEdge(options: RankDistributionCloudLaunchOptions): Pro
     const context = await browser.newContext({ locale: 'ja-JP', acceptDownloads: false, storageState: options.storageState })
     const page = await context.newPage()
     const reader = createRankDistributionPageReader(page, { signal: options.signal,
-      minIntervalMs: options.minIntervalMs, totalCountPolicy: options.totalCountPolicy })
+      minIntervalMs: options.minIntervalMs, totalCountPolicy: options.totalCountPolicy,
+      allowReadablePagesAfterSignIn: options.allowReadablePagesAfterSignIn })
     return { ...reader, close: () => browser.close() }
   } catch (error) { await browser.close().catch(() => {}); throw error }
 }
 
 /** No credential file is read or written. Only the supplied fixed env value enters memory. */
 export async function runRankDistributionCloudCollection(args: string[], dependencies: RankDistributionCloudDependencies = {}): Promise<{
-  report: RankDistributionCloudReport; succeeded: boolean; artifactReady: true
+  report: RankDistributionCloudReport; succeeded: boolean; artifactReady: boolean
 }> {
   const env = dependencies.env ?? process.env
   let sessionJson = env[BUCKLER_CLOUD_SESSION_ENV]
@@ -331,7 +337,8 @@ export async function runRankDistributionCloudCollection(args: string[], depende
     capture = await (dependencies.collect ?? runRankDistributionCollection)(options, {
       loadSession: async () => state!,
       launch: async (storageState, signal) => (dependencies.launch ?? launchCloudEdge)({ storageState, signal,
-        env: { ...childEnvironment }, channel: 'msedge', headless: false, minIntervalMs: 5000, totalCountPolicy: 'record' }),
+        env: { ...childEnvironment }, channel: 'msedge', headless: false, minIntervalMs: 5000,
+        totalCountPolicy: 'record', allowReadablePagesAfterSignIn: true }),
       loadCheckpoint: () => checkpoints.load(),
       saveCheckpoint: value => checkpoints.save(parseRankDistributionCheckpoint(value)),
       saveDataset: async value => {
@@ -368,17 +375,20 @@ export async function runRankDistributionCloudCollection(args: string[], depende
       checkpointExport = 'saved'
     }
   } catch { checkpointExport = 'failed' }
+  // A failed direct write may have left an incomplete checkpoint file. Keep the
+  // report for stdout diagnosis, but never authorize any artifact upload then.
+  const artifactReady = checkpointExport !== 'failed'
   const report: RankDistributionCloudReport = {
     schemaVersion: 1, cloudExecution: true, publicationTarget: 'artifact-staging', appImported: false, deployed: false,
-    artifactUploaded: false, manualLoginPerformed: false, sessionLifetime: 'not-tested', weeklyExecution: 'not-tested',
+    artifactUploaded: false, artifactReady, manualLoginPerformed: false, sessionLifetime: 'not-tested', weeklyExecution: 'not-tested',
     datasetStaged, checkpointStaged, checkpointSeeded, checkpointExport, capture: summarizeRankDistributionCloudCapture(capture),
   }
   try {
     await writeOutput(io, RANK_DISTRIBUTION_CLOUD_REPORT_PATH, report)
-    await dependencies.artifactReady?.()
+    if (artifactReady) await dependencies.artifactReady?.()
   }
   catch { throw new RankDistributionCloudError('output') }
-  return { report, succeeded: capture.status === 'succeeded' && datasetStaged && checkpointExport !== 'failed', artifactReady: true }
+  return { report, succeeded: capture.status === 'succeeded' && datasetStaged && artifactReady, artifactReady }
 }
 
 export async function main(args = process.argv.slice(2)): Promise<void> {

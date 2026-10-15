@@ -532,6 +532,19 @@ test('estimate replaces its owned browser after twenty minutes and continues the
   assert.ok(!JSON.stringify(report).includes('private-auth-value'))
 })
 
+test('readable-page counts include each owned reader once across preventive browser replacement', async () => {
+  const { initial, fresh } = refreshFixture()
+  const oldDiagnostics = initial.transport.getDiagnostics
+  const freshDiagnostics = fresh.transport.getDiagnostics
+  initial.transport.getDiagnostics = () => ({ ...oldDiagnostics(), readableWithoutSignInReadCount: 2 })
+  fresh.transport.getDiagnostics = () => ({ ...freshDiagnostics(), readableWithoutSignInReadCount: 3 })
+  const report = await runRankDistributionCollection(estimateOptions, initial.deps)
+  assert.equal(report.status, 'succeeded')
+  assert.equal(report.sessionRefreshCount, 1)
+  assert.equal(report.readableWithoutSignInReadCount, 5)
+  assert.equal(initial.reports[0].readableWithoutSignInReadCount, 5)
+})
+
 test('the fresh-context verification counts toward the unchanged hard navigation cap', async () => {
   const { initial, fresh } = refreshFixture(3)
   const report = await runRankDistributionCollection({ ...estimateOptions, maxRequests: 4 }, initial.deps)
@@ -778,6 +791,19 @@ test('authentication diagnostics distinguish a readable ranking with a login con
   assert.equal(sanitized.lastLoginRequiredHeading, null)
   assert.equal(sanitized.lastRankingReadable, null)
   assert.ok(!JSON.stringify(sanitized).includes('private raw'))
+})
+
+test('readable-page diagnostics accept only nonnegative safe-integer counts without echoing raw values', async () => {
+  for (const value of ['private raw count', '7', -1, 0.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, null, undefined, 0, 7, Number.MAX_SAFE_INTEGER]) {
+    const input = fixture()
+    const original = input.transport.getDiagnostics
+    input.transport.getDiagnostics = () => ({ ...original(), readableWithoutSignInReadCount: value } as never)
+    const report = await runRankDistributionCollection(estimateOptions, input.deps)
+    const expected = typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0
+    assert.equal(report.readableWithoutSignInReadCount, expected)
+    assert.equal(input.reports[0].readableWithoutSignInReadCount, expected)
+    assert.ok(!JSON.stringify(report).includes('private raw count'))
+  }
 })
 
 test('cancellation closes the owned browser once and never publishes partial results', async () => {

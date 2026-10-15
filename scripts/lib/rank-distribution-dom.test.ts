@@ -214,18 +214,19 @@ function observation(page = 1, total = 43): RankDistributionDomObservation {
 }
 
 function harness(observe: (page: number, evaluation: number) => RankDistributionDomObservation = page => observation(page), status = 200,
-  options: Pick<RankDistributionPageReaderOptions, 'totalCountPolicy'> = {}) {
+  options: Pick<RankDistributionPageReaderOptions, 'totalCountPolicy' | 'allowReadablePagesAfterSignIn' | 'timeoutMs'> = {}) {
   let currentUrl = ''
   let evaluations = 0
   let clock = 0
   const navigations: string[] = []
+  const navigationTimes: number[] = []
   const fakePage = {
-    goto: async (url: string) => { currentUrl = url; navigations.push(url); return { status: () => status } },
+    goto: async (url: string) => { currentUrl = url; navigations.push(url); navigationTimes.push(clock); return { status: () => status } },
     url: () => currentUrl,
     evaluate: async () => observe(Number(new URL(currentUrl).searchParams.get('page')), ++evaluations),
   } as unknown as Page
   const reader = createRankDistributionPageReader(fakePage, { timeoutMs: 1000, now: () => clock, wait: async ms => { clock += ms }, ...options })
-  return { reader, fakePage, navigations, evaluations: () => evaluations }
+  return { reader, fakePage, navigations, navigationTimes, evaluations: () => evaluations, elapsed: () => clock }
 }
 
 const pageUrl = (page: number) => rankBoundaryPageUrl(RANK_BOUNDARY_SOURCE_URL, page)
@@ -247,6 +248,7 @@ test('reader measures first-page size and confirms deep and final pages from sel
     requestCount: 2, successfulReadCount: 2, pageSize: 20, totalCount: 43, lastPage: 3, rankMappingConfirmed: true,
     lastObservedTotal: 43, lastAttemptedPage: 3, lastHttpStatus: 200, minimumObservedTotal: 43, maximumObservedTotal: 43,
     lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true,
+    readableWithoutSignInReadCount: 0,
     observedRankIds: [1, 36], tailRankIds: [1], leagueLabelsConfirmed: true, displayedConditionsConfirmed: true,
     userStatusEvidence: 'fixed-url-only',
   })
@@ -320,6 +322,96 @@ test('a persistent login-required heading cannot be overridden by logout control
   assert.equal(blocked.reader.getDiagnostics().lastRankingReadable, true)
   assert.equal(blocked.reader.getDiagnostics().successfulReadCount, 0)
 })
+
+const loginControlPage = (page: number): RankDistributionDomObservation => ({ ...observation(page),
+  signedIn: false, authenticationEvidence: 'login-control', loginRequired: false, loginRequiredHeading: false })
+
+test('readable login-control pages cannot bootstrap the opt-in reader without a signed-in first page', async () => {
+  const anonymous = harness(page => loginControlPage(page), 200, { allowReadablePagesAfterSignIn: true, timeoutMs: 10_000 })
+  await assert.rejects(anonymous.reader.fetchPage(1, pageUrl(1)), errorCode('login-required'))
+  assert.equal(anonymous.reader.getDiagnostics().successfulReadCount, 0)
+  assert.equal(anonymous.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+  assert.equal(anonymous.navigations.length, 1)
+  assert.ok(anonymous.elapsed() >= 10_000)
+})
+
+test('after confirmed sign-in, an opted-in login-control page is accepted only after the complete ten-second DOM wait', async () => {
+  const readable = harness(page => page === 1 ? observation(page) : loginControlPage(page), 200,
+    { allowReadablePagesAfterSignIn: true, timeoutMs: 10_000 })
+  await readable.reader.fetchPage(1, pageUrl(1))
+  assert.equal(readable.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+  const result = await readable.reader.fetchPage(2, pageUrl(2))
+  assert.equal(result.page, 2)
+  assert.equal(result.entries.length, 20)
+  assert.equal(readable.navigations.length, 2)
+  assert.ok(readable.elapsed() - readable.navigationTimes[1] >= 10_000)
+  const diagnostics = readable.reader.getDiagnostics()
+  assert.equal(diagnostics.successfulReadCount, 2)
+  assert.equal(diagnostics.readableWithoutSignInReadCount, 1)
+  assert.equal(diagnostics.lastAuthenticationEvidence, 'login-control')
+  assert.equal(diagnostics.lastLoginRequiredHeading, false)
+  assert.equal(diagnostics.lastRankingReadable, true)
+})
+
+test('the opt-in accepts neither absent or conflicting controls nor explicit headings after initial sign-in', async () => {
+  const cases: Array<{ patch: Partial<RankDistributionDomObservation>; code: RankDistributionDomErrorCode }> = [
+    { patch: { signedIn: null, authenticationEvidence: 'no-control' }, code: 'authentication-unconfirmed' },
+    { patch: { signedIn: null, authenticationEvidence: 'conflicting-controls' }, code: 'authentication-unconfirmed' },
+    { patch: { loginRequired: true, loginRequiredHeading: true }, code: 'login-required' },
+    { patch: { loginRequired: false, loginRequiredHeading: true }, code: 'login-required' },
+  ]
+  for (const item of cases) {
+    const blocked = harness(page => page === 1 ? observation(page) : { ...loginControlPage(page), ...item.patch }, 200,
+      { allowReadablePagesAfterSignIn: true })
+    await blocked.reader.fetchPage(1, pageUrl(1))
+    await assert.rejects(blocked.reader.fetchPage(2, pageUrl(2)), errorCode(item.code))
+    assert.equal(blocked.reader.getDiagnostics().successfulReadCount, 1)
+    assert.equal(blocked.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+  }
+})
+
+test('malformed layouts, changed URLs, HTTP denial and maintenance remain refusals with the opt-in enabled', async t => {
+  for (const patch of [
+    { entries: [] },
+    { range: { from: 22, to: 41, total: 43 } },
+    { selectedPage: 1 },
+  ] satisfies Array<Partial<RankDistributionDomObservation>>) {
+    const blocked = harness(page => page === 1 ? observation(page) : { ...loginControlPage(page), ...patch }, 200,
+      { allowReadablePagesAfterSignIn: true })
+    await blocked.reader.fetchPage(1, pageUrl(1))
+    await assert.rejects(blocked.reader.fetchPage(2, pageUrl(2)), errorCode('login-required'))
+    assert.equal(blocked.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+  }
+  const moved = harness(page => page === 1 ? observation(page) : loginControlPage(page), 200,
+    { allowReadablePagesAfterSignIn: true })
+  await moved.reader.fetchPage(1, pageUrl(1))
+  t.mock.method(moved.fakePage, 'url', () => pageUrl(2) + '&token=private-token')
+  await assert.rejects(moved.reader.fetchPage(2, pageUrl(2)), errorCode('page-mismatch'))
+  assert.equal(moved.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+
+  const denied = harness(page => observation(page), 200, { allowReadablePagesAfterSignIn: true })
+  await denied.reader.fetchPage(1, pageUrl(1))
+  t.mock.method(denied.fakePage, 'goto', async () => ({ status: () => 403 }) as never)
+  await assert.rejects(denied.reader.fetchPage(2, pageUrl(2)), errorCode('http-denied'))
+  assert.equal(denied.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+
+  const maintenance = harness(page => page === 1 ? observation(page) : { ...loginControlPage(page), maintenance: true }, 200,
+    { allowReadablePagesAfterSignIn: true })
+  await maintenance.reader.fetchPage(1, pageUrl(1))
+  await assert.rejects(maintenance.reader.fetchPage(2, pageUrl(2)), errorCode('maintenance'))
+  assert.equal(maintenance.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+})
+
+test('default and explicitly disabled readers still require signed-in UI on every readable page', async () => {
+  for (const options of [{}, { allowReadablePagesAfterSignIn: false }]) {
+    const strict = harness(page => page === 1 ? observation(page) : loginControlPage(page), 200, options)
+    await strict.reader.fetchPage(1, pageUrl(1))
+    await assert.rejects(strict.reader.fetchPage(2, pageUrl(2)), errorCode('login-required'))
+    assert.equal(strict.reader.getDiagnostics().successfulReadCount, 1)
+    assert.equal(strict.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+  }
+})
+
 test('reader refuses a changing total, changed filters and unsupported loaded badges', async () => {
   const changing = harness(page => observation(page, page === 1 ? 43 : 44))
   await changing.reader.fetchPage(1, pageUrl(1))
