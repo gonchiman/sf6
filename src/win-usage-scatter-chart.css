@@ -1,0 +1,21 @@
+.win-usage-scatter { min-width: 0; margin: 0; color: var(--text); background: var(--surface); }
+.win-usage-scatter-viewport { position: relative; min-width: 0; }
+.win-usage-scatter-svg { display: block; max-width: 100%; }
+.win-usage-scatter-axis-title { fill: var(--text-soft); font-size: 12px; font-weight: 600; }
+.win-usage-scatter-tick { fill: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.win-usage-scatter-grid { stroke: var(--border); stroke-width: 1; }
+.win-usage-scatter-grid.is-vertical { stroke-dasharray: 2 5; opacity: .6; }
+.win-usage-scatter-frame { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+.win-usage-scatter-point { fill: var(--text); fill-opacity: .65; stroke: var(--surface); stroke-width: 1; }
+.win-usage-scatter-point.is-active { fill-opacity: 1; stroke-width: 2; }
+.win-usage-scatter-name {
+  fill: var(--text-soft); font-size: 12px; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round;
+}
+.win-usage-scatter-hit { fill: transparent; cursor: crosshair; }
+.win-usage-scatter-tooltip {
+  position: absolute; display: grid; gap: 3px; pointer-events: none; padding: 8px 10px;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; z-index: 1;
+}
+.win-usage-scatter-tooltip strong { overflow-wrap: anywhere; }
+.win-usage-scatter-empty { margin: 0; padding: 72px 16px; text-align: center; color: var(--text-muted); }

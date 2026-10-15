@@ -2,6 +2,12 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { characterHash, parseHashRoute } from './routes.ts'
 
+test('勝率と使用率の相関ページの直接URLを区別する', () => {
+  assert.deepEqual(parseHashRoute('#win-usage-correlation'), { page: 'win-usage-correlation' })
+  assert.deepEqual(parseHashRoute('#win-usage-correlation/'), { page: 'win-usage-correlation' })
+  assert.deepEqual(parseHashRoute('#win-usage-correlation/unknown'), { page: 'win-rates' })
+})
+
 test('月別使用率統計の直接URLを勝率統計と区別し、不正な派生URLを受け入れない', () => {
   assert.deepEqual(parseHashRoute('#monthly-usage-rate-statistics'), { page: 'monthly-usage-rate-statistics' })
   assert.deepEqual(parseHashRoute('#monthly-usage-rate-statistics/'), { page: 'monthly-usage-rate-statistics' })
