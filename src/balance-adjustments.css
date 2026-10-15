@@ -1,5 +1,13 @@
 .balance-adjustments-page { min-width: 0; display: grid; gap: 16px; }
-.balance-adjustment-chart-controls { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.balance-adjustment-chart-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; margin-bottom: 12px; }
+.balance-adjustment-category-filter { min-width: 0; margin: 16px 0 0; padding: 0; border: 0; }
+.balance-adjustment-category-filter legend { margin-bottom: 8px; padding: 0; font-size: 13px; }
+.balance-adjustment-category-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.balance-adjustment-category-clear { border: 0; padding: 6px 0; background: none; color: var(--text-muted); font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.balance-adjustment-category-clear:disabled { cursor: default; opacity: .55; }
+.balance-adjustment-category-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 2px 16px; margin-top: 6px; }
+.balance-adjustment-category-options label { min-width: 0; overflow-wrap: anywhere; }
+.balance-adjustment-category-options input { flex-shrink: 0; }
 .balance-adjustment-chart-help { margin-top: 12px; }
 .balance-adjustment-pages, .balance-adjustment-pages > div { min-width: 0; }
 .balance-adjustment-detail-page { min-width: 0; display: grid; gap: 16px; }
@@ -29,6 +37,7 @@
 .balance-adjustment-source-column { width: 120px; }
 .balance-adjustment-category-column { width: 140px; }
 .balance-adjustment-count-column { width: 80px; }
+.balance-adjustment-character-table .balance-adjustment-count-column { width: 128px; }
 .balance-adjustment-overview-table td, .balance-adjustment-character-table td { text-align: left; overflow-wrap: anywhere; }
 .balance-adjustment-character-table td.balance-adjustment-count { text-align: right; }
 .balance-adjustment-overview-table tr > :first-child, .balance-adjustment-character-table tr > :first-child { position: sticky; left: 0; z-index: 1; }

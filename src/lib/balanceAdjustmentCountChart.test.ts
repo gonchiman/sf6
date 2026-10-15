@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { balanceAdjustmentCountAxis, buildBalanceAdjustmentCountRows } from './balanceAdjustmentCountChart.ts'
+import { balanceAdjustmentCountAxis, balanceAdjustmentCountStateLabel, buildBalanceAdjustmentCountRows } from './balanceAdjustmentCountChart.ts'
 import { parseBalanceAdjustmentDetails } from './balanceAdjustmentDetails.ts'
 import { parseBalanceAdjustmentCatalog } from './balanceAdjustments.ts'
+import {
+  balanceAdjustmentCategoryOptions, countBalanceAdjustmentChanges, filterBalanceAdjustmentChanges,
+} from './balanceAdjustmentCategories.ts'
 import type { BalanceAdjustment } from '../types/balanceAdjustments.ts'
 import type {
   BalanceAdjustmentChange, BalanceAdjustmentCharacterDetails, BalanceAdjustmentDetailsCatalog,
@@ -122,4 +125,91 @@ test('配信済み21版は合計1939公式行となり、2026/05/28の合計23�
   assert.equal(rows.find((row) => row.event.id === 'battle-change-202405')?.itemCount, 495)
   assert.equal(rows.find((row) => row.event.id === 'battle-change-20260528')?.itemCount, 23)
   assert.equal(buildBalanceAdjustmentCountRows(history.events, catalog, 'alex').find((row) => row.event.id === 'battle-change-20260528')?.itemCount, 4)
+})
+
+test('分類は原文完全一致のORとし、複合・強調・取消線を分割せず重複選択でも二重に数えない', () => {
+  const input = [
+    change(), change({ id: '2', categoryLabel: '不具合修正' }), change({ id: '3', categoryLabel: '調整・不具合修正' }),
+    change({ id: '4', categoryLabel: '調整（強調）' }), change({ id: '5', categoryLabel: '共通調整（取消線）' }),
+  ]
+  const before = structuredClone(input)
+  const filter = { mode: 'selected' as const, keys: ['調整', '不具合修正', '調整'] }
+  assert.deepEqual(countBalanceAdjustmentChanges(input, filter), { itemCount: 2, status: 'ready' })
+  const selected = filterBalanceAdjustmentChanges(input, filter)
+  assert.deepEqual(selected, input.slice(0, 2))
+  assert.strictEqual(selected[0], input[0])
+  assert.deepEqual(countBalanceAdjustmentChanges(input, { mode: 'selected', keys: ['調整・不具合修正'] }), { itemCount: 1, status: 'ready' })
+  assert.deepEqual(countBalanceAdjustmentChanges(input, { mode: 'selected', keys: ['調整（強調）', '共通調整（取消線）'] }), { itemCount: 2, status: 'ready' })
+  assert.deepEqual(input, before)
+})
+
+test('分類記載なしを名前付き分類の0にせず、空欄を明示選択すればその原文行を数える', () => {
+  const mixed = [change(), change({ id: 'blank', categoryLabel: '' })]
+  assert.deepEqual(countBalanceAdjustmentChanges(mixed, { mode: 'selected', keys: ['調整'] }), { itemCount: null, status: 'category-unlisted' })
+  assert.deepEqual(countBalanceAdjustmentChanges(mixed), { itemCount: 2, status: 'ready' })
+  assert.deepEqual(countBalanceAdjustmentChanges(mixed, { mode: 'selected', keys: [''] }), { itemCount: 1, status: 'ready' })
+  assert.deepEqual(countBalanceAdjustmentChanges(mixed, { mode: 'selected', keys: ['調整', ''] }), { itemCount: 2, status: 'ready' })
+  assert.deepEqual(countBalanceAdjustmentChanges([change()], { mode: 'selected', keys: ['不具合修正'] }), { itemCount: 0, status: 'ready' })
+  assert.deepEqual(countBalanceAdjustmentChanges([], { mode: 'selected', keys: ['調整'] }), { itemCount: 0, status: 'ready' })
+})
+
+test('空選択は未選択として保持し、未取込・未掲載状態を上書きしない', () => {
+  const empty = { mode: 'selected' as const, keys: [] }
+  assert.deepEqual(countBalanceAdjustmentChanges([], empty), { itemCount: null, status: 'no-category-selected' })
+  assert.deepEqual(countBalanceAdjustmentChanges([change()], empty), { itemCount: null, status: 'no-category-selected' })
+  assert.equal(buildBalanceAdjustmentCountRows([event()], details(), 'all', empty)[0].status, 'no-category-selected')
+  assert.equal(buildBalanceAdjustmentCountRows([event()], null, 'all', empty)[0].status, 'unimported')
+  const input = details([patch({ characters: [character({ status: 'unlisted', source: null, changes: [], policy: '' })] })])
+  assert.equal(buildBalanceAdjustmentCountRows([event()], input, 'ryu', empty)[0].status, 'unlisted')
+  assert.equal(buildBalanceAdjustmentCountRows([event()], input, 'missing', empty)[0].status, 'unimported')
+  assert.deepEqual(['ready', 'unimported', 'unlisted', 'category-unlisted', 'no-category-selected'].map((status) =>
+    balanceAdjustmentCountStateLabel(status as Parameters<typeof balanceAdjustmentCountStateLabel>[0])),
+  ['', '未取込', '未掲載', '分類記載なし', '分類未選択'])
+})
+
+test('分類判定は選択キャラの行だけに行い、対象外の共通・他キャラの空欄を混ぜない', () => {
+  const selected = { mode: 'selected' as const, keys: ['調整'] }
+  const input = details([patch({ characters: [character(), character({ characterId: 'ken', changes: [change({ categoryLabel: '' })] })] })])
+  assert.equal(buildBalanceAdjustmentCountRows([event()], input, 'all', selected)[0].status, 'category-unlisted')
+  assert.equal(buildBalanceAdjustmentCountRows([event()], input, 'ryu', selected)[0].itemCount, 1)
+  assert.equal(buildBalanceAdjustmentCountRows([event()], input, 'ken', selected)[0].status, 'category-unlisted')
+})
+
+test('全詳細から9原文分類を基本・派生・空欄の固定順で作り、既存全件集計と明示全選択が一致する', async () => {
+  const history = parseBalanceAdjustmentCatalog(JSON.parse(await readFile(new URL('../../public/data/balance-adjustments.json', import.meta.url), 'utf8')))
+  const catalog = parseBalanceAdjustmentDetails(JSON.parse(await readFile(new URL('../../public/data/balance-adjustment-details.json', import.meta.url), 'utf8')), history)
+  const options = balanceAdjustmentCategoryOptions(catalog)
+  assert.deepEqual(options.map((option) => option.key), [
+    '調整', '不具合修正', '調整・不具合修正', '共通調整', '調整（強調）', '不具合修正（強調）',
+    '調整・不具合修正（強調）', '共通調整（取消線）', '',
+  ])
+  assert.equal(options.at(-1)?.label, '分類記載なし')
+  assert.deepEqual(balanceAdjustmentCategoryOptions(null), [])
+  assert.deepEqual(buildBalanceAdjustmentCountRows(history.events, catalog, 'all', { mode: 'selected', keys: options.map((option) => option.key) }),
+    buildBalanceAdjustmentCountRows(history.events, catalog))
+  const august = history.events.filter((item) => item.id === 'battle-change-20260803')
+  for (const [filter, expected] of [
+    [{ mode: 'all' }, 242], [{ mode: 'selected', keys: ['調整'] }, 234],
+    [{ mode: 'selected', keys: ['調整', '調整・不具合修正'] }, 236],
+    [{ mode: 'selected', keys: ['不具合修正'] }, 6],
+  ] as const) {
+    assert.equal(buildBalanceAdjustmentCountRows(august, catalog, 'all', filter)[0].itemCount, expected)
+  }
+  const uncategorized = history.events.filter((item) => item.id === 'battle-change-20230724')
+  assert.equal(buildBalanceAdjustmentCountRows(uncategorized, catalog)[0].itemCount, 41)
+  assert.equal(buildBalanceAdjustmentCountRows(uncategorized, catalog, 'all', { mode: 'selected', keys: [''] })[0].itemCount, 41)
+  const row = buildBalanceAdjustmentCountRows(uncategorized, catalog, 'all', { mode: 'selected', keys: ['調整'] })[0]
+  assert.equal(row.itemCount, null)
+  assert.equal(row.status, 'category-unlisted')
+  assert.deepEqual(balanceAdjustmentCountAxis([row]), { maximum: 1, ticks: [0, 1] })
+})
+
+test('未経験の公式分類も独立選択肢として保持し、選択肢順を入力版の順序で変えない', () => {
+  const first = patch({ common: { policy: '', changes: [change({ categoryLabel: '未知の分類B' })] }, characters: [] })
+  const second = patch({ adjustmentId: 'second', common: { policy: '', changes: [change({ categoryLabel: '未知の分類A' }), change({ categoryLabel: '' })] }, characters: [] })
+  const options = balanceAdjustmentCategoryOptions(details([first, second]))
+  assert.deepEqual(options, [
+    { key: '未知の分類A', label: '未知の分類A' }, { key: '未知の分類B', label: '未知の分類B' }, { key: '', label: '分類記載なし' },
+  ])
+  assert.deepEqual(balanceAdjustmentCategoryOptions(details([second, first])), options)
 })

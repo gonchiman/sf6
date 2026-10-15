@@ -3,6 +3,7 @@ import { loadBalanceAdjustmentCatalog } from '../lib/balanceAdjustments'
 import { loadBalanceAdjustmentDetails, balanceAdjustmentPatchDetails } from '../lib/balanceAdjustmentDetails'
 import { balanceAdjustmentCharacters, balanceAdjustmentMonthOptions, filterBalanceAdjustmentList, initialBalanceAdjustmentListFilters, selectBalanceAdjustmentEvent, updateBalanceAdjustmentPeriod } from '../lib/balanceAdjustmentList'
 import { buildBalanceAdjustmentCountRows } from '../lib/balanceAdjustmentCountChart'
+import { balanceAdjustmentCategoryOptions, type CategoryFilter } from '../lib/balanceAdjustmentCategories'
 import { loadCharacterManifest } from '../lib/characters'
 import { timestampLabel } from '../lib/dateTime'
 import { monthLabel } from '../lib/winRateHistory'
@@ -11,6 +12,7 @@ import type { BalanceAdjustmentDetailsLoadState, BalanceAdjustmentListFilters } 
 import type { CharacterManifest } from '../types/characters'
 import { BalanceAdjustmentCharactersTable, BalanceAdjustmentOverviewTable, COMMON_ADJUSTMENT_SCOPE, balanceAdjustmentDateLabel } from './BalanceAdjustmentTable'
 import { BalanceAdjustmentCountChart } from './BalanceAdjustmentCountChart'
+import { BalanceAdjustmentCategoryFilter } from './BalanceAdjustmentCategoryFilter'
 import { DataLoadState } from './DataLoadState'
 import { StatisticsPanel } from './StatisticsPanel'
 import '../win-rates.css'
@@ -32,6 +34,7 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedScope, setSelectedScope] = useState<string | null>(null)
   const [showChartValues, setShowChartValues] = useState(true)
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>({ mode: 'all' })
 
   useEffect(() => {
     let current = true
@@ -60,7 +63,8 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
   const result = useMemo(() => catalog && filters ? filterBalanceAdjustmentList(catalog, detailsState.status === 'ready' ? detailsState.catalog : null, filters)
     : { events: [], unknownCount: 0 }, [catalog, detailsState, filters])
   const chartRows = useMemo(() => buildBalanceAdjustmentCountRows(result.events,
-    detailsState.status === 'ready' ? detailsState.catalog : null, filters?.characterId ?? 'all'), [result.events, detailsState, filters?.characterId])
+    detailsState.status === 'ready' ? detailsState.catalog : null, filters?.characterId ?? 'all', categoryFilter), [result.events, detailsState, filters?.characterId, categoryFilter])
+  const categoryOptions = useMemo(() => balanceAdjustmentCategoryOptions(detailsState.status === 'ready' ? detailsState.catalog : null), [detailsState])
   const event = selectBalanceAdjustmentEvent(result.events, selectedId)
   const patch = event && detailsState.status === 'ready' ? balanceAdjustmentPatchDetails(detailsState.catalog, event) : null
   const characters = useMemo(() => patch && filters ? balanceAdjustmentCharacters(patch, filters.characterId) : [], [patch, filters])
@@ -81,6 +85,10 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
   const count = view === 'overall' ? `${result.events.length}件のバトル変更履歴` : event
     ? `${balanceAdjustmentDateLabel(event)} · ${patch ? `${characters.length}キャラ${commonVisible ? '・共通' : ''}` : '技別内容 未取込'}` : '—'
   const hasTableData = detailsState.status === 'ready' || !detailsRequired
+  const noCategoriesSelected = categoryFilter.mode === 'selected' && categoryFilter.keys.length === 0
+  const categoryLabel = categoryFilter.mode === 'all' ? 'すべて' : noCategoriesSelected ? '未選択'
+    : categoryOptions.filter(option => categoryFilter.keys.includes(option.key)).map(option => option.label).join('、')
+  const unclassifiedCount = chartRows.filter(row => row.status === 'category-unlisted').length
 
   return <section className="balance-adjustments-page" aria-label="バトル変更一覧">
     <StatisticsPanel title="条件選択" headerContent={<span className="monthly-statistics-panel-summary">{characterName} · {monthLabel(filters.fromMonth)}〜{monthLabel(filters.toMonth)}</span>}>
@@ -99,6 +107,8 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
           {months.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}
         </select></label>
       </div>
+      <BalanceAdjustmentCategoryFilter options={categoryOptions} value={categoryFilter} onChange={setCategoryFilter}
+        controls={`${contentId}-chart ${contentId}-table`} disabled={detailsState.status !== 'ready'} />
       {view === 'characters' && <div className="win-rates-filters control-ratio-month-filter">
         <label><span>確認する変更日</span><select aria-label="確認する変更日" value={event?.id ?? ''} disabled={result.events.length === 0 || !hasTableData} onChange={change => setSelectedId(change.target.value)}>
           {result.events.length === 0 && <option value="">—</option>}{result.events.map(item => <option key={item.id} value={item.id}>{balanceAdjustmentDateLabel(item)}</option>)}
@@ -106,21 +116,25 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
       </div>}
     </StatisticsPanel>
 
-    <StatisticsPanel title="グラフ" headerContent={detailsState.status === 'ready' && <span className="monthly-statistics-panel-summary">
-      {chartRows.length}件 · 日付順（古い→新しい）
+    <StatisticsPanel title="グラフ" headerContent={detailsState.status === 'ready' && <span className="monthly-statistics-panel-summary" aria-live="polite">
+      {chartRows.length}件 · 日付順（古い→新しい）{unclassifiedCount > 0 && ` · 分類記載なし ${unclassifiedCount}件`}
     </span>}>
       <div className="balance-adjustment-chart-controls">
+        <span className="balance-adjustment-state">分類：{categoryLabel}</span>
         <label className="win-rates-chart-value-toggle"><input type="checkbox" checked={showChartValues}
           aria-controls={`${contentId}-chart`} onChange={change => setShowChartValues(change.target.checked)} />数値を表示</label>
       </div>
       <div id={`${contentId}-chart`}>
         {detailsState.status === 'loading' ? <DataLoadState loading message="技別内容を読み込み中…" />
           : detailsState.status === 'error' ? <DataLoadState message="技別内容を読み込めませんでした。" onRetry={() => setDetailsVersion(version => version + 1)} />
-            : <BalanceAdjustmentCountChart rows={chartRows} showValues={showChartValues} subjectLabel={characterName} />}
+            : noCategoriesSelected ? <p className="balance-adjustment-state" role="status">分類を選択してください。</p>
+              : <BalanceAdjustmentCountChart rows={chartRows} showValues={showChartValues} subjectLabel={characterName} categoryLabel={categoryLabel} />}
       </div>
       <details className="win-rates-details balance-adjustment-chart-help"><summary>項目数の数え方</summary><div className="win-rates-details-content">
-        <p>公式の変更内容1行を1項目として数え、調整方針は含めません。「すべて」は共通とキャラ固有の合計、キャラ指定時はそのキャラ固有の項目数です。</p>
+        <p>公式の変更内容1行を1項目として数え、調整方針は含めません。キャラクターが「すべて」の場合は共通とキャラ固有の合計、キャラ指定時はそのキャラ固有の項目数です。</p>
         <p>変更のない月は棒を追加しません。本文未取込は0項目にせず、未取込として表示します。</p>
+        <p>分類は公式の表記どおりに判定し、複数選択時はいずれかに一致する行を数えます。「調整」と「調整・不具合修正」は別の分類です。強調・取消線を含む表記も別の選択肢として保持します。</p>
+        <p>特定の分類に絞ったとき、分類が空欄の行を含む版は「分類記載なし」と表示します。「分類記載なし」を選択すると、空欄の行も集計対象になります。</p>
       </div></details>
     </StatisticsPanel>
 
@@ -130,13 +144,14 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
         {detailsRequired && detailsState.status === 'loading' && <DataLoadState loading message="技別内容を読み込み中…" />}
         {hasTableData && <>
           {result.unknownCount > 0 && <p className="balance-adjustment-state" role="status">対象キャラ未確認の{result.unknownCount}件を除外しています。</p>}
-          {result.events.length === 0 ? <p className="balance-adjustment-state" role="status">この条件で確認できるバトル変更履歴はありません。</p>
+          {noCategoriesSelected ? <p className="balance-adjustment-state" role="status">分類を選択してください。</p>
+            : result.events.length === 0 ? <p className="balance-adjustment-state" role="status">この条件で確認できるバトル変更履歴はありません。</p>
             : view === 'overall' ? <BalanceAdjustmentOverviewTable events={result.events} details={detailsState} selectedId={event?.id ?? null}
-              detailScope={filters.characterId === 'all' ? null : filters.characterId} characterId={filters.characterId} onOpen={(click, id, scope) => {
+              detailScope={filters.characterId === 'all' ? null : filters.characterId} characterId={filters.characterId} categoryFilter={categoryFilter} onOpen={(click, id, scope) => {
                 if (click.button === 0 && !click.metaKey && !click.ctrlKey && !click.shiftKey && !click.altKey) setSelectedId(id)
                 onOpenDetail(click, id, scope)
               }} />
-              : patch ? <BalanceAdjustmentCharactersTable patch={patch} characters={characters} includeCommon={filters.characterId === 'all'} selectedScope={effectiveScope}
+              : patch ? <BalanceAdjustmentCharactersTable patch={patch} characters={characters} includeCommon={filters.characterId === 'all'} selectedScope={effectiveScope} categoryFilter={categoryFilter}
                 onOpen={(click, scope) => {
                   if (click.button === 0 && !click.metaKey && !click.ctrlKey && !click.shiftKey && !click.altKey) setSelectedScope(scope)
                   onOpenDetail(click, patch.adjustmentId, scope)
