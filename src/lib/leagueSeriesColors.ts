@@ -12,6 +12,7 @@ function style(color: string, dashArray: string | undefined, marker: LeagueSerie
 
 // League identity is separate from character identity. Keep these assignments when adding leagues.
 export const LEAGUE_SERIES_STYLES = Object.freeze({
+  ALL: style('#595959', '10 3 2 3', 'diamond'),
   ROOKIE: style('#365b8a', undefined, 'circle'),
   IRON: style('#56616f', undefined, 'square'),
   BRONZE: style('#8e5a2b', undefined, 'triangle'),

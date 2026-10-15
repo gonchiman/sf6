@@ -16,6 +16,7 @@ import { LeagueSeriesKey } from './LeagueSeriesKey'
 import { MonthlyWinRateStatisticsTable } from './MonthlyWinRateStatisticsTable'
 import { MonthlyWinRateStatisticsChart } from './MonthlyWinRateStatisticsChart'
 import { StatisticsPanel } from './StatisticsPanel'
+import { MonthlyStatisticsAdjustments } from './MonthlyStatisticsAdjustments'
 import { WinRateHistoryFilters } from './WinRateHistoryFilters'
 import '../win-rates.css'
 import '../win-rate-history.css'
@@ -35,11 +36,6 @@ function timestampLabel(value: string): string {
   return `${new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'Asia/Tokyo', dateStyle: 'medium', timeStyle: 'short',
   }).format(new Date(value))} JST`
-}
-
-function adjustmentDateLabel(value: string): string {
-  const [year, month, day] = value.split('-').map(Number)
-  return `${year}年${month}月${day}日`
 }
 
 export function MonthlyWinRateStatisticsPage() {
@@ -262,32 +258,8 @@ export function MonthlyWinRateStatisticsPage() {
     </StatisticsPanel>
 
     {statistics && <>
-      <div id={adjustmentDetailsId} hidden={!selectedAdjustment} aria-live="polite" aria-atomic="true">
-        {selectedAdjustment && <section className="monthly-adjustment-details" aria-labelledby={`${adjustmentDetailsId}-title`}>
-          <div className="monthly-adjustment-details-heading">
-            <h3 id={`${adjustmentDetailsId}-title`}><time dateTime={selectedAdjustment.date}>{adjustmentDateLabel(selectedAdjustment.date)}</time><span>{selectedAdjustment.kindLabel}</span></h3>
-            <button type="button" className="win-rates-button" onClick={closeAdjustmentDetails}>閉じる</button>
-          </div>
-          <dl className="win-rates-source">
-            <div><dt>日付</dt><dd>{selectedAdjustment.dateBasis === 'effective' ? '実施日（日本時間）' : 'リスト日（実施日は未確認）'}</dd></div>
-            <div><dt>変更内容</dt><dd><a href={selectedAdjustment.source.url} target="_blank" rel="noreferrer">{selectedAdjustment.source.title}<span className="win-rates-visually-hidden">（新しいタブ）</span></a></dd></div>
-            {selectedAdjustment.announcement && <div><dt>実施告知</dt><dd><a href={selectedAdjustment.announcement.url} target="_blank" rel="noreferrer">{selectedAdjustment.announcement.title}<span className="win-rates-visually-hidden">（新しいタブ）</span></a></dd></div>}
-          </dl>
-        </section>}
-      </div>
-
-      <details className="win-rates-details"><summary>調整日の見方・出典</summary><div className="win-rates-details-content monthly-statistics-data-details">
-        <p>調整日とその種類を表示しています。公式のバトル変更履歴に含まれる不具合修正も表示します。同じ月に複数の変更がある場合は、すべて表示します。</p>
-        <p>月の途中に変更がある場合、その月の勝率には変更前後の試合が含まれます。統計値は月単位のままで、調整前後には分割していません。</p>
-        <p>「—」は確認した範囲内に変更履歴がない月、「履歴未確認」は確認範囲外の月です。「リスト日」は公式の変更リストの日付で、実施日を確認できていません。</p>
-        {adjustmentCatalog && <dl className="win-rates-source">
-          <div><dt>確認範囲</dt><dd>{monthLabel(adjustmentCatalog.coverage.fromMonth)}〜{monthLabel(adjustmentCatalog.coverage.toMonth)}</dd></div>
-          <div><dt>出典</dt><dd><a href={adjustmentCatalog.source.url} target="_blank" rel="noreferrer">{adjustmentCatalog.source.title}<span className="win-rates-visually-hidden">（新しいタブ）</span></a></dd></div>
-          <div><dt>確認日時</dt><dd><time dateTime={adjustmentCatalog.checkedAt}>{timestampLabel(adjustmentCatalog.checkedAt)}</time></dd></div>
-          <div><dt>一覧生成日時</dt><dd><time dateTime={adjustmentCatalog.generatedAt}>{timestampLabel(adjustmentCatalog.generatedAt)}</time></dd></div>
-          <div><dt>データ形式</dt><dd>Version {adjustmentCatalog.schemaVersion}</dd></div>
-        </dl>}
-      </div></details>
+      <MonthlyStatisticsAdjustments selected={selectedAdjustment} catalog={adjustmentCatalog}
+        detailsId={adjustmentDetailsId} measureLabel="勝率" onClose={closeAdjustmentDetails} />
 
       <details className="win-rates-details"><summary>統計量の見方</summary><div className="win-rates-details-content">
         <p>各月のキャラ別公式Totalを百分率へ換算し、1キャラを1つの値として集計しています（5.058 → 50.58%）。平均はキャラを同じ重みで平均した値で、全試合の勝率ではありません。</p>

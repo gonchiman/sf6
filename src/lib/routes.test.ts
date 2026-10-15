@@ -2,6 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { characterHash, parseHashRoute } from './routes.ts'
 
+test('月別使用率統計の直接URLを勝率統計と区別し、不正な派生URLを受け入れない', () => {
+  assert.deepEqual(parseHashRoute('#monthly-usage-rate-statistics'), { page: 'monthly-usage-rate-statistics' })
+  assert.deepEqual(parseHashRoute('#monthly-usage-rate-statistics/'), { page: 'monthly-usage-rate-statistics' })
+  assert.deepEqual(parseHashRoute('#monthly-win-rate-statistics'), { page: 'monthly-win-rate-statistics' })
+  assert.deepEqual(parseHashRoute('#monthly-usage-rate-statistics/unknown'), { page: 'win-rates' })
+})
+
 test('既存の勝率URLとキャラ一覧・キャラ直接URLを読み取る', () => {
   for (const hash of ['', '#', '#win-rates', '#unknown']) {
     assert.deepEqual(parseHashRoute(hash), { page: 'win-rates' })

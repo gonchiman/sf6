@@ -1,40 +1,16 @@
 import { createWinRateHistorySeries, historySelectedDescriptors, historySelectedMonths } from './winRateHistory.ts'
+import { calculatePercentageStatistics } from './percentageStatistics.ts'
 import type { HistoryDatasetResult, WinRateHistorySelection, WinRateHistorySeries } from '../types/winRateHistory.ts'
 import type { WinRateManifest } from '../types/winRates.ts'
 import type {
   MonthlyWinRateStatistics,
   MonthlyWinRateStatisticsMode,
   MonthlyWinRateStatisticsRow,
-  MonthlyWinRateStatisticsValues,
 } from '../types/monthlyWinRateStatistics.ts'
 
 interface PreparedMonth {
   row: MonthlyWinRateStatisticsRow
   values: Map<string, number>
-}
-
-/** Calculate unweighted descriptive statistics in integer hundredths before converting to percent. */
-function calculateStatistics(values: readonly number[]): MonthlyWinRateStatisticsValues {
-  if (values.length === 0) {
-    return {
-      meanPercent: null, medianPercent: null, standardDeviationPoints: null,
-      minimumPercent: null, maximumPercent: null,
-    }
-  }
-  const sorted = [...values].sort((left, right) => left - right)
-  const count = sorted.length
-  const mean = sorted.reduce((sum, value) => sum + value, 0) / count
-  const middle = Math.floor(count / 2)
-  const median = count % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
-  // The denominator is N: these are the retained published character values, not an iid sample.
-  const variance = sorted.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / count
-  return {
-    meanPercent: mean / 100,
-    medianPercent: median / 100,
-    standardDeviationPoints: count < 2 ? null : Math.sqrt(variance) / 100,
-    minimumPercent: sorted[0] / 100,
-    maximumPercent: sorted[count - 1] / 100,
-  }
 }
 
 function prepareMonth(series: readonly WinRateHistorySeries[], index: number): PreparedMonth {
@@ -120,7 +96,7 @@ export function createMonthlyWinRateStatistics(
       validCount: entries.length,
       excludedNonCommonCount: values.size - entries.length,
       characterIds: entries.map(([id]) => id),
-      statistics: calculateStatistics(entries.map(([, value]) => value)),
+      statistics: calculatePercentageStatistics(entries.map(([, value]) => value), 100),
     }
   })
   return { mode, commonCharacterCount: commonIds?.length ?? null, commonUnavailable, rows }

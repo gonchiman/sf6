@@ -26,6 +26,7 @@
 
 .monthly-statistics-scroll { max-height: min(70vh, 720px); scroll-padding-left: 140px; scroll-padding-top: 60px; }
 .monthly-statistics-table { min-width: 1200px; table-layout: fixed; }
+.monthly-statistics-table.has-additional-metrics { min-width: 1310px; }
 .monthly-statistics-month-column { width: 140px; }
 .monthly-statistics-league-column { width: 210px; }
 .monthly-statistics-league-cell { text-align: left; }

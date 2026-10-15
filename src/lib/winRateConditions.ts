@@ -23,6 +23,7 @@ export function editionOf(value: { edition?: WinRateEdition }): WinRateEdition {
 
 export function leagueLabel(value: string): string {
   const labels: Record<string, string> = {
+    ALL: 'ALL（全体）',
     HIGH_MASTER: 'HIGH MASTER', GRAND_MASTER: 'GRAND MASTER', ULTIMATE_MASTER: 'ULTIMATE MASTER',
   }
   return Object.hasOwn(labels, value) ? labels[value] : value

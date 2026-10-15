@@ -42,7 +42,7 @@ const style = characterSeriesStyle(fighter.characterId)
 
 ## リーグ系列の固定仕様
 
-- `leagueSeriesStyle(league)` は `color`、`dashArray`、`marker` を返す。IDは取得元の `ROOKIE`・`IRON`・`BRONZE`・`SILVER`・`GOLD`・`PLATINUM`・`DIAMOND`・`MASTER`・`HIGH_MASTER`・`GRAND_MASTER`・`ULTIMATE_MASTER` をそのまま使う。
+- `leagueSeriesStyle(league)` は `color`、`dashArray`、`marker` を返す。IDは取得元の `ALL`・`ROOKIE`・`IRON`・`BRONZE`・`SILVER`・`GOLD`・`PLATINUM`・`DIAMOND`・`MASTER`・`HIGH_MASTER`・`GRAND_MASTER`・`ULTIMATE_MASTER` をそのまま使う。使用率の `ALL` は全体を表し、既知のグレー・専用線種・記号として未知IDと分ける。
 - 色・線種・記号は各IDの固定値とし、選択数、選択順、統計量、月、操作タイプ、統計版によって変更しない。総合版とマスター版の `MASTER` には同じ対応を使う。
 - 名前からの推測、大文字・小文字の自動変換、キャラクター用関数による配色は行わない。未登録IDには専用のグレー・線種・記号を使い、既知リーグの対応を借りない。
 - 白背景とのコントラスト比3:1以上を維持し、リーグ名、線種、記号を併用する。欠損はリーグの色とは別に判定し、そのリーグの欠損月だけ線を切る。
@@ -100,4 +100,5 @@ node scripts/render-series-colors.ts --check
 
 - 勝率推移の [グラフ](../../src/components/WinRateHistoryChart.tsx) と [系列の見本部品](../../src/components/CharacterSeriesKey.tsx) が共通定義を参照する。
 - 月別勝率統計の [グラフ](../../src/components/MonthlyWinRateStatisticsChart.tsx) と [リーグ系列の見本部品](../../src/components/LeagueSeriesKey.tsx) がリーグ共通定義を参照する。凡例と表のリーグ表示は同じ見本部品を使う。
+- 月別使用率統計の [グラフ](../../src/components/MonthlyUsageRateStatisticsChart.tsx) と共通の [統計テーブル](../../src/components/MonthlyStatisticsTable.tsx) もリーグ共通定義を使う。操作タイプやキャラをこの色で表さず、総合版・マスター版の同じリーグは同じ色とする。
 - グラフ画像の保存機能は未実装。実装するときは [グラフ画像出力の仕様](../chart-image/README.md) と併用し、プレビュー・保存画像にも同じ定義を渡す。

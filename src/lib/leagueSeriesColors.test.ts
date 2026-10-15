@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { LEAGUE_SERIES_STYLES, leagueSeriesStyle, UNKNOWN_LEAGUE_SERIES_STYLE } from './leagueSeriesColors.ts'
 import { WIN_RATE_EDITION_LEAGUES } from './winRateConditions.ts'
+import { USAGE_RATE_EDITION_LEAGUES } from './usageRates.ts'
 
 function contrastAgainstWhite(color: string): number {
   const channels = [1, 3, 5].map(offset => Number.parseInt(color.slice(offset, offset + 2), 16) / 255)
@@ -11,9 +12,10 @@ function contrastAgainstWhite(color: string): number {
 }
 
 test('両統計版の全リーグIDを網羅し、各IDの色・線種・記号を固定する', () => {
-  const known = [...new Set(Object.values(WIN_RATE_EDITION_LEAGUES).flat())]
+  const known = [...new Set([...Object.values(WIN_RATE_EDITION_LEAGUES).flat(), ...Object.values(USAGE_RATE_EDITION_LEAGUES).flat()])]
   assert.deepEqual(Object.keys(LEAGUE_SERIES_STYLES).sort(), known.sort())
   assert.deepEqual(LEAGUE_SERIES_STYLES, {
+    ALL: { color: '#595959', dashArray: '10 3 2 3', marker: 'diamond' },
     ROOKIE: { color: '#365b8a', dashArray: undefined, marker: 'circle' },
     IRON: { color: '#56616f', dashArray: undefined, marker: 'square' },
     BRONZE: { color: '#8e5a2b', dashArray: undefined, marker: 'triangle' },
