@@ -10,6 +10,7 @@ export type AppRoute =
   | { page: 'rank-distribution' }
   | { page: 'new-account-observation' }
   | { page: 'characters'; characterId: string | null }
+  | { page: 'character-releases' }
   | { page: 'character-traits' }
   | { page: 'balance-adjustments' }
   | { page: 'balance-adjustment-detail'; adjustmentId: string; scope: string | null }
@@ -24,6 +25,9 @@ export function balanceAdjustmentDetailHash(adjustmentId: string, scope: string 
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#character-releases' || hash === '#character-releases/') {
+    return { page: 'character-releases' }
+  }
   if (hash === '#win-usage-correlation' || hash === '#win-usage-correlation/') {
     return { page: 'win-usage-correlation' }
   }

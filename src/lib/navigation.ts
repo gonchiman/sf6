@@ -14,6 +14,7 @@ export const APP_NAV_ITEMS = [
   { id: 'new-account-observation', label: '新規参入観測', href: '#new-account-observation' },
   { id: 'character-traits', label: 'キャラ分類', href: '#character-traits' },
   { id: 'balance-adjustments', label: 'バトル変更一覧', href: '#balance-adjustments' },
+  { id: 'character-releases', label: 'キャラ実装日', href: '#character-releases' },
 ] as const
 
 export type NavigationPage = (typeof APP_NAV_ITEMS)[number]['id']

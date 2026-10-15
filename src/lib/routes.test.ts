@@ -2,6 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { balanceAdjustmentDetailHash, characterHash, parseHashRoute } from './routes.ts'
 
+test('キャラ実装日一覧の直接URLを既存キャラ情報と区別し、余分なパスを受け入れない', () => {
+  assert.deepEqual(parseHashRoute('#character-releases'), { page: 'character-releases' })
+  assert.deepEqual(parseHashRoute('#character-releases/'), { page: 'character-releases' })
+  assert.deepEqual(parseHashRoute('#character-releases/ryu'), { page: 'win-rates' })
+  assert.deepEqual(parseHashRoute('#character-releases-invalid'), { page: 'win-rates' })
+})
+
 test('勝率と使用率の相関ページの直接URLを区別する', () => {
   assert.deepEqual(parseHashRoute('#win-usage-correlation'), { page: 'win-usage-correlation' })
   assert.deepEqual(parseHashRoute('#win-usage-correlation/'), { page: 'win-usage-correlation' })
