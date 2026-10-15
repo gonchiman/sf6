@@ -431,7 +431,7 @@ test('one fresh same-page read recovers only transient DOM failures, counting ev
 })
 
 /** Actual pure reader/CLI coupling with a fake page; no browser or authentication is accessed. */
-function incompleteLoginControlFixture(failedNavigations: readonly number[]) {
+function incompleteDisplayFixture(failedNavigations: readonly number[], appearance: 'login-control' | 'signed-in-pending' = 'login-control') {
   const input = fixture()
   const attemptedPages: number[] = []
   let currentUrl = ''
@@ -449,9 +449,10 @@ function incompleteLoginControlFixture(failedNavigations: readonly number[]) {
       const from = (pageNumber - 1) * 20 + 1
       const to = Math.min(pageNumber * 20, input.values.length)
       const failed = failedNavigations.includes(attemptedPages.length)
+      const loginControl = failed && appearance === 'login-control'
       return {
-        maintenance: false, signedIn: !failed,
-        authenticationEvidence: failed ? 'login-control' : 'logout-control',
+        maintenance: false, signedIn: !loginControl,
+        authenticationEvidence: loginControl ? 'login-control' : 'logout-control',
         loginRequired: false, loginRequiredHeading: false,
         conditionsMatch: true, leagueLabelsMatch: true, selectedPage: pageNumber,
         range: { from, to, total: input.values.length }, rankIcons: failed ? 'pending' : 'ready',
@@ -471,7 +472,7 @@ function incompleteLoginControlFixture(failedNavigations: readonly number[]) {
 }
 
 test('a heading-free login-control page with incomplete rows recovers through one bounded fresh same-page read', async () => {
-  const input = incompleteLoginControlFixture([3])
+  const input = incompleteDisplayFixture([3])
   const report = await runRankDistributionCollection(estimateOptions, input.deps)
   assert.equal(report.status, 'succeeded')
   assert.equal(report.retryCount, 1)
@@ -487,7 +488,7 @@ test('a heading-free login-control page with incomplete rows recovers through on
 })
 
 test('two heading-free login-control pages with incomplete rows stop without publishing or claiming session expiry', async () => {
-  const input = incompleteLoginControlFixture([3, 4])
+  const input = incompleteDisplayFixture([3, 4])
   const report = await runRankDistributionCollection(estimateOptions, input.deps)
   assert.equal(report.status, 'failed')
   assert.equal(report.reason, 'authentication-unconfirmed')
@@ -503,6 +504,43 @@ test('two heading-free login-control pages with incomplete rows stop without pub
   assert.equal(report.lastRankingReadable, false)
   assert.equal(report.readableWithoutSignInReadCount, 0)
   assert.equal(input.statuses[0].reason, 'authentication-unconfirmed')
+  assert.equal(input.calls.save, 0)
+  assert.equal(input.calls.publish, 0)
+  assert.equal(input.calls.close, 1)
+})
+
+test('signed-in first-page rows still loading at the deadline recover through one bounded fresh read', async () => {
+  const input = incompleteDisplayFixture([1], 'signed-in-pending')
+  const report = await runRankDistributionCollection(estimateOptions, input.deps)
+  assert.equal(report.status, 'succeeded')
+  assert.equal(report.retryCount, 1)
+  assert.equal(report.readFailureCode, 'read-failed')
+  assert.equal(report.requestCount, input.attemptedPages.length)
+  assert.equal(report.successfulReadCount, report.requestCount - 1)
+  assert.deepEqual(input.attemptedPages.slice(0, 3), [1, 1, 4])
+  assert.deepEqual(input.waits, [500])
+  assert.equal(report.confirmedBoundaryCount, 35)
+  assert.equal(input.calls.publish, 1)
+  assert.equal(input.calls.close, 1)
+})
+
+test('two signed-in first-page loading deadlines stop without saving or publishing an incomplete layout', async () => {
+  const input = incompleteDisplayFixture([1, 2], 'signed-in-pending')
+  const report = await runRankDistributionCollection(estimateOptions, input.deps)
+  assert.equal(report.status, 'failed')
+  assert.equal(report.stage, 'preflight')
+  assert.equal(report.reason, 'read-failed')
+  assert.equal(report.readFailureCode, 'read-failed')
+  assert.equal(report.requestCount, 2)
+  assert.equal(report.successfulReadCount, 0)
+  assert.equal(report.retryCount, 1)
+  assert.deepEqual(input.attemptedPages, [1, 1])
+  assert.deepEqual(input.waits, [500])
+  assert.equal(report.lastHttpStatus, 200)
+  assert.equal(report.lastAuthenticationEvidence, 'logout-control')
+  assert.equal(report.lastLoginRequiredHeading, false)
+  assert.equal(report.lastRankingReadable, false)
+  assert.equal(input.statuses[0].reason, 'read-failed')
   assert.equal(input.calls.save, 0)
   assert.equal(input.calls.publish, 0)
   assert.equal(input.calls.close, 1)

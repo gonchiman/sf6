@@ -455,6 +455,41 @@ test('stale page and ranges time out without claiming arrival or inventing rows'
   assert.equal(wrongRange.reader.getDiagnostics().successfulReadCount, 0)
 })
 
+test('signed-in pending rendering reaches read-failed at the deadline and can succeed in a later full page read', async () => {
+  let hydrated = false
+  const pending = harness(page => hydrated ? observation(page)
+    : { ...observation(page), rankIcons: 'pending', entries: null })
+  await assert.rejects(pending.reader.fetchPage(1, pageUrl(1)), errorCode('read-failed'))
+  assert.equal(pending.navigations.length, 1)
+  assert.equal(pending.reader.getDiagnostics().lastAuthenticationEvidence, 'logout-control')
+  assert.equal(pending.reader.getDiagnostics().lastLoginRequiredHeading, false)
+  assert.equal(pending.reader.getDiagnostics().lastRankingReadable, false)
+  assert.equal(pending.reader.getDiagnostics().successfulReadCount, 0)
+  hydrated = true
+  assert.equal((await pending.reader.fetchPage(1, pageUrl(1))).entries.length, 20)
+  assert.equal(pending.navigations.length, 2)
+  assert.equal(pending.reader.getDiagnostics().successfulReadCount, 1)
+})
+
+test('missing rendered fields are transient, while ready invalid ranges and rows remain unsupported', async () => {
+  for (const patch of [
+    { rankIcons: 'pending' }, { entries: null }, { range: null },
+  ] satisfies Array<Partial<RankDistributionDomObservation>>) {
+    const pending = harness(() => ({ ...observation(), ...patch }))
+    await assert.rejects(pending.reader.fetchPage(1, pageUrl(1)), errorCode('read-failed'))
+    assert.equal(pending.navigations.length, 1)
+  }
+  for (const patch of [
+    { range: { from: 2, to: 21, total: 43 } },
+    { entries: observation().entries!.slice(0, 19) },
+  ] satisfies Array<Partial<RankDistributionDomObservation>>) {
+    const invalid = harness(() => ({ ...observation(), ...patch }))
+    await assert.rejects(invalid.reader.fetchPage(1, pageUrl(1)), errorCode('unsupported-dom'))
+    assert.equal(invalid.navigations.length, 1)
+    assert.equal(invalid.reader.getDiagnostics().successfulReadCount, 0)
+  }
+})
+
 test('HTTP denial prevents DOM reading; maintenance, missing login and unknown authentication are distinct', async () => {
   const denied = harness(undefined, 403)
   await assert.rejects(denied.reader.fetchPage(1, pageUrl(1)), errorCode('http-denied'))

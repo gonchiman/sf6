@@ -297,7 +297,9 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
       } while (true)
       if (latest?.loginRequired === true || latest?.loginRequiredHeading === true) throw new RankDistributionDomError('login-required')
       if (latest?.signedIn !== true) throw new RankDistributionDomError('authentication-unconfirmed')
-      throw new RankDistributionDomError(latest?.selectedPage !== pageNumber ? 'page-mismatch' : 'unsupported-dom')
+      if (latest.selectedPage !== pageNumber) throw new RankDistributionDomError('page-mismatch')
+      if (latest.rankIcons === 'pending' || latest.entries === null || latest.range === null) throw new RankDistributionDomError('read-failed')
+      throw new RankDistributionDomError('unsupported-dom')
     } catch (error) {
       if (options.signal?.aborted) throw new RankDistributionDomError('cancelled')
       if (error instanceof RankDistributionDomError) throw error
