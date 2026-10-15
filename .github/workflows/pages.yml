@@ -12,25 +12,53 @@ on:
         type: boolean
         default: false
       buckler_probe:
-        description: '検証専用ブランチでBucklerの先頭ページを1回だけ確認する'
+        description: '検証専用ブランチでBucklerの取得検証を手動実行する'
         required: false
         type: choice
-        options: ['off', 'anonymous', 'saved-session']
+        options: ['off', 'anonymous', 'saved-session', 'rank-distribution']
         default: 'off'
       buckler_headless:
         description: 'Buckler検証を画面なしで実行する（既定は表示付きEdge）'
         required: false
         type: boolean
         default: false
+      buckler_rank_resume:
+        description: 'ランク分布の保存位置を探索ヒントとして使う（全境界を新しく確認）'
+        required: false
+        type: boolean
+        default: false
+      buckler_rank_checkpoint:
+        description: 'ランク分布のcheckpoint JSON（認証情報を含めない）'
+        required: false
+        type: string
+        default: ''
+      buckler_rank_max_requests:
+        description: 'ランク分布の読み取り回数上限（2〜1000）'
+        required: false
+        type: string
+        default: '600'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}${{ inputs.buckler_probe == 'rank-distribution' && '-rank-distribution' || '' }}
+  cancel-in-progress: ${{ inputs.buckler_probe != 'rank-distribution' }}
 
 jobs:
+  buckler-rank-distribution:
+    if: github.event_name == 'workflow_dispatch' && inputs.buckler_probe == 'rank-distribution' && github.repository == 'gonchiman/sf6' && startsWith(github.ref, 'refs/heads/codex/buckler-cloud-collection')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/rank-distribution-cloud-probe.yml
+    with:
+      collection: saved-session
+      resume: ${{ inputs.buckler_rank_resume }}
+      max_requests: ${{ inputs.buckler_rank_max_requests }}
+      checkpoint_json: ${{ inputs.buckler_rank_checkpoint }}
+    secrets:
+      BUCKLER_CLOUD_PROBE_SESSION: ${{ secrets.BUCKLER_CLOUD_PROBE_SESSION }}
+
   build:
     if: github.event_name != 'workflow_dispatch' || inputs.buckler_probe == 'off'
     runs-on: ubuntu-latest
@@ -76,7 +104,7 @@ jobs:
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
 
   buckler-cloud-probe:
-    if: github.event_name == 'workflow_dispatch' && inputs.buckler_probe != 'off' && startsWith(github.ref, 'refs/heads/codex/buckler-cloud-probe')
+    if: github.event_name == 'workflow_dispatch' && (inputs.buckler_probe == 'anonymous' || inputs.buckler_probe == 'saved-session') && startsWith(github.ref, 'refs/heads/codex/buckler-cloud-probe')
     runs-on: windows-2025
     timeout-minutes: 8
     permissions:

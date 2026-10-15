@@ -25,28 +25,33 @@ export interface RankBoundaryResult {
   pageSize: number
   totalPages: number
   entries: Array<{ rankId: number; count: number }>
-  /** Count of listed rows with LP at least this rank's minimum; not displayed ranking order. */
-  boundaries: Array<{ rankId: number; minimumLp: number; countAtOrAbove: number }>
+  /** Row-position counts, never displayed ranking numbers. Direct rank-ID mode has no LP thresholds. */
+  boundaries: Array<{ rankId: number; minimumLp?: number; countAtOrAbove: number }>
   requestCount: number
   /** Account-unit confirmation requires separate source evidence. This is not a verified dataset. */
   observedChecks: string[]
 }
 
-export interface RankBoundaryOptions {
+interface RankBoundaryCommonOptions {
   sourceUrl: string
-  /** Current LP/rank mapping must be confirmed by the caller; no historical defaults. */
-  ranks: RankLpBoundary[]
   fetchPage: (page: number, url: string) => Promise<RankBoundaryPage>
   maxRequests?: number
   signal?: AbortSignal
 }
+
+export type RankBoundaryOptions = RankBoundaryCommonOptions & (
+  /** Current LP/rank mapping must be confirmed by the caller; no historical defaults. */
+  | { mode?: 'league-point'; ranks: RankLpBoundary[] }
+  /** IDs must be read independently from the official rank display, never inferred from LP. */
+  | { mode: 'rank-id'; ranks?: never }
+)
 
 const REQUIRED_FILTERS = {
   character_filter: '2', character_id: 'luke', platform: '1', user_status: '1',
   home_filter: '1', home_category_id: '0', home_id: '0', league_rank: '0',
 } as const
 
-/** This URL is the observed ALL / MAX LP condition, not a supported API contract. */
+/** Observed ALL / MAX LP URL; user_status=1 has no confirmed all-users label or API contract. */
 export const RANK_BOUNDARY_SOURCE_URL = 'https://www.streetfighter.com/6/buckler/ja-jp/ranking/league?character_filter=2&character_id=luke&platform=1&user_status=1&home_filter=1&home_category_id=0&home_id=0&league_rank=0'
 
 function invalid(message: string): never {
@@ -66,7 +71,7 @@ export function rankBoundaryPageUrl(sourceUrl: string, page: number): string {
     || url.username || url.password || url.hash) invalid('公式LPランキング以外のURLは使用できません。')
   for (const [key, expected] of Object.entries(REQUIRED_FILTERS)) {
     if (url.searchParams.getAll(key).length !== 1 || url.searchParams.get(key) !== expected) {
-      invalid('総合・最大LP・全地域・全プラットフォーム・全ユーザーの取得条件が一致しません。')
+      invalid('観測対象の固定条件が一致しません。')
     }
   }
   for (const key of url.searchParams.keys()) {
@@ -97,7 +102,12 @@ function validateRanks(values: RankLpBoundary[]): RankLpBoundary[] {
  * No network transport, cookies, retry loop, or full-enumeration fallback is provided.
  */
 export async function collectRankDistributionBoundaries(options: RankBoundaryOptions): Promise<RankBoundaryResult> {
-  const ranks = validateRanks(options.ranks)
+  const mode = options.mode ?? 'league-point'
+  if (mode !== 'league-point' && mode !== 'rank-id') invalid('境界の比較方法が不正です。')
+  if (mode === 'rank-id' && options.ranks !== undefined) invalid('ランクID比較ではLP対応表を指定できません。')
+  const lpRanks = mode === 'league-point' ? validateRanks(options.ranks ?? []) : null
+  const ranks: Array<{ rankId: number; minimumLp?: number }> = lpRanks
+    ?? Array.from({ length: 36 }, (_, index) => ({ rankId: index + 1 }))
   rankBoundaryPageUrl(options.sourceUrl, 1)
   const maxRequests = options.maxRequests ?? 1000
   if (!integer(maxRequests, 1)) invalid('取得回数の上限が不正です。')
@@ -107,7 +117,7 @@ export async function collectRankDistributionBoundaries(options: RankBoundaryOpt
   const seenAccounts = new Map<string, number>()
 
   function classify(lp: number): number {
-    return ranks.findLast((rank) => lp >= rank.minimumLp)!.rankId
+    return lpRanks!.findLast((rank) => lp >= rank.minimumLp)!.rankId
   }
 
   async function readPage(pageNumber: number, fresh = false): Promise<RankBoundaryPage> {
@@ -135,8 +145,9 @@ export async function collectRankDistributionBoundaries(options: RankBoundaryOpt
     if (value.entries.length !== Math.min(value.pageSize, value.totalCount - offset)) invalid('ページの項目数が不足または過剰です。')
     const entries = value.entries.map((entry, index) => {
       if (!entry || !integer(entry.leaguePoint) || !integer(entry.rankId, 1) || entry.rankId > 36
-        || classify(entry.leaguePoint) !== entry.rankId) invalid('LP・ランク対応が一致しません。未ランクを補完しません。')
+        || (mode === 'league-point' && classify(entry.leaguePoint) !== entry.rankId)) invalid('LP・ランク対応が一致しません。未ランクを補完しません。')
       if (index > 0 && value.entries[index - 1].leaguePoint < entry.leaguePoint) invalid('ページ内のLP順が逆転しています。')
+      if (index > 0 && value.entries[index - 1].rankId < entry.rankId) invalid('ページ内のランク順が逆転しています。')
       if (entry.accountKey !== undefined && (typeof entry.accountKey !== 'string' || entry.accountKey.length === 0)) invalid('アカウント識別の確認値が不正です。')
       if (entry.accountKey !== undefined) {
         const position = offset + index
@@ -153,6 +164,7 @@ export async function collectRankDistributionBoundaries(options: RankBoundaryOpt
       const earlier = otherNumber < pageNumber ? other.entries : entries
       const later = otherNumber < pageNumber ? entries : other.entries
       if (earlier.at(-1)!.leaguePoint < later[0].leaguePoint) invalid('ページ間のLP順が逆転しています。')
+      if (earlier.at(-1)!.rankId < later[0].rankId) invalid('ページ間のランク順が逆転しています。')
     }
     baseline ??= { totalCount: value.totalCount, totalPages: value.totalPages, pageSize: value.pageSize }
     const normalized = { ...baseline, sourceUrl: value.sourceUrl, page: pageNumber, entries }
@@ -162,26 +174,52 @@ export async function collectRankDistributionBoundaries(options: RankBoundaryOpt
 
   const first = await readPage(1)
   await readPage(first.totalPages)
+  const ranges = ranks.map((rank) => ({ ...rank, lower: 0, upper: first.totalCount }))
+  const atOrAbove = (entry: RankBoundaryEntry, rank: typeof ranges[number]): boolean => mode === 'rank-id'
+    ? entry.rankId >= rank.rankId : entry.leaguePoint >= rank.minimumLp!
+
+  // Every observed row constrains every boundary. In particular, the last row
+  // settles rank 1 without searching through millions of already-known rows.
+  function narrowRanges(page: RankBoundaryPage): void {
+    if (page.entries.length === 0) return
+    const offset = (page.page - 1) * first.pageSize
+    for (const range of ranges) {
+      let lower = 0
+      let upper = page.entries.length
+      while (lower < upper) {
+        const middle = lower + Math.floor((upper - lower) / 2)
+        if (atOrAbove(page.entries[middle], range)) lower = middle + 1
+        else upper = middle
+      }
+      const position = offset + lower
+      if (lower > 0) range.lower = Math.max(range.lower, position)
+      if (lower < page.entries.length) range.upper = Math.min(range.upper, position)
+      if (range.lower > range.upper) invalid('ランク境界の前後が一致しません。')
+    }
+  }
+
+  for (const page of pages.values()) narrowRanges(page)
+  while (true) {
+    // Split the widest remaining interval. All ranks seen on the returned page
+    // share its information, including absent ranks between two displayed IDs.
+    const range = ranges.reduce((widest, candidate) => candidate.upper - candidate.lower > widest.upper - widest.lower
+      ? candidate : widest)
+    if (range.lower === range.upper) break
+    const position = range.lower + Math.floor((range.upper - range.lower) / 2)
+    narrowRanges(await readPage(Math.floor(position / first.pageSize) + 1))
+  }
   const boundaryPages = new Set([1, first.totalPages])
   const boundaries: RankBoundaryResult['boundaries'] = []
-  for (const { rankId, minimumLp } of ranks) {
-    let lower = 0
-    let upper = first.totalCount
-    while (lower < upper) {
-      const position = lower + Math.floor((upper - lower) / 2)
-      const page = await readPage(Math.floor(position / first.pageSize) + 1)
-      const entry = page.entries[position % first.pageSize]
-      if (entry.leaguePoint >= minimumLp) lower = position + 1
-      else upper = position
-    }
-    boundaries.push({ rankId, minimumLp, countAtOrAbove: lower })
+  for (const range of ranges) {
+    const { rankId, minimumLp, lower } = range
+    boundaries.push({ rankId, ...(minimumLp === undefined ? {} : { minimumLp }), countAtOrAbove: lower })
     // A boundary can straddle two pages, including a run of equal LP values.
     for (const position of [lower - 1, lower]) {
       if (position < 0 || position >= first.totalCount) continue
       const pageNumber = Math.floor(position / first.pageSize) + 1
       const page = await readPage(pageNumber)
       const entry = page.entries[position % first.pageSize]
-      if ((position < lower) !== (entry.leaguePoint >= minimumLp)) invalid('ランク境界の前後が一致しません。')
+      if ((position < lower) !== atOrAbove(entry, range)) invalid('ランク境界の前後が一致しません。')
       boundaryPages.add(pageNumber)
     }
   }

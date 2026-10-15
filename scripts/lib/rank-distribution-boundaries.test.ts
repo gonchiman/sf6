@@ -146,3 +146,168 @@ test('keeps safe-integer positions accurate without overflowing the binary-searc
   assert.equal(result.entries[0].count, totalCount)
   assert.ok(result.entries.slice(1).every((entry) => entry.count === 0))
 })
+
+test('direct rank IDs count all boundaries without an LP table, including equal-LP rows across ranks and pages', async () => {
+  const values = [
+    ...Array.from({ length: 23 }, (_, index) => ({ rankId: 36, leaguePoint: 100, accountKey: `top-${index}` })),
+    ...Array.from({ length: 7 }, (_, index) => ({ rankId: 35, leaguePoint: 100, accountKey: `next-${index}` })),
+    { rankId: 1, leaguePoint: 100, accountKey: 'tail' },
+  ]
+  const pages = reader(values, 4)
+  const result = await collectRankDistributionBoundaries({
+    mode: 'rank-id', sourceUrl: RANK_BOUNDARY_SOURCE_URL, fetchPage: pages.fetchPage,
+  })
+  assert.equal(result.totalCount, 31)
+  assert.equal(result.entries[35].count, 23)
+  assert.equal(result.entries[34].count, 7)
+  assert.equal(result.entries[0].count, 1)
+  assert.ok(result.entries.slice(1, 34).every(({ count }) => count === 0))
+  assert.ok(result.boundaries.every((boundary) => !('minimumLp' in boundary)))
+  assert.equal(result.boundaries[35].countAtOrAbove, 23)
+  assert.equal(result.boundaries[34].countAtOrAbove, 30)
+  assert.equal(pages.requests.filter((page) => page === result.totalPages).length, 2)
+  assert.ok(!JSON.stringify(result).includes('accountKey'))
+})
+
+test('direct mode preserves all 36 explicitly displayed rank IDs even when LP does not distinguish them', async () => {
+  const pages = reader(entries().map((entry) => ({ ...entry, leaguePoint: 0 })))
+  const result = await collectRankDistributionBoundaries({
+    mode: 'rank-id', sourceUrl: RANK_BOUNDARY_SOURCE_URL, fetchPage: pages.fetchPage,
+  })
+  assert.deepEqual(result.entries, ranks.map(({ rankId }) => ({ rankId, count: 2 })))
+})
+
+test('direct mode rejects unknown rank IDs instead of deriving their rank from LP', async () => {
+  for (const rankId of [0, 37]) {
+    const values = entries()
+    values.at(-1)!.rankId = rankId
+    const pages = reader(values)
+    await assert.rejects(collectRankDistributionBoundaries({
+      mode: 'rank-id', sourceUrl: RANK_BOUNDARY_SOURCE_URL, fetchPage: pages.fetchPage,
+    }), /未ランクを補完しません/)
+  }
+})
+
+test('direct mode rejects rank-order inversion within and between pages while LP remains tied', async () => {
+  for (const [rankIds, pageSize, message] of [
+    [[35, 36, 1], 3, /ページ内のランク順/],
+    [[36, 34, 35, 1], 1, /ページ間のランク順/],
+  ] as const) {
+    const pages = reader(rankIds.map((rankId) => ({ rankId, leaguePoint: 100 })), pageSize)
+    await assert.rejects(collectRankDistributionBoundaries({
+      mode: 'rank-id', sourceUrl: RANK_BOUNDARY_SOURCE_URL, fetchPage: pages.fetchPage,
+    }), message)
+  }
+})
+
+test('direct mode retains independent LP ordering, total stability and fresh-content checks', async () => {
+  const order = reader([{ rankId: 36, leaguePoint: 1 }, { rankId: 35, leaguePoint: 2 }])
+  await assert.rejects(collectRankDistributionBoundaries({
+    mode: 'rank-id', sourceUrl: RANK_BOUNDARY_SOURCE_URL, fetchPage: order.fetchPage,
+  }), /LP順/)
+  for (const change of ['total', 'content'] as const) {
+    const pages = reader()
+    const seen = new Set<number>()
+    await assert.rejects(collectRankDistributionBoundaries({
+      mode: 'rank-id', sourceUrl: RANK_BOUNDARY_SOURCE_URL,
+      fetchPage: async (page, url) => {
+        const value = await pages.fetchPage(page, url)
+        if (change === 'total' && pages.requests.length > 1) value.totalCount += 1
+        if (change === 'content' && seen.has(page) && page === 1) value.entries[0].leaguePoint -= 1
+        seen.add(page)
+        return value
+      },
+    }), change === 'total' ? /総件数|最終ページ/ : /再確認/)
+  }
+})
+
+test('rejects mixed direct-ID/LP configuration and unknown comparison modes before requesting pages', async () => {
+  const pages = reader()
+  for (const options of [
+    { mode: 'rank-id', ranks }, { mode: 'unsupported', ranks },
+  ]) {
+    await assert.rejects(collectRankDistributionBoundaries({
+      ...options, sourceUrl: RANK_BOUNDARY_SOURCE_URL, fetchPage: pages.fetchPage,
+    } as Parameters<typeof collectRankDistributionBoundaries>[0]), /比較/)
+  }
+  assert.equal(pages.requests.length, 0)
+})
+
+test('shares every observed page across all boundaries for a virtual 3,060,715-account population', async (context) => {
+  const totalCount = 3_060_715
+  const pageSize = 20
+  const weights = ranks.map(({ rankId }) => (rankId % 7 + 1) ** 2 + rankId * 3)
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0)
+  const counts = weights.map((weight) => Math.floor(totalCount * weight / weightTotal))
+  counts[35] += totalCount - counts.reduce((sum, count) => sum + count, 0)
+  const cumulative = counts.map((_, index) => counts.slice(index).reduce((sum, count) => sum + count, 0))
+  const rankAt = (position: number) => cumulative.findLastIndex((count) => position < count) + 1
+  const requests: number[] = []
+  const result = await collectRankDistributionBoundaries({
+    mode: 'rank-id', sourceUrl: RANK_BOUNDARY_SOURCE_URL,
+    fetchPage: async (page, sourceUrl) => {
+      requests.push(page)
+      const offset = (page - 1) * pageSize
+      return {
+        sourceUrl, page, pageSize, totalCount, totalPages: Math.ceil(totalCount / pageSize),
+        entries: Array.from({ length: Math.min(pageSize, totalCount - offset) }, (_, index) => ({
+          rankId: rankAt(offset + index), leaguePoint: 0, accountKey: `position-${offset + index}`,
+        })),
+      }
+    },
+  })
+  assert.deepEqual(result.entries, counts.map((count, index) => ({ rankId: index + 1, count })))
+  assert.deepEqual(result.boundaries.map(({ countAtOrAbove }) => countAtOrAbove), cumulative)
+
+  // Count the previous independent [0, N] searches with the same page cache and
+  // the same mandatory fresh boundary/terminal rereads, without allocating N rows.
+  const previousPages = new Set([1, Math.ceil(totalCount / pageSize)])
+  const boundaryPages = new Set(previousPages)
+  for (const { rankId } of ranks) {
+    let lower = 0
+    let upper = totalCount
+    while (lower < upper) {
+      const position = lower + Math.floor((upper - lower) / 2)
+      previousPages.add(Math.floor(position / pageSize) + 1)
+      if (rankAt(position) >= rankId) lower = position + 1
+      else upper = position
+    }
+    for (const position of [lower - 1, lower]) {
+      if (position < 0 || position >= totalCount) continue
+      const page = Math.floor(position / pageSize) + 1
+      previousPages.add(page)
+      boundaryPages.add(page)
+    }
+  }
+  const previousRequestCount = previousPages.size + boundaryPages.size
+  context.diagnostic(`shared requests: ${result.requestCount}; previous requests: ${previousRequestCount}`)
+  assert.ok(result.requestCount < previousRequestCount)
+  assert.equal(result.requestCount, requests.length)
+  for (const count of cumulative) {
+    for (const position of [count - 1, count]) {
+      if (position < 0 || position >= totalCount) continue
+      const page = Math.floor(position / pageSize) + 1
+      assert.equal(requests.filter((request) => request === page).length, 2)
+    }
+  }
+})
+
+test('observed terminal ranks settle absent ranks and the entire rank-1 tail without interior reads', async () => {
+  const totalCount = 3_060_715
+  for (const mode of ['rank-id', 'league-point'] as const) {
+    const requests: number[] = []
+    const result = await collectRankDistributionBoundaries({
+      ...(mode === 'rank-id' ? { mode } : { mode, ranks }), sourceUrl: RANK_BOUNDARY_SOURCE_URL,
+      fetchPage: async (page, sourceUrl) => {
+        requests.push(page)
+        return {
+          sourceUrl, page, pageSize: 20, totalCount, totalPages: Math.ceil(totalCount / 20),
+          entries: Array.from({ length: Math.min(20, totalCount - (page - 1) * 20) }, () => ({ rankId: 1, leaguePoint: 0 })),
+        }
+      },
+    })
+    assert.deepEqual(requests, [1, result.totalPages, 1, result.totalPages])
+    assert.equal(result.entries[0].count, totalCount)
+    assert.ok(result.entries.slice(1).every(({ count }) => count === 0))
+  }
+})
