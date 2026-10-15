@@ -1,4 +1,10 @@
 .balance-adjustments-page { min-width: 0; display: grid; gap: 16px; }
+.balance-adjustment-pages, .balance-adjustment-pages > div { min-width: 0; }
+.balance-adjustment-detail-page { min-width: 0; display: grid; gap: 16px; }
+.balance-adjustment-detail-link { text-decoration: none; }
+.balance-adjustment-detail-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.balance-adjustment-back-link { justify-self: start; text-underline-offset: 3px; }
+.balance-adjustment-scope-filter { margin-bottom: 20px; }
 .balance-adjustment-table-content, .balance-adjustment-detail-content { min-width: 0; display: grid; gap: 14px; }
 .balance-adjustment-state { margin: 0; color: var(--text-muted); font-size: 13px; }
 .balance-adjustment-scroll, .balance-adjustment-detail-scroll { position: relative; }

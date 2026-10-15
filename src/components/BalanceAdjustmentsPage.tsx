@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState, type MouseEvent } from 'react'
 import { loadBalanceAdjustmentCatalog } from '../lib/balanceAdjustments'
 import { loadBalanceAdjustmentDetails, balanceAdjustmentPatchDetails } from '../lib/balanceAdjustmentDetails'
 import { balanceAdjustmentCharacters, balanceAdjustmentMonthOptions, filterBalanceAdjustmentList, initialBalanceAdjustmentListFilters, selectBalanceAdjustmentEvent, updateBalanceAdjustmentPeriod } from '../lib/balanceAdjustmentList'
@@ -8,7 +8,6 @@ import { monthLabel } from '../lib/winRateHistory'
 import type { BalanceAdjustmentCatalog } from '../types/balanceAdjustments'
 import type { BalanceAdjustmentDetailsLoadState, BalanceAdjustmentListFilters } from '../types/balanceAdjustmentDetails'
 import type { CharacterManifest } from '../types/characters'
-import { BalanceAdjustmentDetails } from './BalanceAdjustmentDetails'
 import { BalanceAdjustmentCharactersTable, BalanceAdjustmentOverviewTable, COMMON_ADJUSTMENT_SCOPE, balanceAdjustmentDateLabel } from './BalanceAdjustmentTable'
 import { DataLoadState } from './DataLoadState'
 import { StatisticsPanel } from './StatisticsPanel'
@@ -18,9 +17,10 @@ import '../balance-adjustments.css'
 
 type BootstrapState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; catalog: BalanceAdjustmentCatalog; manifest: CharacterManifest }
 
-export function BalanceAdjustmentsPage() {
+export function BalanceAdjustmentsPage({ onOpenDetail }: {
+  onOpenDetail: (event: MouseEvent<HTMLAnchorElement>, adjustmentId: string, scope: string | null) => void
+}) {
   const contentId = useId()
-  const detailsId = `${contentId}-details`
   const [bootstrap, setBootstrap] = useState<BootstrapState>({ status: 'loading' })
   const [bootstrapVersion, setBootstrapVersion] = useState(0)
   const [detailsState, setDetailsState] = useState<BalanceAdjustmentDetailsLoadState>({ status: 'loading' })
@@ -108,8 +108,16 @@ export function BalanceAdjustmentsPage() {
         {hasTableData && <>
           {result.unknownCount > 0 && <p className="balance-adjustment-state" role="status">対象キャラ未確認の{result.unknownCount}件を除外しています。</p>}
           {result.events.length === 0 ? <p className="balance-adjustment-state" role="status">この条件で確認できる調整履歴はありません。</p>
-            : view === 'overall' ? <BalanceAdjustmentOverviewTable events={result.events} details={detailsState} selectedId={event?.id ?? null} detailsId={detailsId} onSelect={setSelectedId} />
-              : patch ? <BalanceAdjustmentCharactersTable patch={patch} characters={characters} includeCommon={filters.characterId === 'all'} selectedScope={effectiveScope} detailsId={detailsId} onSelect={setSelectedScope} />
+            : view === 'overall' ? <BalanceAdjustmentOverviewTable events={result.events} details={detailsState} selectedId={event?.id ?? null}
+              detailScope={filters.characterId === 'all' ? null : filters.characterId} onOpen={(click, id, scope) => {
+                if (click.button === 0 && !click.metaKey && !click.ctrlKey && !click.shiftKey && !click.altKey) setSelectedId(id)
+                onOpenDetail(click, id, scope)
+              }} />
+              : patch ? <BalanceAdjustmentCharactersTable patch={patch} characters={characters} includeCommon={filters.characterId === 'all'} selectedScope={effectiveScope}
+                onOpen={(click, scope) => {
+                  if (click.button === 0 && !click.metaKey && !click.ctrlKey && !click.shiftKey && !click.altKey) setSelectedScope(scope)
+                  onOpenDetail(click, patch.adjustmentId, scope)
+                }} />
                 : <p className="balance-adjustment-state" role="status">この調整の技別内容は未取込です。</p>}
         </>}
         <details className="win-rates-details"><summary>データの範囲・出典</summary><div className="win-rates-details-content balance-adjustment-detail-content">
@@ -128,7 +136,5 @@ export function BalanceAdjustmentsPage() {
         </div></details>
       </div>
     </StatisticsPanel>
-    {hasTableData && event && <BalanceAdjustmentDetails event={event} patch={patch} detailsState={detailsState}
-      scope={view === 'overall' && filters.characterId === 'all' ? null : effectiveScope} id={detailsId} />}
   </section>
 }
