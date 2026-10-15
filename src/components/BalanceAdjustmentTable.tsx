@@ -1,6 +1,7 @@
 import { useMemo, type MouseEvent } from 'react'
 import { useSelectedRowScroll } from '../hooks/useSelectedRowScroll'
 import { balanceAdjustmentPatchDetails } from '../lib/balanceAdjustmentDetails'
+import { buildBalanceAdjustmentCountRows } from '../lib/balanceAdjustmentCountChart'
 import { balanceAdjustmentDetailHash } from '../lib/routes'
 import type { BalanceAdjustment } from '../types/balanceAdjustments'
 import type { BalanceAdjustmentChange, BalanceAdjustmentCharacterDetails, BalanceAdjustmentDetailsLoadState, BalanceAdjustmentPatchDetails } from '../types/balanceAdjustmentDetails'
@@ -13,14 +14,17 @@ export function balanceAdjustmentDateLabel(event: BalanceAdjustment): string {
   return `${event.date.replaceAll('-', '/')}${event.dateBasis === 'list' ? '（リスト日）' : ''}`
 }
 
-export function BalanceAdjustmentOverviewTable({ events, details, selectedId, detailScope, onOpen }: {
+export function BalanceAdjustmentOverviewTable({ events, details, selectedId, detailScope, characterId = 'all', onOpen }: {
   events: readonly BalanceAdjustment[]
   details: BalanceAdjustmentDetailsLoadState
   selectedId: string | null
   detailScope: string | null
+  characterId?: string
   onOpen: (event: MouseEvent<HTMLAnchorElement>, id: string, scope: string | null) => void
 }) {
   const { scrollRef, selectedRowRef } = useSelectedRowScroll(events, selectedId, true)
+  const counts = useMemo(() => new Map(buildBalanceAdjustmentCountRows(events,
+    details.status === 'ready' ? details.catalog : null, characterId).map(row => [row.event.id, row])), [events, details, characterId])
   return <div ref={scrollRef} className="data-table-scroll balance-adjustment-scroll" role="region" tabIndex={0}
     aria-label="変更日別の履歴・スクロール領域">
     <table className="data-table balance-adjustment-overview-table">
@@ -31,9 +35,13 @@ export function BalanceAdjustmentOverviewTable({ events, details, selectedId, de
         const patch = details.status === 'ready' ? balanceAdjustmentPatchDetails(details.catalog, event) : null
         const changed = patch?.characters.filter(character => character.status === 'ready' && character.changes.length > 0) ?? []
         const hasCommon = !!patch?.common.changes.length
-        const target = patch ? [hasCommon ? '共通' : '', changed.length ? `${changed.length}キャラ` : ''].filter(Boolean).join('・') || '変更なし' : '未確認'
-        const count = patch ? patch.common.changes.length + patch.characters.reduce((total, character) => total + character.changes.length, 0) : null
-        const state = details.status === 'loading' ? '読込中…' : details.status === 'error' ? '読込失敗' : patch ? `${count}項目` : '未取込'
+        const character = characterId === 'all' ? null : patch?.characters.find(item => item.characterId === characterId)
+        const target = characterId === 'all'
+          ? patch ? [hasCommon ? '共通' : '', changed.length ? `${changed.length}キャラ` : ''].filter(Boolean).join('・') || '変更なし' : '未確認'
+          : character?.name ?? '未確認'
+        const row = counts.get(event.id)
+        const state = details.status === 'loading' ? '読込中…' : details.status === 'error' ? '読込失敗'
+          : row?.status === 'unlisted' ? '未掲載' : row?.itemCount == null ? '未取込' : `${row.itemCount}項目`
         return <tr key={event.id} ref={event.id === selectedId ? selectedRowRef : undefined} className={event.id === selectedId ? 'is-selected' : undefined}>
           <th scope="row" className="monthly-win-rate-month"><a className="monthly-win-rate-month-button balance-adjustment-detail-link"
             href={balanceAdjustmentDetailHash(event.id, detailScope)} aria-label={`${balanceAdjustmentDateLabel(event)}のバトル変更詳細を開く`}

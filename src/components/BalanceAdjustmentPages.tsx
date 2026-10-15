@@ -32,7 +32,7 @@ export function BalanceAdjustmentPages({ route, onRouteChange }: {
     positionRef.current = {
       top: window.scrollY,
       trigger: active && list.contains(active) ? active : null,
-      tables: [...list.querySelectorAll<HTMLElement>('.balance-adjustment-scroll')].map(element => ({
+      tables: [...list.querySelectorAll<HTMLElement>('.balance-adjustment-scroll, .balance-adjustment-count-chart-scroll')].map(element => ({
         element, top: element.scrollTop, left: element.scrollLeft,
       })),
     }

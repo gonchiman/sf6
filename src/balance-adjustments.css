@@ -1,4 +1,6 @@
 .balance-adjustments-page { min-width: 0; display: grid; gap: 16px; }
+.balance-adjustment-chart-controls { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.balance-adjustment-chart-help { margin-top: 12px; }
 .balance-adjustment-pages, .balance-adjustment-pages > div { min-width: 0; }
 .balance-adjustment-detail-page { min-width: 0; display: grid; gap: 16px; }
 .balance-adjustment-detail-link { text-decoration: none; }

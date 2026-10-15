@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState, type MouseEvent } from 'react'
 import { loadBalanceAdjustmentCatalog } from '../lib/balanceAdjustments'
 import { loadBalanceAdjustmentDetails, balanceAdjustmentPatchDetails } from '../lib/balanceAdjustmentDetails'
 import { balanceAdjustmentCharacters, balanceAdjustmentMonthOptions, filterBalanceAdjustmentList, initialBalanceAdjustmentListFilters, selectBalanceAdjustmentEvent, updateBalanceAdjustmentPeriod } from '../lib/balanceAdjustmentList'
+import { buildBalanceAdjustmentCountRows } from '../lib/balanceAdjustmentCountChart'
 import { loadCharacterManifest } from '../lib/characters'
 import { timestampLabel } from '../lib/dateTime'
 import { monthLabel } from '../lib/winRateHistory'
@@ -9,6 +10,7 @@ import type { BalanceAdjustmentCatalog } from '../types/balanceAdjustments'
 import type { BalanceAdjustmentDetailsLoadState, BalanceAdjustmentListFilters } from '../types/balanceAdjustmentDetails'
 import type { CharacterManifest } from '../types/characters'
 import { BalanceAdjustmentCharactersTable, BalanceAdjustmentOverviewTable, COMMON_ADJUSTMENT_SCOPE, balanceAdjustmentDateLabel } from './BalanceAdjustmentTable'
+import { BalanceAdjustmentCountChart } from './BalanceAdjustmentCountChart'
 import { DataLoadState } from './DataLoadState'
 import { StatisticsPanel } from './StatisticsPanel'
 import '../win-rates.css'
@@ -29,6 +31,7 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
   const [view, setView] = useState<'overall' | 'characters'>('overall')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedScope, setSelectedScope] = useState<string | null>(null)
+  const [showChartValues, setShowChartValues] = useState(true)
 
   useEffect(() => {
     let current = true
@@ -56,6 +59,8 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
 
   const result = useMemo(() => catalog && filters ? filterBalanceAdjustmentList(catalog, detailsState.status === 'ready' ? detailsState.catalog : null, filters)
     : { events: [], unknownCount: 0 }, [catalog, detailsState, filters])
+  const chartRows = useMemo(() => buildBalanceAdjustmentCountRows(result.events,
+    detailsState.status === 'ready' ? detailsState.catalog : null, filters?.characterId ?? 'all'), [result.events, detailsState, filters?.characterId])
   const event = selectBalanceAdjustmentEvent(result.events, selectedId)
   const patch = event && detailsState.status === 'ready' ? balanceAdjustmentPatchDetails(detailsState.catalog, event) : null
   const characters = useMemo(() => patch && filters ? balanceAdjustmentCharacters(patch, filters.characterId) : [], [patch, filters])
@@ -101,6 +106,24 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
       </div>}
     </StatisticsPanel>
 
+    <StatisticsPanel title="グラフ" headerContent={detailsState.status === 'ready' && <span className="monthly-statistics-panel-summary">
+      {chartRows.length}件 · 日付順（古い→新しい）
+    </span>}>
+      <div className="balance-adjustment-chart-controls">
+        <label className="win-rates-chart-value-toggle"><input type="checkbox" checked={showChartValues}
+          aria-controls={`${contentId}-chart`} onChange={change => setShowChartValues(change.target.checked)} />数値を表示</label>
+      </div>
+      <div id={`${contentId}-chart`}>
+        {detailsState.status === 'loading' ? <DataLoadState loading message="技別内容を読み込み中…" />
+          : detailsState.status === 'error' ? <DataLoadState message="技別内容を読み込めませんでした。" onRetry={() => setDetailsVersion(version => version + 1)} />
+            : <BalanceAdjustmentCountChart rows={chartRows} showValues={showChartValues} subjectLabel={characterName} />}
+      </div>
+      <details className="win-rates-details balance-adjustment-chart-help"><summary>項目数の数え方</summary><div className="win-rates-details-content">
+        <p>公式の変更内容1行を1項目として数え、調整方針は含めません。「すべて」は共通とキャラ固有の合計、キャラ指定時はそのキャラ固有の項目数です。</p>
+        <p>変更のない月は棒を追加しません。本文未取込は0項目にせず、未取込として表示します。</p>
+      </div></details>
+    </StatisticsPanel>
+
     <StatisticsPanel title="テーブル" headerContent={hasTableData && <span className="monthly-statistics-panel-summary" aria-live="polite">{count}</span>}>
       <div id={`${contentId}-table`} className="balance-adjustment-table-content">
         {detailsState.status === 'error' && <DataLoadState message="技別内容を読み込めませんでした。" onRetry={() => setDetailsVersion(version => version + 1)} />}
@@ -109,7 +132,7 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
           {result.unknownCount > 0 && <p className="balance-adjustment-state" role="status">対象キャラ未確認の{result.unknownCount}件を除外しています。</p>}
           {result.events.length === 0 ? <p className="balance-adjustment-state" role="status">この条件で確認できるバトル変更履歴はありません。</p>
             : view === 'overall' ? <BalanceAdjustmentOverviewTable events={result.events} details={detailsState} selectedId={event?.id ?? null}
-              detailScope={filters.characterId === 'all' ? null : filters.characterId} onOpen={(click, id, scope) => {
+              detailScope={filters.characterId === 'all' ? null : filters.characterId} characterId={filters.characterId} onOpen={(click, id, scope) => {
                 if (click.button === 0 && !click.metaKey && !click.ctrlKey && !click.shiftKey && !click.altKey) setSelectedId(id)
                 onOpenDetail(click, id, scope)
               }} />
