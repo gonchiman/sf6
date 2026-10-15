@@ -22,9 +22,9 @@ export function BalanceAdjustmentSubjectSection({ name, changes, source }: Props
 }
 
 function BalanceAdjustmentChangeTable({ name, changes }: Pick<Props, 'name' | 'changes'>) {
-  return <div className="data-table-scroll balance-adjustment-detail-scroll" role="region" tabIndex={0} aria-label={`${name}の調整詳細・スクロール領域`}>
+  return <div className="data-table-scroll balance-adjustment-detail-scroll" role="region" tabIndex={0} aria-label={`${name}のバトル変更詳細・スクロール領域`}>
     <table className="data-table balance-adjustment-detail-table">
-      <caption className="win-rates-visually-hidden">{name}の公式の変更箇所、分類、調整・修正内容</caption>
+      <caption className="win-rates-visually-hidden">{name}の公式の変更箇所、分類、変更内容</caption>
       <colgroup><col className="balance-adjustment-target-column" /><col className="balance-adjustment-category-column" /><col /></colgroup>
       <thead><tr><th scope="col">変更箇所</th><th scope="col">分類</th><th scope="col">変更内容</th></tr></thead>
       <tbody>{changes.map(change => <tr key={change.id}>

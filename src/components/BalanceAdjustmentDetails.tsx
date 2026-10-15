@@ -14,7 +14,7 @@ export function BalanceAdjustmentDetails({ event, patch, detailsState, scope, id
 }) {
   const character = scope && scope !== COMMON_ADJUSTMENT_SCOPE ? patch?.characters.find(item => item.characterId === scope) : null
   const subject = scope === COMMON_ADJUSTMENT_SCOPE ? '共通' : character?.name
-  return <StatisticsPanel id={id} title="調整詳細" headerContent={<span className="monthly-statistics-panel-summary">
+  return <StatisticsPanel id={id} title="バトル変更詳細" headerContent={<span className="monthly-statistics-panel-summary">
     {balanceAdjustmentDateLabel(event)}{subject ? ` · ${subject}` : ''}
   </span>}>
     <BalanceAdjustmentDetailContent event={event} patch={patch} status={detailsState.status} scope={scope} />

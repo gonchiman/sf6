@@ -39,7 +39,7 @@ export function BalanceAdjustmentDetailContent({ event, patch, status, scope }: 
 
   const message = status === 'loading' ? '技別内容を読み込み中…'
     : status === 'error' ? '技別内容を読み込めませんでした。'
-      : !patch ? 'この調整の技別内容は未取込です。'
+      : !patch ? 'このバトル変更の技別内容は未取込です。'
         : scope && scope !== COMMON_ADJUSTMENT_SCOPE && !character ? 'このキャラクターの技別内容は未取込です。'
           : character?.status === 'unlisted' ? 'このキャラクターは、この版の公式変更リストに掲載されていません。'
             : subjects.length === 0 ? '確認した変更箇所はありません。' : null

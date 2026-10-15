@@ -13,7 +13,7 @@ export const APP_NAV_ITEMS = [
   { id: 'rank-distribution', label: 'ランク分布', href: '#rank-distribution' },
   { id: 'new-account-observation', label: '新規参入観測', href: '#new-account-observation' },
   { id: 'character-traits', label: 'キャラ分類', href: '#character-traits' },
-  { id: 'balance-adjustments', label: '調整一覧', href: '#balance-adjustments' },
+  { id: 'balance-adjustments', label: 'バトル変更一覧', href: '#balance-adjustments' },
 ] as const
 
 export type NavigationPage = (typeof APP_NAV_ITEMS)[number]['id']

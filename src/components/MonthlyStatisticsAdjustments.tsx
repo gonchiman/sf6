@@ -27,9 +27,9 @@ export function MonthlyStatisticsAdjustments({ selected, catalog, detailsId, mea
         </dl>
       </section>}
     </div>
-    <details className="win-rates-details"><summary>調整日の見方・出典</summary><div className="win-rates-details-content monthly-statistics-data-details">
-      <p>調整日とその種類を表示しています。公式のバトル変更履歴に含まれる不具合修正も表示します。同じ月に複数の変更がある場合は、すべて表示します。</p>
-      <p>月の途中に変更がある場合、その月の{measureLabel}には変更前後のデータが含まれます。統計値は月単位のままで、調整前後には分割していません。</p>
+    <details className="win-rates-details"><summary>変更日の見方・出典</summary><div className="win-rates-details-content monthly-statistics-data-details">
+      <p>変更日とその種類を表示しています。公式のバトル変更履歴に含まれる不具合修正も表示します。同じ月に複数の変更がある場合は、すべて表示します。</p>
+      <p>月の途中に変更がある場合、その月の{measureLabel}には変更前後のデータが含まれます。統計値は月単位のままで、変更前後には分割していません。</p>
       <p>「—」は確認した範囲内に変更履歴がない月、「履歴未確認」は確認範囲外の月です。「リスト日」は公式の変更リストの日付で、実施日を確認できていません。</p>
       {catalog && <dl className="win-rates-source">
         <div><dt>確認範囲</dt><dd>{monthLabel(catalog.coverage.fromMonth)}〜{monthLabel(catalog.coverage.toMonth)}</dd></div>

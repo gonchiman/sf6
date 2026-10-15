@@ -22,9 +22,9 @@ export function BalanceAdjustmentOverviewTable({ events, details, selectedId, de
 }) {
   const { scrollRef, selectedRowRef } = useSelectedRowScroll(events, selectedId, true)
   return <div ref={scrollRef} className="data-table-scroll balance-adjustment-scroll" role="region" tabIndex={0}
-    aria-label="調整日別の履歴・スクロール領域">
+    aria-label="変更日別の履歴・スクロール領域">
     <table className="data-table balance-adjustment-overview-table">
-      <caption className="win-rates-visually-hidden">公式の調整日別履歴と技別内容の収録状況</caption>
+      <caption className="win-rates-visually-hidden">公式の変更日別履歴と技別内容の収録状況</caption>
       <colgroup><col className="balance-adjustment-date-column" /><col /><col /><col /><col className="balance-adjustment-source-column" /></colgroup>
       <thead><tr><th scope="col">日付</th><th scope="col">種別</th><th scope="col">対象</th><th scope="col">技別内容</th><th scope="col">公式</th></tr></thead>
       <tbody>{events.map(event => {
@@ -36,7 +36,7 @@ export function BalanceAdjustmentOverviewTable({ events, details, selectedId, de
         const state = details.status === 'loading' ? '読込中…' : details.status === 'error' ? '読込失敗' : patch ? `${count}項目` : '未取込'
         return <tr key={event.id} ref={event.id === selectedId ? selectedRowRef : undefined} className={event.id === selectedId ? 'is-selected' : undefined}>
           <th scope="row" className="monthly-win-rate-month"><a className="monthly-win-rate-month-button balance-adjustment-detail-link"
-            href={balanceAdjustmentDetailHash(event.id, detailScope)} aria-label={`${balanceAdjustmentDateLabel(event)}の調整詳細を開く`}
+            href={balanceAdjustmentDetailHash(event.id, detailScope)} aria-label={`${balanceAdjustmentDateLabel(event)}のバトル変更詳細を開く`}
             onClick={click => onOpen(click, event.id, detailScope)}>{balanceAdjustmentDateLabel(event)}</a></th>
           <td>{event.kindLabel}</td><td>{target}</td><td>{state}</td>
           <td><a href={event.source.url} target="_blank" rel="noreferrer">変更リスト<span className="win-rates-visually-hidden">（新しいタブ）</span></a></td>
@@ -68,11 +68,11 @@ export function BalanceAdjustmentCharactersTable({ patch, characters, includeCom
   const rows = useMemo(() => [...(commonVisible ? [{ id: COMMON_ADJUSTMENT_SCOPE }] : []), ...characters.map(character => ({ id: character.characterId }))], [commonVisible, characters])
   const { scrollRef, selectedRowRef } = useSelectedRowScroll(rows, selectedScope, true)
   const detailLink = (scope: string, label: string) => <a className="monthly-win-rate-month-button balance-adjustment-detail-link"
-    href={balanceAdjustmentDetailHash(patch.adjustmentId, scope)} aria-label={`${label}の調整詳細を開く`} onClick={click => onOpen(click, scope)}>{label}</a>
+    href={balanceAdjustmentDetailHash(patch.adjustmentId, scope)} aria-label={`${label}のバトル変更詳細を開く`} onClick={click => onOpen(click, scope)}>{label}</a>
   return <div ref={scrollRef} className="data-table-scroll balance-adjustment-scroll" role="region" tabIndex={0}
-    aria-label="共通・キャラ別の調整内容・スクロール領域">
+    aria-label="共通・キャラ別の変更内容・スクロール領域">
     <table className="data-table balance-adjustment-character-table">
-      <caption className="win-rates-visually-hidden">共通調整と各キャラの変更箇所・分類・項目数</caption>
+      <caption className="win-rates-visually-hidden">共通と各キャラの変更箇所・分類・項目数</caption>
       <colgroup><col className="balance-adjustment-character-column" /><col /><col className="balance-adjustment-category-column" /><col className="balance-adjustment-count-column" /><col className="balance-adjustment-source-column" /></colgroup>
       <thead><tr><th scope="col">キャラクター</th><th scope="col">変更箇所</th><th scope="col">分類</th><th scope="col">項目数</th><th scope="col">公式</th></tr></thead>
       <tbody>

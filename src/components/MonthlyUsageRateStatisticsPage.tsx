@@ -204,7 +204,7 @@ export function MonthlyUsageRateStatisticsPage() {
     </StatisticsPanel>
 
     <StatisticsPanel title="テーブル" headerContent={statistics && <span className="monthly-statistics-panel-summary">{statistics.length}リーグ・{rows.length}か月の数値</span>}>
-      {statistics && adjustmentState.status === 'error' && <div className="history-load-error" role="alert"><span>バランス調整の履歴を読み込めませんでした。</span><button type="button" className="win-rates-button" onClick={() => setAdjustmentVersion(version => version + 1)}>調整履歴を再読み込み</button></div>}
+      {statistics && adjustmentState.status === 'error' && <div className="history-load-error" role="alert"><span>バトル変更の履歴を読み込めませんでした。</span><button type="button" className="win-rates-button" onClick={() => setAdjustmentVersion(version => version + 1)}>バトル変更履歴を再読み込み</button></div>}
       {statistics ? <MonthlyStatisticsTable series={statistics} selectedMonth={effectiveSelectedMonth} selectedMetric={metric} onSelect={setSelectedMonth}
         metricDefinitions={MONTHLY_USAGE_STATISTIC_METRICS}
         regionLabel="月別使用率統計・スクロール領域" caption="各月・リーグのキャラ別公式使用率を同じ重みで集計した統計量"

@@ -63,7 +63,7 @@ export function MonthlyStatisticsTable({ series, selectedMonth, onSelect, select
           {metric.label}{metric.unit === '%' ? '（%）' : <span className="monthly-statistics-unit">（{metric.unit}）</span>}
         </th>)}
         <th scope="col">対象／掲載<span className="monthly-statistics-unit">（キャラ数）</span></th>
-        <th scope="col">バランス調整</th>
+        <th scope="col">バトル変更</th>
       </tr></thead>
       <tbody>{rows.map(({ league, row }, index) => <tr key={`${row.month}:${league}`}
         ref={index === firstSelectedRowIndex ? selectedRowRef : undefined}

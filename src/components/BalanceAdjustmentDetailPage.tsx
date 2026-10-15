@@ -107,14 +107,14 @@ export function BalanceAdjustmentDetailPage({ adjustmentId, scope, onScopeChange
     options.push({ value: scope, label: selectedCharacter.name })
   }
 
-  return <section className="balance-adjustments-page balance-adjustment-detail-page" aria-label="調整詳細">
-    <a href="#balance-adjustments" className="win-rates-back-link balance-adjustment-back-link" onClick={onBack}>調整一覧へ戻る</a>
+  return <section className="balance-adjustments-page balance-adjustment-detail-page" aria-label="バトル変更詳細">
+    <a href="#balance-adjustments" className="win-rates-back-link balance-adjustment-back-link" onClick={onBack}>バトル変更一覧へ戻る</a>
     {bootstrap.status === 'loading'
-      ? <DataLoadState loading message="調整履歴と条件を読み込み中…" />
+      ? <DataLoadState loading message="バトル変更履歴と条件を読み込み中…" />
       : bootstrap.status === 'error'
-        ? <DataLoadState message="調整履歴と条件を読み込めませんでした。" onRetry={() => setBootstrapVersion(version => version + 1)} />
+        ? <DataLoadState message="バトル変更履歴と条件を読み込めませんでした。" onRetry={() => setBootstrapVersion(version => version + 1)} />
         : !event
-          ? <StatisticsPanel title="調整詳細"><DataLoadState message="指定された調整履歴は見つかりません。" /></StatisticsPanel>
+          ? <StatisticsPanel title="バトル変更詳細"><DataLoadState message="指定されたバトル変更履歴は見つかりません。" /></StatisticsPanel>
           : <>
             {overview && <BalanceAdjustmentOverview overview={overview} selectedScope={scope} detailsId={detailsPanelId}
               dateLabel={balanceAdjustmentDateLabel(event)} onSelect={selectFromOverview} />}

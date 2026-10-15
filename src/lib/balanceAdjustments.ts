@@ -8,7 +8,7 @@ import type {
 type UnknownRecord = Record<string, unknown>
 
 function invalid(field: string): never {
-  throw new Error(`バランス調整履歴の形式が正しくありません（${field}）。`)
+  throw new Error(`バトル変更履歴の形式が正しくありません（${field}）。`)
 }
 
 function record(value: unknown, field: string): UnknownRecord {
@@ -117,7 +117,7 @@ export function loadBalanceAdjustmentCatalog(): Promise<BalanceAdjustmentCatalog
   const base = import.meta.env?.BASE_URL ?? '/'
   const url = `${base.endsWith('/') ? base : `${base}/`}data/balance-adjustments.json`
   const request = Promise.resolve().then(() => fetch(url)).then(async (response) => {
-    if (!response.ok) throw new Error('バランス調整履歴を読み込めませんでした。もう一度お試しください。')
+    if (!response.ok) throw new Error('バトル変更履歴を読み込めませんでした。もう一度お試しください。')
     return parseBalanceAdjustmentCatalog(await response.json())
   }).catch((cause) => {
     if (catalogRequest === request) catalogRequest = null

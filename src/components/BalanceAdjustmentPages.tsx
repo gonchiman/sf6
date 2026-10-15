@@ -114,7 +114,7 @@ export function BalanceAdjustmentPages({ route, onRouteChange }: {
     onRouteChange()
   }
 
-  return <section className="balance-adjustment-pages" aria-label={detailId === null ? '調整一覧' : '調整詳細'}>
+  return <section className="balance-adjustment-pages" aria-label={detailId === null ? 'バトル変更一覧' : 'バトル変更詳細'}>
     <div ref={listRef} hidden={detailId !== null}>
       {(listVisited || detailId === null) && <BalanceAdjustmentsPage onOpenDetail={openDetail} />}
     </div>

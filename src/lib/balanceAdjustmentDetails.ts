@@ -9,7 +9,7 @@ import type { CharacterManifest } from '../types/characters.ts'
 type UnknownRecord = Record<string, unknown>
 
 function invalid(field: string): never {
-  throw new Error(`バランス調整詳細の形式が正しくありません（${field}）。`)
+  throw new Error(`バトル変更詳細の形式が正しくありません（${field}）。`)
 }
 
 function record(value: unknown, field: string): UnknownRecord {
@@ -155,7 +155,7 @@ export function loadBalanceAdjustmentDetails(
   const url = `${base.endsWith('/') ? base : `${base}/`}data/balance-adjustment-details.json`
   const request = Promise.all([
     Promise.resolve().then(() => fetch(url)).then(async (response) => {
-      if (!response.ok) throw new Error('バランス調整詳細を読み込めませんでした。もう一度お試しください。')
+      if (!response.ok) throw new Error('バトル変更詳細を読み込めませんでした。もう一度お試しください。')
       return response.json() as Promise<unknown>
     }),
     history ? Promise.resolve(history) : loadBalanceAdjustmentCatalog(),

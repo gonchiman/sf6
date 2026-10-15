@@ -68,18 +68,18 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
   useEffect(() => { if (event && event.id !== selectedId) setSelectedId(event.id) }, [event, selectedId])
   useEffect(() => { if (effectiveScope !== selectedScope) setSelectedScope(effectiveScope) }, [effectiveScope, selectedScope])
 
-  if (bootstrap.status === 'loading') return <DataLoadState loading message="調整履歴と条件を読み込み中…" />
-  if (bootstrap.status === 'error' || !catalog || !manifest || !filters) return <DataLoadState message="調整履歴と条件を読み込めませんでした。" onRetry={() => setBootstrapVersion(version => version + 1)} />
+  if (bootstrap.status === 'loading') return <DataLoadState loading message="バトル変更履歴と条件を読み込み中…" />
+  if (bootstrap.status === 'error' || !catalog || !manifest || !filters) return <DataLoadState message="バトル変更履歴と条件を読み込めませんでした。" onRetry={() => setBootstrapVersion(version => version + 1)} />
 
   const months = balanceAdjustmentMonthOptions(catalog)
   const characterName = filters.characterId === 'all' ? '全キャラ' : manifest.characters.find(character => character.id === filters.characterId)?.name ?? filters.characterId
-  const count = view === 'overall' ? `${result.events.length}件の調整履歴` : event
+  const count = view === 'overall' ? `${result.events.length}件のバトル変更履歴` : event
     ? `${balanceAdjustmentDateLabel(event)} · ${patch ? `${characters.length}キャラ${commonVisible ? '・共通' : ''}` : '技別内容 未取込'}` : '—'
   const hasTableData = detailsState.status === 'ready' || !detailsRequired
 
-  return <section className="balance-adjustments-page" aria-label="調整一覧">
+  return <section className="balance-adjustments-page" aria-label="バトル変更一覧">
     <StatisticsPanel title="条件選択" headerContent={<span className="monthly-statistics-panel-summary">{characterName} · {monthLabel(filters.fromMonth)}〜{monthLabel(filters.toMonth)}</span>}>
-      <div className="win-rates-view-selector control-ratio-view-selector" role="group" aria-label="調整一覧の表示">
+      <div className="win-rates-view-selector control-ratio-view-selector" role="group" aria-label="バトル変更一覧の表示">
         {([['overall', '全体'], ['characters', 'キャラ別']] as const).map(([value, label]) => <button key={value} type="button" className="win-rates-button"
           aria-pressed={view === value} aria-controls={`${contentId}-table`} onClick={() => setView(value)}>{label}</button>)}
       </div>
@@ -95,7 +95,7 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
         </select></label>
       </div>
       {view === 'characters' && <div className="win-rates-filters control-ratio-month-filter">
-        <label><span>確認する調整日</span><select aria-label="確認する調整日" value={event?.id ?? ''} disabled={result.events.length === 0 || !hasTableData} onChange={change => setSelectedId(change.target.value)}>
+        <label><span>確認する変更日</span><select aria-label="確認する変更日" value={event?.id ?? ''} disabled={result.events.length === 0 || !hasTableData} onChange={change => setSelectedId(change.target.value)}>
           {result.events.length === 0 && <option value="">—</option>}{result.events.map(item => <option key={item.id} value={item.id}>{balanceAdjustmentDateLabel(item)}</option>)}
         </select></label>
       </div>}
@@ -107,7 +107,7 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
         {detailsRequired && detailsState.status === 'loading' && <DataLoadState loading message="技別内容を読み込み中…" />}
         {hasTableData && <>
           {result.unknownCount > 0 && <p className="balance-adjustment-state" role="status">対象キャラ未確認の{result.unknownCount}件を除外しています。</p>}
-          {result.events.length === 0 ? <p className="balance-adjustment-state" role="status">この条件で確認できる調整履歴はありません。</p>
+          {result.events.length === 0 ? <p className="balance-adjustment-state" role="status">この条件で確認できるバトル変更履歴はありません。</p>
             : view === 'overall' ? <BalanceAdjustmentOverviewTable events={result.events} details={detailsState} selectedId={event?.id ?? null}
               detailScope={filters.characterId === 'all' ? null : filters.characterId} onOpen={(click, id, scope) => {
                 if (click.button === 0 && !click.metaKey && !click.ctrlKey && !click.shiftKey && !click.altKey) setSelectedId(id)
@@ -118,12 +118,12 @@ export function BalanceAdjustmentsPage({ onOpenDetail }: {
                   if (click.button === 0 && !click.metaKey && !click.ctrlKey && !click.shiftKey && !click.altKey) setSelectedScope(scope)
                   onOpenDetail(click, patch.adjustmentId, scope)
                 }} />
-                : <p className="balance-adjustment-state" role="status">この調整の技別内容は未取込です。</p>}
+                : <p className="balance-adjustment-state" role="status">このバトル変更の技別内容は未取込です。</p>}
         </>}
         <details className="win-rates-details"><summary>データの範囲・出典</summary><div className="win-rates-details-content balance-adjustment-detail-content">
           <p>履歴は{monthLabel(catalog.coverage.fromMonth)}〜{monthLabel(catalog.coverage.toMonth)}の公式変更リストを確認しています。実施日を確認できた履歴は実施日、それ以外は「リスト日」と表示します。</p>
           <p>技別内容が未取込の履歴は、対象キャラも未確認として扱います。キャラを絞り込んだ場合は、その件数を表示して一覧から除外します。公式の未掲載、確認した変更なし、読込失敗とは区別します。</p>
-          <p>キャラを絞り込むと、そのキャラ固有の変更が掲載された履歴を表示します。共通調整は「すべて」で確認できます。未掲載は、その版にキャラ固有の記載がないことを表します。</p>
+          <p>キャラを絞り込むと、そのキャラ固有の変更が掲載された履歴を表示します。共通の変更は「すべて」で確認できます。未掲載は、その版にキャラ固有の記載がないことを表します。</p>
           <p>項目数は公式リストの変更内容の行数です。同じ変更箇所でも分類ごとに行が分かれている場合は別項目として数え、一つの行に①②などで複数の変更が書かれている場合は1項目として数えます。分類は公式の「調整」「不具合修正」などを保持しています。</p>
           <p>公式で空欄の変更箇所・分類は「—」で表示します。公式の取消線と強調は「【取消線】〜【/取消線】」「【強調】〜【/強調】」で保持し、後日の訂正や追記も含めて表示します。</p>
           {detailsState.status === 'ready' && <p>技別内容の収録版：{detailsState.catalog.patches.map(item => item.date.replaceAll('-', '/')).join('、') || 'なし'}。</p>}

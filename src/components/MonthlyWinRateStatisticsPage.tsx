@@ -242,8 +242,8 @@ export function MonthlyWinRateStatisticsPage() {
       {statistics.length}リーグ・{rows.length}か月の数値
     </span>}>
       {statistics && adjustmentState.status === 'error' && <div className="history-load-error" role="alert">
-        <span>バランス調整の履歴を読み込めませんでした。</span>
-        <button type="button" className="win-rates-button" onClick={() => setAdjustmentVersion(version => version + 1)}>調整履歴を再読み込み</button>
+        <span>バトル変更の履歴を読み込めませんでした。</span>
+        <button type="button" className="win-rates-button" onClick={() => setAdjustmentVersion(version => version + 1)}>バトル変更履歴を再読み込み</button>
       </div>}
       {statistics ? <MonthlyWinRateStatisticsTable series={statistics} selectedMonth={effectiveSelectedMonth}
         selectedMetric={metric} onSelect={setSelectedMonth} adjustmentState={adjustmentState}
