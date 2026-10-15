@@ -53,7 +53,7 @@ export function isBucklerAuthProbePage(url: string): boolean {
 }
 
 /** DOM polling performs no reloads or background HTTP requests of its own. */
-export async function readBucklerAuthProbePage(page: Page, navigate = true): Promise<BucklerAuthProbeObservation> {
+export async function readBucklerAuthProbePage(page: Page, navigate = true, expectSignedIn = false): Promise<BucklerAuthProbeObservation> {
   try {
     if (navigate) await page.goto(BUCKLER_AUTH_PROBE_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 })
     const deadline = Date.now() + 10_000
@@ -61,8 +61,10 @@ export async function readBucklerAuthProbePage(page: Page, navigate = true): Pro
     do {
       observation = { ...await page.evaluate(observeBucklerAuthDom), pageConfirmed: isBucklerAuthProbePage(page.url()) }
       const status = classifyBucklerAuthProbeObservation(observation).status
-      if (status === 'maintenance' || status === 'login-required'
-        || status === 'signed-in-readable' || status === 'anonymous-readable' || status === 'auth-unconfirmed-readable') return observation
+      // Authentication controls can hydrate after the ranking. Wait within the same
+      // deadline when authentication is expected, retaining the last actual state.
+      if (status === 'maintenance' || status === 'login-required' || status === 'signed-in-readable'
+        || !expectSignedIn && (status === 'anonymous-readable' || status === 'auth-unconfirmed-readable')) return observation
       await delay(250)
     } while (Date.now() < deadline)
     return observation
