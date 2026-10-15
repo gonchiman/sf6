@@ -17,8 +17,12 @@
 .balance-adjustment-overview-table tr.is-selected > *, .balance-adjustment-character-table tr.is-selected > * { background: var(--surface-hover); }
 .balance-adjustment-overview-table tr.is-selected .monthly-win-rate-month-button, .balance-adjustment-character-table tr.is-selected .monthly-win-rate-month-button { color: var(--link); font-weight: 500; box-shadow: inset 3px 0 var(--link); }
 .balance-adjustment-detail-scroll { max-height: min(70vh, 720px); }
-.balance-adjustment-detail-table { min-width: 1000px; table-layout: fixed; }
-.balance-adjustment-detail-character-column { width: 120px; }
+.balance-adjustment-detail-table { min-width: 760px; table-layout: fixed; }
+.balance-adjustment-subjects { min-width: 0; display: grid; gap: 24px; }
+.balance-adjustment-subject { min-width: 0; }
+.balance-adjustment-subject-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 10px; }
+.balance-adjustment-subject-heading h3 { margin: 0; font-size: 14px; font-weight: 500; }
+.balance-adjustment-subject-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: var(--text-muted); font-size: 12px; }
 .balance-adjustment-target-column { width: 250px; }
 .balance-adjustment-detail-table td { text-align: left; overflow-wrap: anywhere; }
 .balance-adjustment-description { white-space: pre-line; overflow-wrap: anywhere; }

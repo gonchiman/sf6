@@ -111,7 +111,6 @@ export function BalanceAdjustmentsPage() {
             : view === 'overall' ? <BalanceAdjustmentOverviewTable events={result.events} details={detailsState} selectedId={event?.id ?? null} detailsId={detailsId} onSelect={setSelectedId} />
               : patch ? <BalanceAdjustmentCharactersTable patch={patch} characters={characters} includeCommon={filters.characterId === 'all'} selectedScope={effectiveScope} detailsId={detailsId} onSelect={setSelectedScope} />
                 : <p className="balance-adjustment-state" role="status">この調整の技別内容は未取込です。</p>}
-          {event && <BalanceAdjustmentDetails event={event} patch={patch} detailsState={detailsState} scope={view === 'overall' ? null : effectiveScope} id={detailsId} />}
         </>}
         <details className="win-rates-details"><summary>データの範囲・出典</summary><div className="win-rates-details-content balance-adjustment-detail-content">
           <p>履歴は{monthLabel(catalog.coverage.fromMonth)}〜{monthLabel(catalog.coverage.toMonth)}の公式変更リストを確認しています。実施日を確認できた履歴は実施日、それ以外は「リスト日」と表示します。</p>
@@ -129,5 +128,7 @@ export function BalanceAdjustmentsPage() {
         </div></details>
       </div>
     </StatisticsPanel>
+    {hasTableData && event && <BalanceAdjustmentDetails event={event} patch={patch} detailsState={detailsState}
+      scope={view === 'overall' && filters.characterId === 'all' ? null : effectiveScope} id={detailsId} />}
   </section>
 }
