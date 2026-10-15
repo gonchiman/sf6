@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, type MouseEvent } from 'react'
 import { useSelectedRowScroll } from '../hooks/useSelectedRowScroll'
 import { balanceAdjustmentPatchDetails } from '../lib/balanceAdjustmentDetails'
+import { balanceAdjustmentDetailHash } from '../lib/routes'
 import type { BalanceAdjustment } from '../types/balanceAdjustments'
 import type { BalanceAdjustmentChange, BalanceAdjustmentCharacterDetails, BalanceAdjustmentDetailsLoadState, BalanceAdjustmentPatchDetails } from '../types/balanceAdjustmentDetails'
 import '../table.css'
@@ -12,12 +13,12 @@ export function balanceAdjustmentDateLabel(event: BalanceAdjustment): string {
   return `${event.date.replaceAll('-', '/')}${event.dateBasis === 'list' ? '（リスト日）' : ''}`
 }
 
-export function BalanceAdjustmentOverviewTable({ events, details, selectedId, detailsId, onSelect }: {
+export function BalanceAdjustmentOverviewTable({ events, details, selectedId, detailScope, onOpen }: {
   events: readonly BalanceAdjustment[]
   details: BalanceAdjustmentDetailsLoadState
   selectedId: string | null
-  detailsId: string
-  onSelect: (id: string) => void
+  detailScope: string | null
+  onOpen: (event: MouseEvent<HTMLAnchorElement>, id: string, scope: string | null) => void
 }) {
   const { scrollRef, selectedRowRef } = useSelectedRowScroll(events, selectedId, true)
   return <div ref={scrollRef} className="data-table-scroll balance-adjustment-scroll" role="region" tabIndex={0}
@@ -34,9 +35,9 @@ export function BalanceAdjustmentOverviewTable({ events, details, selectedId, de
         const count = patch ? patch.common.changes.length + patch.characters.reduce((total, character) => total + character.changes.length, 0) : null
         const state = details.status === 'loading' ? '読込中…' : details.status === 'error' ? '読込失敗' : patch ? `${count}項目` : '未取込'
         return <tr key={event.id} ref={event.id === selectedId ? selectedRowRef : undefined} className={event.id === selectedId ? 'is-selected' : undefined}>
-          <th scope="row" className="monthly-win-rate-month"><button type="button" className="monthly-win-rate-month-button"
-            aria-pressed={event.id === selectedId} aria-controls={detailsId} aria-label={`${balanceAdjustmentDateLabel(event)}の調整を選択`}
-            onClick={() => onSelect(event.id)}>{balanceAdjustmentDateLabel(event)}</button></th>
+          <th scope="row" className="monthly-win-rate-month"><a className="monthly-win-rate-month-button balance-adjustment-detail-link"
+            href={balanceAdjustmentDetailHash(event.id, detailScope)} aria-label={`${balanceAdjustmentDateLabel(event)}の調整詳細を開く`}
+            onClick={click => onOpen(click, event.id, detailScope)}>{balanceAdjustmentDateLabel(event)}</a></th>
           <td>{event.kindLabel}</td><td>{target}</td><td>{state}</td>
           <td><a href={event.source.url} target="_blank" rel="noreferrer">変更リスト<span className="win-rates-visually-hidden">（新しいタブ）</span></a></td>
         </tr>
@@ -56,19 +57,18 @@ function changeCategories(changes: readonly BalanceAdjustmentChange[]): string {
   return [...new Set(changes.flatMap(change => change.categoryLabel.split('・').map(label => label.trim()).filter(Boolean)))].join('・') || '—'
 }
 
-export function BalanceAdjustmentCharactersTable({ patch, characters, includeCommon, selectedScope, detailsId, onSelect }: {
+export function BalanceAdjustmentCharactersTable({ patch, characters, includeCommon, selectedScope, onOpen }: {
   patch: BalanceAdjustmentPatchDetails
   characters: readonly BalanceAdjustmentCharacterDetails[]
   includeCommon: boolean
   selectedScope: string | null
-  detailsId: string
-  onSelect: (scope: string) => void
+  onOpen: (event: MouseEvent<HTMLAnchorElement>, scope: string) => void
 }) {
   const commonVisible = includeCommon && (patch.common.changes.length > 0 || patch.common.policy.length > 0)
   const rows = useMemo(() => [...(commonVisible ? [{ id: COMMON_ADJUSTMENT_SCOPE }] : []), ...characters.map(character => ({ id: character.characterId }))], [commonVisible, characters])
   const { scrollRef, selectedRowRef } = useSelectedRowScroll(rows, selectedScope, true)
-  const selectButton = (scope: string, label: string) => <button type="button" className="monthly-win-rate-month-button"
-    aria-pressed={selectedScope === scope} aria-controls={detailsId} aria-label={`${label}の調整を選択`} onClick={() => onSelect(scope)}>{label}</button>
+  const detailLink = (scope: string, label: string) => <a className="monthly-win-rate-month-button balance-adjustment-detail-link"
+    href={balanceAdjustmentDetailHash(patch.adjustmentId, scope)} aria-label={`${label}の調整詳細を開く`} onClick={click => onOpen(click, scope)}>{label}</a>
   return <div ref={scrollRef} className="data-table-scroll balance-adjustment-scroll" role="region" tabIndex={0}
     aria-label="共通・キャラ別の調整内容・スクロール領域">
     <table className="data-table balance-adjustment-character-table">
@@ -77,14 +77,14 @@ export function BalanceAdjustmentCharactersTable({ patch, characters, includeCom
       <thead><tr><th scope="col">キャラクター</th><th scope="col">変更箇所</th><th scope="col">分類</th><th scope="col">項目数</th><th scope="col">公式</th></tr></thead>
       <tbody>
         {commonVisible && <tr ref={selectedScope === COMMON_ADJUSTMENT_SCOPE ? selectedRowRef : undefined} className={selectedScope === COMMON_ADJUSTMENT_SCOPE ? 'is-selected' : undefined}>
-          <th scope="row" className="monthly-win-rate-month">{selectButton(COMMON_ADJUSTMENT_SCOPE, '共通')}</th>
+          <th scope="row" className="monthly-win-rate-month">{detailLink(COMMON_ADJUSTMENT_SCOPE, '共通')}</th>
           <td>{patch.common.changes.map(change => change.target || '—').join('、') || '調整方針'}</td>
           <td>{changeCategories(patch.common.changes)}</td>
           <td className="balance-adjustment-count">{patch.common.changes.length}</td><td><a href={patch.source.url} target="_blank" rel="noreferrer">変更リスト<span className="win-rates-visually-hidden">（新しいタブ）</span></a></td>
         </tr>}
         {characters.map(character => <tr key={character.characterId} ref={selectedScope === character.characterId ? selectedRowRef : undefined}
           className={selectedScope === character.characterId ? 'is-selected' : undefined}>
-          <th scope="row" className="monthly-win-rate-month">{selectButton(character.characterId, character.name)}</th>
+          <th scope="row" className="monthly-win-rate-month">{detailLink(character.characterId, character.name)}</th>
           <td>{changeTargets(character)}</td><td>{character.status === 'unlisted' ? '—' : changeCategories(character.changes)}</td>
           <td className="balance-adjustment-count">{character.status === 'unlisted' ? '—' : character.changes.length}</td>
           <td>{character.source ? <a href={character.source.url} target="_blank" rel="noreferrer">変更リスト<span className="win-rates-visually-hidden">（新しいタブ）</span></a> : '—'}</td>

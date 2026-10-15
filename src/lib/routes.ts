@@ -12,9 +12,15 @@ export type AppRoute =
   | { page: 'characters'; characterId: string | null }
   | { page: 'character-traits' }
   | { page: 'balance-adjustments' }
+  | { page: 'balance-adjustment-detail'; adjustmentId: string; scope: string | null }
 
 export function characterHash(characterId: string): string {
   return `#characters/${encodeURIComponent(characterId)}`
+}
+
+export function balanceAdjustmentDetailHash(adjustmentId: string, scope: string | null = null): string {
+  const base = `#balance-adjustments/${encodeURIComponent(adjustmentId)}`
+  return scope ? `${base}?scope=${encodeURIComponent(scope)}` : base
 }
 
 export function parseHashRoute(hash: string): AppRoute {
@@ -26,6 +32,18 @@ export function parseHashRoute(hash: string): AppRoute {
   }
   if (hash === '#balance-adjustments' || hash === '#balance-adjustments/') {
     return { page: 'balance-adjustments' }
+  }
+  const adjustmentDetail = /^#balance-adjustments\/([^/?#]+)(?:\?([^#]*))?$/.exec(hash)
+  if (adjustmentDetail) {
+    const encodedId = adjustmentDetail[1]
+    let adjustmentId: string
+    try {
+      adjustmentId = decodeURIComponent(encodedId)
+    } catch {
+      adjustmentId = encodedId
+    }
+    const scope = new URLSearchParams(adjustmentDetail[2]).get('scope') || null
+    return { page: 'balance-adjustment-detail', adjustmentId, scope }
   }
   if (hash === '#usage-rates' || hash === '#usage-rates/') {
     return { page: 'usage-rates' }

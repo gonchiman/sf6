@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { characterHash, parseHashRoute } from './routes.ts'
+import { balanceAdjustmentDetailHash, characterHash, parseHashRoute } from './routes.ts'
 
 test('勝率と使用率の相関ページの直接URLを区別する', () => {
   assert.deepEqual(parseHashRoute('#win-usage-correlation'), { page: 'win-usage-correlation' })
@@ -46,7 +46,45 @@ test('操作タイプ比率の直接URLを独立したページとして読み�
 test('調整一覧の直接URLを独立したページとして読み取る', () => {
   assert.deepEqual(parseHashRoute('#balance-adjustments'), { page: 'balance-adjustments' })
   assert.deepEqual(parseHashRoute('#balance-adjustments/'), { page: 'balance-adjustments' })
-  assert.deepEqual(parseHashRoute('#balance-adjustments/unknown'), { page: 'win-rates' })
+})
+
+test('調整詳細のURLは日付ではなく調整IDを保持し、不明IDも詳細ページで扱う', () => {
+  for (const adjustmentId of ['battle-change-202405', 'unknown', '同日/別の調整']) {
+    assert.deepEqual(parseHashRoute(balanceAdjustmentDetailHash(adjustmentId)), {
+      page: 'balance-adjustment-detail', adjustmentId, scope: null,
+    })
+  }
+  assert.equal(balanceAdjustmentDetailHash('battle-change-202405'), '#balance-adjustments/battle-change-202405')
+})
+
+test('調整詳細は共通・キャラの表示対象をURLで往復し、すべての表示ではqueryを省く', () => {
+  for (const scope of ['__common__', 'ryu', '名前/複合 &+']) {
+    const hash = balanceAdjustmentDetailHash('調整/ID', scope)
+    assert.deepEqual(parseHashRoute(hash), {
+      page: 'balance-adjustment-detail', adjustmentId: '調整/ID', scope,
+    })
+  }
+  assert.equal(balanceAdjustmentDetailHash('event', '__common__'), '#balance-adjustments/event?scope=__common__')
+  assert.equal(balanceAdjustmentDetailHash('event', null), '#balance-adjustments/event')
+  assert.equal(balanceAdjustmentDetailHash('event', ''), '#balance-adjustments/event')
+  assert.deepEqual(parseHashRoute('#balance-adjustments/event?scope='), {
+    page: 'balance-adjustment-detail', adjustmentId: 'event', scope: null,
+  })
+})
+
+test('壊れたpercentの調整ID・対象でもURL解析は落ちず、余計なパスは受け入れない', () => {
+  assert.deepEqual(parseHashRoute('#balance-adjustments/%?scope=%'), {
+    page: 'balance-adjustment-detail', adjustmentId: '%', scope: '%',
+  })
+  for (const hash of [
+    '#balance-adjustments/event/extra',
+    '#balance-adjustments//event',
+    '#balance-adjustments/?scope=ryu',
+    '#balance-adjustments-invalid/event',
+    '#balance-adjustments/event#extra',
+  ]) {
+    assert.deepEqual(parseHashRoute(hash), { page: 'win-rates' })
+  }
 })
 
 test('使用率の直接URLを独立したページとして読み取り、壊れたURLを混ぜない', () => {

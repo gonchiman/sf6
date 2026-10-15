@@ -1,4 +1,22 @@
 .balance-adjustments-page { min-width: 0; display: grid; gap: 16px; }
+.balance-adjustment-pages, .balance-adjustment-pages > div { min-width: 0; }
+.balance-adjustment-detail-page { min-width: 0; display: grid; gap: 16px; }
+.balance-adjustment-detail-link { text-decoration: none; }
+.balance-adjustment-detail-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.balance-adjustment-back-link { justify-self: start; text-underline-offset: 3px; }
+.balance-adjustment-scope-filter { margin-bottom: 20px; }
+.balance-adjustment-content-panel { min-width: 0; scroll-margin-top: 16px; }
+.balance-adjustment-matrix-scroll { max-height: min(70vh, 720px); }
+.balance-adjustment-matrix-table { min-width: 600px; table-layout: fixed; }
+.balance-adjustment-matrix-category-column { width: 144px; }
+.balance-adjustment-matrix-table th.monthly-win-rate-month { padding: 0; }
+.balance-adjustment-matrix-table .balance-adjustment-matrix-number { text-align: right; }
+.balance-adjustment-matrix-table tr > :first-child { position: sticky; left: 0; z-index: 1; }
+.balance-adjustment-matrix-table thead tr > :first-child { z-index: 3; }
+.balance-adjustment-matrix-table tr.is-selected > * { background: var(--surface-hover); }
+.balance-adjustment-matrix-table tr.is-selected .monthly-win-rate-month-button { color: var(--link); font-weight: 500; box-shadow: inset 3px 0 var(--link); }
+.balance-adjustment-matrix-table tfoot th, .balance-adjustment-matrix-table tfoot td { position: sticky; bottom: 0; z-index: 2; border-top: 1px solid var(--border); border-bottom: 0; background: var(--surface-soft); font-weight: 500; }
+.balance-adjustment-matrix-table tfoot tr > :first-child { z-index: 3; }
 .balance-adjustment-table-content, .balance-adjustment-detail-content { min-width: 0; display: grid; gap: 14px; }
 .balance-adjustment-state { margin: 0; color: var(--text-muted); font-size: 13px; }
 .balance-adjustment-scroll, .balance-adjustment-detail-scroll { position: relative; }
@@ -32,4 +50,7 @@
 @media (max-width: 640px) {
   .balance-adjustment-scroll { scroll-padding-left: 140px; }
   .balance-adjustment-date-column, .balance-adjustment-character-column { width: 140px; }
+}
+@media (max-width: 1140px) {
+  .balance-adjustment-content-panel { scroll-margin-top: 68px; }
 }

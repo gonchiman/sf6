@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { CharactersPage } from './components/CharactersPage'
 import { CharacterTraitsPage } from './components/CharacterTraitsPage'
@@ -10,7 +10,7 @@ import { MonthlyUsageRateStatisticsPage } from './components/MonthlyUsageRateSta
 import { WinUsageCorrelationPage } from './components/WinUsageCorrelationPage'
 import { ExpectedMatchesPage } from './components/ExpectedMatchesPage'
 import { ControlTypeRatioPage } from './components/ControlTypeRatioPage'
-import { BalanceAdjustmentsPage } from './components/BalanceAdjustmentsPage'
+import { BalanceAdjustmentPages } from './components/BalanceAdjustmentPages'
 import { RankDistributionPage } from './components/RankDistributionPage'
 import { NewAccountObservationPage } from './components/NewAccountObservationPage'
 import { characterHash, parseHashRoute } from './lib/routes'
@@ -18,6 +18,7 @@ import './App.css'
 
 export default function App() {
   const [route, setRoute] = useState(() => parseHashRoute(window.location.hash))
+  const updateRoute = useCallback(() => setRoute(parseHashRoute(window.location.hash)), [])
 
   useEffect(() => {
     const onHashChange = () => setRoute(parseHashRoute(window.location.hash))
@@ -26,7 +27,7 @@ export default function App() {
   }, [])
 
   return (
-    <AppShell activePage={route.page} title={route.page === 'win-usage-correlation' ? '勝率と使用率' : route.page === 'usage-rates' ? '使用率' : route.page === 'expected-matches' ? 'マスターまでの期待試合数' : route.page === 'characters' ? 'キャラ情報' : route.page === 'character-traits' ? 'キャラ分類' : route.page === 'win-rate-history' ? '勝率推移' : route.page === 'monthly-win-rate-statistics' ? '月別勝率統計' : route.page === 'monthly-usage-rate-statistics' ? '月別使用率統計' : route.page === 'control-type-ratio' ? '操作タイプ比率（推定）' : route.page === 'rank-distribution' ? 'ランク分布' : route.page === 'new-account-observation' ? '新規参入観測' : route.page === 'balance-adjustments' ? '調整一覧' : '勝率'}>
+    <AppShell activePage={route.page === 'balance-adjustment-detail' ? 'balance-adjustments' : route.page} title={route.page === 'win-usage-correlation' ? '勝率と使用率' : route.page === 'balance-adjustment-detail' ? '調整詳細' : route.page === 'usage-rates' ? '使用率' : route.page === 'expected-matches' ? 'マスターまでの期待試合数' : route.page === 'characters' ? 'キャラ情報' : route.page === 'character-traits' ? 'キャラ分類' : route.page === 'win-rate-history' ? '勝率推移' : route.page === 'monthly-win-rate-statistics' ? '月別勝率統計' : route.page === 'monthly-usage-rate-statistics' ? '月別使用率統計' : route.page === 'control-type-ratio' ? '操作タイプ比率（推定）' : route.page === 'rank-distribution' ? 'ランク分布' : route.page === 'new-account-observation' ? '新規参入観測' : route.page === 'balance-adjustments' ? '調整一覧' : '勝率'}>
       {route.page === 'characters'
         ? <CharactersPage characterId={route.characterId} onCharacterChange={(id) => { window.location.hash = characterHash(id) }} />
         : route.page === 'character-traits' ? <CharacterTraitsPage />
@@ -39,7 +40,7 @@ export default function App() {
                   : route.page === 'usage-rates' ? <UsageRatesPage />
                     : route.page === 'rank-distribution' ? <RankDistributionPage />
                       : route.page === 'new-account-observation' ? <NewAccountObservationPage />
-                        : route.page === 'balance-adjustments' ? <BalanceAdjustmentsPage /> : <WinRatesPage />}
+                        : route.page === 'balance-adjustments' || route.page === 'balance-adjustment-detail' ? <BalanceAdjustmentPages route={route} onRouteChange={updateRoute} /> : <WinRatesPage />}
     </AppShell>
   )
 }
