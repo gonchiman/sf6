@@ -164,11 +164,11 @@ export function UsageRatesPage() {
         {months.map(month => <option value={month} key={month}>{monthLabel(month)}</option>)}
       </select></label>}
       {view === 'rank' && <div className="win-rates-league-summary"><span>リーグ</span><strong>{edition === 'general' ? `全体＋${leagues.length - 1}リーグ` : `全${leagues.length}リーグ`}</strong></div>}
-      <label><span>操作タイプ</span><select aria-label="操作タイプ" value={selection.operationMode}
+      {view === 'rank' && <label><span>操作タイプ</span><select aria-label="操作タイプ" value={selection.operationMode}
         disabled={operationModes.length === 1}
         onChange={event => setPreferredSelection(previous => ({ ...previous, operationMode: event.target.value as LeagueUsageRateSelection['operationMode'] }))}>
         {operationModes.map(mode => <option value={mode} key={mode}>{OPERATION_LABELS[mode]}</option>)}
-      </select></label>
+      </select></label>}
       {view === 'history' && <UsageRateHistoryPeriodFilters manifest={manifest} edition={edition}
         selection={historySelection} onChange={setHistoryPreferred} />}
     </div>
@@ -178,9 +178,8 @@ export function UsageRatesPage() {
     </div>}
     <div id={`${viewId}-history`} hidden={view !== 'history'}>
       {hasViewedHistory && <UsageRateHistoryView active={view === 'history'} manifest={manifest} edition={edition}
-        selection={historySelection} onSelectionChange={setHistoryPreferred}
-        operationMode={selection.operationMode} character={selectedCharacter} characters={chartCharacters}
-        onCharacterChange={chooseCharacter} />}
+        selection={historySelection}
+        operationMode={selection.operationMode} character={selectedCharacter} characters={chartCharacters} />}
     </div>
     <div id={`${viewId}-rank`} hidden={view !== 'rank'}>
     <div className="usage-rates-rank-view">

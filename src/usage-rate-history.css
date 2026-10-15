@@ -9,7 +9,37 @@
 .usage-rate-history-view .usage-rate-history-table > summary { background: var(--surface-soft); padding: 12px 16px; }
 .usage-rate-history-table-body { min-width: 0; padding: 16px; }
 .usage-rate-baseline-key line { vector-effect: non-scaling-stroke; }
+.usage-rate-comparison-legend > li { min-width: 0; max-width: 100%; align-items: flex-start; }
+.usage-rate-comparison-legend > li > span { min-width: 0; overflow-wrap: anywhere; }
+.usage-rate-comparison-table .history-table-character { align-items: flex-start; white-space: normal; }
+.usage-rate-comparison-table .history-table-character > span { overflow-wrap: anywhere; }
+.usage-rate-series-editor { min-width: 0; }
+.usage-rate-series-row {
+  min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end; gap: 12px; padding: 12px 0;
+}
+.usage-rate-series-row:first-child { padding-top: 0; }
+.usage-rate-series-row + .usage-rate-series-row { border-top: 1px solid var(--border); }
+.usage-rate-series-number { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; white-space: nowrap; font-size: 12px; }
+.usage-rate-series-row label { min-width: 0; display: grid; gap: 6px; color: var(--text-soft); font-size: 12px; }
+.usage-rate-series-row select {
+  width: 100%; min-width: 0; max-width: 100%; min-height: 36px; padding: 6px 28px 6px 10px;
+  border: 1px solid var(--border-strong); border-radius: 0; background: var(--surface); color: var(--text);
+}
+.usage-rate-series-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
+.usage-rate-series-error { font-size: 12px; color: var(--text-soft); }
+.usage-rate-series-editor .win-rates-button:disabled { color: var(--text-muted); opacity: .55; cursor: default; background: var(--surface); }
+.usage-rate-series-row select:disabled { color: var(--text-muted); background: var(--surface-soft); }
 
 @media (max-width: 640px) {
   .usage-rate-history-view .usage-rate-history-table > summary, .usage-rate-history-table-body { padding: 12px; }
+  .usage-rate-series-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .usage-rate-series-number { grid-column: 1 / -1; min-height: auto; }
+  .usage-rate-series-character { grid-column: 1 / -1; }
+  .usage-rate-series-remove { grid-column: 1 / -1; justify-self: end; }
+  .usage-rate-series-row select { min-height: 44px; font-size: 16px; }
+}
+
+@media (pointer: coarse) {
+  .usage-rate-series-row select, .usage-rate-series-remove, .usage-rate-series-actions button { min-height: 44px; }
 }

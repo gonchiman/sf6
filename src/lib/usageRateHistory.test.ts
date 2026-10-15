@@ -194,17 +194,17 @@ function fullCalendarManifest(): UsageRateManifest {
   ])
 }
 
-test('conditions default to MASTER and the latest twelve calendar months and keep each edition calendar separate', () => {
+test('conditions default to MASTER and the earliest through latest calendar months of each edition', () => {
   const input = fullCalendarManifest()
   assert.deepEqual(selectUsageRateHistoryConditions(input, 'general'), {
-    edition: 'general', league: 'MASTER', fromMonth: '2025-10', toMonth: '2026-09',
+    edition: 'general', league: 'MASTER', fromMonth: '2023-06', toMonth: '2026-09',
   })
   assert.deepEqual(selectUsageRateHistoryConditions(input, 'master'), {
-    edition: 'master', league: 'MASTER', fromMonth: '2025-10', toMonth: '2026-09',
+    edition: 'master', league: 'MASTER', fromMonth: '2025-02', toMonth: '2026-09',
   })
   assert.equal(selectUsageRateHistoryConditions(manifest(), 'master'), null)
   const sparse = manifest([descriptor('2025-01'), descriptor('2026-09')])
-  assert.equal(selectUsageRateHistoryConditions(sparse, 'general')!.fromMonth, '2025-10')
+  assert.equal(selectUsageRateHistoryConditions(sparse, 'general')!.fromMonth, '2025-01')
 })
 
 test('valid history ranges survive condition changes, partial overlap clamps, and fully unavailable ranges reset', () => {
@@ -223,7 +223,7 @@ test('valid history ranges survive condition changes, partial overlap clamps, an
     { fromMonth: '2027-01', toMonth: '2027-06' },
     { fromMonth: '2026-09', toMonth: '2025-02' },
   ]) assert.deepEqual(selectUsageRateHistoryConditions(input, 'master', unavailable), {
-    edition: 'master', league: 'MASTER', fromMonth: '2025-10', toMonth: '2026-09',
+    edition: 'master', league: 'MASTER', fromMonth: '2025-02', toMonth: '2026-09',
   })
   assert.deepEqual(preferred, before)
 })

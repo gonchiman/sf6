@@ -29,11 +29,10 @@ export function selectUsageRateHistoryConditions(
   if (!months.length) return null
   const first = months[0]
   const last = months.at(-1)!
-  const defaultFrom = months[Math.max(0, months.length - 12)]
-  let fromMonth = validMonth(preferred.fromMonth) ? preferred.fromMonth : defaultFrom
+  let fromMonth = validMonth(preferred.fromMonth) ? preferred.fromMonth : first
   let toMonth = validMonth(preferred.toMonth) ? preferred.toMonth : last
   if (fromMonth > toMonth || toMonth < first || fromMonth > last) {
-    fromMonth = defaultFrom
+    fromMonth = first
     toMonth = last
   } else {
     fromMonth = fromMonth < first ? first : fromMonth

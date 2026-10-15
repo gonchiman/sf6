@@ -70,6 +70,19 @@ const style = leagueSeriesStyle(series.league)
 - [全キャラの勝率比較グラフ](../../src/components/CharacterWinRateComparisonChart.tsx) も同じ操作タイプ定義と表示範囲の処理を使う。全キャラを表示し、棒からキャラを選択しない。勝率順でもC／Mの対応を変えない。
 - 操作タイプ別ではC・Mと凡例を併記する。欠損には棒を描かず状態を表示し、0%とは区別する。
 
+## 月別使用率の条件別系列
+
+- [使用率の系列色定義](../../src/lib/usageRateComparisonColors.ts) の `usageRateComparisonStyle(colorSlot)` が、編集可能な各系列に割り当てる6色と実線・丸い点を管理する。色はキャラや操作タイプの固定色ではなく、条件行を識別するための色とする。凡例・表ではキャラ名・リーグ・操作タイプを必ず併記する。
+- 各条件行は不変の行IDと `colorSlot` を保持する。条件の編集・他行の追加や削除・表示順の変更で既存行の色を変えない。追加時だけ空いているスロットを使い、未知のスロットは専用のグレーに戻す。
+- [系列編集](../../src/components/UsageRateSeriesEditor.tsx)、[グラフと系列見本](../../src/components/UsageRateHistoryChart.tsx)、[月別表](../../src/components/MonthlyUsageRateTable.tsx) は同じ定義を使う。均等基準は操作可能な系列とは別に、灰色の点線1本で表示する。
+- [月別使用率ページ](../../src/components/UsageRateHistoryView.tsx) を実装の見本とする。複数条件を追加し、編集・削除後も残った系列の色が変わらず、グラフ・凡例・選択月の値・表の見本が一致することを確認する。画像出力は未実装。
+- 更新時は [配色テスト](../../src/lib/usageRateComparisonColors.test.ts) とビルドを実行し、固定対応、未知スロットの分離、白背景とのコントラスト3:1以上を確認する。キャラ・リーグ共通色の定義と配色見本SVGは変更しない。
+
+```ts
+const style = usageRateComparisonStyle(row.colorSlot)
+// グラフ・系列見本・条件行に同じstyleを渡す。
+```
+
 ## 見本の再生成と確認
 
 プロジェクトルートで実行する。Node.jsの対応バージョンは [package.json](../../package.json) に従う。
