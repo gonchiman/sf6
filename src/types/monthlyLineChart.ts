@@ -20,3 +20,14 @@ export interface MonthlyLineChartAxis {
   readonly end: number
   readonly ticks: readonly number[]
 }
+
+/** A monthly reference is drawn independently of measured series, without point markers. */
+export interface MonthlyLineChartReferenceSeries {
+  readonly id: string
+  readonly label: string
+  readonly points: readonly MonthlyLineChartPoint[]
+  readonly style: {
+    readonly color: string
+    readonly dashArray?: string
+  }
+}

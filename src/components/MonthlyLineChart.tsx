@@ -2,9 +2,9 @@ import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } fro
 import { monthLabel } from '../lib/winRateHistory'
 import {
   hasMonthlyChartValue, MONTHLY_LINE_CHART_LAYOUT, monthlyChartCoordinates,
-  monthlyChartLabelIndices, monthlyChartMonths, monthlyChartSegments,
+  monthlyChartLabelIndices, monthlyChartMonths, monthlyChartReferenceSegments, monthlyChartSegments,
 } from '../lib/monthlyLineChart'
-import type { MonthlyLineChartAxis, MonthlyLineChartSeries } from '../types/monthlyLineChart'
+import type { MonthlyLineChartAxis, MonthlyLineChartReferenceSeries, MonthlyLineChartSeries } from '../types/monthlyLineChart'
 import { SeriesMarker } from './CharacterSeriesKey'
 import '../monthly-line-chart.css'
 
@@ -20,13 +20,14 @@ type Props = {
   formatTick: (value: number) => string
   valueLabel: (seriesId: string, month: string) => string
   reference?: { value: number; label: string }
+  referenceSeries?: MonthlyLineChartReferenceSeries
   legend?: ReactNode
 }
 
 /** Shared monthly SVG rendering; its callers supply statistical meaning, units, colors and legends. */
 export function MonthlyLineChart({
   series, selectedMonth, onSelect, title, description, regionLabel, axisLabel, axis,
-  formatTick, valueLabel, reference, legend,
+  formatTick, valueLabel, reference, referenceSeries, legend,
 }: Props) {
   const titleId = useId()
   const descriptionId = useId()
@@ -51,6 +52,8 @@ export function MonthlyLineChart({
   const renderedSeries = series.map(item => ({
     ...item, segments: monthlyChartSegments(item.points, x, y), numericPoints: item.points.filter(hasMonthlyChartValue),
   }))
+  const referenceSegments = referenceSeries
+    ? monthlyChartReferenceSegments(referenceSeries.points, months, x, y, { left, right }) : []
   const monthValues = (month: string) => series.map(item => `${item.label} ${valueLabel(item.id, month)}`).join('、')
   const hasSelection = months.includes(selectedMonth)
   const selectionDescription = hasSelection ? `選択中は${monthLabel(selectedMonth)}、${monthValues(selectedMonth)}。` : ''
@@ -91,6 +94,10 @@ export function MonthlyLineChart({
             </text>
           </g>)}
           <path className="monthly-line-chart-axis win-rate-history-axis" d={`M ${left} ${top} V ${bottom} H ${right}`} />
+          {referenceSeries && <g data-chart-reference={referenceSeries.id} aria-label={referenceSeries.label}>
+            {referenceSegments.map((path, index) => <path key={index} className="monthly-line-chart-reference-series"
+              d={path} style={{ stroke: referenceSeries.style.color }} strokeDasharray={referenceSeries.style.dashArray} />)}
+          </g>}
           {hasSelection && <line className="monthly-line-chart-selection-guide win-rate-history-selection-guide" x1={x(selectedMonth)} x2={x(selectedMonth)}
             y1={top} y2={bottom} />}
           {renderedSeries.map(item => <g key={item.id} data-chart-series={item.id} data-history-character={item.id}>

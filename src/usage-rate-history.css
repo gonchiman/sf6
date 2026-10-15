@@ -8,6 +8,7 @@
 .usage-rate-history-view .usage-rate-history-table { margin: 0; border: 1px solid var(--border); }
 .usage-rate-history-view .usage-rate-history-table > summary { background: var(--surface-soft); padding: 12px 16px; }
 .usage-rate-history-table-body { min-width: 0; padding: 16px; }
+.usage-rate-baseline-key line { vector-effect: non-scaling-stroke; }
 
 @media (max-width: 640px) {
   .usage-rate-history-view .usage-rate-history-table > summary, .usage-rate-history-table-body { padding: 12px; }

@@ -96,3 +96,28 @@ export function monthlyChartSegments(
   }
   return segments
 }
+
+/** Each reference applies to a whole month; unknown months remain gaps, including single-month ranges. */
+export function monthlyChartReferenceSegments(
+  points: readonly MonthlyLineChartPoint[], months: readonly string[],
+  x: (month: string) => number, y: (value: number) => number,
+  bounds: { left: number; right: number },
+): string[] {
+  const byMonth = new Map(points.map(point => [point.month, point]))
+  const segments: string[] = []
+  let previousValue: number | null = null
+  for (let index = 0; index < months.length; index += 1) {
+    const point = byMonth.get(months[index])
+    if (!point || !hasMonthlyChartValue(point)) {
+      previousValue = null
+      continue
+    }
+    const left = index === 0 ? bounds.left : (x(months[index - 1]) + x(months[index])) / 2
+    const right = index === months.length - 1 ? bounds.right : (x(months[index]) + x(months[index + 1])) / 2
+    const coordinate = y(point.value)
+    if (previousValue === null) segments.push(`M ${left} ${coordinate} H ${right}`)
+    else segments[segments.length - 1] += `${previousValue === point.value ? '' : ` V ${coordinate}`} H ${right}`
+    previousValue = point.value
+  }
+  return segments
+}

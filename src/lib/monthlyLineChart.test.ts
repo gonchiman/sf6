@@ -2,13 +2,44 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   hasMonthlyChartValue, MONTHLY_LINE_CHART_LAYOUT, monthlyChartCoordinates,
-  monthlyChartLabelIndices, monthlyChartMonths, monthlyChartSegments, monthlyPercentAxis,
+  monthlyChartLabelIndices, monthlyChartMonths, monthlyChartReferenceSegments, monthlyChartSegments, monthlyPercentAxis,
 } from './monthlyLineChart.ts'
 import type { MonthlyLineChartPoint, MonthlyLineChartSeries } from '../types/monthlyLineChart.ts'
 
 function series(points: readonly MonthlyLineChartPoint[], id = 'metric'): MonthlyLineChartSeries {
   return { id, label: id, points, style: { color: '#245ea8', marker: 'circle' } }
 }
+
+test('月別の参照値は月区間いっぱいに描き、変化を月の間の段差として描く', () => {
+  const months = ['2026-01', '2026-02', '2026-03']
+  const points = [{ month: months[0], value: 100 / 28 }, { month: months[1], value: 100 / 29 },
+    { month: months[2], value: 100 / 29 }]
+  const original = structuredClone(points)
+  const x = (month: string) => months.indexOf(month) * 100
+  const y = (value: number) => value * 10
+  assert.deepEqual(monthlyChartReferenceSegments(points, months, x, y, { left: 0, right: 200 }),
+    [`M 0 ${(100 / 28) * 10} H 50 V ${(100 / 29) * 10} H 150 H 200`])
+  assert.deepEqual(points, original)
+  assert.deepEqual(monthlyChartReferenceSegments([...points].reverse(), months, x, y, { left: 0, right: 200 }),
+    monthlyChartReferenceSegments(points, months, x, y, { left: 0, right: 200 }))
+})
+
+test('月別の参照は0を保持し、欠損・非有限値・飛び月をつながず範囲外の月も描かない', () => {
+  const months = ['2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05']
+  const x = (month: string) => months.indexOf(month) * 10
+  const points = [{ month: months[0], value: 0 }, { month: months[1], value: null },
+    { month: months[2], value: Number.NaN }, { month: months[3], value: 3 },
+    { month: months[5], value: 5 }, { month: '2026-06', value: 6 }]
+  assert.deepEqual(monthlyChartReferenceSegments(points, months, x, value => value, { left: 0, right: 50 }),
+    ['M 0 0 H 5', 'M 25 3 H 35', 'M 45 5 H 50'])
+  assert.deepEqual(monthlyChartReferenceSegments([], months, x, value => value, { left: 0, right: 50 }), [])
+})
+
+test('単月の参照は中央の点ではなくグラフ全幅の水平線になる', () => {
+  const months = ['2026-09']
+  assert.deepEqual(monthlyChartReferenceSegments([{ month: months[0], value: 100 / 31 }], months,
+    () => 144, value => value, { left: 48, right: 240 }), [`M 48 ${100 / 31} H 240`])
+})
 
 test('複数系列の暦月をそろえ、全系列にない月の位置も残す', () => {
   const input = [

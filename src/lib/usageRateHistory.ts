@@ -73,11 +73,12 @@ type PreparedMonth =
   | { month: string; status: 'ready'; dataset: UsageRateDataset }
 
 /** Reject stale, duplicated or injected observations before they can contribute a published value. */
-function prepareHistory(
-  manifest: UsageRateManifest,
+export function prepareUsageRateHistory(
+  value: UsageRateManifest,
   selection: UsageRateHistorySelection,
   results: readonly UsageRateHistoryResult[],
 ): PreparedMonth[] {
+  const manifest = parseUsageRateManifest(value)
   const descriptors = selectedDescriptors(manifest, selection)
   const byMonth = new Map<string, UsageRateHistoryResult[]>()
   for (const result of results) {
@@ -130,12 +131,11 @@ export function createCharacterUsageRateHistory(
   operationMode: UsageRateHistoryOperationMode,
   results: readonly UsageRateHistoryResult[],
 ): CharacterUsageRateHistory {
-  const manifest = parseUsageRateManifest(value)
   const edition = usageRateEditionOf(selection)
   usageRateSelectedMonths(selection)
   if (!USAGE_RATE_EDITION_OPERATION_MODES[edition].includes(operationMode)) throw new Error('操作タイプの指定が正しくありません。')
   const selected = { edition, league: selection.league, fromMonth: selection.fromMonth, toMonth: selection.toMonth }
-  const prepared = prepareHistory(manifest, selected, results)
+  const prepared = prepareUsageRateHistory(value, selected, results)
   const controls: UsageRateHistoryControlType[] = operationMode === 'combined' ? ['combined'] : ['classic', 'modern']
   return {
     selection: selected, characterId: character.characterId, characterName: character.name, operationMode,

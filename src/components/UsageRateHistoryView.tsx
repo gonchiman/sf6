@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { controlTypeBarStyle } from '../lib/controlTypeBarStyles'
 import { timestampLabel } from '../lib/dateTime'
+import { createUsageRateBaselineHistory, usageRateBaselineRequestKey, usageRateBaselineSelection } from '../lib/usageRateBaseline'
 import {
   createCharacterUsageRateHistory, formatUsageRateHistoryPoint, usageRateHistoryRequestKey,
   type selectUsageRateHistoryConditions,
@@ -69,7 +70,16 @@ export function UsageRateHistoryView({ active, manifest, edition, selection, onS
   const [historyVersion, setHistoryVersion] = useState(0)
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
   const [tableOpen, setTableOpen] = useState(false)
+  const [showBaseline, setShowBaseline] = useState(true)
+  const [baselineState, setBaselineState] = useState<HistoryState | null>(null)
+  const [baselineVersion, setBaselineVersion] = useState(0)
   const requestKey = selection ? usageRateHistoryRequestKey(manifest, selection) : null
+  const fromMonth = selection?.fromMonth
+  const toMonth = selection?.toMonth
+  const baselineSelection = useMemo(() => fromMonth && toMonth ? usageRateBaselineSelection({
+    edition: 'general', league: 'ALL', fromMonth, toMonth,
+  }) : null, [fromMonth, toMonth])
+  const baselineKey = baselineSelection ? usageRateBaselineRequestKey(manifest, baselineSelection) : null
 
   useEffect(() => {
     if (!active || !selection || !requestKey) return
@@ -84,17 +94,36 @@ export function UsageRateHistoryView({ active, manifest, edition, selection, onS
     return () => { current = false }
   }, [active, manifest, selection, requestKey, historyVersion])
 
+  useEffect(() => {
+    if (!active || !showBaseline || !baselineSelection || !baselineKey) return
+    if (baselineState?.key === baselineKey && baselineState.version === baselineVersion && baselineState.status === 'ready') return
+    let current = true
+    const key = baselineKey
+    setBaselineState({ key, version: baselineVersion, status: 'loading' })
+    void loadUsageRateHistory(manifest, baselineSelection).then(results => {
+      if (current) setBaselineState({ key, version: baselineVersion, status: 'ready', results })
+    }).catch(() => { if (current) setBaselineState({ key, version: baselineVersion, status: 'error' }) })
+    return () => { current = false }
+  }, [active, showBaseline, manifest, baselineSelection, baselineKey, baselineVersion])
+
   // The chosen character and operation mode only project these validated files.
   const currentState = state?.key === requestKey ? state : null
   const results = currentState?.status === 'ready' ? currentState.results : null
   const history = useMemo(() => selection && results
     ? createCharacterUsageRateHistory(manifest, selection, character, operationMode, results) : null,
   [manifest, selection, character, operationMode, results])
+  const currentBaselineState = baselineState?.key === baselineKey ? baselineState : null
+  const baselineResults = currentBaselineState?.status === 'ready' ? currentBaselineState.results : null
+  const baseline = useMemo(() => baselineSelection && baselineResults
+    ? createUsageRateBaselineHistory(manifest, baselineSelection, baselineResults) : [], [manifest, baselineSelection, baselineResults])
+  const baselineErrors = baseline.filter(point => point.status === 'error').length
+  const baselineUnavailable = baseline.filter(point => point.status === 'unavailable').length
   const points = history?.series[0]?.points ?? []
   const effectiveSelectedMonth = selectedMonth && points.some(point => point.month === selectedMonth)
     ? selectedMonth : selectedMonth && points.length && selectedMonth < points[0].month ? points[0].month : points.at(-1)?.month ?? null
   const selectedIndex = points.findIndex(point => point.month === effectiveSelectedMonth)
   const selectedPoint = points[selectedIndex]
+  const selectedBaselinePoint = baseline.find(point => point.month === effectiveSelectedMonth)
   const selectedValues = history?.series.map(series => ({ controlType: series.controlType, point: series.points[selectedIndex] })) ?? []
   const selectedValueText = selectedValues.map(item =>
     `${controlTypeBarStyle(item.controlType).label} ${item.point ? formatUsageRateHistoryPoint(item.point) : '未登録'}`).join('、')
@@ -111,6 +140,7 @@ export function UsageRateHistoryView({ active, manifest, edition, selection, onS
     evidence: point.totalMismatch,
   }] : [])) ?? []
   const retry = () => setHistoryVersion(version => version + 1)
+  const retryBaseline = () => setBaselineVersion(version => version + 1)
 
   if (!selection) return <DataLoadState message="選択した統計区分の使用率データが登録されていません。" />
   return <section className="usage-rate-history-view" aria-label="キャラクターの月別使用率">
@@ -129,6 +159,8 @@ export function UsageRateHistoryView({ active, manifest, edition, selection, onS
           {USAGE_RATE_EDITION_LEAGUES[edition].map(league => <option key={league} value={league}>{usageRateLeagueLabel(league)}</option>)}
         </select>
       </label>
+      <label className="win-rates-chart-value-toggle"><input type="checkbox" checked={showBaseline}
+        onChange={event => setShowBaseline(event.target.checked)} />均等基準を表示</label>
     </div>}>
       {(!currentState || currentState.status === 'loading') && <DataLoadState loading message="月別の使用率を読み込み中…" />}
       {currentState?.status === 'error' && <DataLoadState message="月別の使用率を読み込めませんでした。" onRetry={retry} />}
@@ -137,7 +169,20 @@ export function UsageRateHistoryView({ active, manifest, edition, selection, onS
           <span>{points.length}か月中{failedCount}か月を読み込めませんでした。</span>
           <button type="button" className="win-rates-button" onClick={retry}>再読み込み</button>
         </div>}
-        <UsageRateHistoryChart history={history} selectedMonth={effectiveSelectedMonth} onSelect={setSelectedMonth} />
+        {showBaseline && <>
+          {(!currentBaselineState || currentBaselineState.status === 'loading') && <div className="win-rates-comparison-error" role="status">
+            <span>均等基準を読み込み中…</span>
+          </div>}
+          {(currentBaselineState?.status === 'error' || baselineErrors > 0) && <div className="win-rates-comparison-error" role="alert">
+            <span>均等基準を読み込めない月があります。</span>
+            <button type="button" className="win-rates-button" onClick={retryBaseline}>均等基準を再読み込み</button>
+          </div>}
+          {baselineUnavailable > 0 && <div className="win-rates-comparison-error" role="status">
+            <span>均等基準を確認できない月があります。</span>
+          </div>}
+        </>}
+        <UsageRateHistoryChart history={history} selectedMonth={effectiveSelectedMonth} onSelect={setSelectedMonth}
+          baseline={showBaseline ? baseline : undefined} />
         <div className="history-selected" aria-live="polite">
           <span>{monthLabel(effectiveSelectedMonth)}</span>
           <dl className="history-selected-values">{selectedValues.map(item => <div key={item.controlType}>
@@ -178,6 +223,16 @@ export function UsageRateHistoryView({ active, manifest, edition, selection, onS
         {edition === 'general' ? <p>合算は公式ALLの操作タイプ分布です。操作タイプ別はそれぞれのタイプ内でのキャラ使用率です。ALL（全体）は全リーグを対象とした公式の分布で、各リーグから合算した値ではありません。</p>
           : <p>マスター版は公式の4区分を表示し、操作タイプは合算のみです。</p>}
         <p>縦軸は0%から始まり、全ての公表値が収まる範囲を使います。数値のない月では線を切ります。「未掲載」「未登録」、公式の欠損表記「-」「-.---」、「読込失敗」を0%で補完しません。</p>
+        <p>均等基準は100÷Nです。Nは各月の総合版・ALL（全体）・全操作タイプに掲載されたキャラ数を使い、全リーグとC／Mで同じ基準にします。均等に使われると仮定した比較用の値で、実際の平均や理想値ではありません。月途中の追加キャラも1キャラとして数え、利用可能だった日数は補正しません。確認できない月は基準線を切り、隣の月や現在のキャラ数で補完しません。</p>
+        {showBaseline && selectedBaselinePoint?.source && <>
+          <p>均等基準の出典・取得情報</p>
+          <dl><div><dt>対象月</dt><dd>{effectiveSelectedMonth ? monthLabel(effectiveSelectedMonth) : '—'}</dd></div>
+            <div><dt>出典</dt><dd><a href={selectedBaselinePoint.source.url} target="_blank" rel="noreferrer">{selectedBaselinePoint.source.title}
+              <span className="win-rates-visually-hidden">（新しいタブ）</span></a></dd></div>
+            {selectedBaselinePoint.capturedAt && <div><dt>取得日時</dt><dd><time dateTime={selectedBaselinePoint.capturedAt}>{timestampLabel(selectedBaselinePoint.capturedAt)}</time></dd></div>}
+            {selectedBaselinePoint.generatedAt && <div><dt>生成日時</dt><dd><time dateTime={selectedBaselinePoint.generatedAt}>{timestampLabel(selectedBaselinePoint.generatedAt)}</time></dd></div>}
+          </dl>
+        </>}
         {totalMismatches.length > 0 && <><p>合計不一致の確認記録</p><ul>{totalMismatches.map(item => <li key={item.key}>
           {item.label}：{item.evidence.reason}（確認日時：<time dateTime={item.evidence.verifiedAt}>{timestampLabel(item.evidence.verifiedAt)}</time>）。
           <a href={item.evidence.sourceUrl} target="_blank" rel="noreferrer">公式掲載ページ
