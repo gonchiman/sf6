@@ -28,9 +28,9 @@ export function BalanceAdjustmentOverviewTable({ events, details, selectedId, de
   return <div ref={scrollRef} className="data-table-scroll balance-adjustment-scroll" role="region" tabIndex={0}
     aria-label="変更日別の履歴・スクロール領域">
     <table className="data-table balance-adjustment-overview-table">
-      <caption className="win-rates-visually-hidden">公式の変更日別履歴と技別内容の収録状況</caption>
+      <caption className="win-rates-visually-hidden">公式の変更日別履歴と変更項目数</caption>
       <colgroup><col className="balance-adjustment-date-column" /><col /><col /><col /><col className="balance-adjustment-source-column" /></colgroup>
-      <thead><tr><th scope="col">日付</th><th scope="col">種別</th><th scope="col">対象</th><th scope="col">技別内容</th><th scope="col">公式</th></tr></thead>
+      <thead><tr><th scope="col">日付</th><th scope="col">種別</th><th scope="col">対象</th><th scope="col">変更項目数</th><th scope="col">公式</th></tr></thead>
       <tbody>{events.map(event => {
         const patch = details.status === 'ready' ? balanceAdjustmentPatchDetails(details.catalog, event) : null
         const changed = patch?.characters.filter(character => character.status === 'ready' && character.changes.length > 0) ?? []
