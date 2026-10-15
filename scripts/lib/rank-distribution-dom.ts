@@ -8,6 +8,7 @@ export type RankDistributionDomErrorCode = 'invalid-request' | 'concurrent-read'
   | 'cancelled' | 'http-denied' | 'http-error' | 'server-error' | 'maintenance' | 'login-required'
   | 'authentication-unconfirmed' | 'condition-mismatch' | 'page-mismatch' | 'unsupported-rank-icon'
   | 'unsupported-dom' | 'total-count-changed' | 'timeout' | 'read-failed'
+export type RankDistributionAuthenticationEvidence = 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control'
 
 /** Messages contain fixed descriptions only, never browser errors or page text. */
 export class RankDistributionDomError extends Error {
@@ -23,6 +24,9 @@ export interface RankDistributionDomObservation {
   maintenance: boolean
   loginRequired: boolean
   signedIn: boolean | null
+  authenticationEvidence?: RankDistributionAuthenticationEvidence
+  /** Visible heading evidence, independently of a login button or signedIn. */
+  loginRequiredHeading?: boolean
   conditionsMatch: boolean | null
   leagueLabelsMatch: boolean | null
   selectedPage: number | null
@@ -61,7 +65,10 @@ export async function observeRankDistributionDom(input: { salt: string }): Promi
   const hasLogout = controls.some(element => /^(ログアウト|sign\s*out|log\s*out)$/i.test(label(element)))
   const hasLogin = controls.some(element => /^(ログイン(?:\s*\/\s*新規登録)?|log\s*in|sign\s*in)$/i.test(label(element)))
   const signedIn = hasLogout && hasLogin ? null : hasLogout ? true : hasLogin ? false : null
-  const loginRequired = signedIn !== true && headings.some(element => /ログインが必要|ログインしてください|login required|sign in required/i.test(text(element)))
+  const authenticationEvidence: RankDistributionAuthenticationEvidence = hasLogout && hasLogin ? 'conflicting-controls'
+    : hasLogout ? 'logout-control' : hasLogin ? 'login-control' : 'no-control'
+  const loginRequiredHeading = headings.some(element => /ログインが必要|ログインしてください|login required|sign in required/i.test(text(element)))
+  const loginRequired = signedIn !== true && loginRequiredHeading
   const selects = [...document.querySelectorAll('select')].filter(visible) as HTMLSelectElement[]
   const selectedLabel = (select: HTMLSelectElement): string => select.selectedOptions.length === 1
     ? select.selectedOptions[0].textContent?.trim() ?? '' : ''
@@ -80,7 +87,8 @@ export async function observeRankDistributionDom(input: { salt: string }): Promi
     .filter(value => /^\d+\s*-\s*\d+\s*\/\s*\d+$/.test(value)))]
   const counter = counters.length === 1 ? counters[0].match(/^(\d+)\s*-\s*(\d+)\s*\/\s*(\d+)$/) : null
   const range = counter ? { from: Number(counter[1]), to: Number(counter[2]), total: Number(counter[3]) } : null
-  const base = { maintenance, loginRequired, signedIn, conditionsMatch, leagueLabelsMatch, selectedPage, range }
+  const base = { maintenance, loginRequired, signedIn, authenticationEvidence, loginRequiredHeading,
+    conditionsMatch, leagueLabelsMatch, selectedPage, range }
   if (maintenance || loginRequired) return { ...base, rankIcons: 'pending', entries: null }
   const lists = [...document.querySelectorAll('ul[class*="ranking_ranking_list"]:not([class*="ranking__my__list"])')].filter(visible)
   if (lists.length !== 1) return { ...base, rankIcons: 'pending', entries: null }
@@ -142,6 +150,10 @@ export interface RankDistributionPageReaderDiagnostics {
   lastAttemptedPage?: number | null
   /** Numeric status of the most recent navigation response; no headers or body. */
   lastHttpStatus?: number | null
+  lastAuthenticationEvidence?: RankDistributionAuthenticationEvidence | null
+  lastLoginRequiredHeading?: boolean | null
+  /** Valid rendered ranking layout, separately from authentication confirmation. */
+  lastRankingReadable?: boolean | null
   minimumObservedTotal?: number | null
   maximumObservedTotal?: number | null
   rankMappingConfirmed: boolean
@@ -164,6 +176,25 @@ export interface RankDistributionPageReaderOptions {
   wait?: (milliseconds: number) => Promise<void>
 }
 
+/** Reuse the acceptance layout checks for diagnostics without weakening the login gate. */
+function readableLayout(value: RankDistributionDomObservation, requestedPage: number, knownSize: number | null): Omit<RankBoundaryPage, 'sourceUrl'> | null {
+  const { range, entries } = value
+  if (value.conditionsMatch !== true || value.leagueLabelsMatch !== true || value.selectedPage !== requestedPage
+    || value.rankIcons !== 'ready' || !range || !entries) return null
+  const size = knownSize ?? (requestedPage === 1 && range.from === 1 && range.to === entries.length ? entries.length : 0)
+  const integer = (candidate: unknown, minimum: number): candidate is number => Number.isSafeInteger(candidate) && (candidate as number) >= minimum
+  const totalPages = size > 0 ? Math.ceil(range.total / size) : 0
+  if (!integer(size, 1) || size > 20 || !integer(range.total, 1) || !integer(range.from, 1) || !integer(range.to, 1)
+    || range.from !== (requestedPage - 1) * size + 1 || range.to !== Math.min(requestedPage * size, range.total)
+    || range.to < range.from || entries.length !== range.to - range.from + 1 || requestedPage > totalPages
+    || requestedPage === 1 && entries.length !== Math.min(20, range.total)
+    || !entries.every(entry => entry && integer(entry.leaguePoint, 0) && integer(entry.rankId, 1) && entry.rankId <= 36
+      && typeof entry.accountKey === 'string' && /^[a-f0-9]{64}$/.test(entry.accountKey))
+    || new Set(entries.map(entry => entry.accountKey)).size !== entries.length) return null
+  return { page: value.selectedPage, pageSize: size, totalCount: range.total, totalPages,
+    entries: entries.map(entry => ({ leaguePoint: entry.leaguePoint, rankId: entry.rankId, accountKey: entry.accountKey })) }
+}
+
 export function createRankDistributionPageReader(page: Page, options: RankDistributionPageReaderOptions = {}) {
   const minInterval = options.minIntervalMs ?? 500
   const timeout = options.timeoutMs ?? 10_000
@@ -177,6 +208,7 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
   const diagnostics: RankDistributionPageReaderDiagnostics = {
     requestCount: 0, successfulReadCount: 0, pageSize: null, totalCount: null, lastPage: null,
     lastObservedTotal: null, lastAttemptedPage: null, lastHttpStatus: null,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null,
     minimumObservedTotal: null, maximumObservedTotal: null,
     rankMappingConfirmed: false, observedRankIds: [], tailRankIds: [],
     leagueLabelsConfirmed: false, displayedConditionsConfirmed: false, userStatusEvidence: 'fixed-url-only',
@@ -202,6 +234,9 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
       lastNavigation = now()
       diagnostics.requestCount++
       diagnostics.lastAttemptedPage = pageNumber
+      diagnostics.lastAuthenticationEvidence = null
+      diagnostics.lastLoginRequiredHeading = null
+      diagnostics.lastRankingReadable = null
       const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
       checkCancelled()
       const status = response?.status()
@@ -215,46 +250,38 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
         checkCancelled()
         latest = await page.evaluate(observeRankDistributionDom, { salt })
         checkCancelled()
+        diagnostics.lastAuthenticationEvidence = ['logout-control', 'login-control', 'conflicting-controls', 'no-control']
+          .includes(latest.authenticationEvidence ?? '') ? latest.authenticationEvidence! : null
+        diagnostics.lastLoginRequiredHeading = typeof latest.loginRequiredHeading === 'boolean' ? latest.loginRequiredHeading : null
+        const layout = readableLayout(latest, pageNumber, diagnostics.pageSize)
+        diagnostics.lastRankingReadable = confirmedUrl(page.url(), pageNumber) && layout !== null
         if (latest.maintenance) throw new RankDistributionDomError('maintenance')
-        if (latest.loginRequired) throw new RankDistributionDomError('login-required')
+        // A login heading can precede authentication hydration in the initial
+        // render. Wait only within this navigation's existing DOM deadline.
         if (!confirmedUrl(page.url(), pageNumber)) throw new RankDistributionDomError('page-mismatch')
         if (latest.conditionsMatch === false || latest.leagueLabelsMatch === false) throw new RankDistributionDomError('condition-mismatch')
         if (latest.rankIcons === 'unsupported') throw new RankDistributionDomError('unsupported-rank-icon')
-        const { range, entries } = latest
-        if (latest.signedIn === true && latest.conditionsMatch === true && latest.leagueLabelsMatch === true
-          && latest.selectedPage === pageNumber && latest.rankIcons === 'ready' && range && entries) {
-          const size = diagnostics.pageSize ?? (pageNumber === 1 && range.from === 1 && range.to === entries.length ? entries.length : 0)
-          const validInteger = (value: unknown, minimum: number): value is number => Number.isSafeInteger(value) && (value as number) >= minimum
-          const totalPages = size > 0 ? Math.ceil(range.total / size) : 0
-          if (validInteger(size, 1) && size <= 20 && validInteger(range.total, 1)
-            && validInteger(range.from, 1) && validInteger(range.to, 1)
-            && range.from === (pageNumber - 1) * size + 1 && range.to === Math.min(pageNumber * size, range.total)
-            && range.to >= range.from && entries.length === range.to - range.from + 1 && pageNumber <= totalPages
-            && (pageNumber !== 1 || entries.length === Math.min(20, range.total))
-            && entries.every(entry => validInteger(entry.leaguePoint, 0) && validInteger(entry.rankId, 1) && entry.rankId <= 36
-              && typeof entry.accountKey === 'string' && /^[a-f0-9]{64}$/.test(entry.accountKey))
-            && new Set(entries.map(entry => entry.accountKey)).size === entries.length) {
-            diagnostics.lastObservedTotal = range.total
-            diagnostics.minimumObservedTotal = Math.min(diagnostics.minimumObservedTotal ?? range.total, range.total)
-            diagnostics.maximumObservedTotal = Math.max(diagnostics.maximumObservedTotal ?? range.total, range.total)
-            if (totalCountPolicy === 'stable' && diagnostics.totalCount !== null && diagnostics.totalCount !== range.total) throw new RankDistributionDomError('total-count-changed')
-            diagnostics.pageSize = size
-            diagnostics.totalCount = range.total
-            diagnostics.lastPage = latest.selectedPage
-            diagnostics.rankMappingConfirmed = true
-            diagnostics.successfulReadCount++
-            diagnostics.displayedConditionsConfirmed = true
-            diagnostics.leagueLabelsConfirmed = true
-            diagnostics.observedRankIds = [...new Set([...diagnostics.observedRankIds, ...entries.map(entry => entry.rankId)])].sort((a, b) => a - b)
-            if (pageNumber === totalPages) diagnostics.tailRankIds = [...new Set(entries.map(entry => entry.rankId))].sort((a, b) => a - b)
-            return { sourceUrl: page.url(), page: latest.selectedPage, pageSize: size, totalCount: range.total, totalPages,
-              entries: entries.map(entry => ({ leaguePoint: entry.leaguePoint, rankId: entry.rankId, accountKey: entry.accountKey })) }
-          }
+        if (latest.signedIn === true && latest.loginRequiredHeading !== true && latest.loginRequired !== true && layout) {
+          diagnostics.lastObservedTotal = layout.totalCount
+          diagnostics.minimumObservedTotal = Math.min(diagnostics.minimumObservedTotal ?? layout.totalCount, layout.totalCount)
+          diagnostics.maximumObservedTotal = Math.max(diagnostics.maximumObservedTotal ?? layout.totalCount, layout.totalCount)
+          if (totalCountPolicy === 'stable' && diagnostics.totalCount !== null && diagnostics.totalCount !== layout.totalCount) throw new RankDistributionDomError('total-count-changed')
+          diagnostics.pageSize = layout.pageSize
+          diagnostics.totalCount = layout.totalCount
+          diagnostics.lastPage = layout.page
+          diagnostics.rankMappingConfirmed = true
+          diagnostics.successfulReadCount++
+          diagnostics.displayedConditionsConfirmed = true
+          diagnostics.leagueLabelsConfirmed = true
+          diagnostics.observedRankIds = [...new Set([...diagnostics.observedRankIds, ...layout.entries.map(entry => entry.rankId)])].sort((a, b) => a - b)
+          if (pageNumber === layout.totalPages) diagnostics.tailRankIds = [...new Set(layout.entries.map(entry => entry.rankId))].sort((a, b) => a - b)
+          return { sourceUrl: page.url(), ...layout }
         }
         if (now() >= deadline) break
         await wait(250)
       } while (now() < deadline)
-      if (latest?.signedIn !== true) throw new RankDistributionDomError(latest?.signedIn === false ? 'login-required' : 'authentication-unconfirmed')
+      if (latest?.loginRequired === true || latest?.loginRequiredHeading === true || latest?.signedIn === false) throw new RankDistributionDomError('login-required')
+      if (latest?.signedIn !== true) throw new RankDistributionDomError('authentication-unconfirmed')
       throw new RankDistributionDomError(latest?.selectedPage !== pageNumber ? 'page-mismatch' : 'unsupported-dom')
     } catch (error) {
       if (options.signal?.aborted) throw new RankDistributionDomError('cancelled')

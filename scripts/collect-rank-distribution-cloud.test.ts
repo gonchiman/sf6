@@ -360,4 +360,15 @@ test('browser environment is a platform allowlist and summary drops unknown diag
   assert.equal(summary.lastHttpStatus, 503)
   assert.equal(summary.checkpointHintCount, 0)
   assert.ok(!JSON.stringify(summary).includes(SECRET))
+  const authentication = summarizeRankDistributionCloudCapture({ lastAuthenticationEvidence: 'login-control',
+    lastLoginRequiredHeading: false, lastRankingReadable: true })
+  assert.equal(authentication.lastAuthenticationEvidence, 'login-control')
+  assert.equal(authentication.lastLoginRequiredHeading, false)
+  assert.equal(authentication.lastRankingReadable, true)
+  const raw = summarizeRankDistributionCloudCapture({ lastAuthenticationEvidence: SECRET,
+    lastLoginRequiredHeading: SECRET, lastRankingReadable: { raw: SECRET } })
+  assert.equal(raw.lastAuthenticationEvidence, null)
+  assert.equal(raw.lastLoginRequiredHeading, null)
+  assert.equal(raw.lastRankingReadable, null)
+  assert.ok(!JSON.stringify(raw).includes(SECRET))
 })

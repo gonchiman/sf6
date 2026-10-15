@@ -755,6 +755,31 @@ test('reports and progress contain fixed scalars and rank IDs, never state, prof
   assert.deepEqual(report.observedRankIds, Array.from({ length: 36 }, (_, index) => index + 1))
 })
 
+test('authentication diagnostics distinguish a readable ranking with a login control and reject raw page values', async () => {
+  const input = fixture()
+  const getDiagnostics = input.transport.getDiagnostics
+  input.transport.getDiagnostics = () => ({ ...getDiagnostics(), lastAuthenticationEvidence: 'login-control' as const,
+    lastLoginRequiredHeading: false, lastRankingReadable: true })
+  input.transport.fetchPage = async (page, url) => {
+    if (input.requests.length >= 2) throw new RankDistributionDomError('login-required')
+    return input.fetchPage(page, url)
+  }
+  const report = await runRankDistributionCollection(estimateOptions, input.deps)
+  assert.equal(report.reason, 'authentication-unconfirmed')
+  assert.equal(report.lastAuthenticationEvidence, 'login-control')
+  assert.equal(report.lastLoginRequiredHeading, false)
+  assert.equal(report.lastRankingReadable, true)
+  const hostile = fixture()
+  const rawDiagnostics = hostile.transport.getDiagnostics
+  hostile.transport.getDiagnostics = () => ({ ...rawDiagnostics(), lastAuthenticationEvidence: 'private raw header',
+    lastLoginRequiredHeading: 'private raw heading', lastRankingReadable: { private: 'raw rows' } } as never)
+  const sanitized = await runRankDistributionCollection(options, hostile.deps)
+  assert.equal(sanitized.lastAuthenticationEvidence, null)
+  assert.equal(sanitized.lastLoginRequiredHeading, null)
+  assert.equal(sanitized.lastRankingReadable, null)
+  assert.ok(!JSON.stringify(sanitized).includes('private raw'))
+})
+
 test('cancellation closes the owned browser once and never publishes partial results', async () => {
   for (const when of ['before', 'during'] as const) {
     const input = fixture()

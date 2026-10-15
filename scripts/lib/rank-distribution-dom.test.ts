@@ -80,6 +80,8 @@ test('rendered rank image and official labels are read without exposing player n
   assert.equal(first.conditionsMatch, true)
   assert.equal(first.leagueLabelsMatch, true)
   assert.equal(first.signedIn, true)
+  assert.equal(first.authenticationEvidence, 'logout-control')
+  assert.equal(first.loginRequiredHeading, false)
   assert.equal(first.rankIcons, 'ready')
   assert.equal(first.entries?.[0].rankId, 36)
   assert.equal(first.entries?.[0].leaguePoint, 25000)
@@ -96,6 +98,31 @@ test('the official Next image wrapper supports its observed Buckler base path', 
   const result = await observeRankDistributionDom({ salt: 'capture' })
   assert.equal(result.rankIcons, 'ready')
   assert.equal(result.entries?.[0].rankId, 36)
+})
+
+test('visible login controls and an explicit login-required heading remain separate evidence', async t => {
+  const { nodes } = fixture()
+  nodes['a,button'] = [element('ログイン')]
+  setDom(t, nodes)
+  const buttonOnly = await observeRankDistributionDom({ salt: 'capture' })
+  assert.equal(buttonOnly.authenticationEvidence, 'login-control')
+  assert.equal(buttonOnly.loginRequiredHeading, false)
+  assert.equal(buttonOnly.loginRequired, false)
+  assert.equal(buttonOnly.rankIcons, 'ready')
+
+  nodes['h1,h2'] = [element('ログインしてください')]
+  const heading = await observeRankDistributionDom({ salt: 'capture' })
+  assert.equal(heading.authenticationEvidence, 'login-control')
+  assert.equal(heading.loginRequiredHeading, true)
+  assert.equal(heading.loginRequired, true)
+  assert.equal(heading.entries, null)
+
+  nodes['h1,h2'] = []
+  nodes['a,button'] = [element('ログイン'), element('ログアウト')]
+  assert.equal((await observeRankDistributionDom({ salt: 'capture' })).authenticationEvidence, 'conflicting-controls')
+  const hidden = element('ログアウト'); hidden.style.visibility = 'hidden'
+  nodes['a,button'] = [hidden]
+  assert.equal((await observeRankDistributionDom({ salt: 'capture' })).authenticationEvidence, 'no-control')
 })
 
 test('normal scrolling resolves a lazy rank1 image at 0LP independently of LP-based assumptions', async t => {
@@ -178,7 +205,8 @@ function observation(page = 1, total = 43): RankDistributionDomObservation {
   const from = (page - 1) * 20 + 1
   const to = Math.min(page * 20, total)
   return {
-    maintenance: false, loginRequired: false, signedIn: true, conditionsMatch: true, leagueLabelsMatch: true,
+    maintenance: false, loginRequired: false, signedIn: true, authenticationEvidence: 'logout-control', loginRequiredHeading: false,
+    conditionsMatch: true, leagueLabelsMatch: true,
     selectedPage: page, range: { from, to, total }, rankIcons: 'ready',
     entries: Array.from({ length: to - from + 1 }, (_, i) => ({ leaguePoint: 30000 - from - i,
       rankId: page === 1 ? 36 : 1, accountKey: (from + i).toString(16).padStart(64, '0') })),
@@ -218,6 +246,7 @@ test('reader measures first-page size and confirms deep and final pages from sel
   assert.deepEqual(reader.getDiagnostics(), {
     requestCount: 2, successfulReadCount: 2, pageSize: 20, totalCount: 43, lastPage: 3, rankMappingConfirmed: true,
     lastObservedTotal: 43, lastAttemptedPage: 3, lastHttpStatus: 200, minimumObservedTotal: 43, maximumObservedTotal: 43,
+    lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true,
     observedRankIds: [1, 36], tailRankIds: [1], leagueLabelsConfirmed: true, displayedConditionsConfirmed: true,
     userStatusEvidence: 'fixed-url-only',
   })
@@ -243,6 +272,54 @@ test('reader waits for page hydration, selected page, counters, authentication a
   assert.equal(evaluations(), 2)
 })
 
+test('an initial login-required heading can hydrate into a signed-in readable page within one navigation', async () => {
+  const ready = harness((page, evaluation) => evaluation === 1
+    ? { ...observation(page), signedIn: false, authenticationEvidence: 'login-control', loginRequired: true,
+      loginRequiredHeading: true, rankIcons: 'pending', entries: null }
+    : observation(page))
+  const result = await ready.reader.fetchPage(1, pageUrl(1))
+  assert.equal(result.entries.length, 20)
+  assert.equal(ready.navigations.length, 1)
+  assert.equal(ready.evaluations(), 2)
+  assert.equal(ready.reader.getDiagnostics().lastAuthenticationEvidence, 'logout-control')
+  assert.equal(ready.reader.getDiagnostics().lastLoginRequiredHeading, false)
+  assert.equal(ready.reader.getDiagnostics().lastRankingReadable, true)
+})
+
+test('a persistent login-required heading stops at the DOM deadline without a second navigation', async () => {
+  const blocked = harness(() => ({ ...observation(), signedIn: false, authenticationEvidence: 'login-control',
+    loginRequired: true, loginRequiredHeading: true, rankIcons: 'pending', entries: null }))
+  await assert.rejects(blocked.reader.fetchPage(1, pageUrl(1)), errorCode('login-required'))
+  assert.equal(blocked.navigations.length, 1)
+  assert.ok(blocked.evaluations() > 1)
+  assert.equal(blocked.reader.getDiagnostics().lastAuthenticationEvidence, 'login-control')
+  assert.equal(blocked.reader.getDiagnostics().lastLoginRequiredHeading, true)
+  assert.equal(blocked.reader.getDiagnostics().lastRankingReadable, false)
+  assert.equal(blocked.reader.getDiagnostics().successfulReadCount, 0)
+})
+
+test('a login-required heading with logout controls waits for consistent signed-in evidence in the same navigation', async () => {
+  const ready = harness((page, evaluation) => evaluation === 1
+    ? { ...observation(page), loginRequiredHeading: true, loginRequired: false }
+    : observation(page))
+  const result = await ready.reader.fetchPage(1, pageUrl(1))
+  assert.equal(result.entries.length, 20)
+  assert.equal(ready.navigations.length, 1)
+  assert.equal(ready.evaluations(), 2)
+  assert.equal(ready.reader.getDiagnostics().successfulReadCount, 1)
+  assert.equal(ready.reader.getDiagnostics().lastLoginRequiredHeading, false)
+})
+
+test('a persistent login-required heading cannot be overridden by logout controls and readable rows', async () => {
+  const blocked = harness(() => ({ ...observation(), loginRequiredHeading: true, loginRequired: false }))
+  await assert.rejects(blocked.reader.fetchPage(1, pageUrl(1)), errorCode('login-required'))
+  assert.equal(blocked.navigations.length, 1)
+  assert.ok(blocked.evaluations() > 1)
+  assert.equal(blocked.reader.getDiagnostics().lastAuthenticationEvidence, 'logout-control')
+  assert.equal(blocked.reader.getDiagnostics().lastLoginRequiredHeading, true)
+  assert.equal(blocked.reader.getDiagnostics().lastRankingReadable, true)
+  assert.equal(blocked.reader.getDiagnostics().successfulReadCount, 0)
+})
 test('reader refuses a changing total, changed filters and unsupported loaded badges', async () => {
   const changing = harness(page => observation(page, page === 1 ? 43 : 44))
   await changing.reader.fetchPage(1, pageUrl(1))
@@ -309,6 +386,33 @@ test('HTTP 5xx and other HTTP errors stop before reading DOM and retain their nu
     assert.equal(failed.reader.getDiagnostics().lastHttpStatus, status)
     assert.equal(failed.reader.getDiagnostics().lastAttemptedPage, 1)
     assert.equal(failed.reader.getDiagnostics().successfulReadCount, 0)
+    assert.equal(failed.reader.getDiagnostics().lastAuthenticationEvidence, null)
+    assert.equal(failed.reader.getDiagnostics().lastLoginRequiredHeading, null)
+    assert.equal(failed.reader.getDiagnostics().lastRankingReadable, null)
+  }
+})
+
+test('failed authentication diagnostics distinguish readable login-button pages, explicit gates and missing controls or rows', async () => {
+  const cases: Array<{ patch: Partial<RankDistributionDomObservation>; code: RankDistributionDomErrorCode; readable: boolean }> = [
+    { patch: { signedIn: false, authenticationEvidence: 'login-control', loginRequiredHeading: false }, code: 'login-required', readable: true },
+    { patch: { signedIn: false, authenticationEvidence: 'login-control', loginRequiredHeading: true,
+      loginRequired: true, rankIcons: 'pending', entries: null }, code: 'login-required', readable: false },
+    { patch: { signedIn: null, authenticationEvidence: 'no-control', loginRequiredHeading: false }, code: 'authentication-unconfirmed', readable: true },
+    { patch: { signedIn: null, authenticationEvidence: 'no-control', loginRequiredHeading: false,
+      rankIcons: 'pending', entries: null }, code: 'authentication-unconfirmed', readable: false },
+    { patch: { signedIn: null, authenticationEvidence: 'conflicting-controls', loginRequiredHeading: false }, code: 'authentication-unconfirmed', readable: true },
+  ]
+  for (const item of cases) {
+    const failed = harness(() => ({ ...observation(), ...item.patch }))
+    await assert.rejects(failed.reader.fetchPage(1, pageUrl(1)), errorCode(item.code))
+    const diagnostics = failed.reader.getDiagnostics()
+    assert.equal(diagnostics.lastAuthenticationEvidence, item.patch.authenticationEvidence)
+    assert.equal(diagnostics.lastLoginRequiredHeading, item.patch.loginRequiredHeading)
+    assert.equal(diagnostics.lastRankingReadable, item.readable)
+    assert.equal(diagnostics.successfulReadCount, 0)
+    assert.equal(diagnostics.lastPage, null)
+    assert.doesNotMatch(JSON.stringify(diagnostics), /accountKey|leaguePoint|private-player|\/profile\//)
+    assert.ok(failed.evaluations() > 1)
   }
 })
 

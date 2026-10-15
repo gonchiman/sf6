@@ -181,6 +181,9 @@ export interface RankDistributionCloudCaptureSummary {
   lastAttemptedPage: number | null
   lastHttpStatus: number | null
   readFailureCode: typeof readCodes[number] | null
+  lastAuthenticationEvidence: 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control' | null
+  lastLoginRequiredHeading: boolean | null
+  lastRankingReadable: boolean | null
 }
 
 /** Fixed enums, dates, counts and booleans only; never serialize an arbitrary report. */
@@ -196,6 +199,7 @@ export function summarizeRankDistributionCloudCapture(value: unknown): RankDistr
     datasetSaved: input.datasetSaved === true, published: input.published === true, browserClosed: input.browserClosed === true,
     totalMin: null, totalMax: null, totalAtEnd: null, lastObservedTotal: null, lastAttemptedPage: null, lastHttpStatus: null,
     readFailureCode: readCodes.includes(input.readFailureCode as never) ? input.readFailureCode as typeof readCodes[number] : null,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null,
   }
   for (const key of ['requestCount', 'successfulReadCount', 'retryCount', 'sessionRefreshCount'] as const) {
     if (integer(input[key]) && input[key] <= 1000) result[key] = input[key]
@@ -207,6 +211,12 @@ export function summarizeRankDistributionCloudCapture(value: unknown): RankDistr
     if (integer(input[key], 1)) result[key] = input[key]
   }
   if (integer(input.lastHttpStatus, 100) && input.lastHttpStatus <= 599) result.lastHttpStatus = input.lastHttpStatus
+  if (['logout-control', 'login-control', 'conflicting-controls', 'no-control'].includes(input.lastAuthenticationEvidence as string)) {
+    result.lastAuthenticationEvidence = input.lastAuthenticationEvidence as RankDistributionCloudCaptureSummary['lastAuthenticationEvidence']
+  }
+  for (const key of ['lastLoginRequiredHeading', 'lastRankingReadable'] as const) {
+    if (typeof input[key] === 'boolean') result[key] = input[key]
+  }
   return result
 }
 

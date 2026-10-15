@@ -114,6 +114,9 @@ export interface RankDistributionCaptureReport {
   lastObservedTotal: number | null
   lastAttemptedPage: number | null
   lastHttpStatus: number | null
+  lastAuthenticationEvidence: 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control' | null
+  lastLoginRequiredHeading: boolean | null
+  lastRankingReadable: boolean | null
   totalMin: number | null
   totalMax: number | null
   totalAtEnd: number | null
@@ -172,12 +175,15 @@ const knownRank = (value: unknown): value is number => integer(value, 1) && valu
 
 type CaptureDiagnostics = RankDistributionPageReaderDiagnostics & {
   lastObservedTotal: number | null; lastAttemptedPage: number | null; lastHttpStatus: number | null
+  lastAuthenticationEvidence: 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control' | null
+  lastLoginRequiredHeading: boolean | null; lastRankingReadable: boolean | null
 }
 function emptyDiagnostics(): CaptureDiagnostics {
   return { requestCount: 0, successfulReadCount: 0, totalCount: null, pageSize: null, lastPage: null,
     rankMappingConfirmed: false, leagueLabelsConfirmed: false, displayedConditionsConfirmed: false,
     userStatusEvidence: 'fixed-url-only', observedRankIds: [], tailRankIds: [], lastObservedTotal: null,
-    lastAttemptedPage: null, lastHttpStatus: null }
+    lastAttemptedPage: null, lastHttpStatus: null, lastAuthenticationEvidence: null,
+    lastLoginRequiredHeading: null, lastRankingReadable: null }
 }
 /** Copy a fixed scalar allowlist, never arbitrary transport objects or private row fields. */
 function safeDiagnostics(transport?: RankDistributionCaptureTransport): CaptureDiagnostics {
@@ -197,6 +203,12 @@ function safeDiagnostics(transport?: RankDistributionCaptureTransport): CaptureD
       const status = (input as unknown as Record<string, unknown>).lastHttpStatus
       if (integer(status, 100) && status <= 599) result.lastHttpStatus = status
     }
+    if (['logout-control', 'login-control', 'conflicting-controls', 'no-control'].includes(input.lastAuthenticationEvidence as string)) {
+      result.lastAuthenticationEvidence = input.lastAuthenticationEvidence!
+    }
+    for (const key of ['lastLoginRequiredHeading', 'lastRankingReadable'] as const) {
+      if (typeof input[key] === 'boolean') result[key] = input[key]
+    }
     for (const key of ['rankMappingConfirmed', 'leagueLabelsConfirmed', 'displayedConditionsConfirmed'] as const) result[key] = input[key] === true
     for (const key of ['observedRankIds', 'tailRankIds'] as const) {
       if (Array.isArray(input[key])) result[key] = [...new Set(input[key].filter(knownRank))].sort((a, b) => a - b)
@@ -205,9 +217,9 @@ function safeDiagnostics(transport?: RankDistributionCaptureTransport): CaptureD
   return result
 }
 
-function domReason(code: RankDistributionDomErrorCode): RankDistributionAvailabilityReason {
+function domReason(code: RankDistributionDomErrorCode, loginRequiredHeading?: boolean | null): RankDistributionAvailabilityReason {
   switch (code) {
-    case 'login-required': return 'authentication-required'
+    case 'login-required': return loginRequiredHeading === false ? 'authentication-unconfirmed' : 'authentication-required'
     case 'authentication-unconfirmed': return 'authentication-unconfirmed'
     case 'http-denied': return 'access-denied'
     case 'maintenance': return 'maintenance'
@@ -222,7 +234,7 @@ function domReason(code: RankDistributionDomErrorCode): RankDistributionAvailabi
 function failureReason(error: unknown, stage: CaptureStage, lastReadReason: RankDistributionAvailabilityReason | null): RankDistributionAvailabilityReason {
   if (error instanceof CaptureFailure) return error.reason
   if (stage === 'checkpoint-load' || stage === 'checkpoint-save') return 'checkpoint-unavailable'
-  if (error instanceof RankDistributionDomError) return domReason(error.code)
+  if (error instanceof RankDistributionDomError) return lastReadReason ?? domReason(error.code)
   if (error instanceof RankDistributionCollectionError) {
     if (error.code === 'page-read-failed' && lastReadReason) return lastReadReason
     switch (error.code) {
@@ -391,7 +403,7 @@ export async function runRankDistributionCollection(
       return await readPageAttempts(page, url)
     } catch (error) {
       lastReadReason = error instanceof CaptureFailure ? error.reason
-        : error instanceof RankDistributionDomError ? domReason(error.code) : 'read-failed'
+        : error instanceof RankDistributionDomError ? domReason(error.code, safeDiagnostics(transport).lastLoginRequiredHeading) : 'read-failed'
       throw error
     }
   }
@@ -511,7 +523,7 @@ export async function runRankDistributionCollection(
   report.stage = stage
   report.requestCount = requestCount
   report.successfulReadCount = successfulReadCount
-  for (const key of ['pageSize', 'totalCount', 'lastPage', 'rankMappingConfirmed', 'leagueLabelsConfirmed', 'displayedConditionsConfirmed', 'observedRankIds', 'tailRankIds', 'lastObservedTotal', 'lastAttemptedPage', 'lastHttpStatus'] as const) {
+  for (const key of ['pageSize', 'totalCount', 'lastPage', 'rankMappingConfirmed', 'leagueLabelsConfirmed', 'displayedConditionsConfirmed', 'observedRankIds', 'tailRankIds', 'lastObservedTotal', 'lastAttemptedPage', 'lastHttpStatus', 'lastAuthenticationEvidence', 'lastLoginRequiredHeading', 'lastRankingReadable'] as const) {
     Object.assign(report, { [key]: diagnostics[key] })
   }
   try { report.endedAt = timestamp(now) } catch { report.endedAt = startedAt }
