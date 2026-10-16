@@ -98,3 +98,70 @@ test('DOM reader waits for complete counters/rows and sanitizes navigation error
     return 'status' in failure && failure.status === 'timeout'
   })
 })
+
+test('expected authentication waits for login controls to hydrate after readable anonymous or unconfirmed rows', async t => {
+  for (const initialControl of ['ログイン', '公開プロフィール']) {
+    await t.test(initialControl, async t => {
+      const nodes = ranking()
+      setDom(t, nodes)
+      let evaluations = 0
+      const page = {
+        goto: async () => { assert.fail('navigate=false must not reload the page') },
+        url: () => BUCKLER_AUTH_PROBE_URL,
+        evaluate: async () => {
+          nodes['a,button'] = [element(++evaluations === 1 ? initialControl : 'ログアウト')]
+          return observeBucklerAuthDom()
+        },
+      } as unknown as Page
+      const result = await readBucklerAuthProbePage(page, false, true)
+      assert.equal(evaluations, 2)
+      assert.equal(result.signedIn, true)
+      assert.equal(result.rankingRows, 20)
+    })
+  }
+})
+
+test('default DOM reading still returns readable anonymous rows immediately', async t => {
+  setDom(t, ranking([element('ログイン')]))
+  let evaluations = 0
+  const page = {
+    url: () => BUCKLER_AUTH_PROBE_URL,
+    evaluate: async () => { evaluations++; return observeBucklerAuthDom() },
+  } as unknown as Page
+  const result = await readBucklerAuthProbePage(page, false)
+  assert.equal(evaluations, 1)
+  assert.equal(result.signedIn, false)
+  assert.equal(result.rankingRows, 20)
+})
+
+test('expected authentication returns the last observed anonymous state at the deadline without inventing a login', async t => {
+  setDom(t, ranking([element('ログイン')]))
+  let evaluations = 0
+  let nowCalls = 0
+  t.mock.method(Date, 'now', () => ++nowCalls === 1 ? 0 : 10_001)
+  const page = {
+    url: () => BUCKLER_AUTH_PROBE_URL,
+    evaluate: async () => { evaluations++; return observeBucklerAuthDom() },
+  } as unknown as Page
+  const result = await readBucklerAuthProbePage(page, false, true)
+  assert.equal(evaluations, 1)
+  assert.equal(result.signedIn, false)
+  assert.equal(result.rankingRows, 20)
+})
+
+test('maintenance and explicit login gates remain immediate when authentication is expected', async t => {
+  for (const heading of ['Maintenance', 'ログインしてください']) {
+    await t.test(heading, async t => {
+      setDom(t, { 'h1,h2': [element(heading)] })
+      let evaluations = 0
+      const page = {
+        url: () => BUCKLER_AUTH_PROBE_URL,
+        evaluate: async () => { evaluations++; return observeBucklerAuthDom() },
+      } as unknown as Page
+      const result = await readBucklerAuthProbePage(page, false, true)
+      assert.equal(evaluations, 1)
+      assert.equal(result.maintenance, heading === 'Maintenance')
+      assert.equal(result.loginRequired, heading === 'ログインしてください')
+    })
+  }
+})

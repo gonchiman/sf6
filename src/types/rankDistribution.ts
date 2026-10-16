@@ -8,7 +8,8 @@ export interface RankDistributionConditions {
   character: 'max-lp'
   region: 'all'
   platform: 'all'
-  users: 'all'
+  /** The fixed observed URL value; its correspondence to an all-users label is unconfirmed. */
+  users: 'buckler-user-status-1'
 }
 
 export interface RankDistributionDescriptor {
@@ -40,14 +41,34 @@ export interface RankDistributionEntry {
   count: number
 }
 
-export interface RankDistributionValidation {
+export type RankDistributionValidation = {
   status: 'verified'
   coverage: 'all-listed-accounts'
   checks: string[]
   notes: string[]
+} | {
+  status: 'estimated'
+  coverage: 'all-rank-boundaries'
+  checks: string[]
+  notes: string[]
 }
 
-/** Verified observations over a capture interval, rather than an atomic population snapshot. */
+export interface RankDistributionBoundaryObservation {
+  rankId: number
+  countAtOrAbove: number
+  totalCount: number
+  observedAt: string
+}
+
+export interface RankDistributionObservation {
+  totalAtStart: number
+  totalAtEnd: number
+  minTotal: number
+  maxTotal: number
+  boundaries: RankDistributionBoundaryObservation[]
+}
+
+/** Observations over a capture interval, rather than an atomic population snapshot. */
 export interface RankDistributionDataset {
   schemaVersion: 1
   id: string
@@ -61,10 +82,12 @@ export interface RankDistributionDataset {
     notes: string[]
   }
   conditions: RankDistributionConditions
-  method: 'boundary-search'
+  method: 'boundary-search' | 'boundary-search-estimate'
   totalCount: number
   entries: RankDistributionEntry[]
   validation: RankDistributionValidation
+  /** Required only for estimates; the parser enforces the method/validation combination. */
+  observation?: RankDistributionObservation
 }
 
 export interface RankDistributionRow {
