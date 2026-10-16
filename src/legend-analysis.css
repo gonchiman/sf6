@@ -1,0 +1,70 @@
+.legend-analysis-page { min-width: 0; display: grid; gap: 16px; }
+.legend-analysis-scope, .legend-analysis-note { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.legend-analysis-content { min-width: 0; display: grid; gap: 14px; }
+.legend-analysis-filters { padding: 0; border: 0; background: transparent; }
+.legend-analysis-filters label { flex: 0 1 320px; }
+.legend-analysis-filters select { width: 100%; min-width: 0; }
+.legend-analysis-filters select:disabled { color: var(--text-muted); opacity: 1; }
+.legend-analysis-capture { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 0; padding-top: 14px; font-size: 12px; line-height: 1.8; }
+.legend-analysis-capture > div { min-width: 0; }
+.legend-analysis-capture dt { color: var(--text-muted); }
+.legend-analysis-capture dd { margin: 2px 0 0; color: var(--text-soft); overflow-wrap: anywhere; }
+.legend-analysis-capture strong { font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.legend-analysis-message { margin: 0; padding: 12px 14px; border: 1px solid var(--border); color: var(--text-soft); background: var(--surface-soft); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.legend-analysis-message .win-rates-button { margin: 8px 0 0; font-size: 12px; }
+.legend-analysis-character-scroll { max-height: 640px; scroll-padding-top: 64px; scroll-padding-left: 154px; }
+.legend-analysis-character-table { min-width: 670px; table-layout: fixed; }
+.legend-analysis-character-table col:first-child { width: 154px; }
+.legend-analysis-character-table tr > :first-child { position: sticky; left: 0; z-index: 1; }
+.legend-analysis-character-table thead tr > :first-child { z-index: 3; }
+.legend-analysis-character-table tbody th { overflow-wrap: anywhere; }
+.legend-analysis-character-table td { white-space: nowrap; }
+.legend-analysis-character-table thead th { padding: 0; }
+.legend-analysis-sort { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; min-height: 52px; padding: 7px 8px; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.legend-analysis-sort:hover { background: var(--surface-hover); }
+.legend-analysis-sort:focus-visible { position: relative; z-index: 4; outline-offset: -3px; }
+.legend-analysis-sort-indicator { flex: 0 0 auto; font-size: 10px; }
+.legend-analysis-unit { display: block; color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.legend-analysis-share-cell { position: relative; overflow: hidden; }
+.legend-analysis-share-bar { position: absolute; left: 0; top: 4px; bottom: 4px; background: var(--surface-hover); pointer-events: none; }
+.legend-analysis-share-value { position: relative; }
+.legend-analysis-character-table td.legend-analysis-unavailable { color: var(--text-muted); }
+.legend-analysis-chart { min-width: 0; width: 100%; margin: 0; }
+.legend-analysis-chart-legend { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0 0 14px; padding: 0; list-style: none; color: var(--text-soft); font-size: 12px; line-height: 1.8; }
+.legend-analysis-chart-legend li { display: flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; }
+.legend-analysis-swatch { display: inline-block; flex: 0 0 18px; height: 11px; border: 1px solid var(--text-muted); background: var(--text-muted); }
+.legend-analysis-swatch.is-previous { background: var(--surface); border-style: dashed; }
+.legend-analysis-chart-viewport { min-width: 0; max-width: 100%; }
+.legend-analysis-chart-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; }
+.legend-analysis-chart-scroll:focus-visible { outline-offset: -2px; }
+.legend-analysis-chart-svg { display: block; max-width: none; }
+.legend-analysis-chart-grid { stroke: var(--border); stroke-width: 1; }
+.legend-analysis-chart-axis { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+.legend-analysis-chart-tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.legend-analysis-chart-axis-title { fill: var(--text-soft); font-size: 12px; }
+.legend-analysis-chart-current { fill: var(--text-muted); }
+.legend-analysis-chart-previous { fill: var(--surface); stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 3 2; }
+.legend-analysis-chart-zero { stroke: var(--text-muted); stroke-width: 2; }
+.legend-analysis-chart-hit { fill: transparent; }
+.legend-analysis-mr-summary-scroll, .legend-analysis-mr-bins-scroll { min-width: 0; }
+.legend-analysis-mr-summary { min-width: 560px; table-layout: fixed; }
+.legend-analysis-mr-summary tr > :first-child { width: 100px; }
+.legend-analysis-mr-summary td, .legend-analysis-mr-bins td { white-space: nowrap; }
+.legend-analysis-mr-bins-scroll { max-height: 340px; scroll-padding-top: 52px; }
+.legend-analysis-mr-bins { min-width: 560px; table-layout: fixed; }
+.legend-analysis-mr-bins tr > :first-child { width: 160px; }
+.legend-analysis-evidence { display: grid; gap: 12px; }
+.legend-analysis-evidence p { margin: 0; }
+.legend-analysis-evidence .win-rates-source { display: grid; gap: 6px; }
+.legend-analysis-evidence .win-rates-source > div { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 4px 12px; }
+.legend-analysis-evidence ul { margin: 0; }
+
+@media (max-width: 640px) {
+  .legend-analysis-filters { padding: 0; gap: 12px; }
+  .legend-analysis-filters label { flex: 1 1 100%; }
+  .legend-analysis-capture { gap: 12px; }
+  .legend-analysis-capture > div { flex: 1 1 100%; }
+  .legend-analysis-character-table col:first-child { width: 120px; }
+  .legend-analysis-character-scroll { scroll-padding-left: 120px; }
+  .legend-analysis-evidence .win-rates-source > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}

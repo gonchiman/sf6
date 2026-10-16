@@ -11,6 +11,7 @@ export const APP_NAV_ITEMS = [
   { id: 'win-usage-correlation', label: '勝率と使用率', href: '#win-usage-correlation' },
   { id: 'control-type-ratio', label: '操作タイプ比率（推定）', href: '#control-type-ratio' },
   { id: 'rank-distribution', label: 'ランク分布', href: '#rank-distribution' },
+  { id: 'legend-analysis', label: 'レジェンド帯分析', href: '#legend-analysis' },
   { id: 'new-account-observation', label: '新規参入観測', href: '#new-account-observation' },
   { id: 'character-traits', label: 'キャラ分類', href: '#character-traits' },
   { id: 'balance-adjustments', label: 'バトル変更一覧', href: '#balance-adjustments' },

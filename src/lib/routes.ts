@@ -8,6 +8,7 @@ export type AppRoute =
   | { page: 'win-usage-correlation' }
   | { page: 'control-type-ratio' }
   | { page: 'rank-distribution' }
+  | { page: 'legend-analysis' }
   | { page: 'new-account-observation' }
   | { page: 'characters'; characterId: string | null }
   | { page: 'character-releases' }
@@ -25,6 +26,9 @@ export function balanceAdjustmentDetailHash(adjustmentId: string, scope: string 
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#legend-analysis' || hash === '#legend-analysis/') {
+    return { page: 'legend-analysis' }
+  }
   if (hash === '#character-releases' || hash === '#character-releases/') {
     return { page: 'character-releases' }
   }
