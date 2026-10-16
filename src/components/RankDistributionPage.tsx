@@ -88,10 +88,11 @@ export function RankDistributionPage() {
     <p className="rank-distribution-scope">最大LPの総合一覧 · 全地域 · 全プラットフォーム</p>
     <StatisticsPanel title="条件選択">
       <div className="win-rates-filters rank-distribution-filters">
-        {descriptors.length > 1 && <label><span>取得日</span><select aria-label="取得日" value={selectedId ?? ''}
+        <label><span>取得日</span><select aria-label="取得日" value={selectedId ?? ''} disabled={descriptors.length < 2}
           onChange={event => setSelectedId(event.target.value)}>
+          {descriptors.length === 0 && <option value="">未取得</option>}
           {descriptors.map(item => <option key={item.id} value={item.id}>{timestampLabel(item.captureEndedAt)}</option>)}
-        </select></label>}
+        </select></label>
         <label><span>表示区分</span><select aria-label="表示区分" value={group} onChange={event => setGroup(event.target.value)}>
           <option value="ALL">ランク帯ごと</option>
           {RANK_DISTRIBUTION_GROUPS.filter(value => value !== 'MASTER').map(value => <option key={value} value={value}>{displayLabel(value)}</option>)}
