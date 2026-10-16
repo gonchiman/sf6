@@ -8,14 +8,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseCaptureRecord } from './probe-buckler-session.ts'
 import { BUCKLER_SESSION_CAPTURE_PATH, createBucklerSessionStore, validateBucklerSessionState } from './lib/buckler-session-store.ts'
 import type { BucklerSessionStore } from './lib/buckler-session-store.ts'
+import { BUCKLER_WEEKLY_SESSION_SECRET, BucklerWeeklySessionError, createBucklerWeeklySession } from './lib/buckler-weekly-session.ts'
 
 export const BUCKLER_CLOUD_REPOSITORY = 'gonchiman/sf6'
 export const BUCKLER_CLOUD_SECRET = 'BUCKLER_CLOUD_PROBE_SESSION'
+export const BUCKLER_WEEKLY_SECRET = BUCKLER_WEEKLY_SESSION_SECRET
 export const BUCKLER_CLOUD_SECRET_LIMIT = 48 * 1024
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const LOCAL = resolve(ROOT, '.local')
 const DIRECTORY = resolve(LOCAL, 'buckler-cloud-probe')
 export const BUCKLER_CLOUD_RECEIPT_PATH = resolve(DIRECTORY, 'upload.json')
+const WEEKLY_DIRECTORY = resolve(LOCAL, 'buckler-weekly')
+export const BUCKLER_WEEKLY_RECEIPT_PATH = resolve(WEEKLY_DIRECTORY, 'upload.json')
 const SMALL_FILE_LIMIT = 1024
 const LIST_LIMIT = 128 * 1024
 const HELP = `Buckler認証状態の単発クラウド検証用送信（Windows・保存した本人専用）
@@ -29,12 +33,23 @@ const HELP = `Buckler認証状態の単発クラウド検証用送信（Windows�
 ローカル保存時の同意とは別に、クラウドへの送信への同意が必要です。
 既存の同名Secretは上書きしません。単発検証後は --cleanup で削除します。
 このコマンドはワークフローを実行せず、週次実行も設定しません。`
+const WEEKLY_HELP = `Buckler認証状態の週次クラウド取得用送信（Windows・保存した本人専用）
+
+--upload-weekly   UPLOAD WEEKLYへの明示同意後、固定DPAPI保存を週次用の固定Actions Secretへ送信
+--cleanup-weekly  このツールの週次送信記録がある週次用Secretだけを削除
+
+送信先: GitHub.com の公開リポジトリ gonchiman/sf6 のActions用Secret BUCKLER_WEEKLY_SESSION
+毎週の取得と7日以上経過後の再利用確認に使うため、--cleanup-weeklyを実行するまで継続して保持します。
+ローカル保存や単発クラウド検証の同意とは別に、この送信と継続保持への同意が必要です。
+認証状態と取得・送信日時をSecret内へ一緒に保存し、平文は公開Git・ログ・artifactへ出しません。
+認証状態は自動で更新せず、同名Secretも上書きしません。週次利用を終えるときは--cleanup-weeklyで削除してください。
+このコマンド自体はワークフローを実行せず、週次実行も設定しません。`
 
 type ErrorCode = 'arguments' | 'interactive' | 'cancelled' | 'capture' | 'identity' | 'state' | 'size'
   | 'path' | 'receipt-exists' | 'receipt-missing' | 'receipt-invalid' | 'existing-secret' | 'github'
   | 'upload' | 'cleanup-needed'
 const MESSAGES: Record<ErrorCode, string> = {
-  arguments: '引数を確認してください。--upload、--cleanup、--helpのいずれか1つだけを指定します。',
+  arguments: '引数を確認してください。--upload、--cleanup、--upload-weekly、--cleanup-weekly、--helpのいずれか1つだけを指定します。',
   interactive: 'クラウドへの送信は対話ターミナルから明示同意して実行してください。',
   cancelled: 'クラウドへの送信を中止しました。',
   capture: '固定のcapture記録を確認できません。手動ログインによるcaptureを確認してください。',
@@ -42,13 +57,13 @@ const MESSAGES: Record<ErrorCode, string> = {
   state: '認証状態の形式・対象サイトを確認できません。送信せず終了しました。',
   size: '認証状態が48KiB未満という送信上限を満たしません。送信せず終了しました。',
   path: '固定のローカル送信記録の保存先を安全に確認できません。',
-  'receipt-exists': '前回の送信記録があります。先に --cleanup で後処理してください。',
+  'receipt-exists': '前回の送信記録があります。対応するcleanupモードで先に後処理してください。',
   'receipt-missing': 'このツールの送信記録がありません。Secretは削除しません。',
   'receipt-invalid': '送信記録の対象・形式を確認できません。Secretは削除しません。',
   'existing-secret': '同名のActions Secretが既に存在します。上書きせず終了しました。',
   github: 'GitHub CLIによる固定Secretの操作・確認を完了できませんでした。生の出力は表示しません。',
   upload: 'Secretの送信を完了できませんでした。固定対象の後処理は完了しました。',
-  'cleanup-needed': 'Secretの送信結果または削除を確認できません。送信記録を保持したので --cleanup を実行してください。',
+  'cleanup-needed': 'Secretの送信結果または削除を確認できません。送信記録を保持したので対応するcleanupモードを実行してください。',
 }
 
 export class BucklerCloudSendError extends Error {
@@ -60,17 +75,21 @@ function safeError(error: unknown): BucklerCloudSendError {
   return error instanceof BucklerCloudSendError ? error : new BucklerCloudSendError('path')
 }
 
-export function parseCloudSendArguments(args: string[]): 'upload' | 'cleanup' | 'help' {
-  if (args.length !== 1 || !['--upload', '--cleanup', '--help'].includes(args[0])) fail('arguments')
-  return args[0].slice(2) as 'upload' | 'cleanup' | 'help'
+type CloudSendMode = 'upload' | 'cleanup' | 'upload-weekly' | 'cleanup-weekly' | 'help'
+export type CloudSendScope = 'probe' | 'weekly'
+export function parseCloudSendArguments(args: string[]): CloudSendMode {
+  if (args.length !== 1 || !['--upload', '--cleanup', '--upload-weekly', '--cleanup-weekly', '--help'].includes(args[0])) fail('arguments')
+  return args[0].slice(2) as CloudSendMode
 }
 
 type GhOperation = 'list' | 'set' | 'delete'
 /** All commands are fixed; authentication content is never an argument. */
-export function cloudSecretArguments(operation: GhOperation): string[] {
+export function cloudSecretArguments(operation: GhOperation, scope: CloudSendScope = 'probe'): string[] {
+  if (!['probe', 'weekly'].includes(scope)) return fail('arguments')
+  const secret = scope === 'weekly' ? BUCKLER_WEEKLY_SECRET : BUCKLER_CLOUD_SECRET
   if (operation === 'list') return ['secret', 'list', '--repo', BUCKLER_CLOUD_REPOSITORY, '--json', 'name']
-  if (operation === 'set') return ['secret', 'set', BUCKLER_CLOUD_SECRET, '--repo', BUCKLER_CLOUD_REPOSITORY]
-  if (operation === 'delete') return ['secret', 'delete', BUCKLER_CLOUD_SECRET, '--repo', BUCKLER_CLOUD_REPOSITORY]
+  if (operation === 'set') return ['secret', 'set', secret, '--repo', BUCKLER_CLOUD_REPOSITORY]
+  if (operation === 'delete') return ['secret', 'delete', secret, '--repo', BUCKLER_CLOUD_REPOSITORY]
   return fail('arguments')
 }
 
@@ -112,8 +131,8 @@ function silentProcess(command: string, args: string[], input: string, captureLi
   })
 }
 
-async function defaultGh(operation: GhOperation, input = ''): Promise<string> {
-  return silentProcess('gh', cloudSecretArguments(operation), input, operation === 'list' ? LIST_LIMIT : 0, cloudSecretEnvironment(process.env))
+async function defaultGh(operation: GhOperation, input = '', scope: CloudSendScope = 'probe'): Promise<string> {
+  return silentProcess('gh', cloudSecretArguments(operation, scope), input, operation === 'list' ? LIST_LIMIT : 0, cloudSecretEnvironment(process.env))
 }
 
 export interface CloudSessionFileInfo { kind: 'file' | 'directory' | 'other'; symbolicLink: boolean; reparsePoint: boolean; size: number }
@@ -166,21 +185,35 @@ const defaultIo: CloudSessionIo = {
   unlink,
 }
 
-interface Receipt { repository: typeof BUCKLER_CLOUD_REPOSITORY; secret: typeof BUCKLER_CLOUD_SECRET; uploadedAt: string }
-function receipt(value: unknown): Receipt {
+interface ProbeReceipt { repository: typeof BUCKLER_CLOUD_REPOSITORY; secret: typeof BUCKLER_CLOUD_SECRET; uploadedAt: string }
+interface WeeklyReceipt {
+  repository: typeof BUCKLER_CLOUD_REPOSITORY; secret: typeof BUCKLER_WEEKLY_SECRET
+  scope: 'weekly'; capturedAt: string; uploadedAt: string
+}
+type Receipt = ProbeReceipt | WeeklyReceipt
+function receipt(value: unknown, scope: CloudSendScope = 'probe'): Receipt {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('receipt-invalid')
   const item = value as Record<string, unknown>
-  if (Object.keys(item).length !== 3 || Object.keys(item).some(key => !['repository', 'secret', 'uploadedAt'].includes(key))
-    || item.repository !== BUCKLER_CLOUD_REPOSITORY || item.secret !== BUCKLER_CLOUD_SECRET
+  const keys = scope === 'weekly' ? ['repository', 'secret', 'scope', 'capturedAt', 'uploadedAt'] : ['repository', 'secret', 'uploadedAt']
+  if (Object.keys(item).length !== keys.length || Object.keys(item).some(key => !keys.includes(key))
+    || item.repository !== BUCKLER_CLOUD_REPOSITORY || item.secret !== (scope === 'weekly' ? BUCKLER_WEEKLY_SECRET : BUCKLER_CLOUD_SECRET)
     || typeof item.uploadedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(item.uploadedAt)
     || !Number.isFinite(Date.parse(item.uploadedAt)) || new Date(item.uploadedAt).toISOString() !== item.uploadedAt) fail('receipt-invalid')
+  if (scope === 'weekly') {
+    if (item.scope !== 'weekly' || typeof item.capturedAt !== 'string'
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(item.capturedAt)
+      || !Number.isFinite(Date.parse(item.capturedAt)) || new Date(item.capturedAt).toISOString() !== item.capturedAt
+      || Date.parse(item.capturedAt) > Date.parse(item.uploadedAt)) fail('receipt-invalid')
+    return { repository: BUCKLER_CLOUD_REPOSITORY, secret: BUCKLER_WEEKLY_SECRET,
+      scope: 'weekly', capturedAt: item.capturedAt, uploadedAt: item.uploadedAt }
+  }
   return { repository: BUCKLER_CLOUD_REPOSITORY, secret: BUCKLER_CLOUD_SECRET, uploadedAt: item.uploadedAt }
 }
 
 export interface CloudSendDependencies {
   store?: Pick<BucklerSessionStore, 'load' | 'identity' | 'checkCapturePath'>
   io?: CloudSessionIo
-  runGh?: (operation: GhOperation, input?: string) => Promise<string>
+  runGh?: (operation: GhOperation, input?: string, scope?: CloudSendScope) => Promise<string>
   confirm?: () => Promise<string>
   isTTY?: boolean
   now?: () => Date
@@ -191,9 +224,14 @@ export interface CloudSendDependencies {
 export async function main(args = process.argv.slice(2), dependencies: CloudSendDependencies = {}): Promise<void> {
   const mode = parseCloudSendArguments(args)
   const write = dependencies.write ?? console.log
-  if (mode === 'help') { write(HELP); return }
+  if (mode === 'help') { write(`${HELP}\n\n${WEEKLY_HELP}`); return }
+  const scope: CloudSendScope = mode.endsWith('-weekly') ? 'weekly' : 'probe'
+  const directory = scope === 'weekly' ? WEEKLY_DIRECTORY : DIRECTORY
+  const receiptPath = scope === 'weekly' ? BUCKLER_WEEKLY_RECEIPT_PATH : BUCKLER_CLOUD_RECEIPT_PATH
+  const secret = scope === 'weekly' ? BUCKLER_WEEKLY_SECRET : BUCKLER_CLOUD_SECRET
+  const consentToken = scope === 'weekly' ? 'UPLOAD WEEKLY' : 'UPLOAD'
   const io = dependencies.io ?? defaultIo
-  const gh = dependencies.runGh ?? defaultGh
+  const gh = (operation: GhOperation, input?: string) => (dependencies.runGh ?? defaultGh)(operation, input, scope)
   const store = dependencies.store ?? createBucklerSessionStore()
   async function inspect(path: string): Promise<CloudSessionFileInfo | null> {
     const value = await io.inspect(path)
@@ -204,7 +242,7 @@ export async function main(args = process.argv.slice(2), dependencies: CloudSend
     const ancestors: string[] = []
     for (let path = ROOT; ; path = dirname(path)) { ancestors.unshift(path); if (path === dirname(path)) break }
     for (const path of ancestors) if ((await inspect(path))?.kind !== 'directory') fail('path')
-    for (const path of [LOCAL, DIRECTORY]) {
+    for (const path of [LOCAL, directory]) {
       let info = await inspect(path)
       if (!info && create) { await io.mkdir(path); info = await inspect(path) }
       if (info?.kind !== 'directory') fail(create ? 'path' : 'receipt-missing')
@@ -219,8 +257,8 @@ export async function main(args = process.argv.slice(2), dependencies: CloudSend
   }
   async function readReceipt(): Promise<Receipt> {
     await directories(false)
-    if (!await inspect(BUCKLER_CLOUD_RECEIPT_PATH)) fail('receipt-missing')
-    try { return receipt(JSON.parse(await readSmall(BUCKLER_CLOUD_RECEIPT_PATH))) }
+    if (!await inspect(receiptPath)) fail('receipt-missing')
+    try { return receipt(JSON.parse(await readSmall(receiptPath)), scope) }
     catch (error) { if (error instanceof BucklerCloudSendError && error.code === 'path') throw error; return fail('receipt-invalid') }
   }
   async function hasSecret(): Promise<boolean> {
@@ -231,12 +269,12 @@ export async function main(args = process.argv.slice(2), dependencies: CloudSend
       const names: unknown = JSON.parse(output)
       if (!Array.isArray(names) || names.some(value => !value || typeof value !== 'object' || Array.isArray(value)
         || Object.keys(value).length !== 1 || typeof value.name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,255}$/.test(value.name))) fail('github')
-      return names.some(value => value.name.toUpperCase() === BUCKLER_CLOUD_SECRET)
+      return names.some(value => value.name.toUpperCase() === secret)
     } catch { return fail('github') }
   }
   async function removeReceipt(expected: Receipt): Promise<void> {
     if (JSON.stringify(await readReceipt()) !== JSON.stringify(expected)) fail('receipt-invalid')
-    await io.unlink(BUCKLER_CLOUD_RECEIPT_PATH)
+    await io.unlink(receiptPath)
   }
   async function cleanup(expected: Receipt): Promise<void> {
     if (JSON.stringify(await readReceipt()) !== JSON.stringify(expected)) fail('receipt-invalid')
@@ -247,41 +285,41 @@ export async function main(args = process.argv.slice(2), dependencies: CloudSend
     await removeReceipt(expected)
   }
   async function writeReceipt(value: Receipt): Promise<void> {
-    const temporary = `${BUCKLER_CLOUD_RECEIPT_PATH}.tmp-${randomUUID()}`
-    const bytes = Buffer.from(JSON.stringify(receipt(value)) + '\n')
+    const temporary = `${receiptPath}.tmp-${randomUUID()}`
+    const bytes = Buffer.from(JSON.stringify(receipt(value, scope)) + '\n')
     let staged = false
     try {
       await directories(true)
-      if (await inspect(BUCKLER_CLOUD_RECEIPT_PATH)) fail('receipt-exists')
+      if (await inspect(receiptPath)) fail('receipt-exists')
       if (await inspect(temporary)) fail('path')
       await io.writeExclusive(temporary, bytes); staged = true
       await directories(false)
       if ((await inspect(temporary))?.kind !== 'file' || await readSmall(temporary) !== bytes.toString('utf8')) fail('path')
       // Hard-link creation is atomic and refuses to replace an existing receipt.
-      await io.linkExclusive(temporary, BUCKLER_CLOUD_RECEIPT_PATH)
+      await io.linkExclusive(temporary, receiptPath)
     } finally { if (staged) await io.unlink(temporary).catch(() => {}) }
   }
   try {
-    if (mode === 'cleanup') {
+    if (mode === 'cleanup' || mode === 'cleanup-weekly') {
       const previous = await readReceipt()
       await cleanup(previous)
       write('固定のActions Secretを削除し、ローカル送信記録の後処理を完了しました。')
       return
     }
     if (!(dependencies.isTTY ?? (process.stdin.isTTY && process.stdout.isTTY))) fail('interactive')
-    write(HELP)
+    write(scope === 'weekly' ? WEEKLY_HELP : HELP)
     let answer: string
     try {
       if (dependencies.confirm) answer = await dependencies.confirm()
       else {
         const terminal = createInterface({ input: process.stdin, output: process.stdout })
-        try { answer = await terminal.question('上記の固定Actions Secretへの認証状態の送信に同意する場合は UPLOAD: ', { signal: AbortSignal.timeout(15 * 60_000) }) }
+        try { answer = await terminal.question(`上記の固定Actions Secretへの送信${scope === 'weekly' ? 'と継続保持' : ''}に同意する場合は ${consentToken}: `, { signal: AbortSignal.timeout(15 * 60_000) }) }
         finally { terminal.close() }
       }
     } catch { return fail('cancelled') }
-    if (answer.trim() !== 'UPLOAD') fail('cancelled')
+    if (answer.trim() !== consentToken) fail('cancelled')
     await directories(true)
-    if (await inspect(BUCKLER_CLOUD_RECEIPT_PATH)) fail('receipt-exists')
+    if (await inspect(receiptPath)) fail('receipt-exists')
     if (await hasSecret()) fail('existing-secret')
     let capture
     try {
@@ -290,21 +328,36 @@ export async function main(args = process.argv.slice(2), dependencies: CloudSend
       await store.checkCapturePath(BUCKLER_SESSION_CAPTURE_PATH)
     } catch { return fail('capture') }
     if (await store.identity() !== capture.stateIdentity) fail('identity')
+    const date = (dependencies.now ?? (() => new Date()))()
+    if (!(date instanceof Date) || !Number.isFinite(date.getTime())) fail('path')
+    if (scope === 'weekly' && Date.parse(capture.capturedAt) > date.getTime()) fail('capture')
     let state: string
     try { state = validateBucklerSessionState(await store.load()) } catch { return fail('state') }
     if (await store.identity() !== capture.stateIdentity) fail('identity')
     if (Buffer.byteLength(state, 'utf8') >= BUCKLER_CLOUD_SECRET_LIMIT) fail('size')
-    const date = (dependencies.now ?? (() => new Date()))()
-    if (!(date instanceof Date) || !Number.isFinite(date.getTime())) fail('path')
-    const uploaded = receipt({ repository: BUCKLER_CLOUD_REPOSITORY, secret: BUCKLER_CLOUD_SECRET, uploadedAt: date.toISOString() })
+    let payload = state
+    if (scope === 'weekly') {
+      try {
+        payload = JSON.stringify(createBucklerWeeklySession({ capturedAt: capture.capturedAt, uploadedAt: date.toISOString(),
+          storageState: JSON.parse(state) }, date))
+      } catch (error) {
+        if (error instanceof BucklerWeeklySessionError && error.code === 'size-limit') fail('size')
+        return fail('state')
+      }
+    }
+    const uploaded = receipt(scope === 'weekly'
+      ? { repository: BUCKLER_CLOUD_REPOSITORY, secret, scope: 'weekly', capturedAt: capture.capturedAt, uploadedAt: date.toISOString() }
+      : { repository: BUCKLER_CLOUD_REPOSITORY, secret, uploadedAt: date.toISOString() }, scope)
     // Persist only non-secret ownership metadata before transmission, so interruption
     // during gh can always be followed by the fixed-target cleanup command.
     await writeReceipt(uploaded)
-    try { await gh('set', state) } catch {
+    try { await gh('set', payload) } catch {
       try { await cleanup(uploaded) } catch { return fail('cleanup-needed') }
       return fail('upload')
-    }
-    write('固定のActions Secretへの送信を完了しました。平文の認証内容は表示・ファイル保存していません。単発検証後に --cleanup を実行してください。')
+    } finally { state = ''; payload = '' }
+    write(scope === 'weekly'
+      ? '固定の週次用Actions Secretへの送信を完了しました。平文の認証内容は表示・ファイル保存していません。週次利用を終えるときは --cleanup-weekly を実行してください。'
+      : '固定のActions Secretへの送信を完了しました。平文の認証内容は表示・ファイル保存していません。単発検証後に --cleanup を実行してください。')
   } catch (error) { throw safeError(error) }
 }
 

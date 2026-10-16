@@ -31,6 +31,7 @@ export const RANK_DISTRIBUTION_CLOUD_CHECKPOINT_PATH = resolve(RANK_DISTRIBUTION
 export const BUCKLER_CLOUD_RANK_CHECKPOINT_ENV = 'BUCKLER_CLOUD_RANK_CHECKPOINT'
 const REPOSITORY = 'gonchiman/sf6'
 const BRANCH_PREFIX = 'refs/heads/codex/buckler-cloud-collection'
+const WEEKLY_WORKFLOW_REF = 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main'
 const OUTPUT_LIMIT = 1024 * 1024
 const HELP = `Bucklerランク分布のクラウド全体取得（単発・概数）
 
@@ -55,7 +56,7 @@ export class RankDistributionCloudError extends Error {
   constructor(code: RankDistributionCloudErrorCode) {
     const messages = {
       arguments: '--saved-session [--resume] [--max-requests 2〜1000] または --help を指定してください。',
-      runner: '固定リポジトリの検証ブランチを手動実行したGitHub hosted環境が必要です。',
+      runner: '指定リポジトリの許可されたGitHub hosted実行が必要です。',
       'session-missing': 'クラウド取得用の保存状態が設定されていません。',
       'session-too-large': 'クラウド取得用の保存状態は48KiB未満にしてください。',
       'session-invalid': 'クラウド取得用の保存状態の形式・対象サイトを確認できません。',
@@ -242,6 +243,10 @@ export interface RankDistributionCloudReport {
   capture: RankDistributionCloudCaptureSummary
 }
 export interface RankDistributionCloudDependencies {
+  /** Weekly access is an explicit in-process policy, never a CLI flag. */
+  executionPolicy?: 'probe' | 'weekly'
+  /** Weekly runner supplies an already parsed envelope's state only in memory. */
+  memorySessionState?: StorageState
   env?: Environment
   launch?: (options: RankDistributionCloudLaunchOptions) => Promise<RankDistributionCaptureTransport>
   collect?: typeof runRankDistributionCollection
@@ -257,7 +262,7 @@ export interface RankDistributionCloudDependencies {
 }
 
 /** Use GitHub's existing output channel, never a caller-selected output location. */
-async function markArtifactReady(env: Environment): Promise<void> {
+export async function markRankDistributionArtifactReady(env: Environment): Promise<void> {
   const path = env.GITHUB_OUTPUT
   if (!path || !isAbsolute(path)) throw new RankDistributionCloudError('output')
   await checkOutputParents(outputIo, dirname(path))
@@ -271,6 +276,15 @@ async function markArtifactReady(env: Environment): Promise<void> {
     await handle.writeFile('artifact_ready=true\n', 'utf8')
     await handle.sync()
   } finally { await handle.close() }
+}
+
+/** Preserve the original probe guard; weekly access additionally pins the workflow identity. */
+export function isAllowedRankDistributionCloudExecution(env: Environment, policy: 'probe' | 'weekly' = 'probe'): boolean {
+  if (!isHostedGitHubExecution(env) || env.GITHUB_REPOSITORY !== REPOSITORY || env.RUNNER_OS !== 'Windows') return false
+  if (policy === 'weekly') return env.GITHUB_REF === 'refs/heads/main'
+    && (env.GITHUB_EVENT_NAME === 'schedule' || env.GITHUB_EVENT_NAME === 'workflow_dispatch')
+    && env.GITHUB_WORKFLOW_REF === WEEKLY_WORKFLOW_REF
+  return policy === 'probe' && env.GITHUB_EVENT_NAME === 'workflow_dispatch' && env.GITHUB_REF?.startsWith(BRANCH_PREFIX) === true
 }
 
 async function launchCloudEdge(options: RankDistributionCloudLaunchOptions): Promise<RankDistributionCaptureTransport> {
@@ -299,9 +313,12 @@ export async function runRankDistributionCloudCollection(args: string[], depende
   disableRankDistributionDiagnostics(env)
   const options = parseRankDistributionCloudArguments(args)
   if (options.mode === 'help') throw new RankDistributionCloudError('arguments')
-  if (!isHostedGitHubExecution(env) || env.GITHUB_REPOSITORY !== REPOSITORY
-    || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || !env.GITHUB_REF?.startsWith(BRANCH_PREFIX)
-    || env.RUNNER_OS !== 'Windows') throw new RankDistributionCloudError('runner')
+  const executionPolicy = dependencies.executionPolicy ?? 'probe'
+  if (!isAllowedRankDistributionCloudExecution(env, executionPolicy)) throw new RankDistributionCloudError('runner')
+  if (executionPolicy === 'weekly') {
+    if (dependencies.memorySessionState === undefined || sessionJson) throw new RankDistributionCloudError('session-invalid')
+    try { sessionJson = JSON.stringify(dependencies.memorySessionState) } catch { throw new RankDistributionCloudError('session-invalid') }
+  } else if (dependencies.memorySessionState !== undefined) throw new RankDistributionCloudError('session-invalid')
   if (!sessionJson) throw new RankDistributionCloudError('session-missing')
   if (Buffer.byteLength(sessionJson, 'utf8') >= BUCKLER_CLOUD_SESSION_SIZE_LIMIT) throw new RankDistributionCloudError('session-too-large')
   let state: StorageState | undefined
@@ -404,7 +421,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   process.once('SIGINT', interrupt)
   try {
     const result = await runRankDistributionCloudCollection(args, { signal: interrupted.signal,
-      artifactReady: () => markArtifactReady(process.env) })
+      artifactReady: () => markRankDistributionArtifactReady(process.env) })
     console.log(JSON.stringify(result.report))
     if (!result.succeeded) process.exitCode = 2
   } finally { process.removeListener('SIGINT', interrupt) }

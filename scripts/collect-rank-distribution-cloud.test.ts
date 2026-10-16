@@ -8,6 +8,7 @@ import {
   RANK_DISTRIBUTION_CLOUD_OUTPUT_DIRECTORY, RANK_DISTRIBUTION_CLOUD_REPORT_PATH,
   BUCKLER_CLOUD_RANK_CHECKPOINT_ENV,
   RankDistributionCloudError, runRankDistributionCloudCollection, summarizeRankDistributionCloudCapture,
+  isAllowedRankDistributionCloudExecution,
 } from './collect-rank-distribution-cloud.ts'
 import type {
   RankDistributionCloudDependencies, RankDistributionCloudLaunchOptions, RankDistributionCloudOutputIo,
@@ -145,6 +146,42 @@ test('cloud CLI accepts saved session and bounded resume controls, with no arbit
     ['--saved-session', '--max-requests', '1001'], ['--saved-session', '--max-requests', '02']]) {
     assert.throws(() => parseRankDistributionCloudArguments(args), error =>
       error instanceof RankDistributionCloudError && error.code === 'arguments' && !error.message.includes(SECRET))
+  }
+})
+
+const weeklyHosted = () => ({ ...hosted(), GITHUB_REF: 'refs/heads/main', GITHUB_EVENT_NAME: 'schedule',
+  GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main' })
+
+test('the explicit weekly policy pins the main workflow identity without weakening the probe policy', async () => {
+  assert.equal(isAllowedRankDistributionCloudExecution(weeklyHosted()), false)
+  assert.equal(isAllowedRankDistributionCloudExecution(weeklyHosted(), 'weekly'), true)
+  assert.equal(isAllowedRankDistributionCloudExecution({ ...weeklyHosted(), GITHUB_EVENT_NAME: 'workflow_dispatch' }, 'weekly'), true)
+  for (const patch of [{ GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/other.yml@refs/heads/main' },
+    { GITHUB_REF: 'refs/heads/codex/buckler-cloud-collection-test' }, { GITHUB_EVENT_NAME: 'push' },
+    { GITHUB_REPOSITORY: 'someone/else' }, { RUNNER_ENVIRONMENT: 'self-hosted' }]) {
+    assert.equal(isAllowedRankDistributionCloudExecution({ ...weeklyHosted(), ...patch }, 'weekly'), false)
+  }
+  const setup = fixture()
+  Object.assign(setup.env, weeklyHosted())
+  delete setup.env[BUCKLER_CLOUD_SESSION_ENV]
+  setup.dependencies.executionPolicy = 'weekly'
+  setup.dependencies.memorySessionState = JSON.parse(stateJson())
+  const result = await runRankDistributionCloudCollection(['--saved-session'], setup.dependencies)
+  assert.equal(result.succeeded, true)
+  assert.equal(setup.launches[0].storageState.cookies[0].value, SECRET)
+  assert.equal(BUCKLER_CLOUD_SESSION_ENV in setup.env, false)
+  assert.ok(!JSON.stringify([result, [...setup.outputs], [...setup.privateWrites]]).includes(SECRET))
+})
+
+test('memory state is restricted to the weekly policy and never replaces a legacy probe credential implicitly', async () => {
+  for (const policy of ['probe', 'weekly'] as const) {
+    const setup = fixture()
+    if (policy === 'weekly') Object.assign(setup.env, weeklyHosted())
+    setup.dependencies.executionPolicy = policy
+    setup.dependencies.memorySessionState = JSON.parse(stateJson())
+    await assert.rejects(runRankDistributionCloudCollection(['--saved-session'], setup.dependencies), error =>
+      error instanceof RankDistributionCloudError && error.code === 'session-invalid')
+    assert.equal(setup.launches.length, 0)
   }
 })
 
