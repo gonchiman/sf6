@@ -13,6 +13,7 @@
 .rank-distribution-period time { white-space: nowrap; }
 .rank-distribution-note { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.8; }
 .rank-distribution-content { min-width: 0; display: grid; gap: 12px; }
+.mr-distribution-condition-note { margin-top: 12px; }
 .rank-distribution-scroll { max-height: min(70vh, 720px); scroll-padding-left: 128px; scroll-padding-top: 60px; }
 .rank-distribution-table { min-width: 480px; table-layout: fixed; }
 .rank-distribution-rank-column { width: 128px; }

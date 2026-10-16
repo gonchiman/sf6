@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { createRankDistributionRows, loadRankDistributionDataset, loadRankDistributionManifest, RANK_DISTRIBUTION_GROUPS } from '../lib/rankDistribution'
 import { timestampLabel } from '../lib/dateTime'
 import { leagueLabel } from '../lib/winRateConditions'
@@ -8,6 +8,8 @@ import { DataLoadState } from './DataLoadState'
 import { RankDistributionTable } from './RankDistributionTable'
 import { RankDistributionChart } from './RankDistributionChart'
 import { StatisticsPanel } from './StatisticsPanel'
+import { MrDistributionPanel } from './MrDistributionPanel'
+import { DistributionCapturePeriod as CapturePeriod } from './DistributionCapturePeriod'
 import '../win-rates.css'
 import '../rank-distribution.css'
 
@@ -22,18 +24,24 @@ type DatasetState =
   | { key: string; status: 'ready'; dataset: RankDistributionDataset }
 
 const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 })
-const captureDateFormat = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'medium' })
-const captureTimeFormat = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', timeStyle: 'short' })
 const displayLabel = (group: string) => group === 'ALL' ? 'ランク帯ごと' : `${leagueLabel(group)}の★別`
 
-function CapturePeriod({ start, end }: { start: string; end: string }) {
-  if (start === end) return <time dateTime={start}>{timestampLabel(start)}</time>
-  const sameDate = captureDateFormat.format(new Date(start)) === captureDateFormat.format(new Date(end))
-  return <><time dateTime={start}>{timestampLabel(start).replace(/ JST$/, '')}</time>
-    〜<time dateTime={end}>{sameDate ? `${captureTimeFormat.format(new Date(end))} JST` : timestampLabel(end)}</time></>
+export function RankDistributionPage() {
+  const contentId = useId()
+  const [view, setView] = useState<'lp' | 'mr'>('lp')
+  return <section className="rank-distribution-page" aria-label="ランク分布">
+    <div className="win-rates-view-selector" role="group" aria-label="分布の対象">
+      {([['lp', 'LPランク'], ['mr', 'MR帯']] as const).map(([value, label]) => <button key={value}
+        type="button" className="win-rates-button" aria-pressed={view === value} aria-controls={contentId}
+        onClick={() => setView(value)}>{label}</button>)}
+    </div>
+    <div id={contentId} className="win-rates-view-panel">
+      {view === 'lp' ? <LpDistributionPanel /> : <MrDistributionPanel />}
+    </div>
+  </section>
 }
 
-export function RankDistributionPage() {
+function LpDistributionPanel() {
   const [bootstrap, setBootstrap] = useState<BootstrapState>({ status: 'loading' })
   const [bootstrapVersion, setBootstrapVersion] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -88,7 +96,7 @@ export function RankDistributionPage() {
   const emptyLabel = availability?.status === 'collection-failed' ? '取得失敗'
     : availability?.status === 'verification-pending' ? '検証待ち' : '未取得'
 
-  return <section className="rank-distribution-page" aria-label="ランク分布">
+  return <section className="rank-distribution-page" aria-label="LPランク分布">
     <p className="rank-distribution-scope">最大LPの総合一覧 · 全地域 · 全プラットフォーム</p>
     <StatisticsPanel title="条件選択">
       <div className="win-rates-filters rank-distribution-filters">

@@ -11,6 +11,12 @@ type Props = {
   rows: readonly RankDistributionRow[]
   metric: RankDistributionChartMetric
   estimated?: boolean
+  label?: string
+  categoryLabel?: string
+  percentLabel?: string
+  denominatorDescription?: string
+  /** Keep every bar visible while thinning axis and zero labels for many categories. */
+  compactCategories?: boolean
 }
 
 const PLOT_HEIGHT = 262
@@ -26,7 +32,9 @@ function tickLabel(value: number, metric: RankDistributionChartMetric): string {
   return `${value > 0 && value < .01 ? value.toExponential(1) : percentageFormat.format(value)}%`
 }
 
-export function RankDistributionChart({ rows, metric, estimated = false }: Props) {
+export function RankDistributionChart({ rows, metric, estimated = false, label = 'ランク分布',
+  categoryLabel = 'ランク', percentLabel = '全体比',
+  denominatorDescription = '割合の分母は、★別表示でも掲載アカウント全体です。', compactCategories = false }: Props) {
   const titleId = useId()
   const descriptionId = useId()
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -53,15 +61,15 @@ export function RankDistributionChart({ rows, metric, estimated = false }: Props
   }, [rows.length, metric, hasValues])
 
   if (rows.length === 0) {
-    return <p className="rank-distribution-chart-state" role="status">表示するランク区分がありません。</p>
+    return <p className="rank-distribution-chart-state" role="status">表示する{categoryLabel}区分がありません。</p>
   }
   if (!hasValues) {
     return <p className="rank-distribution-chart-state" role="status">{metric === 'percent'
-      ? '全体比は算出できません。件数表示または表で確認してください。'
+      ? `${percentLabel}は算出できません。件数表示または表で確認してください。`
       : 'グラフに表示できるアカウント数がありません。'}</p>
   }
 
-  const metricLabel = metric === 'percent' ? '全体比（%）' : 'アカウント数（件）'
+  const metricLabel = metric === 'percent' ? `${percentLabel}（%）` : 'アカウント数（件）'
   const ticks = availableWidth < 420 && axis.ticks.length > 4
     ? axis.ticks.filter((_, index) => index % 2 === 0 || index === axis.ticks.length - 1)
     : axis.ticks
@@ -75,6 +83,11 @@ export function RankDistributionChart({ rows, metric, estimated = false }: Props
   const bottom = TOP + PLOT_HEIGHT
   const longestRankLabel = Math.max(...rows.map(row => chartTextWidth(row.label)))
   const rotateRankLabels = longestRankLabel + 12 > slot
+  const labelSpacing = (rotateRankLabels ? longestRankLabel * Math.cos(LABEL_ANGLE * Math.PI / 180) : longestRankLabel) + 12
+  const requiredLabelStep = compactCategories ? Math.max(1, Math.ceil(labelSpacing / slot)) : 1
+  const labelStep = [1, 2, 5, 10, 20, 50].find(step => step >= requiredLabelStep) ?? requiredLabelStep
+  const showCategoryLabel = (index: number) => index === rows.length - 1
+    || index % labelStep === 0 && rows.length - 1 - index >= labelStep
   const height = bottom + (rotateRankLabels
     ? Math.ceil(longestRankLabel * Math.sin(LABEL_ANGLE * Math.PI / 180)) + 40
     : 58)
@@ -86,16 +99,19 @@ export function RankDistributionChart({ rows, metric, estimated = false }: Props
 
   return <figure className="rank-distribution-chart" aria-labelledby={titleId}>
     <div ref={viewportRef} className="rank-distribution-chart-viewport">
-      <div className="rank-distribution-chart-scroll" role="region" aria-label="ランク分布の縦棒グラフ・スクロール領域"
+      <div className="rank-distribution-chart-scroll" role="region" aria-label={`${label}の縦棒グラフ・スクロール領域`}
         tabIndex={availableWidth < width ? 0 : undefined}>
         <svg className="rank-distribution-chart-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`}
           role="group" aria-labelledby={titleId} aria-describedby={descriptionId}
-          data-chart-orientation="vertical" data-axis-start="0" data-axis-end={axis.maximum}>
-          <title id={titleId}>ランク分布の{metricLabel}{estimated ? '（概数）' : ''}</title>
-          <desc id={descriptionId}>ランクを低い順に並べた、0起点の縦棒グラフです。{estimated ? '数値は取得期間中の概数です。' : ''}
-            {metric === 'percent' ? '割合の分母は、★別表示でも掲載アカウント全体です。' : ''}
-            {showAllValues ? '棒の上に数値を表示します。' : '数値の重なりを避けるため、棒の上には最大値と0の値を表示します。'}
-            すべての件数と全体比は、各棒のツールチップと下の表でも確認できます。</desc>
+          data-chart-orientation="vertical" data-axis-start="0" data-axis-end={axis.maximum} data-category-label-step={labelStep}>
+          <title id={titleId}>{label}の{metricLabel}{estimated ? '（概数）' : ''}</title>
+          <desc id={descriptionId}>{categoryLabel}を低い順に並べた、0起点の縦棒グラフです。{estimated ? '数値は取得期間中の概数です。' : ''}
+            {metric === 'percent' ? denominatorDescription : ''}
+            {showAllValues ? '棒の上に数値を表示します。' : compactCategories
+              ? '数値の重なりを避けるため、棒の上には最大値と一部の0を表示します。'
+              : '数値の重なりを避けるため、棒の上には最大値と0の値を表示します。'}
+            {compactCategories && labelStep > 1 ? '軸の区間名は間引き、すべての棒を同じ幅のまま表示します。' : ''}
+            すべての件数と{percentLabel}は、各棒のツールチップと下の表でも確認できます。</desc>
           <g aria-hidden="true">
             <text className="rank-distribution-chart-axis-title" x={left} y="17">{metricLabel}</text>
             {ticks.map((tick, index) => <g key={tick}>
@@ -103,7 +119,7 @@ export function RankDistributionChart({ rows, metric, estimated = false }: Props
               <text className="rank-distribution-chart-tick" x={left - 10} y={y(tick) + 4} textAnchor="end">{tickTexts[index]}</text>
             </g>)}
             <path className="rank-distribution-chart-axis" d={`M ${left} ${TOP} V ${bottom} H ${right}`} />
-            <text className="rank-distribution-chart-axis-title" x={(left + right) / 2} y={height - 6} textAnchor="middle">ランク</text>
+            <text className="rank-distribution-chart-axis-title" x={(left + right) / 2} y={height - 6} textAnchor="middle">{categoryLabel}</text>
           </g>
           {rows.map((row, index) => {
             const value = values[index]
@@ -111,8 +127,9 @@ export function RankDistributionChart({ rows, metric, estimated = false }: Props
             const top = value === null ? bottom : y(value)
             const label = labels[index]
             const labelX = Math.max(chartTextWidth(label) / 2 + 4, Math.min(width - chartTextWidth(label) / 2 - 4, x))
-            const showValue = value === null || showAllValues || index === maximumIndex || value === 0
-            const description = `${row.label}、アカウント数${estimated ? '（概数）' : ''} ${rankDistributionChartValueLabel(row.count, 'count')}、全体比${estimated ? '（概数）' : ''} ${rankDistributionChartValueLabel(row.percent, 'percent')}`
+            const showValue = value === null || showAllValues || index === maximumIndex
+              || value === 0 && (!compactCategories || showCategoryLabel(index))
+            const description = `${row.label}、アカウント数${estimated ? '（概数）' : ''} ${rankDistributionChartValueLabel(row.count, 'count')}、${percentLabel}${estimated ? '（概数）' : ''} ${rankDistributionChartValueLabel(row.percent, 'percent')}`
             return <g key={row.id} data-rank-distribution-id={row.id} role="img" aria-label={description}>
               <title>{description}</title>
               <g aria-hidden="true">
@@ -122,9 +139,9 @@ export function RankDistributionChart({ rows, metric, estimated = false }: Props
                 {value === 0 && <line className="rank-distribution-chart-zero" x1={x - barWidth / 2} x2={x + barWidth / 2}
                   y1={bottom} y2={bottom} />}
                 {showValue && <text className="rank-distribution-chart-value" x={labelX} y={top - 9} textAnchor="middle">{label}</text>}
-                <text className="rank-distribution-chart-rank" x={rotateRankLabels ? undefined : x}
+                {showCategoryLabel(index) && <text className="rank-distribution-chart-rank" x={rotateRankLabels ? undefined : x}
                   y={rotateRankLabels ? undefined : bottom + 23} textAnchor={rotateRankLabels ? 'end' : 'middle'}
-                  transform={rotateRankLabels ? `translate(${x + 3},${bottom + 17}) rotate(-${LABEL_ANGLE})` : undefined}>{row.label}</text>
+                  transform={rotateRankLabels ? `translate(${x + 3},${bottom + 17}) rotate(-${LABEL_ANGLE})` : undefined}>{row.label}</text>}
               </g>
             </g>
           })}
