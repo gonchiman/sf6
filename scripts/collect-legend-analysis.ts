@@ -3,8 +3,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { BrowserContextOptions } from 'playwright'
 import { LEGEND_ANALYSIS_SOURCE, parseLegendAnalysisDataset, parseLegendAnalysisManifest } from '../src/lib/legendAnalysis.ts'
-import { collectLegendAnalysisDataset, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
-import type { LegendAnalysisPage } from './lib/legend-analysis-collector.ts'
+import { collectLegendAnalysisDataset, LEGEND_ANALYSIS_COLLECTION_PHASES, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
+import type { LegendAnalysisCollectionPhase, LegendAnalysisPage } from './lib/legend-analysis-collector.ts'
 import { createLegendAnalysisPageReader, LEGEND_ANALYSIS_CONDITIONS, legendAnalysisPageUrl, LegendAnalysisDomError, sanitizeLegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import type { LegendAnalysisDomErrorCode, LegendAnalysisReaderStep, LegendClickFailure, LegendClickHit, LegendClickObservation, LegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import { checkLegendAnalysisParents, LEGEND_ANALYSIS_JSON_LIMIT, legendAnalysisFileInfo } from './lib/legend-analysis-files.ts'
@@ -23,7 +23,8 @@ export interface LegendAnalysisTransport {
     characterFilter?: '1' | '2' | '3' | '4' | null; visibleRosterButtonCount?: number | null;
     clickFailure?: LegendClickFailure | null; clickHitKind?: LegendClickHit | null; clickHitTag?: LegendClickObservation['hitTag'];
     parentParagraph?: boolean; pointerEventsNone?: boolean; rosterDiagnostics?: LegendRosterDiagnostics | null;
-    lastLoginRequired?: boolean | null; lastSignedIn?: boolean | null; lastRankingReadable?: boolean | null; readableWithoutSignInReadCount?: number; lastHttpStatus?: number | null }
+    lastLoginRequired?: boolean | null; lastSignedIn?: boolean | null; lastRankingReadable?: boolean | null; readableWithoutSignInReadCount?: number; lastHttpStatus?: number | null;
+    lastAttemptedPage: number | null; successfulReadCount: number }
   close(): Promise<void>
 }
 export type LegendAnalysisFailureReason = 'authentication-unavailable' | 'source-unconfirmed' | 'source-changed'
@@ -35,6 +36,12 @@ export interface LegendAnalysisCaptureReport {
   endedAt: string
   requestCount: number
   retryCount: number
+  lastAttemptedPage: number | null
+  /** Accepted ranking pages, including preparation and rechecks, excluding PLAY Act pages. */
+  successfulReadCount: number
+  /** One-based whole-capture attempt; null until normal collection starts. */
+  captureAttempt: number | null
+  collectionPhase: LegendAnalysisCollectionPhase
   datasetId: string | null
   browserClosed: boolean
   lastStep?: LegendAnalysisReaderStep | null
@@ -52,6 +59,56 @@ export interface LegendAnalysisCaptureReport {
   lastRankingReadable?: boolean | null
   readableWithoutSignInReadCount?: number
   lastHttpStatus?: number | null
+}
+export interface LegendAnalysisSafeCaptureReport {
+  status: 'succeeded' | 'failed'
+  reason: LegendAnalysisFailureReason | null
+  startedAt: string | null
+  endedAt: string | null
+  requestCount: number
+  successfulReadCount: number
+  retryCount: number
+  captureAttempt: number | null
+  collectionPhase: LegendAnalysisCollectionPhase
+  lastAttemptedPage: number | null
+  datasetId: string | null
+  browserClosed: boolean
+  lastStep: LegendAnalysisReaderStep | null
+  domErrorCode: LegendAnalysisDomErrorCode | null
+  lastHttpStatus: number | null
+  lastLoginRequired: boolean | null
+  lastSignedIn: boolean | null
+  lastRankingReadable: boolean | null
+  readableWithoutSignInReadCount: number
+}
+/** A second scalar-only boundary for stdout; never log an arbitrary collector result. */
+export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnalysisSafeCaptureReport {
+  const input = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  const bounded = (candidate: unknown, min: number, max: number): candidate is number => Number.isSafeInteger(candidate) && (candidate as number) >= min && (candidate as number) <= max
+  const time = (candidate: unknown): string | null => {
+    if (typeof candidate !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(candidate)) return null
+    try { return new Date(candidate).toISOString() === candidate ? candidate : null } catch { return null }
+  }
+  const requestCount = bounded(input.requestCount, 0, 1000) ? input.requestCount : 0
+  const successfulReadCount = bounded(input.successfulReadCount, 0, requestCount) ? input.successfulReadCount : 0
+  return {
+    status: input.status === 'succeeded' ? 'succeeded' : 'failed',
+    reason: ['authentication-unavailable', 'source-unconfirmed', 'source-changed', 'access-unavailable', 'cancelled', 'request-limit', 'collection-failed', 'output-unavailable'].includes(input.reason as string) ? input.reason as LegendAnalysisFailureReason : null,
+    startedAt: time(input.startedAt), endedAt: time(input.endedAt), requestCount, successfulReadCount,
+    retryCount: bounded(input.retryCount, 0, 2) ? input.retryCount : 0,
+    captureAttempt: bounded(input.captureAttempt, 1, 3) ? input.captureAttempt : null,
+    collectionPhase: LEGEND_ANALYSIS_COLLECTION_PHASES.includes(input.collectionPhase as LegendAnalysisCollectionPhase) ? input.collectionPhase as LegendAnalysisCollectionPhase : 'preparation',
+    lastAttemptedPage: bounded(input.lastAttemptedPage, 1, 1000000) ? input.lastAttemptedPage : null,
+    datasetId: typeof input.datasetId === 'string' && /^legend-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/.test(input.datasetId) ? input.datasetId : null,
+    browserClosed: input.browserClosed === true,
+    lastStep: ['idle', 'ranking-navigation', 'ranking-observation', 'act-navigation', 'act-observation', 'roster-condition', 'roster-open', 'roster-observation', 'complete'].includes(input.lastStep as string) ? input.lastStep as LegendAnalysisReaderStep : null,
+    domErrorCode: ['invalid-request', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(input.domErrorCode as string) ? input.domErrorCode as LegendAnalysisDomErrorCode : null,
+    lastHttpStatus: bounded(input.lastHttpStatus, 100, 599) ? input.lastHttpStatus : null,
+    lastLoginRequired: typeof input.lastLoginRequired === 'boolean' ? input.lastLoginRequired : null,
+    lastSignedIn: typeof input.lastSignedIn === 'boolean' ? input.lastSignedIn : null,
+    lastRankingReadable: typeof input.lastRankingReadable === 'boolean' ? input.lastRankingReadable : null,
+    readableWithoutSignInReadCount: bounded(input.readableWithoutSignInReadCount, 0, successfulReadCount) ? input.readableWithoutSignInReadCount : 0,
+  }
 }
 export interface LegendAnalysisRunOptions {
   storageState: LegendAnalysisStorageState
@@ -104,7 +161,8 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
   const startedAt = now().toISOString()
   const report: LegendAnalysisCaptureReport = { status: 'failed', reason: null, startedAt, endedAt: startedAt,
     requestCount: 0, retryCount: 0, datasetId: null, browserClosed: false, lastStep: null, domErrorCode: null,
-    characterFilter: null, visibleRosterButtonCount: null }
+    characterFilter: null, visibleRosterButtonCount: null, lastAttemptedPage: null, successfulReadCount: 0,
+    captureAttempt: null, collectionPhase: 'preparation' }
   const deadline = AbortSignal.timeout(15 * 60 * 1000)
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline
   const output = resolve(options.outputDirectory), publicDirectory = resolve(output, 'public')
@@ -126,7 +184,11 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
       fetchPage: (page, url) => transport!.fetchPage(page, url), confirmAct: () => transport!.confirmAct(), act: initial.act,
       conditions: LEGEND_ANALYSIS_CONDITIONS, characterIds: initial.characterIds, characterNames: initial.characterNames,
       membershipRule: 'official-legend-badge', membershipConfirmed: true, signal, now, maxRequests: 120, maxAttempts: 2,
-      onRetry: count => { if (Number.isSafeInteger(count) && count >= 1 && count <= 2) report.retryCount = count } })
+      onRetry: count => { if (Number.isSafeInteger(count) && count >= 1 && count <= 2) report.retryCount = count },
+      onProgress: value => {
+        if (LEGEND_ANALYSIS_COLLECTION_PHASES.includes(value.phase)) report.collectionPhase = value.phase
+        if (Number.isSafeInteger(value.attempt) && value.attempt >= 1 && value.attempt <= 3) report.captureAttempt = value.attempt
+      } })
     dataset = collected.dataset; report.retryCount = collected.retryCount
     signal.throwIfAborted()
   } catch (error) { report.reason ??= reason(error, signal); dataset = null }
@@ -135,6 +197,8 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
       try {
         const diagnostics = transport.getDiagnostics(), count = diagnostics.requestCount
         if (Number.isSafeInteger(count) && count >= 0 && count <= 1000) report.requestCount = count
+        if (Number.isSafeInteger(diagnostics.lastAttemptedPage) && diagnostics.lastAttemptedPage! >= 1 && diagnostics.lastAttemptedPage! <= 1000000) report.lastAttemptedPage = diagnostics.lastAttemptedPage
+        if (Number.isSafeInteger(diagnostics.successfulReadCount) && diagnostics.successfulReadCount >= 0 && diagnostics.successfulReadCount <= report.requestCount) report.successfulReadCount = diagnostics.successfulReadCount
         if (['idle', 'ranking-navigation', 'ranking-observation', 'act-navigation', 'act-observation', 'roster-condition', 'roster-open', 'roster-observation', 'complete'].includes(diagnostics.lastStep ?? '')) report.lastStep = diagnostics.lastStep!
         if (['invalid-request', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(diagnostics.lastErrorCode ?? '')) report.domErrorCode = diagnostics.lastErrorCode!
         if (['1', '2', '3', '4'].includes(diagnostics.characterFilter ?? '')) report.characterFilter = diagnostics.characterFilter!
@@ -205,7 +269,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   try {
     const outputDirectory = resolve(LEGEND_ANALYSIS_LOCAL_OUTPUT, new Date().toISOString().replace(/[:.]/g, '-'))
     const result = await runLegendAnalysisCollection({ storageState: await loadLegendAnalysisLocalSession(), outputDirectory, signal: controller.signal })
-    console.log(JSON.stringify(result.report))
+    console.log(JSON.stringify(summarizeLegendAnalysisCaptureReport(result.report)))
     console.log(`集計保存先: ${resolve(outputDirectory, 'public')}`)
     if (!result.succeeded) process.exitCode = 2
   } finally { process.removeListener('SIGINT', interrupt) }

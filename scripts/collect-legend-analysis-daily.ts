@@ -1,6 +1,7 @@
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { runLegendAnalysisCollection } from './collect-legend-analysis.ts'
+import { runLegendAnalysisCollection, summarizeLegendAnalysisCaptureReport } from './collect-legend-analysis.ts'
+import type { LegendAnalysisSafeCaptureReport } from './collect-legend-analysis.ts'
 import { disableRankDistributionDiagnostics } from './collect-rank-distribution.ts'
 import { markRankDistributionArtifactReady, rankDistributionCloudBrowserEnvironment } from './collect-rank-distribution-cloud.ts'
 import { parseBucklerWeeklySession, BUCKLER_WEEKLY_SESSION_SECRET } from './lib/buckler-weekly-session.ts'
@@ -33,6 +34,7 @@ export async function runLegendDaily(dependencies: {
   collect?: typeof runLegendAnalysisCollection
   validate?: typeof validateLegendAnalysisDirectory
   artifactReady?: (env: Environment) => Promise<void>
+  logReport?: (report: LegendAnalysisSafeCaptureReport) => void
 } = {}): Promise<{ succeeded: boolean }> {
   const env = dependencies.env ?? process.env
   const raw = env[BUCKLER_WEEKLY_SESSION_SECRET]
@@ -47,6 +49,9 @@ export async function runLegendDaily(dependencies: {
     result = await (dependencies.collect ?? runLegendAnalysisCollection)({ storageState: session.storageState,
       outputDirectory: LEGEND_DAILY_OUTPUT, browserEnvironment: rankDistributionCloudBrowserEnvironment(env) })
   } catch { throw new LegendDailyError('collection') }
+  const safeReport = summarizeLegendAnalysisCaptureReport(result.report)
+  const logReport = dependencies.logReport ?? (report => console.log(JSON.stringify({ capture: report })))
+  logReport(safeReport)
   try {
     await (dependencies.validate ?? validateLegendAnalysisDirectory)(resolve(LEGEND_DAILY_OUTPUT, 'public'))
     await (dependencies.artifactReady ?? markRankDistributionArtifactReady)(env)

@@ -61,6 +61,15 @@ export interface CollectLegendAnalysisOptions {
   now?: () => Date
   /** Called when a whole-capture retry actually starts, including retries that later fail. */
   onRetry?: (retryCount: number) => void
+  onProgress?: (progress: LegendAnalysisCollectionProgress) => void
+}
+export const LEGEND_ANALYSIS_COLLECTION_PHASES = ['preparation', 'listing', 'act-recheck', 'end-recheck', 'start-recheck', 'complete'] as const
+export type LegendAnalysisCollectionPhase = typeof LEGEND_ANALYSIS_COLLECTION_PHASES[number]
+export interface LegendAnalysisCollectionProgress {
+  phase: LegendAnalysisCollectionPhase
+  /** One-based whole-capture attempt, independent of an individual HTTP 5xx retry. */
+  attempt: number
+  page: number | null
 }
 export interface LegendAnalysisCollectionResult {
   dataset: LegendAnalysisDataset
@@ -79,11 +88,16 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
     || !['official-legend-badge', 'official-ranking-cutoff'].includes(options.membershipRule)) fail('configuration-invalid')
   if (options.membershipConfirmed !== true) fail('evidence-unconfirmed')
   let requestCount = 0
+  let captureAttempt = 0
   const now = options.now ?? (() => new Date())
   const clock = (): string => { try { return now().toISOString() } catch { return fail('configuration-invalid') } }
   const cancelled = (): void => { if (options.signal?.aborted) fail('cancelled') }
-  const read = async (page: number): Promise<LegendAnalysisPage> => {
+  const progress = (phase: LegendAnalysisCollectionPhase, page: number | null): void => {
+    options.onProgress?.({ phase, attempt: captureAttempt, page })
+  }
+  const read = async (page: number, phase: LegendAnalysisCollectionPhase = 'listing'): Promise<LegendAnalysisPage> => {
     cancelled()
+    progress(phase, page)
     if (requestCount >= maxRequests) fail('request-limit')
     const url = options.pageUrl(page)
     requestCount++
@@ -105,6 +119,7 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
   }
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     cancelled()
+    captureAttempt = attempt + 1
     if (attempt > 0) options.onRetry?.(attempt)
     const startedAt = clock()
     try {
@@ -135,10 +150,11 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       }
       if (!accepted.length) fail('evidence-unconfirmed')
       // Re-read the last observed page and then the start; comparison includes every private row.
+      progress('act-recheck', null)
       await options.confirmAct?.()
-      const lastAgain = await read(current.page)
+      const lastAgain = await read(current.page, 'end-recheck')
       if (!equal(stablePage(current), stablePage(lastAgain)) || !boundary && lastAgain.nextPage !== null
-        || !equal(stablePage(first), stablePage(await read(1)))) fail('source-changed')
+        || !equal(stablePage(first), stablePage(await read(1, 'start-recheck')))) fail('source-changed')
       const endedAt = clock()
       if (Date.parse(endedAt) < Date.parse(startedAt)) fail('configuration-invalid')
       const dataset = parseLegendAnalysisDataset({
@@ -161,6 +177,7 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
             'レジェンド掲載の終端と先頭を再確認した。取得時点が異なる全行の同時点性を保証するものではない。',
             'プレイヤー名、識別子、プロフィールリンク、行データ、照合用一時ハッシュは保存していない。'] },
       })
+      progress('complete', null)
       return { dataset, requestCount, retryCount: attempt, pagesRead }
     } catch (error) {
       if (options.signal?.aborted) fail('cancelled')

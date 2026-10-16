@@ -28,6 +28,8 @@ function fixture(rows?: LegendAnalysisEntry[], pageSize = 2) {
 
 test('complete capture aggregates account-character entries and rechecks both endpoints', async () => {
   const data = fixture()
+  const progress: Array<{ phase: string; attempt: number; page: number | null }> = []
+  data.options.onProgress = value => { progress.push(value) }
   // A single account may legitimately have different listed characters.
   data.values[1].accountKey = data.values[0].accountKey
   const result = await collectLegendAnalysisDataset(data.options)
@@ -36,6 +38,11 @@ test('complete capture aggregates account-character entries and rechecks both en
   assert.equal(result.dataset.characters[1].count, 1)
   assert.deepEqual(data.requested, [1, 2, 2, 1])
   assert.equal(data.actChecks(), 1)
+  assert.deepEqual(progress, [
+    { phase: 'listing', attempt: 1, page: 1 }, { phase: 'listing', attempt: 1, page: 2 },
+    { phase: 'act-recheck', attempt: 1, page: null }, { phase: 'end-recheck', attempt: 1, page: 2 },
+    { phase: 'start-recheck', attempt: 1, page: 1 }, { phase: 'complete', attempt: 1, page: null },
+  ])
   assert.equal(JSON.stringify(result).includes('accountKey'), false)
   assert.equal(JSON.stringify(result).includes(data.values[0].accountKey), false)
 })

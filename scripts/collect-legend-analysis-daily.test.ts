@@ -15,7 +15,8 @@ function environment(): Record<string, string | undefined> {
 }
 function result(succeeded: boolean) {
   return { succeeded, report: { status: succeeded ? 'succeeded' as const : 'failed' as const, reason: succeeded ? null : 'access-unavailable' as const,
-    startedAt: now.toISOString(), endedAt: now.toISOString(), requestCount: 30, retryCount: 0, datasetId: succeeded ? 'legend-test' : null, browserClosed: true } }
+    startedAt: now.toISOString(), endedAt: now.toISOString(), requestCount: 30, retryCount: 0, datasetId: succeeded ? 'legend-test' : null, browserClosed: true,
+    lastAttemptedPage: 26, successfulReadCount: 28, captureAttempt: 1, collectionPhase: 'listing' as const } }
 }
 
 test('daily collection is restricted to this main workflow and consumes the Secret before every guard', async () => {
@@ -39,10 +40,11 @@ test('daily collection validates the aggregate directory before allowing an arti
       assert.equal(options.outputDirectory, LEGEND_DAILY_OUTPUT)
       assert.deepEqual(options.browserEnvironment, { PATH: 'test-path' })
       return result(succeeded)
-    }, validate: async path => { calls.push('validate'); assert.ok(path.endsWith('public')); return { datasets: succeeded ? 1 : 0, entries: succeeded ? 500 : 0 } },
+    }, logReport: report => { calls.push('report'); assert.equal(report.lastAttemptedPage, 26); assert.equal(report.captureAttempt, 1); assert.equal(report.successfulReadCount, 28); assert.equal(report.collectionPhase, 'listing') },
+    validate: async path => { calls.push('validate'); assert.ok(path.endsWith('public')); return { datasets: succeeded ? 1 : 0, entries: succeeded ? 500 : 0 } },
     artifactReady: async () => { calls.push('artifact') } })
     assert.deepEqual(actual, { succeeded })
-    assert.deepEqual(calls, ['collect', 'validate', 'artifact'])
+    assert.deepEqual(calls, ['collect', 'report', 'validate', 'artifact'])
     assert.ok(!JSON.stringify(actual).includes(PRIVATE))
   }
 })
@@ -52,8 +54,27 @@ test('invalid sessions, browser errors and failed output validation never author
   await assert.rejects(runLegendDaily({ env, now: () => now }), (e: unknown) => e instanceof LegendDailyError && e.code === 'session' && !e.message.includes(PRIVATE))
   let marked = false
   await assert.rejects(runLegendDaily({ env: environment(), now: () => now, collect: async () => { throw new Error(PRIVATE) }, artifactReady: async () => { marked = true } }), /取得を完了/)
-  await assert.rejects(runLegendDaily({ env: environment(), now: () => now, collect: async () => result(true), validate: async () => { throw new Error(PRIVATE) }, artifactReady: async () => { marked = true } }), /集計出力/)
+  await assert.rejects(runLegendDaily({ env: environment(), now: () => now, collect: async () => result(true), logReport: () => {}, validate: async () => { throw new Error(PRIVATE) }, artifactReady: async () => { marked = true } }), /集計出力/)
   assert.equal(marked, false)
+})
+
+test('daily stdout emits only a sanitized capture report, including when collection failed', async t => {
+  const lines: unknown[] = []
+  t.mock.method(console, 'log', (...values: unknown[]) => { lines.push(...values) })
+  const supplied = result(false)
+  Object.assign(supplied.report, { lastAttemptedPage: Number.MAX_SAFE_INTEGER, successfulReadCount: 99999,
+    captureAttempt: 999, collectionPhase: PRIVATE, lastStep: PRIVATE, datasetId: `legend-${PRIVATE}`,
+    profileUrl: `https://example.com/${PRIVATE}`, storageState: { cookies: [PRIVATE] }, localPath: `C:/Users/${PRIVATE}` })
+  await runLegendDaily({ env: environment(), now: () => now, collect: async () => supplied,
+    validate: async () => ({ datasets: 0, entries: 0 }), artifactReady: async () => {} })
+  assert.equal(lines.length, 1)
+  const text = String(lines[0]), emitted = JSON.parse(text).capture
+  assert.equal(emitted.status, 'failed')
+  assert.equal(emitted.lastAttemptedPage, null)
+  assert.equal(emitted.captureAttempt, null)
+  assert.equal(emitted.collectionPhase, 'preparation')
+  assert.equal(emitted.successfulReadCount, 0)
+  for (const value of [PRIVATE, 'storageState', 'cookies', 'profileUrl', 'localPath', 'C:/Users']) assert.equal(text.includes(value), false)
 })
 
 test('publisher uses fixed isolated aggregate paths and the same workflow gate', async () => {

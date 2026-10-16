@@ -316,12 +316,15 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
   let signedInFirstPageConfirmed = false, readableWithoutSignInReadCount = 0
   let lastLoginRequired: boolean | null = null, lastSignedIn: boolean | null = null, lastRankingReadable: boolean | null = null
   let lastHttpStatus: number | null = null
+  let lastAttemptedPage: number | null = null, successfulReadCount = 0
   const check = (): void => { if (options.signal?.aborted) throw new LegendAnalysisDomError('cancelled') }
-  const navigate = async (url: string): Promise<void> => {
+  const navigate = async (url: string, requestedPage: number | null = null): Promise<void> => {
     for (let attempt = 0; attempt < 2; attempt++) {
       check()
       if (lastNavigation !== null) await wait(Math.max(0, interval - (now() - lastNavigation)))
-      check(); lastNavigation = now(); requestCount++
+      check(); lastNavigation = now(); requestCount++; lastAttemptedPage = requestedPage
+      lastLoginRequired = null; lastSignedIn = null; lastRankingReadable = null
+      lastHttpStatus = null
       const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
       const status = response?.status()
       lastHttpStatus = Number.isSafeInteger(status) && status! >= 100 && status! <= 599 ? status! : null
@@ -360,6 +363,8 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
       if (readable && (signedInReadable || readableAfterSignIn)) {
         if (signedInReadable && requestedPage === 1) signedInFirstPageConfirmed = true
         if (readableAfterSignIn) readableWithoutSignInReadCount++
+        // Count fully accepted ranking reads; PLAY Act pages are tracked by navigation count only.
+        successfulReadCount++
         return value
       }
       if (now() >= deadline) throw new LegendAnalysisDomError(value.loginRequired || !value.signedIn ? 'authentication-required' : 'unsupported-dom')
@@ -384,8 +389,8 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
       if (running || act) throw new LegendAnalysisDomError('invalid-request')
       running = true
       try {
-        lastStep = 'ranking-navigation'; await navigate(legendAnalysisPageUrl(1)); firstPlayUrl = (await observation()).firstPlayUrl; act = await readAct()
-        lastStep = 'ranking-navigation'; await navigate(legendAnalysisPageUrl(1))
+        lastStep = 'ranking-navigation'; await navigate(legendAnalysisPageUrl(1), 1); firstPlayUrl = (await observation()).firstPlayUrl; act = await readAct()
+        lastStep = 'ranking-navigation'; await navigate(legendAnalysisPageUrl(1), 1)
         await observation()
         // Server-rendered controls may appear before React has attached onChange.
         // Re-select through the ordinary UI, at most three times, without modifying DOM or reading app state.
@@ -455,7 +460,7 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
       if (!act || !ready || url !== legendAnalysisPageUrl(pageNumber)) throw new LegendAnalysisDomError('invalid-request')
       running = true
       try {
-        lastStep = 'ranking-navigation'; await navigate(url)
+        lastStep = 'ranking-navigation'; await navigate(url, pageNumber)
         const value = await observation(pageNumber)
         const range = value.range!
         if (value.selectedPage !== pageNumber) throw new LegendAnalysisDomError('condition-mismatch')
@@ -469,6 +474,7 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
       clickFailure, clickHitKind: clickObservation?.hitKind ?? null, clickHitTag: clickObservation?.hitTag ?? null,
       parentParagraph: clickObservation?.parentParagraph === true, pointerEventsNone: clickObservation?.pointerEventsNone === true,
       rosterDiagnostics: ready && rosterDiagnostics ? { ...rosterDiagnostics, items: [] } : rosterDiagnostics,
-      lastLoginRequired, lastSignedIn, lastRankingReadable, readableWithoutSignInReadCount, lastHttpStatus }),
+      lastLoginRequired, lastSignedIn, lastRankingReadable, readableWithoutSignInReadCount, lastHttpStatus,
+      lastAttemptedPage, successfulReadCount }),
   }
 }

@@ -52,7 +52,9 @@ test('reader confirms Act and visible source roster, uses one salt, and spaces n
   assert.equal(new Set(data.salts).size, 1)
   assert.equal(data.waits.filter(value => value >= 5000).length > 0, true)
   assert.deepEqual(data.controls, ['select:visible:1', 'select:visible:4', 'span[class*="ranking_search_character_btn"]:visible'])
-  assert.deepEqual(Object.keys(data.reader.getDiagnostics()), ['requestCount', 'lastStep', 'lastErrorCode', 'characterFilter', 'visibleRosterButtonCount', 'clickFailure', 'clickHitKind', 'clickHitTag', 'parentParagraph', 'pointerEventsNone', 'rosterDiagnostics', 'lastLoginRequired', 'lastSignedIn', 'lastRankingReadable', 'readableWithoutSignInReadCount', 'lastHttpStatus'])
+  assert.deepEqual(Object.keys(data.reader.getDiagnostics()), ['requestCount', 'lastStep', 'lastErrorCode', 'characterFilter', 'visibleRosterButtonCount', 'clickFailure', 'clickHitKind', 'clickHitTag', 'parentParagraph', 'pointerEventsNone', 'rosterDiagnostics', 'lastLoginRequired', 'lastSignedIn', 'lastRankingReadable', 'readableWithoutSignInReadCount', 'lastHttpStatus', 'lastAttemptedPage', 'successfulReadCount'])
+  assert.equal(data.reader.getDiagnostics().lastAttemptedPage, 1)
+  assert.equal(data.reader.getDiagnostics().successfulReadCount, 4)
 })
 
 test('reader rejects Act change, denied HTTP, redirects and noncanonical requests without leaking URLs', async () => {
@@ -132,7 +134,25 @@ test('each server fault gets one delayed retry, while denied and other client fa
     await assert.rejects(data.reader.fetchPage(1, legendAnalysisPageUrl(1)))
     assert.equal(data.reader.getDiagnostics().requestCount - initial, 1)
     assert.equal(data.reader.getDiagnostics().lastHttpStatus, status)
+    assert.equal(data.reader.getDiagnostics().lastAttemptedPage, 1)
+    assert.equal(data.reader.getDiagnostics().successfulReadCount, 2)
+    assert.equal(data.reader.getDiagnostics().lastRankingReadable, null)
+    assert.equal(data.reader.getDiagnostics().lastSignedIn, null)
+    assert.equal(data.reader.getDiagnostics().lastLoginRequired, null)
   }
+})
+
+test('diagnostics track the requested ranking page and accepted reads separately from Act navigations', async () => {
+  const data = fixture()
+  await data.reader.initialize()
+  assert.equal(data.reader.getDiagnostics().successfulReadCount, 2)
+  await data.reader.confirmAct()
+  assert.equal(data.reader.getDiagnostics().lastAttemptedPage, null)
+  assert.equal(data.reader.getDiagnostics().successfulReadCount, 2)
+  data.respond(405)
+  await assert.rejects(data.reader.fetchPage(14, legendAnalysisPageUrl(14)), /http-error/)
+  assert.equal(data.reader.getDiagnostics().lastAttemptedPage, 14)
+  assert.equal(data.reader.getDiagnostics().successfulReadCount, 2)
 })
 
 test('rendered rows accept official noscript assets behind placeholders and hash identities without emitting them', async t => {
