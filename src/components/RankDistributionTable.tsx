@@ -18,9 +18,9 @@ export function RankDistributionTable({ rows, label, estimated = false }: {
       <colgroup><col className="rank-distribution-rank-column" /><col /><col /><col /></colgroup>
       <thead><tr>
         <th scope="col">ランク</th>
-        <th scope="col">掲載アカウント数<span className="rank-distribution-unit">{estimated ? '概数（件）' : '（件）'}</span></th>
-        <th scope="col">全体に占める割合<span className="rank-distribution-unit">{estimated ? '概数（%）' : '（%）'}</span></th>
-        <th scope="col">このランク以上<span className="rank-distribution-unit">{estimated ? '累積割合・概数（%）' : '累積割合（%）'}</span></th>
+        <th scope="col">アカウント数<span className="rank-distribution-unit">（件）</span></th>
+        <th scope="col">全体比<span className="rank-distribution-unit">（%）</span></th>
+        <th scope="col">このランク以上<span className="rank-distribution-unit">（%）</span></th>
       </tr></thead>
       <tbody>{rows.map(row => <tr key={row.id}>
         <th scope="row">{row.label}</th>
