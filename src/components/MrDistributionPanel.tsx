@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { timestampLabel } from '../lib/dateTime'
 import { createMrDistributionRows, loadMrDistributionDataset, loadMrDistributionManifest } from '../lib/mrDistribution'
+import { createMrDistributionChartView, type MrDistributionChartLabelStyle, type MrDistributionChartRange } from '../lib/mrDistributionChart'
 import type { RankDistributionChartMetric } from '../lib/rankDistributionChart'
 import type { MrDistributionDataset, MrDistributionManifest } from '../types/mrDistribution'
 import { DataLoadState } from './DataLoadState'
@@ -23,10 +24,13 @@ const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 
 const denominatorDescription = '割合と累積割合の分母は、取得終了時のMRランキング掲載総数です。LP側のMASTER総数とは異なる対象です。'
 
 export function MrDistributionPanel() {
+  const chartId = useId()
   const [bootstrap, setBootstrap] = useState<BootstrapState>({ status: 'loading' })
   const [bootstrapVersion, setBootstrapVersion] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [chartMetric, setChartMetric] = useState<RankDistributionChartMetric>('percent')
+  const [chartRange, setChartRange] = useState<MrDistributionChartRange>('focus')
+  const [chartLabelStyle, setChartLabelStyle] = useState<MrDistributionChartLabelStyle>('range-two-line')
   const [datasetState, setDatasetState] = useState<DatasetState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
 
@@ -63,6 +67,7 @@ export function MrDistributionPanel() {
   const currentState = datasetState?.key === requestKey ? datasetState : null
   const dataset = currentState?.status === 'ready' ? currentState.dataset : null
   const rows = useMemo(() => dataset ? createMrDistributionRows(dataset) : [], [dataset])
+  const chartView = useMemo(() => dataset ? createMrDistributionChartView(dataset, chartRange) : null, [dataset, chartRange])
 
   if (bootstrap.status === 'loading') return <DataLoadState loading message="MR分布の取得日を読み込み中…" />
   if (bootstrap.status === 'error' || !manifest) return <DataLoadState message="MR分布の取得日を読み込めませんでした。"
@@ -96,16 +101,42 @@ export function MrDistributionPanel() {
         <div className="rank-distribution-period">取得期間 <DistributionCapturePeriod start={dataset.captureStartedAt} end={dataset.captureEndedAt} /></div>
         <p className="rank-distribution-note">数値は取得期間中の概数です。実人数・アクティブ人口ではありません。</p>
         {dataset.totalCount === 0 && <p className="rank-distribution-state" role="status">MRランキング掲載総数は0件です。件数は0、割合と累積割合は分母が0のため「—」で表示します。</p>}
-        <div className="win-rates-filters rank-distribution-chart-controls">
-          <label><span>棒の値</span><select aria-label="MRグラフの棒の値" value={chartMetric}
-            onChange={event => setChartMetric(event.target.value as RankDistributionChartMetric)}>
-            <option value="percent">MR一覧比（%）</option>
-            <option value="count">アカウント数（件）</option>
-          </select></label>
+        <div className="mr-distribution-chart-toolbar">
+          <div className="win-rates-view-selector" role="group" aria-label="MRグラフの表示範囲">
+            {([['focus', '主要範囲'], ['all', '全範囲']] as const).map(([value, label]) => <button key={value}
+              type="button" className="win-rates-button" aria-pressed={chartRange === value} aria-controls={chartId}
+              onClick={() => setChartRange(value)}>{label}</button>)}
+          </div>
+          <div className="win-rates-filters rank-distribution-chart-controls mr-distribution-chart-controls">
+            <label><span>階級表示</span><select aria-label="MRグラフの階級表示" value={chartLabelStyle}
+              onChange={event => setChartLabelStyle(event.target.value as MrDistributionChartLabelStyle)}>
+              <option value="range-two-line">区間（2行）</option>
+              <option value="range">区間（1行）</option>
+              <option value="lower">下限</option>
+              <option value="axis">数値目盛</option>
+            </select></label>
+            <label><span>棒の値</span><select aria-label="MRグラフの棒の値" value={chartMetric}
+              onChange={event => setChartMetric(event.target.value as RankDistributionChartMetric)}>
+              <option value="percent">MR一覧比（%）</option>
+              <option value="count">アカウント数（件）</option>
+            </select></label>
+          </div>
         </div>
-        <RankDistributionChart rows={rows} metric={chartMetric} estimated label="MR分布" categoryLabel="MR帯"
-          percentLabel="MR一覧比" denominatorDescription={denominatorDescription} compactCategories />
-        <p className="rank-distribution-note">100MR刻みの全26区分を表示します。幅に応じて軸の区間名を間引きます。各区間の数値は棒のツールチップと下の表で確認できます。</p>
+        {chartView && <>
+          <p className="rank-distribution-note" aria-live="polite">{chartRange === 'focus'
+            ? <>1000以上2200未満 · 範囲外 {integerFormat.format(chartView.excludedCount)}件（{chartView.excludedPercent === null ? '割合は算出不可' : `${chartView.excludedPercent.toFixed(2)}%`}）</>
+            : '全26区分 · 0以上2500未満 ＋ 2500以上'}</p>
+          <div id={chartId} className="mr-distribution-chart-view">
+            <RankDistributionChart rows={chartView.rows} metric={chartMetric} estimated label="MR分布" categoryLabel="MR階級"
+              percentLabel="MR一覧比" denominatorDescription={denominatorDescription} compactCategories
+              intervals={chartView.intervals} intervalLabelStyle={chartLabelStyle} selectionKey={`${dataset.id}:${chartRange}`} />
+          </div>
+        </>}
+        <p className="rank-distribution-note">{chartLabelStyle === 'axis'
+          ? '100MR刻み。数値目盛は幅に応じて間引きます。'
+          : chartLabelStyle === 'lower' ? '各棒の下限を表示します（1500は1500〜1599）。幅が足りない場合は横スクロールできます。'
+            : '各棒の下にMR区間を表示します。幅が足りない場合は横スクロールできます。'}
+          割合の分母は表示範囲によらずMR掲載総数です。下の表は全26区分を表示します。</p>
       </div>
     </StatisticsPanel>}
 

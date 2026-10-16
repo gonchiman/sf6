@@ -14,6 +14,11 @@
 .rank-distribution-note { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.8; }
 .rank-distribution-content { min-width: 0; display: grid; gap: 12px; }
 .mr-distribution-condition-note { margin-top: 12px; }
+.mr-distribution-chart-toolbar { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; }
+.mr-distribution-chart-view { min-width: 0; }
+.mr-distribution-chart-toolbar > .win-rates-view-selector { flex: 0 0 auto; }
+.mr-distribution-chart-controls { flex-wrap: wrap; gap: 10px 18px; }
+.mr-distribution-chart-controls select { min-width: 130px; }
 .rank-distribution-scroll { max-height: min(70vh, 720px); scroll-padding-left: 128px; scroll-padding-top: 60px; }
 .rank-distribution-table { min-width: 480px; table-layout: fixed; }
 .rank-distribution-rank-column { width: 128px; }

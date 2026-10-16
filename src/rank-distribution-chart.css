@@ -13,3 +13,17 @@
 .rank-distribution-chart-value { fill: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; }
 .rank-distribution-chart-rank { fill: var(--text-soft); font-size: 11px; }
 .rank-distribution-chart-state { margin: 0; padding: 24px 0; color: var(--text-muted); font-size: 12px; line-height: 1.8; }
+.rank-distribution-chart-mr-layout { position: relative; display: flex; min-width: 0; max-width: 100%; }
+.rank-distribution-chart-mr-layout > .rank-distribution-chart-scroll { flex: 1 1 0; width: 0; }
+.rank-distribution-chart-fixed-axis { display: block; flex: 0 0 auto; position: relative; z-index: 1; background: var(--surface); }
+.rank-distribution-chart-mr-metric { position: absolute; top: 3px; z-index: 2; color: var(--text-soft); font-size: 12px; font-weight: 600; pointer-events: none; white-space: nowrap; }
+.rank-distribution-chart-interactive { cursor: pointer; outline: none; }
+.rank-distribution-chart-selection { fill: transparent; stroke: transparent; stroke-width: 1; }
+.rank-distribution-chart-interactive[data-selected='true'] .rank-distribution-chart-selection { fill: var(--surface-hover); }
+.rank-distribution-chart-interactive[data-selected='true'] .rank-distribution-chart-bar { fill: var(--text-muted); }
+.rank-distribution-chart-interactive:focus-visible .rank-distribution-chart-selection { stroke: var(--text); stroke-width: 2; }
+.rank-distribution-chart-selection-detail { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
+.rank-distribution-chart-selection-detail > span { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; min-width: 0; }
+.rank-distribution-chart-selection-detail > span > span { color: var(--text-muted); font-size: 11px; }
+.rank-distribution-chart-selection-detail strong { color: var(--text); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.rank-distribution-chart-instructions { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.8; }
