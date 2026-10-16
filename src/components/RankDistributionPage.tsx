@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { createRankDistributionRows, loadRankDistributionDataset, loadRankDistributionManifest, RANK_DISTRIBUTION_GROUPS } from '../lib/rankDistribution'
 import { timestampLabel } from '../lib/dateTime'
 import { leagueLabel } from '../lib/winRateConditions'
+import type { RankDistributionChartMetric } from '../lib/rankDistributionChart'
 import type { RankDistributionDataset, RankDistributionManifest } from '../types/rankDistribution'
 import { DataLoadState } from './DataLoadState'
 import { RankDistributionTable } from './RankDistributionTable'
+import { RankDistributionChart } from './RankDistributionChart'
 import { StatisticsPanel } from './StatisticsPanel'
 import '../win-rates.css'
 import '../rank-distribution.css'
@@ -36,6 +38,7 @@ export function RankDistributionPage() {
   const [bootstrapVersion, setBootstrapVersion] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [group, setGroup] = useState('ALL')
+  const [chartMetric, setChartMetric] = useState<RankDistributionChartMetric>('percent')
   const [datasetState, setDatasetState] = useState<DatasetState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
 
@@ -74,7 +77,8 @@ export function RankDistributionPage() {
   const estimated = dataset?.method === 'boundary-search-estimate'
   const observation = estimated ? dataset.observation : undefined
   const rows = useMemo(() => dataset ? createRankDistributionRows(dataset, group) : [], [dataset, group])
-  const tableLabel = group === 'ALL' ? 'ランク帯ごとの分布' : `${leagueLabel(group)}の★別分布`
+  const chartLabel = group === 'ALL' ? 'ランク帯ごとのグラフ' : `${leagueLabel(group)}の★別グラフ`
+  const tableLabel = group === 'ALL' ? 'ランク帯ごとの数値' : `${leagueLabel(group)}の★別数値`
 
   if (bootstrap.status === 'loading') return <DataLoadState loading message="ランク分布の取得日を読み込み中…" />
   if (bootstrap.status === 'error' || !manifest) return <DataLoadState message="ランク分布の取得日を読み込めませんでした。"
@@ -100,23 +104,38 @@ export function RankDistributionPage() {
       </div>
     </StatisticsPanel>
 
-    <StatisticsPanel title={tableLabel} headerContent={dataset && <span className="rank-distribution-total">
+    {availability && <p className="rank-distribution-state" role="status">{emptyLabel}（確認日時：<time dateTime={availability.checkedAt}>{timestampLabel(availability.checkedAt)}</time>）：{availability.message}
+      <br />取得状況は、この確認日時に保存した記録です。
+    </p>}
+
+    {dataset && <StatisticsPanel title={chartLabel} headerContent={<span className="rank-distribution-total">
       掲載総数 <strong>{integerFormat.format(dataset.totalCount)}</strong> 件
     </span>}>
       <div className="rank-distribution-content">
-        {availability && <p className="rank-distribution-state" role="status">{emptyLabel}（確認日時：<time dateTime={availability.checkedAt}>{timestampLabel(availability.checkedAt)}</time>）：{availability.message}
-          <br />取得状況は、この確認日時に保存した記録です。
-        </p>}
+        <div className="rank-distribution-period">取得期間 <CapturePeriod start={dataset.captureStartedAt} end={dataset.captureEndedAt} /></div>
+        <p className="rank-distribution-note">{estimated ? '数値は取得期間中の概数です。' : '掲載ファイターアカウントの分布です。'}実人数・アクティブ人口ではありません。</p>
+        {dataset.totalCount === 0 && <p className="rank-distribution-state" role="status">掲載アカウント総数は0件です。件数は0、割合と累積割合は分母が0のため「—」で表示します。</p>}
+        <div className="win-rates-filters rank-distribution-chart-controls">
+          <label><span>棒の値</span><select aria-label="棒の値" value={chartMetric}
+            onChange={event => setChartMetric(event.target.value as RankDistributionChartMetric)}>
+            <option value="percent">全体比（%）</option>
+            <option value="count">アカウント数（件）</option>
+          </select></label>
+        </div>
+        <RankDistributionChart rows={rows} metric={chartMetric} estimated={estimated} />
+        <p className="rank-distribution-note">割合は★別でも掲載アカウント全体を分母にしています。</p>
+      </div>
+    </StatisticsPanel>}
+
+    <StatisticsPanel title={tableLabel}>
+      <div className="rank-distribution-content">
         {!descriptor ? !availability && <p className="rank-distribution-state" role="status">未取得：ランク分布のデータはまだ登録されていません。</p>
           : !currentState || currentState.status === 'loading' ? <DataLoadState loading message="選択した取得日のランク分布を読み込み中…" />
             : currentState.status === 'error' ? <DataLoadState message="選択した取得日のランク分布を読み込めませんでした。"
               onRetry={() => setDatasetVersion(version => version + 1)} /> : null}
         {dataset && <>
-          <div className="rank-distribution-period">取得期間 <CapturePeriod start={dataset.captureStartedAt} end={dataset.captureEndedAt} /></div>
-          <p className="rank-distribution-note">{estimated ? '数値は取得期間中の概数です。' : '掲載ファイターアカウントの分布です。'}実人数・アクティブ人口ではありません。</p>
-          {dataset.totalCount === 0 && <p className="rank-distribution-state" role="status">掲載アカウント総数は0件です。件数は0、割合と累積割合は分母が0のため「—」で表示します。</p>}
           <RankDistributionTable rows={rows} label={tableLabel} estimated={estimated} />
-          <p className="rank-distribution-note">割合は★別でも全体基準。「このランク以上」は上位ランクを含む累積割合です。</p>
+          <p className="rank-distribution-note">「このランク以上」は上位ランクを含む累積割合です。</p>
         </>}
         <p className="rank-distribution-note">出典：<a href={manifest.source.url} target="_blank" rel="noreferrer">{manifest.source.title}<span className="win-rates-visually-hidden">（新しいタブ）</span></a></p>
         <details className="win-rates-details">
