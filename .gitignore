@@ -2,6 +2,8 @@ node_modules/
 dist/
 .cache/
 .local/
+/rank-distribution-cloud-output/
+/rank-distribution-weekly-output/
 /.worktrees/
 *.tsbuildinfo
 .env

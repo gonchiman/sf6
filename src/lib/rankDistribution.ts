@@ -1,7 +1,7 @@
 import type {
   RankDistributionAvailability, RankDistributionConditions, RankDistributionDataset,
   RankDistributionDescriptor, RankDistributionEntry, RankDistributionManifest,
-  RankDistributionRow, RankDistributionSource, RankDistributionValidation,
+  RankDistributionObservation, RankDistributionRow, RankDistributionSource, RankDistributionValidation,
 } from '../types/rankDistribution.ts'
 import { leagueLabel, WIN_RATE_EDITION_LEAGUES } from './winRateConditions.ts'
 
@@ -11,14 +11,18 @@ export const RANK_DISTRIBUTION_SOURCE: RankDistributionSource = {
   title: 'Buckler LPランキング',
 }
 export const RANK_DISTRIBUTION_CONDITIONS: RankDistributionConditions = {
-  league: 'all', character: 'max-lp', region: 'all', platform: 'all', users: 'all',
+  league: 'all', character: 'max-lp', region: 'all', platform: 'all', users: 'buckler-user-status-1',
 }
 /** Every check must have been completed before a distribution can be published. */
 export const RANK_DISTRIBUTION_VALIDATION_CHECKS: readonly string[] = [
+  // Confirm the four visible selectors and fixed URL, without interpreting user_status=1 as all users.
   'conditions-confirmed', 'pagination-confirmed', 'final-page-confirmed', 'ordering-confirmed',
   'rank-mapping-confirmed', 'max-lp-account-unit-confirmed', 'total-count-stable',
   'boundaries-rechecked', 'unranked-tail-confirmed',
 ]
+/** Estimates record changing totals and verify every rank boundary, rather than an atomic population. */
+export const RANK_DISTRIBUTION_ESTIMATE_CHECKS: readonly string[] = RANK_DISTRIBUTION_VALIDATION_CHECKS
+  .map((check) => check === 'total-count-stable' ? 'changes-recorded' : check)
 
 type UnknownRecord = Record<string, unknown>
 
@@ -146,17 +150,18 @@ function strings(value: unknown, field: string): string[] {
   return array(value, field).map((item) => string(item, `${field}[]`))
 }
 
-function validation(value: unknown): RankDistributionValidation {
+function validation(value: unknown, estimated: boolean): RankDistributionValidation {
   const input = record(value, 'validation', ['status', 'coverage', 'checks', 'notes'])
-  if (input.status !== 'verified') invalid('validation.status: unverified')
-  if (input.coverage !== 'all-listed-accounts') invalid('validation.coverage: incomplete')
+  if (input.status !== (estimated ? 'estimated' : 'verified')) invalid('validation.status: unverified')
+  if (input.coverage !== (estimated ? 'all-rank-boundaries' : 'all-listed-accounts')) invalid('validation.coverage: incomplete')
   const checks = strings(input.checks, 'validation.checks')
   unique(checks, 'validation.checks')
-  if (checks.length !== RANK_DISTRIBUTION_VALIDATION_CHECKS.length
-    || RANK_DISTRIBUTION_VALIDATION_CHECKS.some((check) => !checks.includes(check))) invalid('validation.checks: incomplete')
+  const required = estimated ? RANK_DISTRIBUTION_ESTIMATE_CHECKS : RANK_DISTRIBUTION_VALIDATION_CHECKS
+  if (checks.length !== required.length || required.some((check) => !checks.includes(check))) invalid('validation.checks: incomplete')
   const notes = strings(input.notes, 'validation.notes')
   if (!notes.length) invalid('validation.notes: empty')
-  return { status: 'verified', coverage: 'all-listed-accounts', checks, notes }
+  return estimated ? { status: 'estimated', coverage: 'all-rank-boundaries', checks, notes }
+    : { status: 'verified', coverage: 'all-listed-accounts', checks, notes }
 }
 
 function entry(value: unknown): RankDistributionEntry {
@@ -164,6 +169,42 @@ function entry(value: unknown): RankDistributionEntry {
   const rankId = integer(input.rankId, 'entry.rankId')
   if (rankId < 1 || rankId > 36) invalid('entry.rankId: unknown rank')
   return { rankId, count: integer(input.count, 'entry.count') }
+}
+
+function observation(value: unknown, dataset: RankDistributionDataset): RankDistributionObservation {
+  const input = record(value, 'observation', ['totalAtStart', 'totalAtEnd', 'minTotal', 'maxTotal', 'boundaries'])
+  const totalAtStart = integer(input.totalAtStart, 'observation.totalAtStart')
+  const totalAtEnd = integer(input.totalAtEnd, 'observation.totalAtEnd')
+  const minTotal = integer(input.minTotal, 'observation.minTotal')
+  const maxTotal = integer(input.maxTotal, 'observation.maxTotal')
+  if (minTotal > maxTotal) invalid('observation: reversed total range')
+  if (totalAtEnd !== dataset.totalCount) invalid('observation.totalAtEnd: total mismatch')
+  const boundaries = array(input.boundaries, 'observation.boundaries').map((value) => {
+    const item = record(value, 'observation.boundary', ['rankId', 'countAtOrAbove', 'totalCount', 'observedAt'])
+    const rankId = integer(item.rankId, 'observation.boundary.rankId')
+    if (rankId < 2 || rankId > 36) invalid('observation.boundary.rankId: unknown boundary')
+    const countAtOrAbove = integer(item.countAtOrAbove, 'observation.boundary.countAtOrAbove')
+    const totalCount = integer(item.totalCount, 'observation.boundary.totalCount')
+    if (countAtOrAbove > totalCount) invalid('observation.boundary.countAtOrAbove: exceeds observed total')
+    const observedAt = timestamp(item.observedAt, 'observation.boundary.observedAt')
+    const observedTime = Date.parse(observedAt)
+    if (observedTime < Date.parse(dataset.captureStartedAt) || observedTime > Date.parse(dataset.captureEndedAt)) {
+      invalid('observation.boundary.observedAt: outside capture')
+    }
+    return { rankId, countAtOrAbove, totalCount, observedAt }
+  })
+  if (boundaries.length !== 35) invalid('observation.boundaries: all 35 boundaries required')
+  unique(boundaries.map((item) => item.rankId), 'observation.boundaries.rankId')
+  if ([totalAtStart, totalAtEnd, ...boundaries.map((item) => item.totalCount)]
+    .some((total) => total < minTotal || total > maxTotal)) invalid('observation: total outside range')
+  const counts = new Map(dataset.entries.map((item) => [item.rankId, item.count]))
+  const boundaryCounts = new Map(boundaries.map((item) => [item.rankId, item.countAtOrAbove]))
+  let cumulativeCount = 0
+  for (let rankId = 36; rankId >= 2; rankId -= 1) {
+    cumulativeCount += counts.get(rankId)!
+    if (boundaryCounts.get(rankId) !== cumulativeCount) invalid('observation.boundaries: entry cumulative mismatch')
+  }
+  return { totalAtStart, totalAtEnd, minTotal, maxTotal, boundaries }
 }
 
 function assertMatches(dataset: RankDistributionDataset, descriptor: RankDistributionDescriptor): void {
@@ -177,12 +218,14 @@ function assertMatches(dataset: RankDistributionDataset, descriptor: RankDistrib
 export function parseRankDistributionDataset(value: unknown, expected?: RankDistributionDescriptor): RankDistributionDataset {
   const input = record(value, 'dataset', [
     'schemaVersion', 'id', 'captureStartedAt', 'captureEndedAt', 'generatedAt', 'source',
-    'conditions', 'method', 'totalCount', 'entries', 'validation',
+    'conditions', 'method', 'totalCount', 'entries', 'validation', 'observation',
   ])
   const capture = interval(input)
   const generatedAt = timestamp(input.generatedAt, 'generatedAt')
   if (Date.parse(generatedAt) < Date.parse(capture.captureEndedAt)) invalid('generatedAt: before capture')
-  if (input.method !== 'boundary-search') invalid('method')
+  if (input.method !== 'boundary-search' && input.method !== 'boundary-search-estimate') invalid('method')
+  const estimated = input.method === 'boundary-search-estimate'
+  if (!estimated && Object.hasOwn(input, 'observation')) invalid('observation: estimates only')
   const totalCount = integer(input.totalCount, 'totalCount')
   const entries = array(input.entries, 'entries').map(entry)
   if (entries.length !== 36) invalid('entries: all 36 ranks required')
@@ -197,9 +240,10 @@ export function parseRankDistributionDataset(value: unknown, expected?: RankDist
       ...source(sourceInput, true), population: string(sourceInput.population, 'source.population'),
       metric: string(sourceInput.metric, 'source.metric'), unit: 'fighter-account', notes: strings(sourceInput.notes, 'source.notes'),
     },
-    conditions: conditions(input.conditions), method: 'boundary-search', totalCount, entries,
-    validation: validation(input.validation),
+    conditions: conditions(input.conditions), method: input.method, totalCount, entries,
+    validation: validation(input.validation, estimated),
   }
+  if (estimated) dataset.observation = observation(input.observation, dataset)
   if (expected) assertMatches(dataset, parseRankDistributionDescriptor(expected))
   return dataset
 }
