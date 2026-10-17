@@ -422,11 +422,11 @@ PCの起動を不要にする目標の流れと残作業は[ランク分布の�
 
 Viteの `base` は `/sf6/`。配信を開始するときはリポジトリのSettings → PagesでSourceをGitHub Actionsに設定する。
 Actionsはpull requestとmainへのpushでテスト・ビルドを確認する。
-現在はローカル利用を前提とし、自動公開は行わない。
-公開するときだけ、main上の手動実行で「GitHub Pagesへ公開する」を選択して `dist/` を配信する。
+mainへのpushでは、両方が成功すると `dist/` をGitHub Pagesへ自動公開する。マージ・プッシュしたアプリの変更と、mainに取り込んだ配信用データが公開サイトへ反映される。
+pull requestやmain以外のブランチでは公開しない。手動で再公開するときは、main上の手動実行で「GitHub Pagesへ公開する」を選択する。手動実行で選択しなければテスト・ビルドのみ行う。
 
 設定方法は [Viteの配信ガイド](https://vite.dev/guide/static-deploy.html#github-pages) を参照。
-ローカルで初期構成を保存しただけでは公開されない。
+ローカルだけの変更や、データ取得用ブランチに保存した履歴は、mainへ取り込んでpushするまで公開サイトへ反映されない。
 
 ## 前作からの継承
 
