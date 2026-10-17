@@ -3,8 +3,10 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { BrowserContextOptions } from 'playwright'
 import { LEGEND_ANALYSIS_SOURCE, parseLegendAnalysisDataset, parseLegendAnalysisManifest } from '../src/lib/legendAnalysis.ts'
-import { collectLegendAnalysisDataset, LEGEND_ANALYSIS_COLLECTION_PHASES, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
-import type { LegendAnalysisCollectionPhase, LegendAnalysisPage } from './lib/legend-analysis-collector.ts'
+import { collectLegendAnalysisDataset, LEGEND_ANALYSIS_COLLECTION_ERROR_CODES, LEGEND_ANALYSIS_COLLECTION_PHASES,
+  LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS, LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
+import type { LegendAnalysisCollectionErrorCode, LegendAnalysisCollectionPhase, LegendAnalysisPage,
+  LegendAnalysisRecheckChangeKind, LegendAnalysisValidationCheck } from './lib/legend-analysis-collector.ts'
 import { createLegendAnalysisPageReader, LEGEND_ANALYSIS_CONDITIONS, legendAnalysisPageUrl, LegendAnalysisDomError, sanitizeLegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import type { LegendAnalysisDomErrorCode, LegendAnalysisReaderStep, LegendClickFailure, LegendClickHit, LegendClickObservation, LegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import { checkLegendAnalysisParents, LEGEND_ANALYSIS_JSON_LIMIT, legendAnalysisFileInfo } from './lib/legend-analysis-files.ts'
@@ -59,6 +61,9 @@ export interface LegendAnalysisCaptureReport {
   lastRankingReadable?: boolean | null
   readableWithoutSignInReadCount?: number
   lastHttpStatus?: number | null
+  collectionErrorCode?: LegendAnalysisCollectionErrorCode | null
+  validationCheck?: LegendAnalysisValidationCheck | null
+  recheckChangeKinds?: LegendAnalysisRecheckChangeKind[] | null
 }
 export interface LegendAnalysisSafeCaptureReport {
   status: 'succeeded' | 'failed'
@@ -80,6 +85,9 @@ export interface LegendAnalysisSafeCaptureReport {
   lastSignedIn: boolean | null
   lastRankingReadable: boolean | null
   readableWithoutSignInReadCount: number
+  collectionErrorCode: LegendAnalysisCollectionErrorCode | null
+  validationCheck: LegendAnalysisValidationCheck | null
+  recheckChangeKinds: LegendAnalysisRecheckChangeKind[] | null
 }
 /** A second scalar-only boundary for stdout; never log an arbitrary collector result. */
 export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnalysisSafeCaptureReport {
@@ -91,6 +99,10 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
   }
   const requestCount = bounded(input.requestCount, 0, 1000) ? input.requestCount : 0
   const successfulReadCount = bounded(input.successfulReadCount, 0, requestCount) ? input.successfulReadCount : 0
+  const recheckChangeKinds = Array.isArray(input.recheckChangeKinds) && input.recheckChangeKinds.length >= 1 && input.recheckChangeKinds.length <= 3
+    && new Set(input.recheckChangeKinds).size === input.recheckChangeKinds.length
+    && input.recheckChangeKinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind as LegendAnalysisRecheckChangeKind))
+    ? input.recheckChangeKinds as LegendAnalysisRecheckChangeKind[] : null
   return {
     status: input.status === 'succeeded' ? 'succeeded' : 'failed',
     reason: ['authentication-unavailable', 'source-unconfirmed', 'source-changed', 'access-unavailable', 'cancelled', 'request-limit', 'collection-failed', 'output-unavailable'].includes(input.reason as string) ? input.reason as LegendAnalysisFailureReason : null,
@@ -108,6 +120,9 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     lastSignedIn: typeof input.lastSignedIn === 'boolean' ? input.lastSignedIn : null,
     lastRankingReadable: typeof input.lastRankingReadable === 'boolean' ? input.lastRankingReadable : null,
     readableWithoutSignInReadCount: bounded(input.readableWithoutSignInReadCount, 0, successfulReadCount) ? input.readableWithoutSignInReadCount : 0,
+    collectionErrorCode: LEGEND_ANALYSIS_COLLECTION_ERROR_CODES.includes(input.collectionErrorCode as LegendAnalysisCollectionErrorCode) ? input.collectionErrorCode as LegendAnalysisCollectionErrorCode : null,
+    validationCheck: LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS.includes(input.validationCheck as LegendAnalysisValidationCheck) ? input.validationCheck as LegendAnalysisValidationCheck : null,
+    recheckChangeKinds,
   }
 }
 export interface LegendAnalysisRunOptions {
@@ -162,7 +177,7 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
   const report: LegendAnalysisCaptureReport = { status: 'failed', reason: null, startedAt, endedAt: startedAt,
     requestCount: 0, retryCount: 0, datasetId: null, browserClosed: false, lastStep: null, domErrorCode: null,
     characterFilter: null, visibleRosterButtonCount: null, lastAttemptedPage: null, successfulReadCount: 0,
-    captureAttempt: null, collectionPhase: 'preparation' }
+    captureAttempt: null, collectionPhase: 'preparation', collectionErrorCode: null, validationCheck: null, recheckChangeKinds: null }
   const deadline = AbortSignal.timeout(15 * 60 * 1000)
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline
   const output = resolve(options.outputDirectory), publicDirectory = resolve(output, 'public')
@@ -191,7 +206,13 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
       } })
     dataset = collected.dataset; report.retryCount = collected.retryCount
     signal.throwIfAborted()
-  } catch (error) { report.reason ??= reason(error, signal); dataset = null }
+  } catch (error) {
+    report.reason ??= reason(error, signal); dataset = null
+    if (error instanceof LegendAnalysisCollectionError) {
+      report.collectionErrorCode = error.code; report.validationCheck = error.validationCheck
+      report.recheckChangeKinds = error.recheckChangeKinds ? [...error.recheckChangeKinds] : null
+    }
+  }
   finally {
     if (transport) {
       try {

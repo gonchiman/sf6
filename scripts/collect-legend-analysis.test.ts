@@ -98,6 +98,9 @@ test('a whole-capture retry followed by HTTP 405 retains its retry count and pub
   assert.equal(result.report.collectionPhase, 'listing')
   assert.equal(result.report.lastAttemptedPage, 1)
   assert.equal(result.report.successfulReadCount, 2)
+  assert.equal(result.report.collectionErrorCode, null)
+  assert.equal(result.report.validationCheck, null)
+  assert.equal(result.report.recheckChangeKinds, null)
   const incoming = resolve(failed.output, 'public')
   const failureManifest = JSON.parse(await readFile(resolve(incoming, 'index.json'), 'utf8'))
   assert.deepEqual(failureManifest.datasets, [])
@@ -140,7 +143,7 @@ test('stdout report boundary accepts fixed enums and bounded integers and drops 
     requestCount: 30, successfulReadCount: 31, retryCount: 999, captureAttempt: 999, collectionPhase: SECRET,
     lastAttemptedPage: Number.MAX_SAFE_INTEGER, datasetId: `legend-${SECRET}`, lastStep: SECRET, domErrorCode: SECRET,
     lastHttpStatus: 1000, lastSignedIn: SECRET, profileUrl: `https://example.com/${SECRET}`, storageState: { cookies: [SECRET] },
-    localPath: `C:/Users/${SECRET}/private` })
+    localPath: `C:/Users/${SECRET}/private`, collectionErrorCode: SECRET, validationCheck: SECRET, recheckChangeKinds: ['legend-entries', SECRET] })
   assert.equal(report.successfulReadCount, 0)
   assert.equal(report.retryCount, 0)
   assert.equal(report.captureAttempt, null)
@@ -150,6 +153,30 @@ test('stdout report boundary accepts fixed enums and bounded integers and drops 
   assert.equal(report.lastStep, null)
   assert.equal(report.domErrorCode, null)
   assert.equal(report.lastHttpStatus, null)
+  assert.equal(report.collectionErrorCode, null)
+  assert.equal(report.validationCheck, null)
+  assert.equal(report.recheckChangeKinds, null)
   assert.equal(JSON.stringify(report).includes(SECRET), false)
   assert.equal(JSON.stringify(report).includes('storageState'), false)
+  const known = summarizeLegendAnalysisCaptureReport({ collectionErrorCode: 'source-changed', validationCheck: 'end-recheck', recheckChangeKinds: ['non-legend-entries', 'metadata'] })
+  assert.equal(known.collectionErrorCode, 'source-changed')
+  assert.equal(known.validationCheck, 'end-recheck')
+  assert.deepEqual(known.recheckChangeKinds, ['non-legend-entries', 'metadata'])
+})
+
+test('collector MR-order failure propagates fixed diagnostics through the CLI and stdout summary', async t => {
+  const data = await fixture(t), read = data.transport.fetchPage
+  data.transport.fetchPage = async (page, url) => { const value = await read(page, url); value.entries[1].masterRating = 9999; return value }
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
+  assert.equal(result.report.reason, 'source-changed')
+  assert.equal(result.report.collectionErrorCode, 'source-changed')
+  assert.equal(result.report.validationCheck, 'mr-order')
+  assert.equal(result.report.captureAttempt, 2)
+  assert.equal(result.report.retryCount, 1)
+  assert.equal(result.report.recheckChangeKinds, null)
+  const safe = summarizeLegendAnalysisCaptureReport(result.report)
+  assert.equal(safe.collectionErrorCode, 'source-changed')
+  assert.equal(safe.validationCheck, 'mr-order')
+  assert.equal(JSON.stringify(safe).includes('accountKey'), false)
+  assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json'])
 })

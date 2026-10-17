@@ -24,21 +24,46 @@ export interface LegendAnalysisPage {
   rosterConfirmed: boolean
   entries: LegendAnalysisEntry[]
 }
-export type LegendAnalysisCollectionErrorCode = 'configuration-invalid' | 'evidence-unconfirmed' | 'cancelled'
-  | 'request-limit' | 'source-changed' | 'duplicate-entry' | 'read-failed'
+export const LEGEND_ANALYSIS_COLLECTION_ERROR_CODES = ['configuration-invalid', 'evidence-unconfirmed', 'cancelled',
+  'request-limit', 'source-changed', 'duplicate-entry', 'read-failed'] as const
+export type LegendAnalysisCollectionErrorCode = typeof LEGEND_ANALYSIS_COLLECTION_ERROR_CODES[number]
+export const LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS = ['unclassified', 'configuration', 'membership-evidence', 'cancellation',
+  'request-budget', 'page-identity', 'source-conditions', 'source-act', 'source-roster', 'page-size', 'pagination',
+  'entry-count', 'entry-values', 'character-roster', 'first-rank', 'rank-position', 'rank-order', 'mr-order',
+  'duplicate-entry', 'legend-contiguity', 'legend-presence', 'end-recheck', 'start-recheck', 'terminal-coverage',
+  'capture-clock', 'completion'] as const
+export type LegendAnalysisValidationCheck = typeof LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS[number]
+export const LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS = ['legend-entries', 'non-legend-entries', 'metadata'] as const
+export type LegendAnalysisRecheckChangeKind = typeof LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS[number]
 export class LegendAnalysisCollectionError extends Error {
   readonly code: LegendAnalysisCollectionErrorCode
-  constructor(code: LegendAnalysisCollectionErrorCode) {
+  readonly validationCheck: LegendAnalysisValidationCheck
+  readonly recheckChangeKinds?: LegendAnalysisRecheckChangeKind[]
+  constructor(code: LegendAnalysisCollectionErrorCode, validationCheck: LegendAnalysisValidationCheck = 'unclassified', recheckChangeKinds?: LegendAnalysisRecheckChangeKind[]) {
     super(`レジェンド分析の取得を中止しました (${code})。`)
-    this.name = 'LegendAnalysisCollectionError'; this.code = code
+    this.name = 'LegendAnalysisCollectionError'; this.code = code; this.validationCheck = validationCheck
+    if (recheckChangeKinds) this.recheckChangeKinds = [...recheckChangeKinds]
   }
 }
-function fail(code: LegendAnalysisCollectionErrorCode): never { throw new LegendAnalysisCollectionError(code) }
+function fail(code: LegendAnalysisCollectionErrorCode, check: LegendAnalysisValidationCheck, kinds?: LegendAnalysisRecheckChangeKind[]): never {
+  throw new LegendAnalysisCollectionError(code, check, kinds)
+}
 const integer = (value: unknown, min = 0): value is number => Number.isSafeInteger(value) && (value as number) >= min
 const equal = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
 function stablePage(value: LegendAnalysisPage) {
   const { totalCount: _total, nextPage: _next, ...stable } = value
   return stable
+}
+/** Private rows and keys are compared only in memory; the result is a fixed enum list. */
+function recheckChanges(before: LegendAnalysisPage, after: LegendAnalysisPage): LegendAnalysisRecheckChangeKind[] {
+  const changes: LegendAnalysisRecheckChangeKind[] = []
+  const rows = (page: LegendAnalysisPage, legend: boolean) => page.entries.map((entry, index) => ({ entry, index })).filter(row => row.entry.isLegend === legend)
+  if (!equal(rows(before, true), rows(after, true))) changes.push('legend-entries')
+  if (!equal(rows(before, false), rows(after, false))) changes.push('non-legend-entries')
+  const { entries: _beforeEntries, ...beforeMetadata } = stablePage(before)
+  const { entries: _afterEntries, ...afterMetadata } = stablePage(after)
+  if (!equal(beforeMetadata, afterMetadata)) changes.push('metadata')
+  return changes
 }
 
 export interface CollectLegendAnalysisOptions {
@@ -85,35 +110,40 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
     || options.sourceUrl !== LEGEND_ANALYSIS_SOURCE.url || !options.act?.id || !options.act.label
     || !Array.isArray(options.characterIds) || !options.characterIds.length || new Set(options.characterIds).size !== options.characterIds.length
     || !options.characterNames || options.characterIds.some(id => typeof options.characterNames[id] !== 'string' || !options.characterNames[id])
-    || !['official-legend-badge', 'official-ranking-cutoff'].includes(options.membershipRule)) fail('configuration-invalid')
-  if (options.membershipConfirmed !== true) fail('evidence-unconfirmed')
+    || !['official-legend-badge', 'official-ranking-cutoff'].includes(options.membershipRule)) fail('configuration-invalid', 'configuration')
+  if (options.membershipConfirmed !== true) fail('evidence-unconfirmed', 'membership-evidence')
   let requestCount = 0
   let captureAttempt = 0
   const now = options.now ?? (() => new Date())
-  const clock = (): string => { try { return now().toISOString() } catch { return fail('configuration-invalid') } }
-  const cancelled = (): void => { if (options.signal?.aborted) fail('cancelled') }
+  const clock = (): string => { try { return now().toISOString() } catch { return fail('configuration-invalid', 'capture-clock') } }
+  const cancelled = (): void => { if (options.signal?.aborted) fail('cancelled', 'cancellation') }
   const progress = (phase: LegendAnalysisCollectionPhase, page: number | null): void => {
     options.onProgress?.({ phase, attempt: captureAttempt, page })
   }
   const read = async (page: number, phase: LegendAnalysisCollectionPhase = 'listing'): Promise<LegendAnalysisPage> => {
     cancelled()
     progress(phase, page)
-    if (requestCount >= maxRequests) fail('request-limit')
+    if (requestCount >= maxRequests) fail('request-limit', 'request-budget')
     const url = options.pageUrl(page)
     requestCount++
     const value = await options.fetchPage(page, url)
     cancelled()
-    if (!value || value.sourceUrl !== url || value.page !== page || value.conditionsConfirmed !== true
-      || value.actConfirmed !== true || value.rosterConfirmed !== true || value.actId !== options.act.id
-      || !equal(value.conditions, options.conditions) || !integer(value.pageSize, 1) || value.pageSize > 20
-      || !integer(value.totalCount, 1) || !integer(value.from, 1) || !integer(value.to, 1)
+    if (!value || value.sourceUrl !== url || value.page !== page) fail('source-changed', 'page-identity')
+    if (value.conditionsConfirmed !== true || !equal(value.conditions, options.conditions)) fail('source-changed', 'source-conditions')
+    if (value.actConfirmed !== true || value.actId !== options.act.id) fail('source-changed', 'source-act')
+    if (value.rosterConfirmed !== true) fail('source-changed', 'source-roster')
+    if (!integer(value.pageSize, 1) || value.pageSize > 20) fail('source-changed', 'page-size')
+    if (!integer(value.totalCount, 1) || !integer(value.from, 1) || !integer(value.to, 1)
       || value.from !== (page - 1) * value.pageSize + 1 || value.to !== Math.min(page * value.pageSize, value.totalCount)
-      || value.to < value.from || value.nextPage !== (value.to < value.totalCount ? page + 1 : null)
-      || !Array.isArray(value.entries) || value.entries.length !== value.to - value.from + 1) fail('source-changed')
+      || value.to < value.from || value.nextPage !== (value.to < value.totalCount ? page + 1 : null)) fail('source-changed', 'pagination')
+    if (!Array.isArray(value.entries) || value.entries.length !== value.to - value.from + 1) fail('source-changed', 'entry-count')
     for (const entry of value.entries) {
       if (!entry || !integer(entry.rank, 1) || !integer(entry.masterRating) || typeof entry.isLegend !== 'boolean'
         || !options.characterIds.includes(entry.characterId) || typeof entry.accountKey !== 'string'
-        || !/^[a-f0-9]{64}$/.test(entry.accountKey)) fail('source-changed')
+        || !/^[a-f0-9]{64}$/.test(entry.accountKey)) {
+        if (entry && !options.characterIds.includes(entry.characterId)) fail('source-changed', 'character-roster')
+        fail('source-changed', 'entry-values')
+      }
     }
     return value
   }
@@ -130,17 +160,18 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       let pagesRead = 0
       while (true) {
         pagesRead++
-        if (current.pageSize !== first.pageSize) fail('source-changed')
+        if (current.pageSize !== first.pageSize) fail('source-changed', 'page-size')
         for (const [index, entry] of current.entries.entries()) {
-          if (current.page === 1 && index === 0 && entry.rank !== 1
-            || entry.rank > current.from + index
-            || previous && (entry.rank < previous.rank || entry.masterRating > previous.masterRating)) fail('source-changed')
+          if (current.page === 1 && index === 0 && entry.rank !== 1) fail('source-changed', 'first-rank')
+          if (entry.rank > current.from + index) fail('source-changed', 'rank-position')
+          if (previous && entry.rank < previous.rank) fail('source-changed', 'rank-order')
+          if (previous && entry.masterRating > previous.masterRating) fail('source-changed', 'mr-order')
           const key = `${entry.accountKey}:${entry.characterId}`
-          if (seen.has(key)) fail('duplicate-entry')
+          if (seen.has(key)) fail('duplicate-entry', 'duplicate-entry')
           seen.add(key)
           if (!entry.isLegend) boundary = true
           else {
-            if (boundary) fail('source-changed')
+            if (boundary) fail('source-changed', 'legend-contiguity')
             accepted.push(entry)
           }
           previous = entry
@@ -148,15 +179,17 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
         if (boundary || current.nextPage === null) break
         current = await read(current.nextPage)
       }
-      if (!accepted.length) fail('evidence-unconfirmed')
+      if (!accepted.length) fail('evidence-unconfirmed', 'legend-presence')
       // Re-read the last observed page and then the start; comparison includes every private row.
       progress('act-recheck', null)
       await options.confirmAct?.()
       const lastAgain = await read(current.page, 'end-recheck')
-      if (!equal(stablePage(current), stablePage(lastAgain)) || !boundary && lastAgain.nextPage !== null
-        || !equal(stablePage(first), stablePage(await read(1, 'start-recheck')))) fail('source-changed')
+      if (!equal(stablePage(current), stablePage(lastAgain))) fail('source-changed', 'end-recheck', recheckChanges(current, lastAgain))
+      if (!boundary && lastAgain.nextPage !== null) fail('source-changed', 'terminal-coverage', ['metadata'])
+      const firstAgain = await read(1, 'start-recheck')
+      if (!equal(stablePage(first), stablePage(firstAgain))) fail('source-changed', 'start-recheck', recheckChanges(first, firstAgain))
       const endedAt = clock()
-      if (Date.parse(endedAt) < Date.parse(startedAt)) fail('configuration-invalid')
+      if (Date.parse(endedAt) < Date.parse(startedAt)) fail('configuration-invalid', 'capture-clock')
       const dataset = parseLegendAnalysisDataset({
         schemaVersion: 1, id: `legend-${startedAt.replace(/[:.]/g, '-')}`, captureStartedAt: startedAt,
         captureEndedAt: endedAt, generatedAt: endedAt, source: { ...LEGEND_ANALYSIS_SOURCE,
@@ -180,10 +213,10 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       progress('complete', null)
       return { dataset, requestCount, retryCount: attempt, pagesRead }
     } catch (error) {
-      if (options.signal?.aborted) fail('cancelled')
+      if (options.signal?.aborted) fail('cancelled', 'cancellation')
       if (!(error instanceof LegendAnalysisCollectionError)
         || !['source-changed', 'duplicate-entry'].includes(error.code) || attempt + 1 >= maxAttempts) throw error
     }
   }
-  return fail('read-failed')
+  return fail('read-failed', 'completion')
 }

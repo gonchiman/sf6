@@ -1,18 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Page } from 'playwright'
-import { classifyLegendClickFailure, createLegendAnalysisPageReader, LegendAnalysisDomError, legendAnalysisPageUrl, observeLegendAnalysisDom, observeLegendAnalysisRoster, sanitizeLegendRosterDiagnostics } from './legend-analysis-dom.ts'
+import { classifyLegendClickFailure, createLegendAnalysisPageReader, LegendAnalysisDomError, legendAnalysisPageUrl, legendAnalysisPageUrlMatches, observeLegendAnalysisDom, observeLegendAnalysisRoster, sanitizeLegendRosterDiagnostics } from './legend-analysis-dom.ts'
 
 function fixture() {
   let url = '', clock = 0, actId = 13, status = 200, redirected = false, readyOnAttempt = 1, controlReads = 0, cookieOverlay = false, autoOpen = false
   let signedIn = true, loginRequired = false, authenticationEvidence = 'logout-control'
+  let bodyPage: number | null = null, staleReads = 0, duplicateReads = 0, identicalRanks = false, rankingReads = 0, challenge = false
   const statuses: number[] = []
   const navigations: string[] = [], salts: string[] = [], waits: number[] = [], controls: string[] = []
   const page = {
     goto: async (value: string) => { url = redirected ? 'https://example.com/unconfirmed' : value; navigations.push(value); const actual = statuses.shift() ?? status; return { status: () => actual, url: () => url } },
     url: () => url,
     evaluate: async (operation: { name: string }, input?: { salt: string }) => {
-      if (!operation.name) return false
+      if (!operation.name) return challenge
       if (operation.name === 'observeLegendAnalysisAct') return { id: `act-${actId}`, label: `Act ${actId}` }
       if (operation.name === 'observeLegendAnalysisRoster') return { roster: [{ characterId: 'arjun', name: 'アージュン' }, { characterId: 'ryu', name: 'リュウ' }],
         diagnostics: { h3Count: 1, liCount: 3, randomCount: 1, failedIndex: null, reason: null, items: [] } }
@@ -20,11 +21,14 @@ function fixture() {
       if (operation.name === 'observeLegendAnalysisClickTarget') return { hitKind: cookieOverlay ? 'cookie-consent' : 'ranking-control', hitTag: cookieOverlay ? 'div' : 'span', parentParagraph: true, pointerEventsNone: false }
       salts.push(input!.salt)
       const selectedPage = Number(new URL(url).searchParams.get('page'))
-      return { maintenance: false, signedIn, authenticationEvidence, loginRequired, conditionsConfirmed: true, currentActConfirmed: true,
+      const contentPage = bodyPage !== null && staleReads-- > 0 ? bodyPage : selectedPage
+      const duplicate = duplicateReads-- > 0
+      rankingReads++
+      return { observedUrl: url, maintenance: false, accessChallenge: challenge, signedIn, authenticationEvidence, loginRequired, conditionsConfirmed: true, currentActConfirmed: true,
         selectedPage, range: { from: (selectedPage - 1) * 20 + 1, to: selectedPage * 20, total: 800000 },
         firstPlayUrl: 'https://www.streetfighter.com/6/buckler/ja-jp/profile/12345/play',
-        entries: Array.from({ length: 20 }, (_, index) => ({ accountKey: String(index).padStart(64, '0'), characterId: 'ryu', rank: index + 1,
-          masterRating: 2400 - index, isLegend: true })) }
+        entries: Array.from({ length: 20 }, (_, index) => ({ accountKey: String((contentPage - 1) * 20 + (duplicate && index === 1 ? 0 : index)).padStart(64, '0'), characterId: 'ryu', rank: identicalRanks ? 1 : (contentPage - 1) * 20 + index + 1,
+          masterRating: identicalRanks ? 2400 : 2400 - ((contentPage - 1) * 20 + index), isLegend: true })) }
     },
     locator: (selector: string) => ({ first() { return this }, selectOption: async (value: string) => { controls.push(`${selector}:${value}`) },
       count: async () => selector === 'button#onetrust-reject-all-handler:visible' && cookieOverlay ? 1 : 0,
@@ -35,6 +39,7 @@ function fixture() {
   } as unknown as Page
   const reader = createLegendAnalysisPageReader(page, { now: () => clock, wait: async milliseconds => { waits.push(milliseconds); clock += milliseconds } })
   return { reader, navigations, salts, waits, controls, changeAct: () => { actId++ }, deny: () => { status = 403 }, redirect: () => { redirected = true }, hydrateAfter: (attempts: number) => { readyOnAttempt = attempts }, showCookieOverlay: () => { cookieOverlay = true }, autoOpenRoster: () => { autoOpen = true },
+    staleBody: (page: number, reads: number) => { bodyPage = page; staleReads = reads }, duplicateBody: (reads: number) => { duplicateReads = reads }, tieAllRows: () => { identicalRanks = true }, readCount: () => rankingReads, showChallenge: () => { challenge = true },
     showLoginControl: () => { signedIn = false; authenticationEvidence = 'login-control' },
     showLoginHeading: () => { signedIn = false; authenticationEvidence = 'login-control'; loginRequired = true },
     showNoControls: () => { signedIn = false; authenticationEvidence = 'no-control' }, respond: (...values: number[]) => { statuses.push(...values) } }
@@ -155,6 +160,79 @@ test('diagnostics track the requested ranking page and accepted reads separately
   assert.equal(data.reader.getDiagnostics().successfulReadCount, 2)
 })
 
+test('canonical ranking URLs accept query order alone and reject changed origin, Act, conditions or multiplicities', () => {
+  const canonical = legendAnalysisPageUrl(2), url = new URL(canonical)
+  url.search = [...url.searchParams.entries()].reverse().map(([key, value]) => `${key}=${value}`).join('&')
+  assert.equal(legendAnalysisPageUrlMatches(url.href, 2), true)
+  for (const mutate of [
+    (url: URL) => { url.hostname = 'example.com' }, (url: URL) => { url.pathname += '/other' },
+    (url: URL) => { url.searchParams.set('season_type', '2') }, (url: URL) => { url.searchParams.set('character_filter', '4') },
+    (url: URL) => { url.searchParams.append('page', '2') }, (url: URL) => { url.searchParams.set('unknown', '1') },
+    (url: URL) => { url.searchParams.delete('character_id') }, (url: URL) => { url.hash = 'unconfirmed' },
+  ]) { const changed = new URL(canonical); mutate(changed); assert.equal(legendAnalysisPageUrlMatches(changed.href, 2), false) }
+})
+
+test('every ranking fetch uses fixed goto, including consecutive pages, rechecks and Act return', async () => {
+  const data = fixture(); await data.reader.initialize()
+  await data.reader.fetchPage(1, legendAnalysisPageUrl(1))
+  const gotoCount = data.navigations.length
+  const page2 = await data.reader.fetchPage(2, legendAnalysisPageUrl(2))
+  assert.equal(data.navigations.length, gotoCount + 1)
+  assert.equal(data.navigations.at(-1), legendAnalysisPageUrl(2))
+  assert.equal(page2.sourceUrl, legendAnalysisPageUrl(2))
+  await data.reader.fetchPage(1, legendAnalysisPageUrl(1))
+  assert.equal(data.navigations.length, gotoCount + 2)
+  await data.reader.confirmAct()
+  await data.reader.fetchPage(2, legendAnalysisPageUrl(2))
+  assert.equal(data.navigations.length, gotoCount + 4)
+  assert.equal(data.navigations.at(-1), legendAnalysisPageUrl(2))
+  assert.deepEqual(data.controls, ['select:visible:1', 'select:visible:4', 'span[class*="ranking_search_character_btn"]:visible'])
+})
+
+test('consecutive goto waits for a new complete body and permits a tie spanning pages with new identities', async () => {
+  const data = fixture(); data.tieAllRows(); await data.reader.initialize(); await data.reader.fetchPage(1, legendAnalysisPageUrl(1))
+  data.staleBody(1, 2)
+  const reads = data.readCount(), second = await data.reader.fetchPage(2, legendAnalysisPageUrl(2))
+  assert.equal(data.readCount() - reads, 3)
+  assert.equal(second.entries.every(entry => entry.rank === 1 && entry.masterRating === 2400), true)
+  assert.equal(second.entries[0].accountKey, String(20).padStart(64, '0'))
+  const stale = fixture(); await stale.reader.initialize(); await stale.reader.fetchPage(1, legendAnalysisPageUrl(1)); stale.staleBody(1, 100)
+  await assert.rejects(stale.reader.fetchPage(2, legendAnalysisPageUrl(2)), /unsupported-dom/)
+})
+
+test('a duplicate within one observed page waits for hydration and fails closed if it persists', async () => {
+  const data = fixture(); await data.reader.initialize(); data.duplicateBody(2)
+  const reads = data.readCount(); await data.reader.fetchPage(1, legendAnalysisPageUrl(1))
+  assert.equal(data.readCount() - reads, 3)
+  data.duplicateBody(100)
+  await assert.rejects(data.reader.fetchPage(1, legendAnalysisPageUrl(1)), /unsupported-dom/)
+})
+
+test('consecutive goto keeps one server retry and stops client faults or redirects', async () => {
+  const recovered = fixture(); await recovered.reader.initialize(); await recovered.reader.fetchPage(1, legendAnalysisPageUrl(1)); recovered.respond(503, 200)
+  const before = recovered.reader.getDiagnostics().requestCount
+  await recovered.reader.fetchPage(2, legendAnalysisPageUrl(2))
+  assert.equal(recovered.reader.getDiagnostics().requestCount - before, 2)
+  assert.deepEqual(recovered.navigations.slice(-2), [legendAnalysisPageUrl(2), legendAnalysisPageUrl(2)])
+  for (const status of [401, 403, 404, 405, 429]) {
+    const data = fixture(); await data.reader.initialize(); await data.reader.fetchPage(1, legendAnalysisPageUrl(1)); data.respond(status, 200)
+    const gotos = data.navigations.length
+    await assert.rejects(data.reader.fetchPage(2, legendAnalysisPageUrl(2)))
+    assert.equal(data.reader.getDiagnostics().lastHttpStatus, status)
+    assert.equal(data.navigations.length, gotos + 1)
+    assert.equal(data.navigations.at(-1), legendAnalysisPageUrl(2))
+  }
+  const redirect = fixture(); await redirect.reader.initialize(); await redirect.reader.fetchPage(1, legendAnalysisPageUrl(1)); redirect.redirect()
+  await assert.rejects(redirect.reader.fetchPage(2, legendAnalysisPageUrl(2)), /condition-mismatch/)
+})
+
+test('goto stops a challenge without retry even when the document reports a server fault', async () => {
+  const captcha = fixture(); await captcha.reader.initialize(); await captcha.reader.fetchPage(1, legendAnalysisPageUrl(1)); captcha.showChallenge(); captcha.respond(503, 200)
+  const before = captcha.reader.getDiagnostics().requestCount
+  await assert.rejects(captcha.reader.fetchPage(2, legendAnalysisPageUrl(2)), /http-denied/)
+  assert.equal(captcha.reader.getDiagnostics().requestCount - before, 1)
+})
+
 test('rendered rows accept official noscript assets behind placeholders and hash identities without emitting them', async t => {
   function element(value = '', children: Record<string, unknown[]> = {}, attributes: Record<string, string> = {}) {
     return { innerText: value, textContent: value, innerHTML: value, parentElement: null,
@@ -229,4 +307,92 @@ test('source roster scroll loads every catalog portrait and diagnoses only catal
   assert.deepEqual(sanitizeLegendRosterDiagnostics(observed.diagnostics), observed.diagnostics)
   assert.equal(sanitizeLegendRosterDiagnostics({ ...observed.diagnostics, items: [{ ...observed.diagnostics.items[0], label: '<private HTML>' }] }), null)
   assert.equal(JSON.stringify(observed.diagnostics).includes('https://'), false)
+})
+
+test('ranking observation freezes both rows and header before asynchronous identity hashing', async t => {
+  // Simulate a later hydration update; this regression does not establish a cause for any live duplicate.
+  function element(value = '', children: Record<string, unknown[]> = {}, attributes: Record<string, string> = {}) {
+    return { innerText: value, textContent: value, innerHTML: value, parentElement: null,
+      getBoundingClientRect: () => ({ width: 100, height: 20 }), hasAttribute: () => false,
+      getAttribute: (name: string) => attributes[name] ?? null, closest: () => null,
+      querySelectorAll: (selector: string) => children[selector] ?? [], scrollIntoView: () => {} }
+  }
+  const select = (value: string, label: string) => Object.assign(element(), { value, options: [element(label)], selectedOptions: [element(label)] })
+  const asset = (path: string) => Object.assign(element(), { complete: true, naturalWidth: 100,
+    currentSrc: `https://www.streetfighter.com${path}` })
+  const makeRow = (profile: string, character: string, rank: number, mr: number) => {
+    const attributes = { href: `/6/buckler/ja-jp/profile/${profile}` }
+    const rankNode = element(`${rank}位`), mrNode = element(`${mr}MR`)
+    const characterImage = asset(`/6/buckler/assets/images/material/character/character_${character}_l.png`)
+    const badgeImage = asset('/6/buckler/assets/images/material/rank/rank37_l.png')
+    const row = element('private display name', {
+      'div[class*="ranking_page_data"]': [element()],
+      '[class*="ranking_time"]': [element('', { 'dl dt': [rankNode], 'dl dd': [mrNode] })],
+      'div[class*="ranking_character"]': [element('', { img: [characterImage] })],
+      'div[class*="ranking_league_rank_icon"] p[class*="ranking_master_rating_icon"]': [element('', { img: [badgeImage] })],
+    }, attributes)
+    return { row, replace: (profile: string, character: string, rank: number, mr: number) => {
+      attributes.href = `/6/buckler/ja-jp/profile/${profile}`
+      rankNode.innerText = `${rank}位`; mrNode.innerText = `${mr}MR`
+      characterImage.currentSrc = `https://www.streetfighter.com/6/buckler/assets/images/material/character/character_${character}_l.png`
+      badgeImage.currentSrc = 'https://www.streetfighter.com/6/buckler/assets/images/material/rank/rank42_l.png'
+    } }
+  }
+  const rows = [makeRow('987654321', 'ryu', 1, 2430), makeRow('987654322', 'ken', 2, 2420)]
+  const pageSelectors = [select('1', '1'), select('1', '1')]
+  const counter = element('1 - 2/ 800000')
+  const controls = [element('ログアウト')]
+  const nodes: Record<string, unknown[]> = {
+    'a,button': controls, 'h1,h2': [],
+    select: [select('1', '総合'), select('0', 'すべて'), select('1', 'すべて'), ...pageSelectors],
+    'aside[class*="ranking_act_nav"] li[class*="active"]': [element('今Act')],
+    'p[class*="ranking_ranking_now"]': [counter],
+    'ul[class*="ranking_ranking_list"]:not([class*="ranking__my__list"])': [element('', { 'a[href*="/profile/"]': rows.map(value => value.row) })],
+  }
+  const globals: Record<string, unknown> = {
+    document: { querySelectorAll: (selector: string) => nodes[selector] ?? [] },
+    window: { scrollTo: () => {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }) },
+    location: { origin: 'https://www.streetfighter.com' },
+  }
+  const previous = Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const)
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value })
+  t.mock.method(globalThis, 'setTimeout', ((callback: () => void) => { callback(); return 0 }) as unknown as typeof setTimeout)
+  t.after(() => { for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key) } })
+
+  const originalDigest = crypto.subtle.digest.bind(crypto.subtle)
+  const salt = 'atomic-observation-regression'
+  const expectedInputs = ['987654321', '987654322'].map(profile => `${salt}:/6/buckler/ja-jp/profile/${profile}`)
+  const expectedKeys = await Promise.all(expectedInputs.map(async value => [...new Uint8Array(await originalDigest('SHA-256', new TextEncoder().encode(value)))].map(byte => byte.toString(16).padStart(2, '0')).join('')))
+  let markHashStarted!: () => void, releaseHash!: () => void
+  const hashStarted = new Promise<void>(resolve => { markHashStarted = resolve })
+  const hashGate = new Promise<void>(resolve => { releaseHash = resolve })
+  const hashedInputs: string[] = []
+  t.mock.method(crypto.subtle, 'digest', async (algorithm: AlgorithmIdentifier, data: BufferSource) => {
+    hashedInputs.push(new TextDecoder().decode(data))
+    markHashStarted()
+    await hashGate
+    return originalDigest(algorithm, data)
+  })
+  const pending = observeLegendAnalysisDom({ salt, characterIds: ['ryu', 'ken', 'dhalsim', 'honda'] })
+  try {
+    await Promise.race([hashStarted, pending.then(() => { throw new Error('The valid observation must reach identity hashing.') })])
+    rows[0].replace('777777771', 'dhalsim', 21, 2100)
+    rows[1].replace('777777772', 'honda', 22, 2090)
+    counter.innerText = '21 - 22/ 800001'
+    for (const selector of pageSelectors) selector.value = '2'
+    controls[0].innerText = 'ログイン'
+  } finally { releaseHash() }
+  const observed = await pending
+  assert.equal(observed.signedIn, true)
+  assert.equal(observed.authenticationEvidence, 'logout-control')
+  assert.equal(observed.selectedPage, 1)
+  assert.deepEqual(observed.range, { from: 1, to: 2, total: 800000 })
+  assert.equal(observed.firstPlayUrl, 'https://www.streetfighter.com/6/buckler/ja-jp/profile/987654321/play')
+  assert.deepEqual(observed.entries, [
+    { accountKey: expectedKeys[0], characterId: 'ryu', rank: 1, masterRating: 2430, isLegend: true },
+    { accountKey: expectedKeys[1], characterId: 'ken', rank: 2, masterRating: 2420, isLegend: true },
+  ])
+  assert.deepEqual(hashedInputs, expectedInputs)
+  const { firstPlayUrl: _privateNavigation, ...safeObservation } = observed
+  assert.doesNotMatch(JSON.stringify(safeObservation), /987654321|987654322|777777771|777777772|private display name/)
 })

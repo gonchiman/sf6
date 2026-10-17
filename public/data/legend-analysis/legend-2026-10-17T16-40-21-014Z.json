@@ -1,0 +1,1367 @@
+{
+  "schemaVersion": 1,
+  "id": "legend-2026-10-17T16-40-21-014Z",
+  "captureStartedAt": "2026-10-17T16:40:21.014Z",
+  "captureEndedAt": "2026-10-17T16:42:47.921Z",
+  "generatedAt": "2026-10-17T16:42:47.921Z",
+  "source": {
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/master",
+    "title": "Buckler MRランキング",
+    "population": "公式MRランキングにレジェンドとして掲載されたアカウント×キャラクターのエントリー",
+    "metric": "掲載エントリーのキャラクター構成とMR分布",
+    "unit": "account-character",
+    "notes": [
+      "構成比は対戦試合数に基づく使用率ではない。",
+      "公式のLEGEND画像 rank37_l.png が付いた掲載行を対象とし、掲載順位や件数を500で打ち切っていない。",
+      "取得期間内の掲載断面であり、同一人物の追跡や各対戦時点の所属を表さない。"
+    ]
+  },
+  "act": {
+    "id": "act-13",
+    "label": "Act 13"
+  },
+  "definitionVersion": "legend-listed-v1",
+  "membershipRule": "official-legend-badge",
+  "conditions": {
+    "region": "all",
+    "platform": "all",
+    "characters": "all",
+    "users": "source-default"
+  },
+  "totalCount": 501,
+  "characterIds": [
+    "aki",
+    "alex",
+    "arjun",
+    "blanka",
+    "cammy",
+    "chunli",
+    "cviper",
+    "deejay",
+    "dhalsim",
+    "ed",
+    "elena",
+    "gouki",
+    "guile",
+    "honda",
+    "ingrid",
+    "jamie",
+    "jp",
+    "juri",
+    "ken",
+    "kimberly",
+    "lily",
+    "luke",
+    "mai",
+    "manon",
+    "marisa",
+    "rashid",
+    "ryu",
+    "sagat",
+    "terry",
+    "vega",
+    "yasmine",
+    "zangief"
+  ],
+  "characters": [
+    {
+      "characterId": "aki",
+      "name": "A.K.I.",
+      "count": 6,
+      "mr": {
+        "count": 6,
+        "min": 2222,
+        "p25": 2304.25,
+        "median": 2314,
+        "p75": 2317,
+        "max": 2334,
+        "mean": 2300.5,
+        "bins": [
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 1
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 0
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 5
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "alex",
+      "name": "アレックス",
+      "count": 15,
+      "mr": {
+        "count": 15,
+        "min": 2187,
+        "p25": 2203.5,
+        "median": 2211,
+        "p75": 2215.5,
+        "max": 2323,
+        "mean": 2224.4,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 1
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 11
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 1
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "arjun",
+      "name": "アルジュン",
+      "count": 18,
+      "mr": {
+        "count": 18,
+        "min": 2188,
+        "p25": 2198.5,
+        "median": 2214,
+        "p75": 2279.25,
+        "max": 2314,
+        "mean": 2236,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 5
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 7
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 3
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 3
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "blanka",
+      "name": "ブランカ",
+      "count": 16,
+      "mr": {
+        "count": 16,
+        "min": 2201,
+        "p25": 2219.5,
+        "median": 2230.5,
+        "p75": 2265.25,
+        "max": 2347,
+        "mean": 2250.75,
+        "bins": [
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 10
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 2
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 4
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "cammy",
+      "name": "キャミィ",
+      "count": 18,
+      "mr": {
+        "count": 18,
+        "min": 2189,
+        "p25": 2212,
+        "median": 2239,
+        "p75": 2265.5,
+        "max": 2328,
+        "mean": 2247.277777777778,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 3
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 7
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 4
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 4
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "chunli",
+      "name": "春麗",
+      "count": 15,
+      "mr": {
+        "count": 15,
+        "min": 2186,
+        "p25": 2201.5,
+        "median": 2230,
+        "p75": 2260.5,
+        "max": 2338,
+        "mean": 2236.6666666666665,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 2
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 7
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 4
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "cviper",
+      "name": "C.ヴァイパー",
+      "count": 25,
+      "mr": {
+        "count": 25,
+        "min": 2194,
+        "p25": 2238,
+        "median": 2290,
+        "p75": 2309,
+        "max": 2357,
+        "mean": 2276.28,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 1
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 7
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 7
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 8
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "deejay",
+      "name": "ディージェイ",
+      "count": 13,
+      "mr": {
+        "count": 13,
+        "min": 2189,
+        "p25": 2202,
+        "median": 2237,
+        "p75": 2300,
+        "max": 2356,
+        "mean": 2250.846153846154,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 2
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 6
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 1
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 3
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "dhalsim",
+      "name": "ダルシム",
+      "count": 17,
+      "mr": {
+        "count": 17,
+        "min": 2188,
+        "p25": 2211,
+        "median": 2222,
+        "p75": 2242,
+        "max": 2446,
+        "mean": 2246,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 3
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 11
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 0
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 1
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          },
+          {
+            "lower": 2400,
+            "upper": 2450,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "ed",
+      "name": "エド",
+      "count": 16,
+      "mr": {
+        "count": 16,
+        "min": 2192,
+        "p25": 2206.25,
+        "median": 2230,
+        "p75": 2257,
+        "max": 2349,
+        "mean": 2244.1875,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 3
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 7
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 3
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 3
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "elena",
+      "name": "エレナ",
+      "count": 16,
+      "mr": {
+        "count": 16,
+        "min": 2194,
+        "p25": 2211.75,
+        "median": 2258,
+        "p75": 2317.5,
+        "max": 2402,
+        "mean": 2266,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 3
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 4
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 4
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 3
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          },
+          {
+            "lower": 2400,
+            "upper": 2450,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "gouki",
+      "name": "豪鬼",
+      "count": 13,
+      "mr": {
+        "count": 13,
+        "min": 2189,
+        "p25": 2203,
+        "median": 2240,
+        "p75": 2301,
+        "max": 2382,
+        "mean": 2252.230769230769,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 3
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 4
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 2
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 3
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "guile",
+      "name": "ガイル",
+      "count": 14,
+      "mr": {
+        "count": 14,
+        "min": 2196,
+        "p25": 2201,
+        "median": 2256.5,
+        "p75": 2310.5,
+        "max": 2373,
+        "mean": 2260.8571428571427,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 1
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 6
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 2
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 4
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "honda",
+      "name": "エドモンド本田",
+      "count": 10,
+      "mr": {
+        "count": 10,
+        "min": 2202,
+        "p25": 2214.75,
+        "median": 2261,
+        "p75": 2293.75,
+        "max": 2331,
+        "mean": 2258.7,
+        "bins": [
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 4
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 3
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 3
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "ingrid",
+      "name": "イングリッド",
+      "count": 10,
+      "mr": {
+        "count": 10,
+        "min": 2211,
+        "p25": 2217,
+        "median": 2241.5,
+        "p75": 2280,
+        "max": 2307,
+        "mean": 2249.4,
+        "bins": [
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 5
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 4
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "jamie",
+      "name": "ジェイミー",
+      "count": 14,
+      "mr": {
+        "count": 14,
+        "min": 2188,
+        "p25": 2202.25,
+        "median": 2215,
+        "p75": 2247.25,
+        "max": 2337,
+        "mean": 2234.285714285714,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 3
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 8
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 1
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "jp",
+      "name": "JP",
+      "count": 23,
+      "mr": {
+        "count": 23,
+        "min": 2187,
+        "p25": 2205,
+        "median": 2218,
+        "p75": 2253,
+        "max": 2414,
+        "mean": 2237.6521739130435,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 4
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 12
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 4
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 2
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 0
+          },
+          {
+            "lower": 2400,
+            "upper": 2450,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "juri",
+      "name": "ジュリ",
+      "count": 13,
+      "mr": {
+        "count": 13,
+        "min": 2187,
+        "p25": 2201,
+        "median": 2222,
+        "p75": 2271,
+        "max": 2409,
+        "mean": 2250.076923076923,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 2
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 6
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 2
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 2
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 0
+          },
+          {
+            "lower": 2400,
+            "upper": 2450,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "ken",
+      "name": "ケン",
+      "count": 23,
+      "mr": {
+        "count": 23,
+        "min": 2187,
+        "p25": 2209.5,
+        "median": 2266,
+        "p75": 2300,
+        "max": 2315,
+        "mean": 2254.782608695652,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 5
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 6
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 5
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 7
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "kimberly",
+      "name": "キンバリー",
+      "count": 17,
+      "mr": {
+        "count": 17,
+        "min": 2187,
+        "p25": 2208,
+        "median": 2241,
+        "p75": 2270,
+        "max": 2344,
+        "mean": 2247.5882352941176,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 2
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 8
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 3
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 4
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "lily",
+      "name": "リリー",
+      "count": 8,
+      "mr": {
+        "count": 8,
+        "min": 2190,
+        "p25": 2208.5,
+        "median": 2236.5,
+        "p75": 2282.75,
+        "max": 2356,
+        "mean": 2250.75,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 2
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 3
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 1
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 1
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "luke",
+      "name": "ルーク",
+      "count": 32,
+      "mr": {
+        "count": 32,
+        "min": 2186,
+        "p25": 2203.75,
+        "median": 2231.5,
+        "p75": 2299,
+        "max": 2381,
+        "mean": 2257,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 7
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 11
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 6
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 3
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 5
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "mai",
+      "name": "舞",
+      "count": 25,
+      "mr": {
+        "count": 25,
+        "min": 2189,
+        "p25": 2202,
+        "median": 2209,
+        "p75": 2256,
+        "max": 2350,
+        "mean": 2231.28,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 6
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 11
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 5
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 2
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "manon",
+      "name": "マノン",
+      "count": 6,
+      "mr": {
+        "count": 6,
+        "min": 2191,
+        "p25": 2204,
+        "median": 2211,
+        "p75": 2312.5,
+        "max": 2351,
+        "mean": 2252,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 1
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 3
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 0
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 1
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "marisa",
+      "name": "マリーザ",
+      "count": 12,
+      "mr": {
+        "count": 12,
+        "min": 2187,
+        "p25": 2203,
+        "median": 2216,
+        "p75": 2280,
+        "max": 2403,
+        "mean": 2248.5833333333335,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 2
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 6
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 1
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 1
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          },
+          {
+            "lower": 2400,
+            "upper": 2450,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "rashid",
+      "name": "ラシード",
+      "count": 9,
+      "mr": {
+        "count": 9,
+        "min": 2204,
+        "p25": 2214,
+        "median": 2232,
+        "p75": 2271,
+        "max": 2339,
+        "mean": 2252.5555555555557,
+        "bins": [
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 5
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 2
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "ryu",
+      "name": "リュウ",
+      "count": 18,
+      "mr": {
+        "count": 18,
+        "min": 2189,
+        "p25": 2202.25,
+        "median": 2220,
+        "p75": 2269.75,
+        "max": 2421,
+        "mean": 2246.1111111111113,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 3
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 8
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 3
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 3
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 0
+          },
+          {
+            "lower": 2400,
+            "upper": 2450,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "sagat",
+      "name": "サガット",
+      "count": 14,
+      "mr": {
+        "count": 14,
+        "min": 2192,
+        "p25": 2202,
+        "median": 2265,
+        "p75": 2299.75,
+        "max": 2316,
+        "mean": 2253.214285714286,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 3
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 4
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 3
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 4
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "terry",
+      "name": "テリー",
+      "count": 15,
+      "mr": {
+        "count": 15,
+        "min": 2187,
+        "p25": 2200.5,
+        "median": 2232,
+        "p75": 2307,
+        "max": 2322,
+        "mean": 2250,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 4
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 4
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 2
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 5
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "vega",
+      "name": "ベガ",
+      "count": 22,
+      "mr": {
+        "count": 22,
+        "min": 2187,
+        "p25": 2208.75,
+        "median": 2226,
+        "p75": 2261.75,
+        "max": 2353,
+        "mean": 2243.681818181818,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 1
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 13
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 4
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 3
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "yasmine",
+      "name": "ヤスミン",
+      "count": 16,
+      "mr": {
+        "count": 16,
+        "min": 2187,
+        "p25": 2199.5,
+        "median": 2210.5,
+        "p75": 2234.5,
+        "max": 2280,
+        "mean": 2219.6875,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 4
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 10
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "characterId": "zangief",
+      "name": "ザンギエフ",
+      "count": 12,
+      "mr": {
+        "count": 12,
+        "min": 2187,
+        "p25": 2208.5,
+        "median": 2232.5,
+        "p75": 2264.75,
+        "max": 2401,
+        "mean": 2249.75,
+        "bins": [
+          {
+            "lower": 2150,
+            "upper": 2200,
+            "count": 1
+          },
+          {
+            "lower": 2200,
+            "upper": 2250,
+            "count": 6
+          },
+          {
+            "lower": 2250,
+            "upper": 2300,
+            "count": 3
+          },
+          {
+            "lower": 2300,
+            "upper": 2350,
+            "count": 1
+          },
+          {
+            "lower": 2350,
+            "upper": 2400,
+            "count": 0
+          },
+          {
+            "lower": 2400,
+            "upper": 2450,
+            "count": 1
+          }
+        ]
+      }
+    }
+  ],
+  "mr": {
+    "count": 501,
+    "min": 2186,
+    "p25": 2204,
+    "median": 2230,
+    "p75": 2288,
+    "max": 2446,
+    "mean": 2248.3013972055887,
+    "bins": [
+      {
+        "lower": 2150,
+        "upper": 2200,
+        "count": 77
+      },
+      {
+        "lower": 2200,
+        "upper": 2250,
+        "count": 221
+      },
+      {
+        "lower": 2250,
+        "upper": 2300,
+        "count": 87
+      },
+      {
+        "lower": 2300,
+        "upper": 2350,
+        "count": 92
+      },
+      {
+        "lower": 2350,
+        "upper": 2400,
+        "count": 17
+      },
+      {
+        "lower": 2400,
+        "upper": 2450,
+        "count": 7
+      }
+    ]
+  },
+  "validation": {
+    "status": "verified",
+    "coverage": "all-listed-legend-entries",
+    "checks": [
+      "conditions-confirmed",
+      "act-confirmed",
+      "membership-confirmed",
+      "pagination-confirmed",
+      "boundary-confirmed",
+      "ordering-confirmed",
+      "account-character-unit-confirmed",
+      "roster-confirmed",
+      "duplicates-checked",
+      "capture-rechecked"
+    ],
+    "notes": [
+      "全ページの条件・Act・掲載判定・表示範囲・順位・MR順・アカウント×キャラクター重複を検証した。",
+      "レジェンド掲載の終端と先頭を再確認した。取得時点が異なる全行の同時点性を保証するものではない。",
+      "プレイヤー名、識別子、プロフィールリンク、行データ、照合用一時ハッシュは保存していない。"
+    ]
+  }
+}

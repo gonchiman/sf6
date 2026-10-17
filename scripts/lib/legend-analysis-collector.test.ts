@@ -71,6 +71,68 @@ test('same account-character duplicate causes bounded capture retry and failure,
   assert.deepEqual(retries, [1])
 })
 
+test('fixed checks distinguish first rank, row position, rank order and MR order without changing rejection', async () => {
+  const cases = [
+    { check: 'first-rank', page: 1, mutate: (value: LegendAnalysisPage) => { value.entries[0].rank = 2 } },
+    { check: 'rank-position', page: 1, mutate: (value: LegendAnalysisPage) => { value.entries[1].rank = 3 } },
+    { check: 'rank-order', page: 2, mutate: (value: LegendAnalysisPage) => { value.entries[0].rank = 1 } },
+    { check: 'mr-order', page: 2, mutate: (value: LegendAnalysisPage) => { value.entries[0].masterRating = 9999 } },
+  ]
+  for (const item of cases) {
+    const data = fixture(), read = data.options.fetchPage
+    data.options.fetchPage = async (page, url) => { const value = await read(page, url); if (page === item.page) item.mutate(value); return value }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error =>
+      error instanceof LegendAnalysisCollectionError && error.code === 'source-changed' && error.validationCheck === item.check && error.recheckChangeKinds === undefined)
+  }
+})
+
+test('metadata, entry validation, duplicate and Legend continuity failures have fixed checks', async () => {
+  const cases = [
+    { check: 'page-identity', mutate: (page: LegendAnalysisPage) => { page.page++ } },
+    { check: 'source-conditions', mutate: (page: LegendAnalysisPage) => { page.conditionsConfirmed = false } },
+    { check: 'source-act', mutate: (page: LegendAnalysisPage) => { page.actId = 'act-12' } },
+    { check: 'source-roster', mutate: (page: LegendAnalysisPage) => { page.rosterConfirmed = false } },
+    { check: 'page-size', mutate: (page: LegendAnalysisPage) => { page.pageSize = 0 } },
+    { check: 'pagination', mutate: (page: LegendAnalysisPage) => { page.from++ } },
+    { check: 'entry-count', mutate: (page: LegendAnalysisPage) => { page.entries.pop() } },
+    { check: 'entry-values', mutate: (page: LegendAnalysisPage) => { page.entries[0].masterRating = -1 } },
+    { check: 'character-roster', mutate: (page: LegendAnalysisPage) => { page.entries[0].characterId = 'unknown' } },
+    { check: 'duplicate-entry', mutate: (page: LegendAnalysisPage) => { page.entries[1].accountKey = page.entries[0].accountKey; page.entries[1].characterId = page.entries[0].characterId } },
+    { check: 'legend-contiguity', mutate: (page: LegendAnalysisPage) => { page.entries[0].isLegend = false } },
+    { check: 'legend-presence', mutate: (page: LegendAnalysisPage) => { page.entries.forEach(entry => { entry.isLegend = false }) } },
+  ]
+  for (const item of cases) {
+    const data = fixture(), read = data.options.fetchPage
+    data.options.fetchPage = async (page, url) => { const value = await read(page, url); item.mutate(value); return value }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error =>
+      error instanceof LegendAnalysisCollectionError && error.validationCheck === item.check)
+  }
+})
+
+test('recheck mismatch kinds distinguish private Legend rows, non-Legend rows and metadata using enum lists only', async () => {
+  for (const legendChanged of [false, true]) {
+    const data = fixture(), read = data.options.fetchPage
+    const seen = new Map<number, number>()
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url), count = (seen.get(page) ?? 0) + 1; seen.set(page, count)
+      if (count === 2 && page === (legendChanged ? 1 : 2)) value.entries[0].masterRating++
+      return value
+    }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => {
+      assert.ok(error instanceof LegendAnalysisCollectionError)
+      assert.equal(error.validationCheck, legendChanged ? 'start-recheck' : 'end-recheck')
+      assert.deepEqual(error.recheckChangeKinds, [legendChanged ? 'legend-entries' : 'non-legend-entries'])
+      assert.equal(JSON.stringify(error).includes(data.values[0].accountKey), false)
+      return true
+    })
+  }
+  const data = fixture([{ accountKey: '1'.padStart(64, '0'), characterId: 'ryu', rank: 1, masterRating: 2400, isLegend: true }]), read = data.options.fetchPage
+  let count = 0
+  data.options.fetchPage = async (page, url) => { const value = await read(page, url); if (++count === 2) value.pageSize = 3; return value }
+  await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error =>
+    error instanceof LegendAnalysisCollectionError && error.validationCheck === 'end-recheck' && JSON.stringify(error.recheckChangeKinds) === JSON.stringify(['metadata']))
+})
+
 test('changed first page on recheck fails after finite retries', async () => {
   const data = fixture()
   const original = data.options.fetchPage

@@ -14,6 +14,15 @@ export function legendAnalysisPageUrl(page: number): string {
   url.searchParams.set('page', String(page)); url.searchParams.sort()
   return url.href
 }
+/** Query order may differ after an ordinary UI transition; keys, values and multiplicities may not. */
+export function legendAnalysisPageUrlMatches(value: string, page: number): boolean {
+  try {
+    const actual = new URL(value), expected = new URL(legendAnalysisPageUrl(page))
+    if (actual.origin !== expected.origin || actual.pathname !== expected.pathname || actual.username || actual.password || actual.hash) return false
+    actual.searchParams.sort()
+    return actual.search === expected.search
+  } catch { return false }
+}
 export type LegendAnalysisDomErrorCode = 'invalid-request' | 'cancelled' | 'concurrent-read' | 'http-denied'
   | 'http-error' | 'server-error' | 'maintenance' | 'authentication-required' | 'unsupported-dom' | 'condition-mismatch'
   | 'act-unconfirmed' | 'act-changed' | 'read-failed'
@@ -23,6 +32,8 @@ export class LegendAnalysisDomError extends Error {
 }
 
 export interface LegendAnalysisDomObservation {
+  /** Captured in the same synchronous pass as the rows; never copied to diagnostics or public data. */
+  observedUrl: string
   maintenance: boolean
   accessChallenge?: boolean
   signedIn: boolean
@@ -50,6 +61,18 @@ export async function observeLegendAnalysisDom(input: { salt: string; characterI
     return true
   }
   const text = (element: Element): string => (element as HTMLElement).innerText?.trim() ?? ''
+  // Ordinary scrolling prepares lazy assets before taking a new, synchronous snapshot.
+  // These nodes are deliberately discarded: React may replace them during an await.
+  const preparationLists = [...document.querySelectorAll('ul[class*="ranking_ranking_list"]:not([class*="ranking__my__list"])')].filter(visible)
+  if (preparationLists.length === 1) for (const row of [...preparationLists[0].querySelectorAll('a[href*="/profile/"]')].filter(visible)) {
+    row.scrollIntoView({ block: 'center', inline: 'nearest' })
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+  }
+  // Scrolling can hide the ordinary header controls; restore them before freezing auth and ranking together.
+  window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
+  await new Promise<void>(resolve => setTimeout(resolve, 30))
+  // No DOM reads or awaits may be interleaved between this point and the completed raw-row snapshot.
+  const observedUrl = location.href
   const controls = [...document.querySelectorAll('a,button')].filter(visible)
     .filter(element => !element.closest('a[href*="/profile/"]'))
   const hasLogout = controls.some(element => /^(ログアウト|sign\s*out|log\s*out)$/i.test(text(element)))
@@ -73,12 +96,12 @@ export async function observeLegendAnalysisDom(input: { salt: string; characterI
   const selectedPage = pageSelects.length > 0 && pageSelects.every(element => element.value === pageSelects[0].value)
     ? Number(pageSelects[0].value) : null
   const authenticationEvidence: LegendAnalysisDomObservation['authenticationEvidence'] = hasLogout && hasLogin ? 'conflicting-controls' : hasLogout ? 'logout-control' : hasLogin ? 'login-control' : 'no-control'
-  const base = { maintenance, accessChallenge, signedIn: hasLogout && !hasLogin, authenticationEvidence, loginRequired, conditionsConfirmed, currentActConfirmed, selectedPage, range }
+  const base = Object.freeze({ observedUrl, maintenance, accessChallenge, signedIn: hasLogout && !hasLogin, authenticationEvidence, loginRequired, conditionsConfirmed, currentActConfirmed, selectedPage, range: range && Object.freeze(range) })
   if (maintenance || loginRequired) return { ...base, firstPlayUrl: null, entries: null }
   const lists = [...document.querySelectorAll('ul[class*="ranking_ranking_list"]:not([class*="ranking__my__list"])')].filter(visible)
   if (lists.length !== 1) return { ...base, firstPlayUrl: null, entries: null }
   const rows = [...lists[0].querySelectorAll('a[href*="/profile/"]')].filter(visible)
-  const entries: LegendAnalysisEntry[] = []
+  const rawEntries: Readonly<{ profilePath: string; characterId: string; rank: number; masterRating: number; isLegend: boolean }>[] = []
   let firstPlayUrl: string | null = null
   // Next.js images may still have a GIF placeholder: its DOM noscript fallback is restricted to official assets.
   const assetPath = (container: Element): string | null => {
@@ -108,23 +131,31 @@ export async function observeLegendAnalysisDom(input: { salt: string; characterI
     const ratings = times.length === 1 ? times[0].querySelectorAll('dl dd') : []
     const characters = row.querySelectorAll('div[class*="ranking_character"]')
     const badges = row.querySelectorAll('div[class*="ranking_league_rank_icon"] p[class*="ranking_master_rating_icon"]')
-    if (data.length !== 1 || ranks.length !== 1 || ratings.length !== 1 || characters.length !== 1 || badges.length !== 1
-      || !/^\d+位$/.test(text(ranks[0])) || !/^\d+MR$/.test(text(ratings[0]))) return { ...base, firstPlayUrl: null, entries: null }
-    row.scrollIntoView({ block: 'center', inline: 'nearest' })
-    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    if (data.length !== 1 || ranks.length !== 1 || ratings.length !== 1 || characters.length !== 1 || badges.length !== 1) return { ...base, firstPlayUrl: null, entries: null }
+    const rankText = text(ranks[0]), mrText = text(ratings[0]), href = row.getAttribute('href') ?? ''
+    if (!/^\d+位$/.test(rankText) || !/^\d+MR$/.test(mrText)) return { ...base, firstPlayUrl: null, entries: null }
     const character = assetPath(characters[0])?.match(/^\/6\/buckler\/assets\/images\/material\/character\/character_([a-z0-9]+)_l\.png$/)?.[1]
     const badge = assetPath(badges[0])?.match(/^\/6\/buckler\/assets\/images\/material\/rank\/rank(\d+)_l\.png$/)?.[1]
     if (!character || input.characterIds.length > 0 && !input.characterIds.includes(character) || !badge || !['37', '38', '39', '40', '41', '42'].includes(badge)) return { ...base, firstPlayUrl: null, entries: null }
     try {
-      const profile = new URL(row.getAttribute('href') ?? '', location.origin)
+      const profile = new URL(href, location.origin)
       if (profile.origin !== 'https://www.streetfighter.com' || profile.username || profile.password || profile.search || profile.hash
         || !/^\/6\/buckler\/ja-jp\/profile\/\d+$/.test(profile.pathname)) throw new Error()
       firstPlayUrl ??= `${profile.href}/play`
-      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${input.salt}:${profile.pathname}`))
-      entries.push({ accountKey: [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join(''),
-        characterId: character, rank: Number(text(ranks[0]).slice(0, -1)), masterRating: Number(text(ratings[0]).slice(0, -2)), isLegend: badge === '37' })
+      rawEntries.push(Object.freeze({ profilePath: profile.pathname, characterId: character,
+        rank: Number(rankText.slice(0, -1)), masterRating: Number(mrText.slice(0, -2)), isLegend: badge === '37' }))
     } catch { return { ...base, firstPlayUrl: null, entries: null } }
   }
+  Object.freeze(rawEntries)
+  const entries: LegendAnalysisEntry[] = []
+  // Hash only the frozen strings. Later hydration cannot alter an identity/value tuple.
+  try {
+    for (const raw of rawEntries) {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${input.salt}:${raw.profilePath}`))
+      entries.push({ accountKey: [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join(''),
+        characterId: raw.characterId, rank: raw.rank, masterRating: raw.masterRating, isLegend: raw.isLegend })
+    }
+  } catch { return { ...base, firstPlayUrl: null, entries: null } }
   return { ...base, firstPlayUrl, entries }
 }
 
@@ -317,24 +348,31 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
   let lastLoginRequired: boolean | null = null, lastSignedIn: boolean | null = null, lastRankingReadable: boolean | null = null
   let lastHttpStatus: number | null = null
   let lastAttemptedPage: number | null = null, successfulReadCount = 0
+  // In-memory identities only: never diagnostic/public values. Invalidate whenever leaving accepted listing state.
+  let lastAccepted: { page: number; body: string } | null = null
+  const bodySignature = (entries: LegendAnalysisEntry[]): string => entries.map(entry => `${entry.accountKey}:${entry.characterId}`).sort().join('|')
   const check = (): void => { if (options.signal?.aborted) throw new LegendAnalysisDomError('cancelled') }
+  const beginNavigation = async (requestedPage: number | null): Promise<void> => {
+    check()
+    if (lastNavigation !== null) await wait(Math.max(0, interval - (now() - lastNavigation)))
+    check(); lastNavigation = now(); requestCount++; lastAttemptedPage = requestedPage
+    lastLoginRequired = null; lastSignedIn = null; lastRankingReadable = null; lastHttpStatus = null
+  }
+  const challengeVisible = async (): Promise<boolean> => page.evaluate(() => [...document.querySelectorAll('h1,h2')]
+    .filter(element => element.getBoundingClientRect().width > 0)
+    .some(element => /verify (?:that )?you are human|checking your browser|attention required|access denied|ロボットではない|セキュリティチェック|アクセスが拒否/i.test((element as HTMLElement).innerText ?? '')))
   const navigate = async (url: string, requestedPage: number | null = null): Promise<void> => {
     for (let attempt = 0; attempt < 2; attempt++) {
-      check()
-      if (lastNavigation !== null) await wait(Math.max(0, interval - (now() - lastNavigation)))
-      check(); lastNavigation = now(); requestCount++; lastAttemptedPage = requestedPage
-      lastLoginRequired = null; lastSignedIn = null; lastRankingReadable = null
-      lastHttpStatus = null
+      await beginNavigation(requestedPage)
       const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
       const status = response?.status()
       lastHttpStatus = Number.isSafeInteger(status) && status! >= 100 && status! <= 599 ? status! : null
       // A redirect is never treated as a retryable server fault.
-      if (page.url() !== url || response && response.url() !== url) throw new LegendAnalysisDomError('condition-mismatch')
+      const matches = (actual: string): boolean => requestedPage === null ? actual === url : legendAnalysisPageUrlMatches(actual, requestedPage)
+      if (!matches(page.url()) || response && !matches(response.url())) throw new LegendAnalysisDomError('condition-mismatch')
       if ([401, 403, 429].includes(status ?? 0)) throw new LegendAnalysisDomError('http-denied')
       if (status !== undefined && status >= 500 && status <= 599) {
-        if (await page.evaluate(() => [...document.querySelectorAll('h1,h2')]
-          .filter(element => element.getBoundingClientRect().width > 0)
-          .some(element => /verify (?:that )?you are human|checking your browser|attention required|access denied|ロボットではない|セキュリティチェック|アクセスが拒否/i.test((element as HTMLElement).innerText ?? '')))) throw new LegendAnalysisDomError('http-denied')
+        if (await challengeVisible()) throw new LegendAnalysisDomError('http-denied')
         if (attempt === 1) throw new LegendAnalysisDomError('server-error')
         await wait(Math.max(5000, interval)); check(); continue
       }
@@ -342,7 +380,7 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
       return
     }
   }
-  const observation = async (requestedPage = 1): Promise<LegendAnalysisDomObservation> => {
+  const observation = async (requestedPage = 1, previousBody: string | null = null): Promise<LegendAnalysisDomObservation> => {
     lastStep = 'ranking-observation'
     const deadline = now() + 10000
     while (true) {
@@ -351,10 +389,14 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
       if (value.accessChallenge === true) throw new LegendAnalysisDomError('http-denied')
       if (value.maintenance) throw new LegendAnalysisDomError('maintenance')
       const range = value.range
-      const readable = value.conditionsConfirmed && value.currentActConfirmed && value.selectedPage === requestedPage
+      if (!legendAnalysisPageUrlMatches(page.url(), requestedPage)) throw new LegendAnalysisDomError('condition-mismatch')
+      const keys = value.entries?.map(entry => `${entry.accountKey}:${entry.characterId}`) ?? []
+      const readable = legendAnalysisPageUrlMatches(value.observedUrl, requestedPage)
+        && value.conditionsConfirmed && value.currentActConfirmed && value.selectedPage === requestedPage
         && range !== null && Number.isSafeInteger(range.total) && range.total >= 1
         && range.from === (requestedPage - 1) * 20 + 1 && range.to === Math.min(requestedPage * 20, range.total)
         && range.to >= range.from && Array.isArray(value.entries) && value.entries.length === range.to - range.from + 1
+        && new Set(keys).size === keys.length && (previousBody === null || bodySignature(value.entries) !== previousBody)
       lastLoginRequired = value.loginRequired === true; lastSignedIn = typeof value.signedIn === 'boolean' ? value.signedIn : null
       lastRankingReadable = readable
       const signedInReadable = value.signedIn && !value.loginRequired
@@ -373,6 +415,7 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
   }
   const readAct = async (): Promise<{ id: string; label: string }> => {
     if (!firstPlayUrl || !/^https:\/\/www\.streetfighter\.com\/6\/buckler\/ja-jp\/profile\/\d+\/play$/.test(firstPlayUrl)) throw new LegendAnalysisDomError('act-unconfirmed')
+    lastAccepted = null
     lastStep = 'act-navigation'; await navigate(firstPlayUrl)
     lastStep = 'act-observation'
     const deadline = now() + 10000
@@ -441,6 +484,7 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
         }
         if (!roster || options.characterIds && JSON.stringify(roster.map(value => value.characterId)) !== JSON.stringify([...options.characterIds].sort())) throw new LegendAnalysisDomError('condition-mismatch')
         characterIds = roster.map(value => value.characterId)
+        lastAccepted = null // Roster mode leaves different controls/modal state: the first fetch must use fixed goto.
         ready = true
         lastStep = 'complete'
         return { act: { ...act }, characterIds: [...characterIds], characterNames: Object.fromEntries(roster.map(value => [value.characterId, value.name])) }
@@ -457,14 +501,18 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
     },
     async fetchPage(pageNumber: number, url: string): Promise<LegendAnalysisPage> {
       if (running) throw new LegendAnalysisDomError('concurrent-read')
-      if (!act || !ready || url !== legendAnalysisPageUrl(pageNumber)) throw new LegendAnalysisDomError('invalid-request')
+      if (!act || !ready || !legendAnalysisPageUrlMatches(url, pageNumber)) throw new LegendAnalysisDomError('invalid-request')
       running = true
       try {
-        lastStep = 'ranking-navigation'; await navigate(url, pageNumber)
-        const value = await observation(pageNumber)
+        const previous = lastAccepted
+        const previousBody = previous !== null && pageNumber === previous.page + 1 ? previous.body : null
+        lastAccepted = null
+        lastStep = 'ranking-navigation'; await navigate(legendAnalysisPageUrl(pageNumber), pageNumber)
+        const value = await observation(pageNumber, previousBody)
         const range = value.range!
         if (value.selectedPage !== pageNumber) throw new LegendAnalysisDomError('condition-mismatch')
-        return { sourceUrl: url, page: pageNumber, pageSize: 20, totalCount: range.total, from: range.from, to: range.to,
+        lastAccepted = { page: pageNumber, body: bodySignature(value.entries!) }
+        return { sourceUrl: legendAnalysisPageUrl(pageNumber), page: pageNumber, pageSize: 20, totalCount: range.total, from: range.from, to: range.to,
           nextPage: range.to < range.total ? pageNumber + 1 : null, actId: act.id, conditions: { ...LEGEND_ANALYSIS_CONDITIONS },
           conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries: value.entries! }
       } catch (error) { lastErrorCode = error instanceof LegendAnalysisDomError ? error.code : 'read-failed'; throw new LegendAnalysisDomError(lastErrorCode) }

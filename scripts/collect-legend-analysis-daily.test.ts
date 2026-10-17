@@ -64,7 +64,8 @@ test('daily stdout emits only a sanitized capture report, including when collect
   const supplied = result(false)
   Object.assign(supplied.report, { lastAttemptedPage: Number.MAX_SAFE_INTEGER, successfulReadCount: 99999,
     captureAttempt: 999, collectionPhase: PRIVATE, lastStep: PRIVATE, datasetId: `legend-${PRIVATE}`,
-    profileUrl: `https://example.com/${PRIVATE}`, storageState: { cookies: [PRIVATE] }, localPath: `C:/Users/${PRIVATE}` })
+    profileUrl: `https://example.com/${PRIVATE}`, storageState: { cookies: [PRIVATE] }, localPath: `C:/Users/${PRIVATE}`,
+    collectionErrorCode: PRIVATE, validationCheck: PRIVATE, recheckChangeKinds: ['metadata', PRIVATE] })
   await runLegendDaily({ env: environment(), now: () => now, collect: async () => supplied,
     validate: async () => ({ datasets: 0, entries: 0 }), artifactReady: async () => {} })
   assert.equal(lines.length, 1)
@@ -74,6 +75,9 @@ test('daily stdout emits only a sanitized capture report, including when collect
   assert.equal(emitted.captureAttempt, null)
   assert.equal(emitted.collectionPhase, 'preparation')
   assert.equal(emitted.successfulReadCount, 0)
+  assert.equal(emitted.collectionErrorCode, null)
+  assert.equal(emitted.validationCheck, null)
+  assert.equal(emitted.recheckChangeKinds, null)
   for (const value of [PRIVATE, 'storageState', 'cookies', 'profileUrl', 'localPath', 'C:/Users']) assert.equal(text.includes(value), false)
 })
 
