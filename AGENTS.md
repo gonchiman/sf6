@@ -7,6 +7,7 @@
 | 読むタイミング | 参照先 |
 | --- | --- |
 | 作業開始時 | [プロジェクトの目的と実装方針](instructions/project-scope.md) |
+| 作業開始時 | [共通ルールの運用](instructions/shared-rules.md) |
 | AGENTS.mdまたはその参照先の指示ファイルを作成・修正・分割するとき | [プロジェクト内の指示ファイルの管理方針](instructions/agents-writing.md) |
 | このアプリの機能・UIの追加や修正について、案を提示するとき、設計するとき、または実装するとき | [既存機能・UIの調査と再利用](instructions/implementation-reuse.md) |
 | このアプリの機能・UIの追加や修正について、案を提示するとき、設計するとき、または実装するとき | [UIの補足テキスト方針](instructions/ui-text.md) |
