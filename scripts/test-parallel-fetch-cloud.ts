@@ -1,0 +1,189 @@
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { parseParallelFetchConfig, parseParallelFetchReport } from '../src/lib/parallelFetch.ts'
+import { PARALLEL_FETCH_ERRORS } from '../src/types/parallelFetch.ts'
+import type { ParallelFetchConfig, ParallelFetchErrorCode, ParallelFetchReport } from '../src/types/parallelFetch.ts'
+import { disableRankDistributionDiagnostics } from './collect-rank-distribution.ts'
+import { markRankDistributionArtifactReady } from './collect-rank-distribution-cloud.ts'
+import { BUCKLER_WEEKLY_SESSION_SECRET, parseBucklerWeeklySession } from './lib/buckler-weekly-session.ts'
+import type { BucklerWeeklyStorageState } from './lib/buckler-weekly-session.ts'
+import { createParallelFetchBrowserSession } from './lib/parallel-fetch-browser.ts'
+import type { ParallelFetchBrowserSession } from './lib/parallel-fetch-browser.ts'
+import { ParallelFetchReadError, runParallelFetch } from './lib/parallel-fetch-runner.ts'
+import { createParallelFetchReportWriter } from './lib/parallel-fetch-service.ts'
+
+type Environment = Record<string, string | undefined>
+export type ParallelFetchCloudMode = 'serial' | 'compare'
+export const PARALLEL_FETCH_CLOUD_BRANCH = 'refs/heads/codex/buckler-cloud-collection-parallel-20261021'
+export const PARALLEL_FETCH_CLOUD_WORKFLOW = `gonchiman/sf6/.github/workflows/rank-distribution-cloud-probe.yml@${PARALLEL_FETCH_CLOUD_BRANCH}`
+export const PARALLEL_FETCH_CLOUD_TIMEOUT_MS = 10 * 60 * 1000
+const HELP = `Bucklerランキングの小規模クラウド取得テスト
+
+node scripts/test-parallel-fetch-cloud.ts --serial
+node scripts/test-parallel-fetch-cloud.ts --compare
+
+--serial: LPの1〜20ページを並列数1で3回（事前確認を含め63取得予定）
+--compare: 同じ20ページを並列数1・2で各1回（事前確認を含め43取得予定）
+全体の開始間隔は5秒以上、最大10分。認証・チャレンジ検出時は停止します。
+固定ブランチ・手動workflow・GitHub hosted Windows専用です。`
+
+export class ParallelFetchCloudError extends Error {
+  readonly code: 'arguments' | 'runner' | 'time'
+  constructor(code: 'arguments' | 'runner' | 'time') {
+    super({ arguments: '--serial、--compare、--help のいずれか1つを指定してください。',
+      runner: '指定ブランチ・手動workflowのGitHub hosted Windows実行が必要です。',
+      time: 'クラウドテストの実行日時を確認できません。' }[code])
+    this.name = 'ParallelFetchCloudError'
+    this.code = code
+  }
+}
+
+export function parseParallelFetchCloudArguments(args: string[]): { mode: ParallelFetchCloudMode | 'help' } {
+  if (args.length === 1 && ['--serial', '--compare', '--help'].includes(args[0])) {
+    return { mode: args[0].slice(2) as ParallelFetchCloudMode | 'help' }
+  }
+  throw new ParallelFetchCloudError('arguments')
+}
+
+export function isAllowedParallelFetchCloudExecution(env: Environment): boolean {
+  return env.GITHUB_ACTIONS === 'true' && env.RUNNER_ENVIRONMENT === 'github-hosted' && env.RUNNER_OS === 'Windows'
+    && env.GITHUB_REPOSITORY === 'gonchiman/sf6' && env.GITHUB_EVENT_NAME === 'workflow_dispatch'
+    && env.GITHUB_REF === PARALLEL_FETCH_CLOUD_BRANCH && env.GITHUB_WORKFLOW_REF === PARALLEL_FETCH_CLOUD_WORKFLOW
+    && /^[1-9]\d{0,24}$/.test(env.GITHUB_RUN_ID ?? '') && /^[1-9]\d{0,5}$/.test(env.GITHUB_RUN_ATTEMPT ?? '')
+}
+
+function consumeSession(env: Environment): string | undefined {
+  const value = env[BUCKLER_WEEKLY_SESSION_SECRET]
+  delete env[BUCKLER_WEEKLY_SESSION_SECRET]
+  delete env.BUCKLER_CLOUD_PROBE_SESSION
+  delete env.BUCKLER_CLOUD_RANK_CHECKPOINT
+  disableRankDistributionDiagnostics(env)
+  return value
+}
+
+function timestamp(now: () => Date): string {
+  try { return Date.prototype.toISOString.call(now()) } catch { throw new ParallelFetchCloudError('time') }
+}
+
+function safeReadCode(error: unknown): ParallelFetchErrorCode {
+  return error instanceof ParallelFetchReadError && PARALLEL_FETCH_ERRORS.includes(error.code) ? error.code : 'read-failed'
+}
+
+export interface ParallelFetchCloudDependencies {
+  env?: Environment
+  now?: () => Date
+  signal?: AbortSignal
+  openBrowser?: typeof createParallelFetchBrowserSession
+  run?: typeof runParallelFetch
+  saveReport?: (report: ParallelFetchReport) => Promise<void>
+  artifactReady?: () => Promise<void>
+  armDeadline?: (abort: () => void, milliseconds: number) => () => void
+}
+
+export interface ParallelFetchCloudResult {
+  report: ParallelFetchReport
+  succeeded: boolean
+  artifactReady: boolean
+  outputError: 'report-save-failed' | null
+}
+
+/** No local authentication file is consulted; only the fixed workflow Secret enters memory. */
+export async function runParallelFetchCloudTest(args: string[], dependencies: ParallelFetchCloudDependencies = {}): Promise<ParallelFetchCloudResult> {
+  const env = dependencies.env ?? process.env
+  let envelope = consumeSession(env)
+  const options = parseParallelFetchCloudArguments(args)
+  if (options.mode === 'help') throw new ParallelFetchCloudError('arguments')
+  if (!isAllowedParallelFetchCloudExecution(env)) throw new ParallelFetchCloudError('runner')
+  const now = dependencies.now ?? (() => new Date())
+  const startedAt = timestamp(now)
+  const config: ParallelFetchConfig = parseParallelFetchConfig({ target: 'lp', startPage: 1, pageCount: 20,
+    concurrencies: options.mode === 'serial' ? [1] : [1, 2], repetitions: options.mode === 'serial' ? 3 : 1, intervalMs: 5000 })
+  const runId = `cloud-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-${options.mode}`
+  const failedReport = (code: ParallelFetchErrorCode): ParallelFetchReport => parseParallelFetchReport({
+    schemaVersion: 1, runId, config, startedAt, finishedAt: timestamp(now), trials: [],
+    state: code === 'cancelled' ? 'stopped' : 'error', errorCode: code,
+  })
+  let storageState: BucklerWeeklyStorageState | undefined
+  try { if (envelope) storageState = parseBucklerWeeklySession(envelope, new Date(startedAt)).storageState }
+  catch { /* Invalid and missing Secrets share a fixed public status. */ }
+  finally { envelope = undefined }
+
+  let report: ParallelFetchReport
+  if (!storageState) report = failedReport('session-unavailable')
+  else {
+    const controller = new AbortController()
+    let timedOut = false
+    let session: ParallelFetchBrowserSession | undefined
+    let closing: Promise<void> | undefined
+    const closeOwned = (): Promise<void> => {
+      if (!session) return Promise.resolve()
+      return closing ??= session.close().catch(() => {})
+    }
+    const abort = (): void => { controller.abort(); void closeOwned() }
+    dependencies.signal?.addEventListener('abort', abort, { once: true })
+    if (dependencies.signal?.aborted) abort()
+    const disarm = (dependencies.armDeadline ?? ((callback, milliseconds) => {
+      const timer = setTimeout(callback, milliseconds)
+      timer.unref()
+      return () => clearTimeout(timer)
+    }))(() => { timedOut = true; abort() }, PARALLEL_FETCH_CLOUD_TIMEOUT_MS)
+    try {
+      if (controller.signal.aborted) throw new ParallelFetchReadError('cancelled')
+      session = await (dependencies.openBrowser ?? createParallelFetchBrowserSession)({ intervalMs: config.intervalMs, signal: controller.signal }, {
+        loadSession: async () => {
+          if (!storageState) throw new ParallelFetchReadError('session-unavailable')
+          const value = storageState
+          storageState = undefined
+          return value
+        },
+      })
+      storageState = undefined
+      if (controller.signal.aborted) throw new ParallelFetchReadError('cancelled')
+      report = parseParallelFetchReport(await (dependencies.run ?? runParallelFetch)(config, {
+        runId, signal: controller.signal, wallNow: () => timestamp(now),
+        createReader: (worker, target, signal) => session!.createReader(worker, target, signal),
+      }))
+      if (report.state === 'running' || report.runId !== runId || JSON.stringify(report.config) !== JSON.stringify(config)) throw new Error()
+      if (timedOut) report = parseParallelFetchReport({ ...report, state: 'error', errorCode: 'timeout' })
+    } catch (error) {
+      report = failedReport(timedOut ? 'timeout' : controller.signal.aborted ? 'cancelled' : safeReadCode(error))
+    } finally {
+      storageState = undefined
+      disarm()
+      dependencies.signal?.removeEventListener('abort', abort)
+      await closeOwned()
+    }
+  }
+
+  try {
+    await (dependencies.saveReport ?? createParallelFetchReportWriter())(report)
+    await (dependencies.artifactReady ?? (() => markRankDistributionArtifactReady(env)))()
+    return { report, succeeded: report.state === 'complete', artifactReady: true, outputError: null }
+  } catch {
+    return { report, succeeded: false, artifactReady: false, outputError: 'report-save-failed' }
+  }
+}
+
+export async function main(args = process.argv.slice(2)): Promise<void> {
+  if (args.length === 1 && args[0] === '--help') { consumeSession(process.env); console.log(HELP); return }
+  const controller = new AbortController()
+  const interrupt = (): void => controller.abort()
+  process.once('SIGINT', interrupt)
+  process.once('SIGTERM', interrupt)
+  try {
+    const result = await runParallelFetchCloudTest(args, { signal: controller.signal })
+    // Fixed keys and validated scalar values only; neither reports nor raw exceptions are logged.
+    console.log(JSON.stringify({ runId: result.report.runId, state: result.report.state, errorCode: result.report.errorCode,
+      completedPages: result.report.trials.reduce((sum, trial) => sum + trial.completedPages.length, 0),
+      attempts: result.report.trials.reduce((sum, trial) => sum + trial.attempts.length, 0),
+      artifactReady: result.artifactReady, outputError: result.outputError }))
+    if (!result.succeeded) process.exitCode = 2
+  } finally { process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt) }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch(error => {
+    console.error(error instanceof ParallelFetchCloudError ? error.message : 'クラウド取得テストを完了できませんでした。')
+    process.exitCode = 1
+  })
+}

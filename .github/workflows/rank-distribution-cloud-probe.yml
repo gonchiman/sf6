@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       collection:
-        description: '保存済み認証を使って全ランク境界を1回取得する'
+        description: '全ランク境界の取得、または専用ブランチで小規模テスト'
         required: true
         type: choice
-        options: ['off', 'saved-session']
+        options: ['off', 'saved-session', 'parallel-serial', 'parallel-compare']
         default: 'off'
       resume:
         description: '入力または固定storeの探索位置を再利用し、全境界を新しく確認する'
@@ -59,6 +59,48 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  parallel-test:
+    if: github.event_name == 'workflow_dispatch' && (inputs.collection == 'parallel-serial' || inputs.collection == 'parallel-compare') && github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/codex/buckler-cloud-collection-parallel-20261021'
+    runs-on: windows-2025
+    timeout-minutes: 18
+    concurrency:
+      group: rank-distribution-weekly-gonchiman-sf6
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      PARALLEL_TEST_MODE: ${{ inputs.collection == 'parallel-serial' && 'serial' || 'compare' }}
+    steps:
+      - name: Checkout small collection test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install dependencies without project scripts
+        run: npm ci --ignore-scripts
+      - name: Test bounded collection with synthetic state
+        run: node --test src/lib/parallelFetch.test.ts scripts/lib/parallel-fetch-runner.test.ts scripts/lib/parallel-fetch-browser.test.ts scripts/lib/parallel-fetch-service.test.ts scripts/test-parallel-fetch-cloud.test.ts
+      - name: Run small collection test once
+        id: test
+        shell: pwsh
+        env:
+          BUCKLER_WEEKLY_SESSION: ${{ secrets.BUCKLER_WEEKLY_SESSION }}
+        run: |
+          if ($env:PARALLEL_TEST_MODE -notin @('serial', 'compare')) { throw 'Invalid test mode' }
+          node scripts/test-parallel-fetch-cloud.ts "--$env:PARALLEL_TEST_MODE"
+      - name: Upload this run's validated report only
+        if: always() && steps.test.outputs.artifact_ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: parallel-fetch-cloud-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.PARALLEL_TEST_MODE }}
+          path: .local/parallel-fetch/parallel-fetch-cloud-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.PARALLEL_TEST_MODE }}.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
   collect:
     if: github.event_name == 'workflow_dispatch' && inputs.collection == 'saved-session' && github.repository == 'gonchiman/sf6' && startsWith(github.ref, 'refs/heads/codex/buckler-cloud-collection')
     runs-on: windows-2025
