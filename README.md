@@ -78,6 +78,8 @@ Bucklerで公開されたStreet Fighter 6の対戦勝率を確認するアプリ
 
 ## 開発
 
+「並列取得テスト」は `#parallel-fetch-test` から開く。実行先をローカルまたはGitHub Actionsから選び、所要時間と失敗を比較する。Actionsは直列確認・並列1/2比較の固定条件で実行し、終了後の結果を同じ表に取り込む。公開版はActionsへのリンクと結果JSONの読込・比較に対応する。操作・上限・指標の定義は [並列取得テスト](docs/parallel-fetch/README.md) を参照。
+
 Node.js 24とnpmを使用する。
 
 ```sh

@@ -2,6 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { balanceAdjustmentDetailHash, characterHash, parseHashRoute } from './routes.ts'
 
+test('並列取得テストの直接URLを区別する', () => {
+  assert.deepEqual(parseHashRoute('#parallel-fetch-test'), { page: 'parallel-fetch-test' })
+  assert.deepEqual(parseHashRoute('#parallel-fetch-test/'), { page: 'parallel-fetch-test' })
+  assert.deepEqual(parseHashRoute('#parallel-fetch-test/unknown'), { page: 'win-rates' })
+  assert.deepEqual(parseHashRoute('#parallel-fetch-test-invalid'), { page: 'win-rates' })
+})
+
 test('キャラ実装日一覧の直接URLを既存キャラ情報と区別し、余分なパスを受け入れない', () => {
   assert.deepEqual(parseHashRoute('#character-releases'), { page: 'character-releases' })
   assert.deepEqual(parseHashRoute('#character-releases/'), { page: 'character-releases' })

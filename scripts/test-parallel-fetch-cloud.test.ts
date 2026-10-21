@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { parseParallelFetchReport, plannedParallelFetchAttempts } from '../src/lib/parallelFetch.ts'
@@ -7,11 +8,13 @@ import type { ParallelFetchReport } from '../src/types/parallelFetch.ts'
 import { BUCKLER_WEEKLY_SESSION_SECRET } from './lib/buckler-weekly-session.ts'
 import { ParallelFetchReadError, runParallelFetch } from './lib/parallel-fetch-runner.ts'
 import { isAllowedParallelFetchCloudExecution, PARALLEL_FETCH_CLOUD_BRANCH, PARALLEL_FETCH_CLOUD_TIMEOUT_MS,
-  PARALLEL_FETCH_CLOUD_WORKFLOW, ParallelFetchCloudError, parseParallelFetchCloudArguments, runParallelFetchCloudTest } from './test-parallel-fetch-cloud.ts'
+  PARALLEL_FETCH_CLOUD_WORKFLOW, PARALLEL_FETCH_MAIN_WORKFLOW, ParallelFetchCloudError,
+  parseParallelFetchCloudArguments, runParallelFetchCloudTest } from './test-parallel-fetch-cloud.ts'
 import type { ParallelFetchCloudDependencies } from './test-parallel-fetch-cloud.ts'
 
 const SECRET = 'synthetic-private-test-cookie'
 const START = '2026-10-21T00:00:00.000Z'
+const REQUEST_ID = '602771dc-8574-43da-97ac-d6990cc22246'
 const envelope = () => JSON.stringify({ schemaVersion: 1, capturedAt: '2026-10-20T00:00:00.000Z',
   uploadedAt: '2026-10-20T00:01:00.000Z', storageState: { cookies: [{ name: 'session', value: SECRET,
     domain: '.streetfighter.com', path: '/', expires: -1, httpOnly: true, secure: true, sameSite: 'Lax' }], origins: [] } })
@@ -19,9 +22,10 @@ const hosted = (): Record<string, string | undefined> => ({ GITHUB_ACTIONS: 'tru
   RUNNER_OS: 'Windows', GITHUB_REPOSITORY: 'gonchiman/sf6', GITHUB_EVENT_NAME: 'workflow_dispatch',
   GITHUB_REF: PARALLEL_FETCH_CLOUD_BRANCH, GITHUB_WORKFLOW_REF: PARALLEL_FETCH_CLOUD_WORKFLOW,
   GITHUB_RUN_ID: '123456789', GITHUB_RUN_ATTEMPT: '2', [BUCKLER_WEEKLY_SESSION_SECRET]: envelope() })
+const mainHosted = (): Record<string, string | undefined> => ({ ...hosted(), GITHUB_REF: 'refs/heads/main',
+  GITHUB_WORKFLOW_REF: PARALLEL_FETCH_MAIN_WORKFLOW, GITHUB_SHA: 'a'.repeat(40), PARALLEL_FETCH_REQUEST_ID: REQUEST_ID })
 
-function fixture() {
-  const env = hosted()
+function fixture(env = hosted()) {
   let ticks = 0, opens = 0, closes = 0, marked = 0, disarmed = 0, readers = 0, closedReaders = 0
   let timeout: (() => void) | undefined
   let browserSignal: AbortSignal | undefined
@@ -98,6 +102,27 @@ test('requires all exact hosted Windows workflow identity markers before opening
   }
 })
 
+test('permanent workflow requires main, its own workflow identity, dispatched SHA and a canonical request UUID', async () => {
+  assert.equal(isAllowedParallelFetchCloudExecution(mainHosted()), true)
+  const invalid: [string, string | undefined][] = [
+    ['GITHUB_REF', PARALLEL_FETCH_CLOUD_BRANCH], ['GITHUB_REF', 'refs/heads/other'],
+    ['GITHUB_WORKFLOW_REF', PARALLEL_FETCH_CLOUD_WORKFLOW], ['GITHUB_WORKFLOW_REF', PARALLEL_FETCH_MAIN_WORKFLOW.replace('@refs/heads/main', '@refs/heads/other')],
+    ['GITHUB_EVENT_NAME', 'push'], ['GITHUB_EVENT_NAME', 'schedule'], ['RUNNER_ENVIRONMENT', 'self-hosted'],
+    ['GITHUB_REPOSITORY', 'other/sf6'], ['RUNNER_OS', 'Linux'],
+    ...[undefined, '', 'main', 'a'.repeat(39), `${'a'.repeat(40)}\n`].map(value => ['GITHUB_SHA', value] as [string, string | undefined]),
+    ...[undefined, '', '../unsafe', REQUEST_ID.toUpperCase(), `${REQUEST_ID}\n`, REQUEST_ID.replace('-43da-', '-13da-')]
+      .map(value => ['PARALLEL_FETCH_REQUEST_ID', value] as [string, string | undefined]),
+  ]
+  for (const [key, value] of invalid) {
+    const f = fixture(mainHosted()); f.env[key] = value
+    assert.equal(isAllowedParallelFetchCloudExecution(f.env), false, key)
+    await assert.rejects(runParallelFetchCloudTest(['--serial'], f.deps), error => error instanceof ParallelFetchCloudError && error.code === 'runner')
+    assert.equal(BUCKLER_WEEKLY_SESSION_SECRET in f.env, false)
+    assert.equal(f.stats().opens, 0)
+    assert.equal(f.saved.length, 0)
+  }
+})
+
 test('consumes the Secret and debug configuration even when argument validation fails', async () => {
   const f = fixture()
   Object.assign(f.env, { DEBUG: 'pw:*', PWDEBUG: '1', NODE_DEBUG: 'child_process', NODE_OPTIONS: '--inspect',
@@ -110,8 +135,8 @@ test('consumes the Secret and debug configuration even when argument validation 
 })
 
 test('serial and comparison modes use the fixed existing engine and save only allowlisted terminal reports before ready', async () => {
-  for (const mode of ['serial', 'compare'] as const) {
-    const f = fixture()
+  for (const environment of [hosted, mainHosted]) for (const mode of ['serial', 'compare'] as const) {
+    const f = fixture(environment())
     const run = f.deps.run!
     f.deps.run = async (config, dependencies) => {
       const report = await run(config, dependencies)
@@ -135,6 +160,29 @@ test('serial and comparison modes use the fixed existing engine and save only al
     assert.deepEqual(f.order, ['close', 'save', 'ready'])
     assert.deepEqual(f.saved, [parseParallelFetchReport(result.report)])
     assert.equal(JSON.stringify([result, f.saved]).includes(SECRET), false)
+  }
+})
+
+test('permanent workflow correlates requests, verifies dispatched code and exposes the Secret only to the bounded step', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/parallel-fetch-test.yml', import.meta.url), 'utf8')
+  assert.match(workflow, /^run-name: Parallel fetch \$\{\{ inputs\.request_id \}\}$/m)
+  assert.match(workflow, /options: \['serial', 'compare'\]/)
+  assert.doesNotMatch(workflow, /^\s+(?:push|schedule|pull_request|workflow_call):/m)
+  assert.match(workflow, /github\.repository == 'gonchiman\/sf6'.*github\.event_name == 'workflow_dispatch'.*github\.ref == 'refs\/heads\/main'/)
+  assert.match(workflow, /group: rank-distribution-weekly-gonchiman-sf6/)
+  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/)
+  assert.match(workflow, /\$checkedOutRevision -cne \$env:GITHUB_SHA/)
+  assert.match(workflow, /PARALLEL_FETCH_REQUEST_ID\.Length -ne 36/)
+  assert.equal((workflow.match(/\$\{\{ secrets\./g) ?? []).length, 1)
+  assert.match(workflow, /name: Run bounded collection test\s+id: collect\s+shell: pwsh\s+env:\s+BUCKLER_WEEKLY_SESSION: \$\{\{ secrets\.BUCKLER_WEEKLY_SESSION \}\}/)
+  assert.ok(workflow.indexOf('name: Validate fixed test inputs') < workflow.indexOf('secrets.BUCKLER_WEEKLY_SESSION'))
+  for (const action of workflow.matchAll(/uses: (actions\/[a-z-]+)@([^\s]+)/g)) assert.match(action[2], /^[0-9a-f]{40}$/)
+  assert.match(workflow, /if: always\(\) && steps\.collect\.outputs\.artifact_ready == 'true'/)
+  assert.match(workflow, /path: \.local\/parallel-fetch\/parallel-fetch-cloud-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}-\$\{\{ env\.PARALLEL_TEST_MODE \}\}\.json/)
+  assert.match(workflow, /retention-days: 7/)
+  for (const script of workflow.split(/\n\s+run: /).slice(1)) {
+    const lines = script.split(/\n\s+- name: /, 1)[0]
+    assert.doesNotMatch(lines, /\$\{\{ inputs\./)
   }
 })
 

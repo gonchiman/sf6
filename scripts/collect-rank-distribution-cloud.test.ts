@@ -401,7 +401,13 @@ test('workflow uploads only after the collection step explicitly marks safe stag
   const workflow = await readFile(new URL('../.github/workflows/rank-distribution-cloud-probe.yml', import.meta.url), 'utf8')
   assert.match(workflow, /name: Collect all rank boundaries once\s+id: collect/)
   assert.match(workflow, /name: Upload only safe aggregate, checkpoint and report\s+if: always\(\) && steps\.collect\.outputs\.artifact_ready == 'true'/)
-  assert.doesNotMatch(workflow, /path:\s*\.local\//)
+  const collectionJob = workflow.split(/\n  collect:\r?\n/)[1]
+  assert.ok(collectionJob, 'rank-distribution collection job must exist')
+  assert.doesNotMatch(collectionJob, /path:\s*\.local\//)
+  // The bounded parallel test has a separate allowlisted single-report upload.
+  // Keep rejecting any broader private-directory upload elsewhere in this workflow.
+  const localPaths = [...workflow.matchAll(/^\s+path:\s*(\.local\/[^\r\n]+)$/gm)].map(match => match[1])
+  assert.deepEqual(localPaths, ['.local/parallel-fetch/parallel-fetch-cloud-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.PARALLEL_TEST_MODE }}.json'])
 })
 
 test('fixed output parents reject links and existing staging, without browser launch or recursive removal', async () => {

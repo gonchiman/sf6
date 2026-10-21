@@ -16,6 +16,13 @@ function report(value: ParallelFetchConfig, state: 'running' | 'stopped' = 'runn
     finishedAt: state === 'running' ? null : '2026-10-20T00:00:01.000Z', trials: [], errorCode: state === 'running' ? null : 'cancelled' }
 }
 interface RequestOptions { method?: string; host?: string; origin?: string | null; token?: string; remote?: string; localPort?: number; body?: unknown; chunks?: Buffer[]; headers?: Record<string, string> }
+test('local middleware does not intercept the separate cloud API namespace', async () => {
+  const service = createParallelFetchService()
+  let next = false
+  await service.handle({ url: '/sf6/__parallel-fetch-cloud/status' } as IncomingMessage, {} as ServerResponse, () => { next = true })
+  assert.equal(next, true)
+  await service.close()
+})
 async function invoke(service: ReturnType<typeof createParallelFetchService>, route: string, options: RequestOptions = {}) {
   const method = options.method ?? 'GET', host = options.host ?? '127.0.0.1:5174'
   const body = options.body === undefined ? '{}' : JSON.stringify(options.body)

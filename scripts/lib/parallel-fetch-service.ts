@@ -23,7 +23,7 @@ const SAFE_MESSAGES = {
   'report-save-failed': 'テスト結果をローカルへ保存できませんでした。',
 } as const
 type ServiceErrorCode = keyof typeof SAFE_MESSAGES
-class ServiceError extends Error {
+export class ServiceError extends Error {
   readonly status: number
   readonly code: ServiceErrorCode
   constructor(status: number, code: ServiceErrorCode) { super(SAFE_MESSAGES[code]); this.status = status; this.code = code }
@@ -75,7 +75,7 @@ export function createParallelFetchReportWriter(root = ROOT): (report: ParallelF
 function loopback(value: string | undefined): boolean {
   return value === '127.0.0.1' || value === '::1' || value === '::ffff:127.0.0.1'
 }
-function requestOrigin(request: IncomingMessage): string {
+export function requestOrigin(request: IncomingMessage): string {
   if (!loopback(request.socket.remoteAddress)) throw new ServiceError(403, 'forbidden')
   const host = request.headers.host
   if (typeof host !== 'string' || !/^(?:127\.0\.0\.1|localhost|\[::1\])(?::[1-9]\d{0,4})?$/.test(host)) throw new ServiceError(403, 'forbidden')
@@ -88,7 +88,7 @@ function requestOrigin(request: IncomingMessage): string {
     && request.headers['sec-fetch-site'] !== 'none') throw new ServiceError(403, 'forbidden')
   return origin
 }
-function requireWrite(request: IncomingMessage, origin: string, token: string): void {
+export function requireWrite(request: IncomingMessage, origin: string, token: string): void {
   if (request.headers.origin !== origin || request.headers['sec-fetch-site'] === 'none') throw new ServiceError(403, 'forbidden')
   const supplied = request.headers['x-parallel-fetch-token']
   if (typeof supplied !== 'string' || !/^[a-f0-9]{64}$/.test(supplied)
@@ -96,7 +96,7 @@ function requireWrite(request: IncomingMessage, origin: string, token: string): 
   if (typeof request.headers['content-type'] !== 'string'
     || !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(request.headers['content-type'])) throw new ServiceError(400, 'invalid-request')
 }
-async function readBody(request: IncomingMessage): Promise<unknown> {
+export async function readBody(request: IncomingMessage): Promise<unknown> {
   const length = request.headers['content-length']
   if (length !== undefined && (typeof length !== 'string' || !/^\d+$/.test(length))) throw new ServiceError(400, 'invalid-request')
   if (length !== undefined && Number(length) > PARALLEL_FETCH_BODY_LIMIT) { request.resume(); throw new ServiceError(413, 'body-too-large') }
@@ -125,7 +125,7 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
   try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) }
   catch { throw new ServiceError(400, 'invalid-request') }
 }
-function reply(response: ServerResponse, status: number, value: unknown): void {
+export function reply(response: ServerResponse, status: number, value: unknown): void {
   response.statusCode = status
   for (const name of ['Access-Control-Allow-Origin', 'Access-Control-Allow-Credentials', 'Access-Control-Allow-Methods', 'Access-Control-Allow-Headers']) response.removeHeader(name)
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -190,7 +190,7 @@ export function createParallelFetchService(dependencies: ParallelFetchServiceDep
   }
   return {
     async handle(request: IncomingMessage, response: ServerResponse, next: () => void): Promise<void> {
-      if (!request.url?.startsWith(PARALLEL_FETCH_API_PREFIX)) { next(); return }
+      if (!request.url?.startsWith(`${PARALLEL_FETCH_API_PREFIX}/`)) { next(); return }
       try {
         const origin = requestOrigin(request)
         if (request.url === `${PARALLEL_FETCH_API_PREFIX}/status` && request.method === 'GET') { reply(response, 200, await status()); return }

@@ -1,8 +1,10 @@
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { parseParallelFetchConfig, parseParallelFetchReport } from '../src/lib/parallelFetch.ts'
+import { parseParallelFetchReport } from '../src/lib/parallelFetch.ts'
+import { cloudConfig } from '../src/lib/parallelFetchCloud.ts'
 import { PARALLEL_FETCH_ERRORS } from '../src/types/parallelFetch.ts'
-import type { ParallelFetchConfig, ParallelFetchErrorCode, ParallelFetchReport } from '../src/types/parallelFetch.ts'
+import type { ParallelFetchErrorCode, ParallelFetchReport } from '../src/types/parallelFetch.ts'
+import type { CloudMode } from '../src/types/parallelFetchCloud.ts'
 import { disableRankDistributionDiagnostics } from './collect-rank-distribution.ts'
 import { markRankDistributionArtifactReady } from './collect-rank-distribution-cloud.ts'
 import { BUCKLER_WEEKLY_SESSION_SECRET, parseBucklerWeeklySession } from './lib/buckler-weekly-session.ts'
@@ -13,10 +15,12 @@ import { ParallelFetchReadError, runParallelFetch } from './lib/parallel-fetch-r
 import { createParallelFetchReportWriter } from './lib/parallel-fetch-service.ts'
 
 type Environment = Record<string, string | undefined>
-export type ParallelFetchCloudMode = 'serial' | 'compare'
+export type ParallelFetchCloudMode = CloudMode
 export const PARALLEL_FETCH_CLOUD_BRANCH = 'refs/heads/codex/buckler-cloud-collection-parallel-20261021'
 export const PARALLEL_FETCH_CLOUD_WORKFLOW = `gonchiman/sf6/.github/workflows/rank-distribution-cloud-probe.yml@${PARALLEL_FETCH_CLOUD_BRANCH}`
+export const PARALLEL_FETCH_MAIN_WORKFLOW = 'gonchiman/sf6/.github/workflows/parallel-fetch-test.yml@refs/heads/main'
 export const PARALLEL_FETCH_CLOUD_TIMEOUT_MS = 10 * 60 * 1000
+const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const HELP = `Bucklerランキングの小規模クラウド取得テスト
 
 node scripts/test-parallel-fetch-cloud.ts --serial
@@ -25,7 +29,8 @@ node scripts/test-parallel-fetch-cloud.ts --compare
 --serial: LPの1〜20ページを並列数1で3回（事前確認を含め63取得予定）
 --compare: 同じ20ページを並列数1・2で各1回（事前確認を含め43取得予定）
 全体の開始間隔は5秒以上、最大10分。認証・チャレンジ検出時は停止します。
-固定ブランチ・手動workflow・GitHub hosted Windows専用です。`
+指定のmain上の手動workflow、または既存の検証ブランチ・GitHub hosted Windows専用です。
+mainのworkflowでは PARALLEL_FETCH_REQUEST_ID に小文字のUUID v4を指定します。`
 
 export class ParallelFetchCloudError extends Error {
   readonly code: 'arguments' | 'runner' | 'time'
@@ -46,10 +51,14 @@ export function parseParallelFetchCloudArguments(args: string[]): { mode: Parall
 }
 
 export function isAllowedParallelFetchCloudExecution(env: Environment): boolean {
-  return env.GITHUB_ACTIONS === 'true' && env.RUNNER_ENVIRONMENT === 'github-hosted' && env.RUNNER_OS === 'Windows'
+  const hosted = env.GITHUB_ACTIONS === 'true' && env.RUNNER_ENVIRONMENT === 'github-hosted' && env.RUNNER_OS === 'Windows'
     && env.GITHUB_REPOSITORY === 'gonchiman/sf6' && env.GITHUB_EVENT_NAME === 'workflow_dispatch'
-    && env.GITHUB_REF === PARALLEL_FETCH_CLOUD_BRANCH && env.GITHUB_WORKFLOW_REF === PARALLEL_FETCH_CLOUD_WORKFLOW
     && /^[1-9]\d{0,24}$/.test(env.GITHUB_RUN_ID ?? '') && /^[1-9]\d{0,5}$/.test(env.GITHUB_RUN_ATTEMPT ?? '')
+  if (!hosted) return false
+  if (env.GITHUB_REF === PARALLEL_FETCH_CLOUD_BRANCH) return env.GITHUB_WORKFLOW_REF === PARALLEL_FETCH_CLOUD_WORKFLOW
+  return env.GITHUB_REF === 'refs/heads/main' && env.GITHUB_WORKFLOW_REF === PARALLEL_FETCH_MAIN_WORKFLOW
+    && env.GITHUB_SHA?.length === 40 && /^[0-9a-f]{40}$/.test(env.GITHUB_SHA)
+    && env.PARALLEL_FETCH_REQUEST_ID?.length === 36 && REQUEST_ID.test(env.PARALLEL_FETCH_REQUEST_ID)
 }
 
 function consumeSession(env: Environment): string | undefined {
@@ -96,8 +105,7 @@ export async function runParallelFetchCloudTest(args: string[], dependencies: Pa
   if (!isAllowedParallelFetchCloudExecution(env)) throw new ParallelFetchCloudError('runner')
   const now = dependencies.now ?? (() => new Date())
   const startedAt = timestamp(now)
-  const config: ParallelFetchConfig = parseParallelFetchConfig({ target: 'lp', startPage: 1, pageCount: 20,
-    concurrencies: options.mode === 'serial' ? [1] : [1, 2], repetitions: options.mode === 'serial' ? 3 : 1, intervalMs: 5000 })
+  const config = cloudConfig(options.mode)
   const runId = `cloud-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-${options.mode}`
   const failedReport = (code: ParallelFetchErrorCode): ParallelFetchReport => parseParallelFetchReport({
     schemaVersion: 1, runId, config, startedAt, finishedAt: timestamp(now), trials: [],
