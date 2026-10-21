@@ -30,3 +30,21 @@ node --test src/lib/parallelFetch.test.ts scripts/lib/parallel-fetch-runner.test
 ```
 
 実行結果はActionsの各実行とダウンロードしたJSONで確認する。小規模テストの成功だけで、全巡回や長時間取得の成功を保証しない。
+
+## 2026年10月21日の直列テスト
+
+[Actions実行 39543719551](https://github.com/gonchiman/sf6/actions/runs/39543719551) はコミット `90179f2` の `parallel-serial` を実行した。クラウド上でも合成テスト50件に合格したあと、保存済み認証で実際の取得を開始した。
+
+取得期間は13:23:30〜13:28:10 JST（約4分39秒）。準備を含む50回の試行中48回成功し、すべての成功読取でログアウト表示を確認した。測定対象は45ページ、準備は3ページ。
+
+| 周回 | 成功した測定ページ | 結果 |
+| --- | --- | --- |
+| 1 | 20/20 | 完了 |
+| 2 | 20/20 | 9ページ目でHTTP 502。1回の再取得で回復し完了 |
+| 3 | 5/20 | 6ページ目でHTTP 200だが `authentication-unconfirmed` により停止 |
+
+停止時は `authenticationEvidence=login-control`、`loginRequiredHeading=false`、`rankingReadable=false`。ログイン済み表示と完全なランキング一覧を確認できなかった。認証期限切れやサーバー側の判定理由までは確定できない。この実行で `human-verification` の検出はなかった。
+
+結果JSONは `parallel-fetch-cloud-39543719551-1-serial` artifactに保存した。PCにダウンロードしたコピーは `.local/parallel-fetch/cloud-39543719551/parallel-fetch-cloud-39543719551-1-serial.json` にある。
+
+同じ設定のローカル直列テストは41回中40回成功したあと、2周目19ページ目でHTTP 405・`human-verification` になった。今回のクラウド実行はそれより先まで読めたが、予定した3周は完了していない。実行時刻や認証状態などは完全には揃えておらず、実行場所だけによる差とは断定しない。直列テストが未完了のため、この時点では `parallel-compare` を実行していない。
