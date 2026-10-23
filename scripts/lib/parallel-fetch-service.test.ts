@@ -5,9 +5,10 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import test from 'node:test'
-import { DEFAULT_PARALLEL_FETCH_CONFIG } from '../../src/lib/parallelFetch.ts'
-import type { ParallelFetchConfig, ParallelFetchReport } from '../../src/types/parallelFetch.ts'
+import { DEFAULT_PARALLEL_FETCH_CONFIG, parseParallelFetchReport } from '../../src/lib/parallelFetch.ts'
+import type { ParallelFetchConfig, ParallelFetchReadDiagnostics, ParallelFetchReport } from '../../src/types/parallelFetch.ts'
 import { createParallelFetchService, createParallelFetchReportWriter, PARALLEL_FETCH_API_PREFIX as API } from './parallel-fetch-service.ts'
+import { ParallelFetchReadError, runParallelFetch } from './parallel-fetch-runner.ts'
 import type { ParallelFetchDependencies } from './parallel-fetch-runner.ts'
 
 const config = (): ParallelFetchConfig => structuredClone(DEFAULT_PARALLEL_FETCH_CONFIG)
@@ -179,6 +180,75 @@ test('safe report writer saves only terminal allowlisted data and refuses overwr
   await assert.rejects(save(input), /ローカルへ保存できません/)
   await assert.rejects(save(report(config())), /ローカルへ保存できません/)
   assert.equal(await readFile(join(directory, files[0]), 'utf8'), text)
+})
+
+test('compact report storage round-trips 200 attempts with detailed failures or the retry limit', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'parallel-fetch-diagnostic-writer-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const save = createParallelFetchReportWriter(root)
+  for (const scenario of [{ failures: 43, failureNetworkEvents: 80, state: 'complete' },
+    { failures: 100, failureNetworkEvents: 8, state: 'stopped' }] as const) {
+    let clock = 0, failures = 0
+    const diagnostics = (failed: boolean): ParallelFetchReadDiagnostics => ({
+      authenticationEvidence: failed ? null : 'logout-control', loginRequiredHeading: failed ? null : false,
+      rankingReadable: failed ? null : true,
+      trace: {
+        observations: Array.from({ length: failed ? 0 : 8 }, () => ({ elapsedMs: 1234.123456789, phase: 'read',
+          authenticationEvidence: 'conflicting-controls', loginRequiredHeading: false, rankingReadable: false, humanVerification: false })),
+        network: Array.from({ length: failed ? scenario.failureNetworkEvents : 8 }, () => ({ elapsedMs: 1234.123456789,
+          phase: 'read', kind: 'http-error', resource: 'stylesheet', site: 'buckler', status: 503 })),
+        droppedObservations: 0, droppedNetworkEvents: 0,
+      },
+    })
+    const input = await runParallelFetch({ ...config(), pageCount: 50, concurrencies: [1, 2, 4] }, {
+      now: () => clock, wallNow: () => new Date(Date.parse('2026-10-20T00:00:00.000Z') + clock).toISOString(),
+      wait: async milliseconds => { clock += milliseconds }, runId: `diagnostic-${scenario.failures}`,
+      createReader: async () => {
+        let retrying = false
+        return { readPage: async () => {
+          clock++
+          if (!retrying && failures < scenario.failures) {
+            failures++; retrying = true
+            throw new ParallelFetchReadError('server-error', 503, diagnostics(true))
+          }
+          retrying = false
+          return { totalCount: 2000, totalPages: 100, httpStatus: 200, diagnostics: diagnostics(false) }
+        }, close: async () => {} }
+      },
+    })
+    assert.equal(input.state, scenario.state)
+    assert.equal(input.errorCode, scenario.state === 'stopped' ? 'limit-reached' : null)
+    assert.equal(input.trials.reduce((sum, trial) => sum + trial.attempts.length, 0), 200)
+    assert.equal(input.trials.flatMap(trial => trial.attempts).filter(attempt => attempt.errorCode === 'server-error').length, scenario.failures)
+    if (scenario.failureNetworkEvents === 80) assert.ok(Buffer.byteLength(JSON.stringify(input, null, 2)) > 1024 * 1024)
+    await save(input)
+    const bytes = await readFile(join(root, '.local', 'parallel-fetch', `parallel-fetch-${input.runId}.json`))
+    assert.ok(bytes.length <= 1024 * 1024)
+    assert.deepEqual(parseParallelFetchReport(JSON.parse(bytes.toString('utf8'))), input)
+    if (scenario.state === 'stopped') {
+      // A conservative envelope: all 200 attempts retain 8+8 items, and four
+      // terminal workers retain 80+80. Long valid values also fit the byte limit.
+      const envelope = structuredClone(input)
+      envelope.runId = 'capacity-envelope-'.padEnd(80, 'x')
+      envelope.trials.flatMap(trial => trial.attempts).forEach((attempt, index) => {
+        const length = index < 4 ? 80 : 8
+        attempt.diagnostics = { authenticationEvidence: 'conflicting-controls', loginRequiredHeading: false, rankingReadable: false,
+          trace: {
+            observations: Array.from({ length }, () => ({ elapsedMs: 1.2345678901234567e-300, phase: 'after-stop',
+              authenticationEvidence: 'conflicting-controls', loginRequiredHeading: false, rankingReadable: false, humanVerification: false })),
+            network: Array.from({ length }, () => ({ elapsedMs: 1.2345678901234567e-300, phase: 'after-stop',
+              kind: 'request-failed', resource: 'stylesheet', site: 'capcom-auth', status: null })),
+            droppedObservations: Number.MAX_SAFE_INTEGER, droppedNetworkEvents: Number.MAX_SAFE_INTEGER,
+            ...(index < 4 ? { postStop: { durationMs: 35000, outcome: 'human-verification' as const } } : {}),
+          },
+        }
+      })
+      await save(envelope)
+      const bounded = await readFile(join(root, '.local', 'parallel-fetch', `parallel-fetch-${envelope.runId}.json`))
+      assert.ok(bounded.length <= 1024 * 1024)
+      assert.deepEqual(parseParallelFetchReport(JSON.parse(bounded.toString('utf8'))), envelope)
+    }
+  }
 })
 
 test('report writer refuses a linked private directory', async t => {

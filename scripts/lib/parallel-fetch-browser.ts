@@ -1,4 +1,5 @@
 import { lstat, readFile } from 'node:fs/promises'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright'
 import { PARALLEL_FETCH_ERRORS } from '../../src/types/parallelFetch.ts'
 import type { ParallelFetchErrorCode, ParallelFetchReadDiagnostics, ParallelFetchTarget } from '../../src/types/parallelFetch.ts'
@@ -11,6 +12,7 @@ import { rankBoundaryPageUrl, RANK_BOUNDARY_SOURCE_URL } from './rank-distributi
 import { createRankDistributionPageReader, RankDistributionDomError } from './rank-distribution-dom.ts'
 import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
 import type { ParallelFetchReader } from './parallel-fetch-runner.ts'
+import { createParallelFetchDiagnosticRecorder } from './parallel-fetch-diagnostics.ts'
 
 type StorageState = Exclude<NonNullable<BrowserContextOptions['storageState']>, string>
 export interface ParallelFetchBrowserSession {
@@ -22,6 +24,8 @@ export interface ParallelFetchBrowserDependencies {
   launch?(): Promise<Browser>
   createLpReader?: typeof createRankDistributionPageReader
   createMrReader?: typeof createMrDistributionPageReader
+  now?(): number
+  wait?(milliseconds: number, signal: AbortSignal): Promise<void>
 }
 
 /** Only visible challenge controls/headings are inspected; no page text leaves the browser. */
@@ -102,6 +106,8 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: 5
     throw new ParallelFetchReadError(options.signal.aborted ? 'cancelled' : 'browser-unavailable')
   } finally { state = undefined as unknown as StorageState }
   let closed = false
+  const now = dependencies.now ?? (() => performance.now())
+  const wait = dependencies.wait ?? (async (milliseconds, signal) => { await delay(milliseconds, undefined, { signal }) })
   const pages = new Set<Page>()
   let closing: Promise<void> | null = null
   const close = (): Promise<void> => {
@@ -126,20 +132,26 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: 5
       try { page = await context.newPage() } catch { throw new ParallelFetchReadError(closed || signal.aborted ? 'cancelled' : 'browser-unavailable') }
       pages.add(page)
       let pageClosed = false
+      const recorder = createParallelFetchDiagnosticRecorder(page, now)
+      let pendingStop: { pageNumber: number; diagnostics?: ParallelFetchReadDiagnostics } | null = null
       const closePage = async (): Promise<void> => {
         if (pageClosed) return
         pageClosed = true
+        recorder.dispose()
         signal.removeEventListener('abort', abortPage)
         pages.delete(page)
         await page.close().catch(() => {})
       }
-      const abortPage = (): void => { void closePage() }
+      // The first auth-failure page survives the runner's collection abort for
+      // passive inspection. The external run abort still closes the whole context.
+      const abortPage = (): void => { if (!pendingStop || options.signal.aborted) void closePage() }
       signal.addEventListener('abort', abortPage, { once: true })
       if (closed || options.signal.aborted || signal.aborted) { await closePage(); throw new ParallelFetchReadError('cancelled') }
       let challenge = false, httpStatus: number | null = null, domObserved = false
       const inspectChallenge = async (): Promise<void> => {
         if (await page.evaluate(observeParallelFetchChallenge)) {
           challenge = true
+          recorder.observe({ authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: null, humanVerification: true })
           // Existing LP readers sanitize unknown errors; retain the challenge flag outside them.
           throw new RankDistributionDomError('unsupported-dom')
         }
@@ -160,11 +172,15 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: 5
         },
         url: () => page.url(),
       } as unknown as Page
+      const onObservation = (value: ParallelFetchReadDiagnostics) => recorder.observe({
+        authenticationEvidence: value.authenticationEvidence, loginRequiredHeading: value.loginRequiredHeading,
+        rankingReadable: value.rankingReadable, humanVerification: false,
+      })
       const lp = target === 'lp' ? (dependencies.createLpReader ?? createRankDistributionPageReader)(guarded, {
-        signal, minIntervalMs: options.intervalMs, totalCountPolicy: 'record', allowReadablePagesAfterSignIn: false,
+        signal, minIntervalMs: options.intervalMs, totalCountPolicy: 'record', allowReadablePagesAfterSignIn: false, onObservation,
       }) : null
       const mr = target === 'mr' ? (dependencies.createMrReader ?? createMrDistributionPageReader)(guarded, {
-        signal, minIntervalMs: options.intervalMs, allowReadablePagesAfterSignIn: false,
+        signal, minIntervalMs: options.intervalMs, allowReadablePagesAfterSignIn: false, onObservation,
       }) : null
       const readDiagnostics = (pageNumber: number): ParallelFetchReadDiagnostics | undefined => {
         // Only an observation made after this read's navigation may contribute.
@@ -182,20 +198,75 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: 5
       return {
         async readPage(pageNumber) {
           if (closed || pageClosed || signal.aborted || options.signal.aborted) throw new ParallelFetchReadError('cancelled')
+          recorder.begin()
           challenge = false; httpStatus = null; domObserved = false
           try {
             const value = lp ? await lp.fetchPage(pageNumber, rankBoundaryPageUrl(RANK_BOUNDARY_SOURCE_URL, pageNumber))
               : await mr!.fetchPage(pageNumber, mrDistributionPageUrl(pageNumber))
             if (closed || pageClosed || signal.aborted || options.signal.aborted) throw new ParallelFetchReadError('cancelled')
             // Rows/IDs/salts/URLs are deliberately discarded at this boundary.
-            const diagnostics = readDiagnostics(pageNumber)
+            const diagnostics = recorder.snapshot(readDiagnostics(pageNumber), true)
+            recorder.end()
             return { totalCount: value.totalCount, totalPages: value.totalPages, httpStatus, ...(diagnostics ? { diagnostics } : {}) }
           } catch (error) {
             const status = httpStatus
-            throw new ParallelFetchReadError(signal.aborted || options.signal.aborted || closed ? 'cancelled'
+            const code = signal.aborted || options.signal.aborted || closed ? 'cancelled'
               : challenge ? 'human-verification' : status === 401 || status === 403 || status === 429 ? 'http-denied'
-                : status !== null && status >= 500 ? 'server-error' : status !== null && status >= 400 ? 'http-error' : safeReadCode(error), status, readDiagnostics(pageNumber))
+                : status !== null && status >= 500 ? 'server-error' : status !== null && status >= 400 ? 'http-error' : safeReadCode(error)
+            const baseDiagnostics = readDiagnostics(pageNumber)
+            if (code === 'human-verification') recorder.observe({ authenticationEvidence: baseDiagnostics?.authenticationEvidence ?? null,
+              loginRequiredHeading: baseDiagnostics?.loginRequiredHeading ?? null, rankingReadable: baseDiagnostics?.rankingReadable ?? null,
+              humanVerification: true })
+            const diagnostics = recorder.snapshot(baseDiagnostics, code === 'server-error')
+            if (code === 'authentication-unconfirmed') {
+              pendingStop = { pageNumber, diagnostics }
+              recorder.afterStop()
+            } else recorder.end()
+            throw new ParallelFetchReadError(code, status, diagnostics)
           }
+        },
+        async observeAfterStop(externalSignal) {
+          const pending = pendingStop
+          if (!pending) return undefined
+          const started = now(), deadline = started + 30_000
+          const combined = AbortSignal.any([externalSignal, options.signal])
+          let outcome: 'observed' | 'cancelled' | 'page-unavailable' | 'human-verification' = 'observed'
+          // page.evaluate has no built-in timeout. Bound each sample by the
+          // remaining total observation window and by the user's stop signal.
+          async function boundedSample<T>(sample: () => Promise<T>): Promise<T> {
+            if (combined.aborted) throw new Error('cancelled')
+            let timer: ReturnType<typeof setTimeout> | undefined
+            let abort: () => void = () => {}
+            try {
+              return await Promise.race([sample(), new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error('page-unavailable')), Math.max(1, deadline - now()))
+                abort = () => reject(new Error('cancelled'))
+                combined.addEventListener('abort', abort, { once: true })
+                if (combined.aborted) abort()
+              })])
+            } finally { clearTimeout(timer); combined.removeEventListener('abort', abort) }
+          }
+          try {
+            if (combined.aborted) throw new Error('cancelled')
+            if (closed || pageClosed) throw new Error('page-unavailable')
+            while (now() < deadline) {
+              const value = await boundedSample(() => (lp ?? mr!).observeCurrentPage(pending.pageNumber))
+              recorder.observe({ ...value, humanVerification: false }, true)
+              const remaining = deadline - now()
+              if (remaining <= 0) break
+              await wait(Math.min(5000, remaining), combined)
+            }
+          } catch (error) {
+            outcome = combined.aborted ? 'cancelled'
+              : challenge || safeReadCode(error) === 'human-verification' ? 'human-verification' : 'page-unavailable'
+            if (outcome === 'human-verification') recorder.observe({ authenticationEvidence: null, loginRequiredHeading: null,
+              rankingReadable: null, humanVerification: true })
+          } finally {
+            pendingStop = null
+            recorder.postStop({ durationMs: Math.min(30_000, Math.max(0, now() - started)), outcome })
+            recorder.end()
+          }
+          return recorder.snapshot(pending.diagnostics)
         },
         close: closePage,
       }

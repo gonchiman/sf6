@@ -24,6 +24,7 @@ export class ParallelFetchReadError extends Error {
 
 export interface ParallelFetchReader {
   readPage(page: number): Promise<{ totalCount: number; totalPages: number; httpStatus: number | null; diagnostics?: ParallelFetchReadDiagnostics }>
+  observeAfterStop?(signal: AbortSignal): Promise<ParallelFetchReadDiagnostics | undefined>
   close(): Promise<void>
 }
 export interface ParallelFetchDependencies {
@@ -115,6 +116,7 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
     let measurementStart: number | null = null
     let measurementEnd: number | null = null
     const readers: ParallelFetchReader[] = []
+    const postStop: { candidate?: { attempt: ParallelFetchAttempt; reader: ParallelFetchReader } } = {}
     const trial: ParallelFetchTrial = {
       concurrency, repetition, state: 'preparing', startedAt: wallNow(), finishedAt: null,
       preparationMs: null, measurementMs: null, totalMs: 0, completedPages: [], attempts: [],
@@ -179,7 +181,13 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
           trial.attempts.push(attempt)
           const retryable = safe.code === 'server-error' && retry === 0 && !signal.aborted
           if (retryable) pausedUntil = Math.max(pausedUntil, now() + 5_000)
-          else stop(safe)
+          else {
+            const reader = readers[worker.id - 1]
+            if (!failure && safe.code === 'authentication-unconfirmed' && typeof reader.observeAfterStop === 'function') {
+              postStop.candidate = { attempt, reader }
+            }
+            stop(safe)
+          }
           worker.state = retryable ? 'waiting' : 'stopped'
           publish()
           if (!retryable) throw safe
@@ -230,6 +238,19 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
       const ended = now()
       if (trial.preparationMs === null) trial.preparationMs = Math.max(0, ended - trialStart)
       if (measurementStart !== null && measurementEnd === null) measurementEnd = ended
+      // All worker tasks have settled and the internal signal already blocks new reads.
+      // Only passive diagnostics may continue; they never alter the measured duration or failure.
+      if (postStop.candidate) {
+        publish()
+        if (!dependencies.signal?.aborted) {
+          try {
+            const { attempt, reader } = postStop.candidate
+            const diagnosticSignal = dependencies.signal ?? new AbortController().signal
+            const diagnostics = safeDiagnostics(await reader.observeAfterStop?.(diagnosticSignal))
+            if (diagnostics) attempt.diagnostics = diagnostics
+          } catch { /* Optional diagnostic failures leave the original read result intact. */ }
+        }
+      }
       await Promise.allSettled(readers.map(reader => reader.close()))
       if (failure) {
         const code = failureCode()

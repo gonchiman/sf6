@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULT_PARALLEL_FETCH_CONFIG, parseParallelFetchConfig, parseParallelFetchReadDiagnostics, parseParallelFetchReport,
+  PARALLEL_FETCH_MAX_POST_STOP_MS, PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS, PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS,
   plannedParallelFetchAttempts, summarizeParallelFetch } from './parallelFetch.ts'
-import type { ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
+import type { ParallelFetchReadDiagnostics, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
 
 const startedAt = '2026-10-20T00:00:00.000Z', finishedAt = '2026-10-20T00:10:00.000Z'
 function fixture(): ParallelFetchReport {
@@ -20,6 +21,20 @@ function fixture(): ParallelFetchReport {
       completedPages: 20 / concurrency })), errorCode: null,
   }))
   return { schemaVersion: 1, runId: 'test-run', config, state: 'complete', startedAt, finishedAt, trials, errorCode: null }
+}
+function traceFixture(): ParallelFetchReadDiagnostics {
+  return { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: true, trace: {
+    observations: [
+      { elapsedMs: 0, phase: 'read', authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: null, humanVerification: false },
+      { elapsedMs: 12000, phase: 'after-stop', authenticationEvidence: 'logout-control', loginRequiredHeading: false,
+        rankingReadable: true, humanVerification: false },
+    ],
+    network: [
+      { elapsedMs: 100, phase: 'read', kind: 'http-error', resource: 'xhr', site: 'buckler', status: 429 },
+      { elapsedMs: 12001, phase: 'after-stop', kind: 'request-failed', resource: 'document', site: 'capcom-auth', status: null },
+    ],
+    droppedObservations: 2, droppedNetworkEvents: 3, postStop: { durationMs: 30000, outcome: 'observed' },
+  } }
 }
 test('bounded defaults include each worker preparation in the planned count', () => {
   assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig(DEFAULT_PARALLEL_FETCH_CONFIG)), 43)
@@ -69,6 +84,79 @@ test('diagnostics reject arbitrary evidence and nonboolean states instead of coe
     assert.throws(() => parseParallelFetchReadDiagnostics(bad))
     const report = fixture()
     report.trials[0].attempts[0].diagnostics = bad as never
+    assert.throws(() => parseParallelFetchReport(report))
+  }
+})
+test('legacy and detailed diagnostics round-trip within schema version 1', () => {
+  for (const diagnostics of [undefined,
+    { authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: null }, traceFixture()]) {
+    const report = fixture()
+    if (diagnostics) report.trials[0].attempts[0].diagnostics = diagnostics
+    const parsed = parseParallelFetchReport(JSON.parse(JSON.stringify(report)))
+    assert.deepEqual(parsed, report)
+    assert.deepEqual(parseParallelFetchReport(JSON.parse(JSON.stringify(parsed))), report)
+    assert.equal(parsed.schemaVersion, 1)
+  }
+  const diagnostics = traceFixture()
+  delete diagnostics.trace!.postStop
+  assert.deepEqual(parseParallelFetchReadDiagnostics(diagnostics), diagnostics)
+  assert.equal('postStop' in parseParallelFetchReadDiagnostics(diagnostics).trace!, false)
+})
+test('detailed diagnostics strip secrets and arbitrary strings at every nesting level', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  const secrets = { url: 'secret-url', text: 'secret-text', headers: { Authorization: 'secret-token' }, cookies: ['secret-cookie'],
+    body: 'secret-body', error: 'secret-error', request: { url: 'secret-request-url' } }
+  const contaminated = { ...diagnostics, ...secrets, trace: { ...trace, ...secrets,
+    observations: trace.observations.map(item => ({ ...item, ...secrets })),
+    network: trace.network.map(item => ({ ...item, ...secrets })), postStop: { ...trace.postStop, ...secrets },
+  } }
+  const report = fixture()
+  report.trials[0].attempts[0].diagnostics = contaminated
+  const parsed = parseParallelFetchReport(JSON.parse(JSON.stringify(report)))
+  assert.deepEqual(parsed.trials[0].attempts[0].diagnostics, diagnostics)
+  assert.equal(JSON.stringify(parsed).includes('secret'), false)
+})
+test('detailed diagnostics bound list lengths, durations, and dropped counts', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  trace.observations = Array.from({ length: PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS }, () => ({ ...trace.observations[0], elapsedMs: 7 * 86400000 }))
+  trace.network = Array.from({ length: PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS }, () => ({ ...trace.network[0], elapsedMs: 7 * 86400000, status: 599 }))
+  trace.postStop = { durationMs: PARALLEL_FETCH_MAX_POST_STOP_MS, outcome: 'observed' }
+  trace.droppedObservations = Number.MAX_SAFE_INTEGER
+  trace.droppedNetworkEvents = 0
+  assert.deepEqual(parseParallelFetchReadDiagnostics(diagnostics), diagnostics)
+  for (const patch of [
+    { observations: [...trace.observations, trace.observations[0]] },
+    { network: [...trace.network, trace.network[0]] },
+    { observations: {} }, { network: null },
+    { droppedObservations: -1 }, { droppedObservations: 0.5 }, { droppedObservations: Number.MAX_SAFE_INTEGER + 1 },
+    { droppedNetworkEvents: NaN }, { droppedNetworkEvents: '0' }, { droppedNetworkEvents: Infinity },
+    { postStop: { durationMs: PARALLEL_FETCH_MAX_POST_STOP_MS + 1, outcome: 'observed' } },
+  ]) assert.throws(() => parseParallelFetchReadDiagnostics({ ...diagnostics, trace: { ...trace, ...patch } }))
+  for (const elapsedMs of [-1, 7 * 86400000 + 1, Infinity, NaN, '1']) {
+    for (const key of ['observations', 'network'] as const) {
+      assert.throws(() => parseParallelFetchReadDiagnostics({ ...diagnostics,
+        trace: { ...trace, [key]: [{ ...trace[key][0], elapsedMs }] } }))
+    }
+  }
+})
+test('detailed diagnostics reject unknown enums, incomplete states, and invalid HTTP status-kind pairs', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  const invalidTraces = [null, [], {},
+    ...[null, {}, { ...trace.observations[0], phase: 'private-url' },
+      { ...trace.observations[0], authenticationEvidence: 'private-user' }, { ...trace.observations[0], loginRequiredHeading: 0 },
+      { ...trace.observations[0], rankingReadable: 'true' }, { ...trace.observations[0], humanVerification: 'false' }]
+      .map(item => ({ ...trace, observations: [item] })),
+    ...[null, {}, { ...trace.network[0], phase: 'navigate' }, { ...trace.network[0], kind: 'response' },
+      { ...trace.network[0], resource: 'private-request-name' }, { ...trace.network[0], site: 'private-hostname' },
+      ...[null, 399, 600, 429.5, '429'].map(status => ({ ...trace.network[0], status })),
+      { ...trace.network[1], status: 503 }].map(item => ({ ...trace, network: [item] })),
+    ...[null, {}, { durationMs: 0, outcome: 'private-error-message' },
+      ...[-1, Infinity, NaN, '0'].map(durationMs => ({ durationMs, outcome: 'observed' }))]
+      .map(postStop => ({ ...trace, postStop })),
+  ]
+  for (const invalidTrace of invalidTraces) {
+    const report = fixture()
+    report.trials[0].attempts[0].diagnostics = { ...diagnostics, trace: invalidTrace } as never
     assert.throws(() => parseParallelFetchReport(report))
   }
 })

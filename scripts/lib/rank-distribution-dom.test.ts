@@ -5,6 +5,7 @@ import type { Page } from 'playwright'
 import { createRankDistributionPageReader, observeRankDistributionDom, RankDistributionDomError } from './rank-distribution-dom.ts'
 import type { RankDistributionDomErrorCode, RankDistributionDomObservation, RankDistributionPageReaderOptions } from './rank-distribution-dom.ts'
 import { rankBoundaryPageUrl, RANK_BOUNDARY_SOURCE_URL } from './rank-distribution-boundaries.ts'
+import type { DistributionPageObservationSnapshot } from './distribution-page-observation.ts'
 
 type FakeElement = {
   innerText: string; textContent: string; parentElement: FakeElement | null; value: string
@@ -214,7 +215,7 @@ function observation(page = 1, total = 43): RankDistributionDomObservation {
 }
 
 function harness(observe: (page: number, evaluation: number) => RankDistributionDomObservation = page => observation(page), status = 200,
-  options: Pick<RankDistributionPageReaderOptions, 'totalCountPolicy' | 'allowReadablePagesAfterSignIn' | 'timeoutMs'> = {}) {
+  options: RankDistributionPageReaderOptions = {}) {
   let currentUrl = ''
   let evaluations = 0
   let clock = 0
@@ -551,4 +552,96 @@ test('browser errors are sanitized and cancellation does not navigate', async t 
   const controller = new AbortController(); controller.abort()
   const cancelled = createRankDistributionPageReader(fakePage, { signal: controller.signal })
   await assert.rejects(cancelled.fetchPage(1, pageUrl(1)), errorCode('cancelled'))
+})
+
+test('passive DOM observation reads loaded ranks without scrolling or waiting for lazy images', async t => {
+  const { nodes, icon } = fixture()
+  setDom(t, nodes)
+  window.scrollTo = () => { assert.fail('passive observation must not scroll') }
+  icon.scrollIntoView = () => { assert.fail('passive observation must not load lazy images') }
+  t.mock.method(globalThis, 'setTimeout', (() => { assert.fail('passive observation must not settle the page') }) as typeof setTimeout)
+  const value = await observeRankDistributionDom({ salt: 'passive-capture', readOnly: true })
+  assert.equal(value.authenticationEvidence, 'logout-control')
+  assert.equal(value.rankIcons, 'ready')
+  assert.equal(value.entries?.length, 1)
+})
+
+test('each existing fetch poll emits normalized safe evidence and observer errors cannot affect hydration', async () => {
+  const snapshots: DistributionPageObservationSnapshot[] = []
+  const setup = harness((page, count) => count === 1
+    ? { ...observation(page), signedIn: null, authenticationEvidence: undefined, loginRequiredHeading: undefined, entries: null }
+    : count === 2 ? { ...observation(page), signedIn: false, authenticationEvidence: 'login-control' } : observation(page), 200, {
+    onObservation: snapshot => { snapshots.push(snapshot); throw new Error('private-callback-error') },
+  })
+  await setup.reader.fetchPage(1, pageUrl(1))
+  assert.deepEqual(snapshots, [
+    { authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: false },
+    { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: true },
+    { authenticationEvidence: 'logout-control', loginRequiredHeading: false, rankingReadable: true },
+  ])
+  assert.equal(setup.evaluations(), snapshots.length)
+  assert.equal(setup.navigations.length, 1)
+  assert.equal(setup.reader.getDiagnostics().successfulReadCount, 1)
+  assert.equal(setup.elapsed(), 500)
+})
+
+test('post-stop samples bypass the original aborted signal without navigation or changing the failed attempt', async t => {
+  const controller = new AbortController()
+  const snapshots: DistributionPageObservationSnapshot[] = []
+  let recovered = false
+  const setup = harness(page => ({ ...observation(page), ...(page === 1 || recovered ? {}
+    : { signedIn: false, authenticationEvidence: 'login-control' as const }) }), 200,
+  { signal: controller.signal, onObservation: snapshot => { snapshots.push(snapshot) } })
+  await setup.reader.fetchPage(1, pageUrl(1))
+  await assert.rejects(setup.reader.fetchPage(3, pageUrl(3)), errorCode('authentication-unconfirmed'))
+  const diagnostics = setup.reader.getDiagnostics(), elapsed = setup.elapsed(), emitted = snapshots.length
+  const evaluations = setup.evaluations()
+  controller.abort()
+  recovered = true
+  const evaluate = setup.fakePage.evaluate.bind(setup.fakePage)
+  t.mock.method(setup.fakePage, 'evaluate', (async (fn: unknown, input: unknown) => {
+    assert.equal(fn, observeRankDistributionDom)
+    assert.equal((input as { readOnly?: boolean }).readOnly, true)
+    return evaluate(fn as never, input as never)
+  }) as typeof setup.fakePage.evaluate)
+  assert.deepEqual(await setup.reader.observeCurrentPage(3), {
+    authenticationEvidence: 'logout-control', loginRequiredHeading: false, rankingReadable: true,
+  })
+  assert.deepEqual(setup.reader.getDiagnostics(), diagnostics)
+  assert.equal(setup.elapsed(), elapsed)
+  assert.equal(snapshots.length, emitted)
+  assert.equal(setup.evaluations(), evaluations + 1)
+  assert.deepEqual(setup.navigations, [pageUrl(1), pageUrl(3)])
+  await assert.rejects(setup.reader.fetchPage(3, pageUrl(3)), errorCode('cancelled'))
+})
+
+test('post-stop readability reuses fixed URL, known page size, controls, counters, icons and duplicate checks', async t => {
+  let patch: Partial<RankDistributionDomObservation> = {}
+  const setup = harness(page => ({ ...observation(page), ...patch }))
+  await setup.reader.fetchPage(1, pageUrl(1))
+  await setup.reader.fetchPage(3, pageUrl(3))
+  const diagnostics = setup.reader.getDiagnostics()
+  for (const invalid of [
+    { conditionsMatch: false }, { leagueLabelsMatch: false }, { selectedPage: 2 }, { rankIcons: 'unsupported' },
+    { range: { from: 7, to: 9, total: 43 } }, { entries: observation(3).entries!.slice(0, 2) },
+    { entries: observation(3).entries!.map(entry => ({ ...entry, accountKey: 'a'.repeat(64) })) },
+  ] satisfies Partial<RankDistributionDomObservation>[]) {
+    patch = invalid
+    assert.equal((await setup.reader.observeCurrentPage(3)).rankingReadable, false)
+  }
+  patch = { authenticationEvidence: 'private-raw-value', loginRequiredHeading: 'private-raw-heading' } as unknown as Partial<RankDistributionDomObservation>
+  assert.deepEqual(await setup.reader.observeCurrentPage(3), { authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: true })
+  t.mock.method(setup.fakePage, 'url', () => pageUrl(3).replace('user_status=1', 'user_status=0'))
+  assert.equal((await setup.reader.observeCurrentPage(3)).rankingReadable, false)
+  assert.deepEqual(setup.reader.getDiagnostics(), diagnostics)
+  assert.equal(setup.navigations.length, 2)
+})
+
+test('passive observation sanitizes browser errors and rejects invalid pages before evaluation', async t => {
+  const setup = harness()
+  t.mock.method(setup.fakePage, 'evaluate', async () => { throw new Error('private-token https://example.com/private-player') })
+  await assert.rejects(setup.reader.observeCurrentPage(1), errorCode('read-failed'))
+  await assert.rejects(setup.reader.observeCurrentPage(0), errorCode('invalid-request'))
+  assert.equal(setup.navigations.length, 0)
+  assert.equal(setup.reader.getDiagnostics().requestCount, 0)
 })

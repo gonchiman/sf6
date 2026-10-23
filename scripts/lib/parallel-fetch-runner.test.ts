@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { parseParallelFetchReport, summarizeParallelFetch } from '../../src/lib/parallelFetch.ts'
-import type { ParallelFetchConfig, ParallelFetchReport } from '../../src/types/parallelFetch.ts'
+import type { ParallelFetchConfig, ParallelFetchReadDiagnostics, ParallelFetchReport } from '../../src/types/parallelFetch.ts'
 import { ParallelFetchReadError, runParallelFetch } from './parallel-fetch-runner.ts'
 import type { ParallelFetchDependencies, ParallelFetchReader } from './parallel-fetch-runner.ts'
 
@@ -80,7 +80,7 @@ function fixture(options: {
       }
     },
   }
-  return { clock, reads, closed, signals, updates, dependencies, peak: () => peak }
+  return { clock, reads, closed, signals, updates, dependencies, peak: () => peak, active: () => active }
 }
 
 test('uses the same exact target pages, fresh readers and one global interval across trials', async () => {
@@ -243,6 +243,173 @@ test('malformed optional diagnostics cannot replace a challenge error or turn su
   assert.deepEqual(report.trials[0].attempts.map(attempt => attempt.errorCode), [null, 'human-verification'])
   assert.ok(report.trials[0].attempts.every(attempt => !('diagnostics' in attempt)))
   assert.equal(JSON.stringify(report).includes('secret'), false)
+})
+
+test('only the first authentication failure is observed after workers settle, without including passive time in measurement', async () => {
+  const initial: ParallelFetchReadDiagnostics = { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: true }
+  const expected: ParallelFetchReadDiagnostics = { ...initial, trace: {
+    observations: [
+      { elapsedMs: 12000, phase: 'read', ...initial, humanVerification: false },
+      { elapsedMs: 42000, phase: 'after-stop', authenticationEvidence: 'logout-control', loginRequiredHeading: false,
+        rankingReadable: true, humanVerification: false },
+    ], network: [], droppedObservations: 0, droppedNetworkEvents: 0,
+    postStop: { durationMs: 30000, outcome: 'observed' },
+  } }
+  let failedAt = -1, observationCalls = 0, readsAtObservation = 0
+  const f = fixture({ outcome: event => {
+    if (event.instance === 2 && event.page === 7) {
+      failedAt = f.clock.time
+      throw new ParallelFetchReadError('authentication-unconfirmed', 200, initial)
+    }
+    return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+  } })
+  const createReader = f.dependencies.createReader
+  f.dependencies.createReader = async (worker, target, signal) => {
+    const reader = await createReader(worker, target, signal)
+    const instance = f.signals.length
+    return { ...reader, observeAfterStop: async diagnosticSignal => {
+      observationCalls += 1
+      assert.equal(instance, 2)
+      assert.equal(f.active(), 0, 'all other reads have settled before observation')
+      assert.ok(signal.aborted, 'the navigation queue is already stopped')
+      assert.equal(diagnosticSignal.aborted, false, 'passive observation does not inherit internal abort')
+      assert.deepEqual(f.closed, [1], 'trial readers remain open until observation finishes')
+      readsAtObservation = f.reads.length
+      await f.clock.wait(30000, diagnosticSignal)
+      assert.equal(f.reads.length, readsAtObservation)
+      return { ...expected, cookie: 'private-cookie', rawRows: ['private-player'] } as ParallelFetchReadDiagnostics
+    } }
+  }
+  const report = await f.clock.finish(runParallelFetch(config, f.dependencies))
+  assert.equal(observationCalls, 1)
+  assert.equal(report.errorCode, 'authentication-unconfirmed')
+  assert.equal(report.state, 'error')
+  assert.equal(report.trials.length, 2)
+  const trial = report.trials[1]
+  assert.deepEqual(trial.completedPages, [])
+  assert.equal(trial.measurementMs, 12000)
+  assert.equal(trial.totalMs - trial.preparationMs! - trial.measurementMs!, 30000)
+  const attempt = trial.attempts.find(item => item.errorCode === 'authentication-unconfirmed')!
+  assert.equal(attempt.durationMs, 12000)
+  assert.deepEqual(attempt.diagnostics, expected)
+  assert.ok(trial.attempts.filter(item => item !== attempt).every(item => item.diagnostics === undefined))
+  assert.ok(f.reads.every(event => event.started < failedAt))
+  assert.equal(f.reads.length, readsAtObservation)
+  assert.deepEqual(f.closed, [1, 2, 3])
+  assert.doesNotMatch(JSON.stringify(report), /private-cookie|private-player/)
+})
+
+test('passive observer errors and malformed diagnostics preserve the initial failure and observations', async () => {
+  const initial: ParallelFetchReadDiagnostics = { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: true }
+  for (const outcome of ['throw', 'malformed'] as const) {
+    let calls = 0
+    const f = fixture({ outcome: event => {
+      if (event.page === 7) throw new ParallelFetchReadError('authentication-unconfirmed', 200, initial)
+      return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+    } })
+    const createReader = f.dependencies.createReader
+    f.dependencies.createReader = async (worker, target, signal) => ({
+      ...await createReader(worker, target, signal), observeAfterStop: async () => {
+        calls += 1
+        if (outcome === 'throw') throw new Error('private browser failure')
+        return { authenticationEvidence: 'private cookie' } as never
+      },
+    })
+    const report = await f.clock.finish(runParallelFetch(config, f.dependencies))
+    assert.equal(calls, 1)
+    assert.equal(report.errorCode, 'authentication-unconfirmed')
+    assert.equal(report.trials[0].errorCode, 'authentication-unconfirmed')
+    assert.deepEqual(report.trials[0].attempts.at(-1)!.diagnostics, initial)
+    assert.deepEqual(f.reads.map(event => event.page), [1, 7])
+    assert.deepEqual(f.closed, [1])
+    assert.doesNotMatch(JSON.stringify(report), /private/)
+  }
+})
+
+test('external cancellation skips post-stop observation without replacing an earlier authentication error', async () => {
+  let observationCalls = 0
+  const controller = new AbortController()
+  const f = fixture({ outcome: event => {
+    if (event.page === 7) throw new ParallelFetchReadError('authentication-unconfirmed', 200)
+    return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+  } })
+  f.dependencies.signal = controller.signal
+  const createReader = f.dependencies.createReader
+  f.dependencies.createReader = async (worker, target, signal) => ({
+    ...await createReader(worker, target, signal), observeAfterStop: async () => { observationCalls += 1; return undefined },
+  })
+  f.dependencies.onUpdate = report => {
+    f.updates.push(report)
+    if (report.trials.some(trial => trial.attempts.some(attempt => attempt.errorCode === 'authentication-unconfirmed'))) controller.abort()
+  }
+  const report = await f.clock.finish(runParallelFetch(config, f.dependencies))
+  assert.equal(observationCalls, 0)
+  assert.equal(report.errorCode, 'authentication-unconfirmed')
+  assert.equal(report.trials[0].state, 'error')
+  assert.deepEqual(f.reads.map(event => event.page), [1, 7])
+  assert.deepEqual(f.closed, [1])
+})
+
+test('a running passive observation receives the external cancellation signal', async () => {
+  const controller = new AbortController()
+  const f = fixture({ outcome: event => {
+    if (event.page === 7) throw new ParallelFetchReadError('authentication-unconfirmed', 200)
+    return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+  } })
+  f.dependencies.signal = controller.signal
+  const createReader = f.dependencies.createReader
+  let calls = 0
+  f.dependencies.createReader = async (worker, target, signal) => ({
+    ...await createReader(worker, target, signal), observeAfterStop: async diagnosticSignal => {
+      calls += 1
+      assert.equal(diagnosticSignal, controller.signal)
+      controller.abort()
+      await f.clock.wait(30000, diagnosticSignal)
+      return undefined
+    },
+  })
+  const report = await f.clock.finish(runParallelFetch(config, f.dependencies))
+  assert.equal(calls, 1)
+  assert.equal(controller.signal.aborted, true)
+  assert.equal(report.errorCode, 'authentication-unconfirmed')
+  assert.equal(report.trials[0].totalMs, report.trials[0].preparationMs! + report.trials[0].measurementMs!)
+  assert.deepEqual(f.closed, [1])
+})
+
+test('preparation failures freeze preparation time before passive observation and never begin measurement', async () => {
+  const initial: ParallelFetchReadDiagnostics = { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: true }
+  const f = fixture({ outcome: () => { throw new ParallelFetchReadError('authentication-unconfirmed', 200, initial) } })
+  const createReader = f.dependencies.createReader
+  f.dependencies.createReader = async (worker, target, signal) => ({
+    ...await createReader(worker, target, signal), observeAfterStop: async diagnosticSignal => {
+      await f.clock.wait(30000, diagnosticSignal)
+      return initial
+    },
+  })
+  const report = await f.clock.finish(runParallelFetch(config, f.dependencies))
+  assert.equal(report.errorCode, 'authentication-unconfirmed')
+  assert.equal(report.trials[0].preparationMs, 12000)
+  assert.equal(report.trials[0].measurementMs, null)
+  assert.equal(report.trials[0].totalMs, 42000)
+  assert.equal(report.trials[0].attempts[0].durationMs, 12000)
+  assert.deepEqual(f.reads.map(event => event.page), [1])
+  assert.deepEqual(f.closed, [1])
+})
+
+test('other fatal errors never invoke an available post-stop observer', async () => {
+  let calls = 0
+  const f = fixture({ outcome: event => {
+    if (event.page === 7) throw new ParallelFetchReadError('human-verification', 403)
+    return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+  } })
+  const createReader = f.dependencies.createReader
+  f.dependencies.createReader = async (worker, target, signal) => ({
+    ...await createReader(worker, target, signal), observeAfterStop: async () => { calls += 1; return undefined },
+  })
+  const report = await f.clock.finish(runParallelFetch(config, f.dependencies))
+  assert.equal(calls, 0)
+  assert.equal(report.errorCode, 'human-verification')
+  assert.deepEqual(f.reads.map(event => event.page), [1, 7])
 })
 
 test('cancellation interrupts active and queued reads and closes every created reader', async () => {

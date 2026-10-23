@@ -5,6 +5,7 @@ import type { Page } from 'playwright'
 import { createMrDistributionPageReader, MrDistributionDomError, observeMrDistributionDom } from './mr-distribution-dom.ts'
 import type { MrDistributionDomObservation, MrDistributionPageReaderOptions } from './mr-distribution-dom.ts'
 import { mrDistributionPageUrl } from './mr-distribution-collector.ts'
+import type { DistributionPageObservationSnapshot } from './distribution-page-observation.ts'
 
 type Node = {
   innerText: string; textContent: string; parentElement: Node | null; value: string; selectedOptions: Node[]
@@ -120,7 +121,7 @@ function browser(configuration: {
   } as unknown as Page
   const reader = createMrDistributionPageReader(fake, { now: () => clock,
     wait: async ms => { waits.push(ms); clock += ms }, ...configuration.options })
-  return { reader, requests, waits, evaluations: () => evaluations, elapsed: () => clock }
+  return { reader, fake, requests, waits, evaluations: () => evaluations, elapsed: () => clock }
 }
 const errorCode = (code: string) => (error: unknown) => error instanceof MrDistributionDomError && error.code === code
 
@@ -208,4 +209,93 @@ test('a rendered challenge stops after one observation before URL or hydration r
   assert.equal(setup.evaluations(), 1)
   assert.equal(setup.elapsed(), 0)
   assert.equal(setup.reader.getDiagnostics().successfulReadCount, 0)
+})
+
+test('passive MR DOM observation leaves scroll position unchanged and does not wait', async t => {
+  dom(t)
+  window.scrollTo = () => { assert.fail('passive observation must not scroll') }
+  t.mock.method(globalThis, 'setTimeout', (() => { assert.fail('passive observation must not settle the page') }) as typeof setTimeout)
+  const value = await observeMrDistributionDom({ salt: 'passive-capture', readOnly: true })
+  assert.equal(value.authenticationEvidence, 'logout-control')
+  assert.equal(value.entries?.length, 2)
+})
+
+test('each existing MR fetch poll emits only normalized safe evidence and callback errors cannot affect acceptance', async () => {
+  const snapshots: DistributionPageObservationSnapshot[] = []
+  const setup = browser({ observe: (page, count) => count === 1
+    ? { ...observation(page), signedIn: null, authenticationEvidence: 'private-raw-value', loginRequiredHeading: 'private-heading', entries: null } as unknown as MrDistributionDomObservation
+    : count === 2 ? { ...observation(page), signedIn: false, authenticationEvidence: 'login-control' } : observation(page),
+  options: { onObservation: snapshot => { snapshots.push(snapshot); throw new Error('private-callback-error') } } })
+  await setup.reader.fetchPage(1)
+  assert.deepEqual(snapshots, [
+    { authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: false },
+    { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: true },
+    { authenticationEvidence: 'logout-control', loginRequiredHeading: false, rankingReadable: true },
+  ])
+  assert.equal(setup.evaluations(), snapshots.length)
+  assert.equal(setup.requests.length, 1)
+  assert.equal(setup.reader.getDiagnostics().successfulReadCount, 1)
+  assert.equal(setup.elapsed(), 500)
+})
+
+test('passive MR samples after stop ignore the collection abort and preserve the failed attempt without navigation', async t => {
+  const controller = new AbortController()
+  const snapshots: DistributionPageObservationSnapshot[] = []
+  let recovered = false
+  const setup = browser({ observe: page => ({ ...observation(page), ...(page === 1 || recovered ? {}
+    : { signedIn: false, authenticationEvidence: 'login-control' as const }) }),
+  options: { signal: controller.signal, onObservation: snapshot => { snapshots.push(snapshot) } } })
+  await setup.reader.fetchPage(1)
+  await assert.rejects(setup.reader.fetchPage(3), errorCode('authentication-unconfirmed'))
+  const diagnostics = setup.reader.getDiagnostics(), elapsed = setup.elapsed(), emitted = snapshots.length
+  const evaluations = setup.evaluations()
+  controller.abort()
+  recovered = true
+  const evaluate = setup.fake.evaluate.bind(setup.fake)
+  t.mock.method(setup.fake, 'evaluate', (async (fn: unknown, input: unknown) => {
+    assert.equal(fn, observeMrDistributionDom)
+    assert.equal((input as { readOnly?: boolean }).readOnly, true)
+    return evaluate(fn as never, input as never)
+  }) as typeof setup.fake.evaluate)
+  assert.deepEqual(await setup.reader.observeCurrentPage(3), {
+    authenticationEvidence: 'logout-control', loginRequiredHeading: false, rankingReadable: true,
+  })
+  assert.deepEqual(setup.reader.getDiagnostics(), diagnostics)
+  assert.equal(setup.elapsed(), elapsed)
+  assert.equal(snapshots.length, emitted)
+  assert.equal(setup.evaluations(), evaluations + 1)
+  assert.deepEqual(setup.requests, [mrDistributionPageUrl(1), mrDistributionPageUrl(3)])
+  await assert.rejects(setup.reader.fetchPage(3), errorCode('cancelled'))
+})
+
+test('passive MR readability reuses URL, known page size, current Act, controls, counters, order and duplicate validation', async t => {
+  let patch: Partial<MrDistributionDomObservation> = {}
+  const setup = browser({ observe: page => ({ ...observation(page), ...patch }) })
+  await setup.reader.fetchPage(1)
+  await setup.reader.fetchPage(3)
+  const diagnostics = setup.reader.getDiagnostics()
+  for (const invalid of [
+    { conditionsMatch: false }, { currentActMatch: false }, { selectedPage: 2 },
+    { range: { from: 7, to: 9, total: 43 } }, { entries: observation(3).entries!.slice(0, 2) },
+    { entries: observation(3).entries!.map(entry => ({ ...entry, accountKey: 'a'.repeat(64) })) },
+    { entries: [...observation(3).entries!].reverse() },
+  ] satisfies Partial<MrDistributionDomObservation>[]) {
+    patch = invalid
+    assert.equal((await setup.reader.observeCurrentPage(3)).rankingReadable, false)
+  }
+  patch = { authenticationEvidence: 'private-raw-value', loginRequiredHeading: 'private-raw-heading' } as unknown as Partial<MrDistributionDomObservation>
+  assert.deepEqual(await setup.reader.observeCurrentPage(3), { authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: true })
+  t.mock.method(setup.fake, 'url', () => mrDistributionPageUrl(3).replace('season_type=1', 'season_type=2'))
+  assert.equal((await setup.reader.observeCurrentPage(3)).rankingReadable, false)
+  assert.deepEqual(setup.reader.getDiagnostics(), diagnostics)
+  assert.equal(setup.requests.length, 2)
+})
+
+test('passive MR observation sanitizes browser errors and invalid input causes no navigation', async () => {
+  const setup = browser({ observe: () => { throw new Error('private-cookie-error') } })
+  await assert.rejects(setup.reader.observeCurrentPage(1), error => error instanceof MrDistributionDomError
+    && error.code === 'read-failed' && !error.message.includes('private-cookie-error'))
+  await assert.rejects(setup.reader.observeCurrentPage(0), errorCode('invalid-request'))
+  assert.equal(setup.requests.length, 0)
+  assert.equal(setup.reader.getDiagnostics().requestCount, 0)
 })

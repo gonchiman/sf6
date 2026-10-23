@@ -63,7 +63,7 @@ export function createParallelFetchReportWriter(root = ROOT): (report: ParallelF
         }
       }
       await ancestors(directory)
-      const text = `${JSON.stringify(report, null, 2)}\n`
+      const text = `${JSON.stringify(report)}\n`
       if (Buffer.byteLength(text) > 1024 * 1024) throw new Error()
       const path = resolve(directory, `parallel-fetch-${report.runId}.json`)
       const handle = await open(path, 'wx', 0o600)

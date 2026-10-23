@@ -1,8 +1,12 @@
 import { PARALLEL_FETCH_ERRORS } from '../types/parallelFetch.ts'
-import type { ParallelFetchAttempt, ParallelFetchConcurrency, ParallelFetchConfig, ParallelFetchErrorCode, ParallelFetchReadDiagnostics,
+import type { ParallelFetchAttempt, ParallelFetchAuthenticationEvidence, ParallelFetchConcurrency, ParallelFetchConfig,
+  ParallelFetchErrorCode, ParallelFetchNetworkEvent, ParallelFetchReadDiagnostics, ParallelFetchReadTrace,
   ParallelFetchReport, ParallelFetchTrial, ParallelFetchWorker } from '../types/parallelFetch.ts'
 
 export const PARALLEL_FETCH_MAX_ATTEMPTS = 200
+export const PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS = 80
+export const PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS = 80
+export const PARALLEL_FETCH_MAX_POST_STOP_MS = 35000
 export const DEFAULT_PARALLEL_FETCH_CONFIG: ParallelFetchConfig = {
   target: 'lp', startPage: 1, pageCount: 20, concurrencies: [1, 2], repetitions: 1, intervalMs: 5000,
 }
@@ -15,8 +19,8 @@ function integer(value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): number
   if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) return invalid()
   return value as number
 }
-function duration(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 7 * 86400000) return invalid()
+function duration(value: unknown, max = 7 * 86400000): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > max) return invalid()
   return value
 }
 function oneOf<T extends string | number>(value: unknown, allowed: readonly T[]): T {
@@ -35,17 +39,52 @@ function list(value: unknown, max: number): unknown[] {
   if (!Array.isArray(value) || value.length > max) return invalid()
   return value
 }
+function booleanOrNull(value: unknown): boolean | null {
+  return value === null || typeof value === 'boolean' ? value : invalid()
+}
+function authenticationEvidence(value: unknown): ParallelFetchAuthenticationEvidence {
+  return value === null ? null : oneOf(value, ['logout-control', 'login-control', 'conflicting-controls', 'no-control'] as const)
+}
+function parseReadTrace(value: unknown): ParallelFetchReadTrace {
+  const input = object(value)
+  const result: ParallelFetchReadTrace = {
+    observations: list(input.observations, PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS).map(value => {
+      const item = object(value)
+      return { elapsedMs: duration(item.elapsedMs), phase: oneOf(item.phase, ['read', 'after-stop']),
+        authenticationEvidence: authenticationEvidence(item.authenticationEvidence),
+        loginRequiredHeading: booleanOrNull(item.loginRequiredHeading), rankingReadable: booleanOrNull(item.rankingReadable),
+        humanVerification: booleanOrNull(item.humanVerification) }
+    }),
+    network: list(input.network, PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS).map(value => {
+      const item = object(value)
+      const event: ParallelFetchNetworkEvent = {
+        elapsedMs: duration(item.elapsedMs), phase: oneOf(item.phase, ['read', 'after-stop']),
+        kind: oneOf(item.kind, ['http-error', 'request-failed']),
+        resource: oneOf(item.resource, ['document', 'xhr', 'fetch', 'script', 'stylesheet', 'image', 'other']),
+        site: oneOf(item.site, ['buckler', 'capcom-auth', 'other']),
+        status: item.status === null ? null : integer(item.status, 400, 599),
+      }
+      if ((event.kind === 'request-failed') !== (event.status === null)) return invalid()
+      return event
+    }),
+    droppedObservations: integer(input.droppedObservations), droppedNetworkEvents: integer(input.droppedNetworkEvents),
+  }
+  if (input.postStop !== undefined) {
+    const postStop = object(input.postStop)
+    result.postStop = { durationMs: duration(postStop.durationMs, PARALLEL_FETCH_MAX_POST_STOP_MS),
+      outcome: oneOf(postStop.outcome, ['observed', 'cancelled', 'page-unavailable', 'human-verification', 'not-run']) }
+  }
+  return result
+}
 export function parseParallelFetchReadDiagnostics(value: unknown): ParallelFetchReadDiagnostics {
   const input = object(value)
-  function booleanOrNull(value: unknown): boolean | null {
-    return value === null || typeof value === 'boolean' ? value : invalid()
-  }
-  return {
-    authenticationEvidence: input.authenticationEvidence === null ? null : oneOf(input.authenticationEvidence,
-      ['logout-control', 'login-control', 'conflicting-controls', 'no-control'] as const),
+  const result: ParallelFetchReadDiagnostics = {
+    authenticationEvidence: authenticationEvidence(input.authenticationEvidence),
     loginRequiredHeading: booleanOrNull(input.loginRequiredHeading),
     rankingReadable: booleanOrNull(input.rankingReadable),
   }
+  if (input.trace !== undefined) result.trace = parseReadTrace(input.trace)
+  return result
 }
 export function plannedParallelFetchAttempts(config: ParallelFetchConfig): number {
   return config.repetitions * config.concurrencies.reduce((sum, concurrency) => sum + config.pageCount + concurrency, 0)

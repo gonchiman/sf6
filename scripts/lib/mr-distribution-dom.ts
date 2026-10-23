@@ -3,6 +3,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import type { Page } from 'playwright'
 import { mrDistributionPageUrl } from './mr-distribution-collector.ts'
 import type { MrDistributionEntry, MrDistributionPage } from './mr-distribution-collector.ts'
+import { distributionPageObservationSnapshot } from './distribution-page-observation.ts'
+import type { DistributionPageObservationSnapshot } from './distribution-page-observation.ts'
 
 export type MrDistributionDomErrorCode = 'invalid-request' | 'concurrent-read' | 'first-page-required' | 'cancelled'
   | 'http-denied' | 'server-error' | 'http-error' | 'maintenance' | 'login-required' | 'authentication-unconfirmed'
@@ -31,9 +33,11 @@ export interface MrDistributionDomObservation {
 }
 
 /** Rendered DOM only. No names, plain profile IDs, HTML, private storage or JS app state leave this function. */
-export async function observeMrDistributionDom(input: { salt: string }): Promise<MrDistributionDomObservation> {
-  window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
-  await new Promise<void>(resolve => setTimeout(resolve, 30))
+export async function observeMrDistributionDom(input: { salt: string; readOnly?: boolean }): Promise<MrDistributionDomObservation> {
+  if (!input.readOnly) {
+    window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
+    await new Promise<void>(resolve => setTimeout(resolve, 30))
+  }
   const visible = (element: Element): boolean => {
     const rect = element.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return false
@@ -104,6 +108,8 @@ export interface MrDistributionPageReaderDiagnostics {
 }
 export interface MrDistributionPageReaderOptions {
   signal?: AbortSignal
+  /** Receives safe evidence from each existing fetch poll; observer errors cannot change collection. */
+  onObservation?: (snapshot: DistributionPageObservationSnapshot) => void
   minIntervalMs?: number
   timeoutMs?: number
   allowReadablePagesAfterSignIn?: boolean
@@ -172,10 +178,13 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
         check()
         latest = await page.evaluate(observeMrDistributionDom, { salt })
         check()
-        diagnostics.lastAuthenticationEvidence = latest.authenticationEvidence
-        diagnostics.lastLoginRequiredHeading = latest.loginRequiredHeading
         const valid = layout(latest, pageNumber, diagnostics.pageSize)
-        diagnostics.lastRankingReadable = urlMatches(page.url(), pageNumber) && valid !== null
+        const snapshot = distributionPageObservationSnapshot(latest.authenticationEvidence, latest.loginRequiredHeading,
+          urlMatches(page.url(), pageNumber) && valid !== null)
+        diagnostics.lastAuthenticationEvidence = snapshot.authenticationEvidence
+        diagnostics.lastLoginRequiredHeading = snapshot.loginRequiredHeading
+        diagnostics.lastRankingReadable = snapshot.rankingReadable
+        try { options.onObservation?.(snapshot) } catch { /* Diagnostics must not affect acceptance or stopping. */ }
         if (latest.maintenance) throw new MrDistributionDomError('maintenance')
         if (latest.humanVerificationRequired) throw new MrDistributionDomError('human-verification')
         if (!urlMatches(page.url(), pageNumber)) throw new MrDistributionDomError('page-mismatch')
@@ -208,5 +217,20 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
       throw new MrDistributionDomError(error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'read-failed')
     } finally { running = false }
   }
-  return { fetchPage, getDiagnostics: (): MrDistributionPageReaderDiagnostics => ({ ...diagnostics }) }
+  /** One passive sample, including after this reader's collection signal was aborted. */
+  async function observeCurrentPage(pageNumber: number): Promise<DistributionPageObservationSnapshot> {
+    if (!Number.isSafeInteger(pageNumber) || pageNumber < 1) throw new MrDistributionDomError('invalid-request')
+    if (running) throw new MrDistributionDomError('concurrent-read')
+    running = true
+    try {
+      const value = await page.evaluate(observeMrDistributionDom, { salt, readOnly: true })
+      if (value.humanVerificationRequired) throw new MrDistributionDomError('human-verification')
+      return distributionPageObservationSnapshot(value.authenticationEvidence, value.loginRequiredHeading,
+        urlMatches(page.url(), pageNumber) && layout(value, pageNumber, diagnostics.pageSize) !== null)
+    } catch (error) {
+      if (error instanceof MrDistributionDomError) throw error
+      throw new MrDistributionDomError(error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'read-failed')
+    } finally { running = false }
+  }
+  return { fetchPage, observeCurrentPage, getDiagnostics: (): MrDistributionPageReaderDiagnostics => ({ ...diagnostics }) }
 }

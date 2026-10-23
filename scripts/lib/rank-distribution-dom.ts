@@ -3,6 +3,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import type { Page } from 'playwright'
 import { rankBoundaryPageUrl, RANK_BOUNDARY_SOURCE_URL } from './rank-distribution-boundaries.ts'
 import type { RankBoundaryEntry, RankBoundaryPage } from './rank-distribution-boundaries.ts'
+import { distributionPageObservationSnapshot } from './distribution-page-observation.ts'
+import type { DistributionPageObservationSnapshot } from './distribution-page-observation.ts'
 
 export type RankDistributionDomErrorCode = 'invalid-request' | 'concurrent-read' | 'first-page-required'
   | 'cancelled' | 'http-denied' | 'http-error' | 'server-error' | 'maintenance' | 'login-required'
@@ -41,11 +43,13 @@ export interface RankDistributionDomObservation {
  * scrolling lets the site's lazy images load. No names, raw IDs, HTML, browser
  * storage, application state or network responses leave this observation.
  */
-export async function observeRankDistributionDom(input: { salt: string }): Promise<RankDistributionDomObservation> {
+export async function observeRankDistributionDom(input: { salt: string; readOnly?: boolean }): Promise<RankDistributionDomObservation> {
   // A previous image pass (or restored navigation scroll) can leave the page at
   // the bottom. Observe the ordinary header at a consistent scroll position.
-  window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
-  await new Promise<void>(resolve => setTimeout(resolve, 30))
+  if (!input.readOnly) {
+    window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
+    await new Promise<void>(resolve => setTimeout(resolve, 30))
+  }
   const visible = (element: Element): boolean => {
     const rect = element.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return false
@@ -102,8 +106,10 @@ export async function observeRankDistributionDom(input: { salt: string }): Promi
     if (ranks.length !== 1 || points.length !== 1 || !/^\d+位$/.test(text(ranks[0]))
       || !/^\d+LP$/.test(text(points[0])) || icons.length !== 1) return { ...base, rankIcons: 'pending', entries: null }
     // This changes scroll position only; it does not change the image's attributes.
-    icons[0].scrollIntoView({ block: 'center', inline: 'nearest' })
-    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    if (!input.readOnly) {
+      icons[0].scrollIntoView({ block: 'center', inline: 'nearest' })
+      await new Promise<void>(resolve => setTimeout(resolve, 20))
+    }
     const images = [...icons[0].querySelectorAll('img')].filter(visible) as HTMLImageElement[]
     if (images.length !== 1) return { ...base, rankIcons: 'unsupported', entries: null }
     const image = images[0]
@@ -169,6 +175,8 @@ export interface RankDistributionPageReaderDiagnostics {
 
 export interface RankDistributionPageReaderOptions {
   signal?: AbortSignal
+  /** Receives safe evidence from each existing fetch poll; observer errors cannot change collection. */
+  onObservation?: (snapshot: DistributionPageObservationSnapshot) => void
   /** Recording a changing total is only for the explicitly labelled interval estimate. */
   totalCountPolicy?: 'stable' | 'record'
   /** Estimate-only opt-in; requires a signed-in complete first page in this reader. */
@@ -257,11 +265,13 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
         checkCancelled()
         latest = await page.evaluate(observeRankDistributionDom, { salt })
         checkCancelled()
-        diagnostics.lastAuthenticationEvidence = ['logout-control', 'login-control', 'conflicting-controls', 'no-control']
-          .includes(latest.authenticationEvidence ?? '') ? latest.authenticationEvidence! : null
-        diagnostics.lastLoginRequiredHeading = typeof latest.loginRequiredHeading === 'boolean' ? latest.loginRequiredHeading : null
         const layout = readableLayout(latest, pageNumber, diagnostics.pageSize)
-        diagnostics.lastRankingReadable = confirmedUrl(page.url(), pageNumber) && layout !== null
+        const snapshot = distributionPageObservationSnapshot(latest.authenticationEvidence, latest.loginRequiredHeading,
+          confirmedUrl(page.url(), pageNumber) && layout !== null)
+        diagnostics.lastAuthenticationEvidence = snapshot.authenticationEvidence
+        diagnostics.lastLoginRequiredHeading = snapshot.loginRequiredHeading
+        diagnostics.lastRankingReadable = snapshot.rankingReadable
+        try { options.onObservation?.(snapshot) } catch { /* Diagnostics must not affect acceptance or stopping. */ }
         if (latest.maintenance) throw new RankDistributionDomError('maintenance')
         // A login heading can precede authentication hydration in the initial
         // render. Wait only within this navigation's existing DOM deadline.
@@ -306,8 +316,23 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
       throw new RankDistributionDomError(error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'read-failed')
     } finally { running = false }
   }
+  /** One passive sample, including after this reader's collection signal was aborted. */
+  async function observeCurrentPage(pageNumber: number): Promise<DistributionPageObservationSnapshot> {
+    if (!Number.isSafeInteger(pageNumber) || pageNumber < 1) throw new RankDistributionDomError('invalid-request')
+    if (running) throw new RankDistributionDomError('concurrent-read')
+    running = true
+    try {
+      const value = await page.evaluate(observeRankDistributionDom, { salt, readOnly: true })
+      return distributionPageObservationSnapshot(value.authenticationEvidence, value.loginRequiredHeading,
+        confirmedUrl(page.url(), pageNumber) && readableLayout(value, pageNumber, diagnostics.pageSize) !== null)
+    } catch (error) {
+      if (error instanceof RankDistributionDomError) throw error
+      throw new RankDistributionDomError(error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'read-failed')
+    } finally { running = false }
+  }
   return {
     fetchPage,
+    observeCurrentPage,
     getDiagnostics: (): RankDistributionPageReaderDiagnostics => ({ ...diagnostics,
       observedRankIds: [...diagnostics.observedRankIds], tailRankIds: [...diagnostics.tailRankIds] }),
   }

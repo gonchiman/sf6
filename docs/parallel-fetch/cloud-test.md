@@ -4,7 +4,8 @@
 
 ## 実行条件
 
-既存の登録済み `rank-distribution-cloud-probe.yml` を、専用ブランチ `codex/buckler-cloud-collection-parallel-20261021` から手動実行する。`main`へのworkflow登録やアプリ配信は不要。
+現在は `parallel-fetch-test.yml` を `main` から手動実行する。アプリの「GitHub Actions」で開始すると、実行番号の照合と結果の取り込みまで行う。取得コードの変更をクラウドで試すには、先にmainへ取り込み、pushする必要がある。
+以下の `collection` 入力は初期検証用 `rank-distribution-cloud-probe.yml` の名称。現行workflowの `mode` はそれぞれ `serial` と `compare`。
 
 | collection入力 | 対象 | 並列数 | 繰り返し | 通常の読取回数 |
 | --- | --- | --- | --- | --- |
@@ -18,6 +19,8 @@
 既存の `BUCKLER_WEEKLY_SESSION` Secretを取得ステップだけに渡す。CLIで直ちに環境変数から削除し、既存の検証処理を通した保存状態をメモリ内で一度だけブラウザーへ渡す。新たな認証の送信、ファイルへの保存、自動ログイン、ロボット認証の操作は行わない。
 
 結果は既存のレポート形式で `.local/parallel-fetch/parallel-fetch-cloud-<run_id>-<attempt>-<serial|compare>.json` に保存する。保存と形式検証に成功した単一JSONだけをActions artifactとして7日保持する。停止・失敗した場合も、その時点までの安全な数値と判定を保存する。秘密情報・プレイヤーの名前やID・HTMLは含めない。
+
+停止前後の表示変化と分類済みの通信失敗も同じJSONに含む。認証確認不能で停止した場合は、取得を再開せず最大30秒の追加観察を行う。詳しい記録項目・上限は [停止前後の診断記録](README.md#停止前後の診断記録) を参照。ローカルとActionsで同じ記録処理を使う。
 
 ## 再利用と検証
 
