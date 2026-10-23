@@ -102,6 +102,58 @@ test('uses the same exact target pages, fresh readers and one global interval ac
   assert.deepEqual(parseParallelFetchReport(report), report)
 })
 
+test('three and eight workers share paced starts and complete every page exactly once', async () => {
+  const f = fixture()
+  const report = await f.clock.finish(runParallelFetch({ ...config, concurrencies: [1, 3, 8],
+    intervalMs: 3000, intervalMsList: [3000] }, f.dependencies))
+  assert.equal(report.state, 'complete')
+  assert.deepEqual(report.trials.map(trial => trial.concurrency), [1, 3, 8])
+  assert.equal(f.reads.length, 72)
+  assert.equal(f.peak(), 4, '3-second starts and 12-second reads limit overlap even with eight workers')
+  assert.ok(f.clock.time < 600000)
+  assert.deepEqual(f.closed, Array.from({ length: 12 }, (_, index) => index + 1))
+  const targets = Array.from({ length: 20 }, (_, index) => index + config.startPage)
+  for (const trial of report.trials) {
+    const workerIds = Array.from({ length: trial.concurrency }, (_, index) => index + 1)
+    assert.deepEqual(trial.workers.map(worker => worker.id), workerIds)
+    assert.deepEqual(trial.attempts.filter(attempt => attempt.phase === 'prepare').map(attempt => attempt.worker), workerIds)
+    const measured = trial.attempts.filter(attempt => attempt.phase === 'measure')
+    assert.deepEqual(measured.map(attempt => attempt.page).sort((a, b) => a - b), targets)
+    assert.deepEqual([...new Set(measured.map(attempt => attempt.worker))].sort((a, b) => a - b), workerIds)
+    assert.deepEqual(trial.completedPages, targets)
+  }
+  for (let index = 1; index < f.reads.length; index++) {
+    assert.ok(f.reads[index].started - f.reads[index - 1].started >= 3000)
+  }
+  assert.deepEqual(parseParallelFetchReport(report), report)
+})
+
+test('a fatal read cancels active and queued work with eight workers', async () => {
+  let failureAt = -1
+  const f = fixture({ outcome: event => {
+    if (event.instance === 2 && event.page === 7) {
+      failureAt = f.clock.time
+      throw new ParallelFetchReadError('http-denied', 429)
+    }
+    return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+  } })
+  const report = await f.clock.finish(runParallelFetch({ ...config, concurrencies: [1, 8],
+    intervalMs: 3000, intervalMsList: [3000] }, f.dependencies))
+  assert.equal(report.state, 'error')
+  assert.equal(report.errorCode, 'http-denied')
+  assert.equal(report.trials[0].state, 'complete')
+  assert.equal(report.trials[1].state, 'error')
+  assert.equal(report.trials[1].workers.length, 8)
+  assert.deepEqual(report.trials[1].completedPages, [])
+  assert.ok(report.trials[1].attempts.some(attempt => attempt.errorCode === 'cancelled'))
+  assert.ok(failureAt >= 0)
+  assert.ok(f.reads.every(event => event.started < failureAt))
+  assert.equal(f.active(), 0)
+  assert.ok(f.signals.every(signal => signal.aborted))
+  assert.deepEqual(f.closed, Array.from({ length: 9 }, (_, index) => index + 1))
+  assert.deepEqual(parseParallelFetchReport(report), report)
+})
+
 test('interval conditions share one queue, use actual 3-second pacing, and pass each condition to fresh readers', async () => {
   const f = fixture({ latency: 1000 })
   const originalCreate = f.dependencies.createReader

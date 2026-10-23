@@ -1,13 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { DEFAULT_PARALLEL_FETCH_CONFIG, parseParallelFetchConfig, parseParallelFetchReadDiagnostics, parseParallelFetchReport,
-  PARALLEL_FETCH_MAX_POST_STOP_MS, PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS, PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS,
+import { DEFAULT_PARALLEL_FETCH_CONFIG, parseParallelFetchConcurrencyInput, parseParallelFetchConfig, parseParallelFetchReadDiagnostics, parseParallelFetchReport,
+  PARALLEL_FETCH_MAX_CONCURRENCY, PARALLEL_FETCH_MAX_POST_STOP_MS, PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS, PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS,
   minimumPlannedWaitMs, parallelFetchIntervals, plannedParallelFetchAttempts, summarizeParallelFetch } from './parallelFetch.ts'
 import type { ParallelFetchReadDiagnostics, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
 
 const startedAt = '2026-10-20T00:00:00.000Z', finishedAt = '2026-10-20T00:10:00.000Z'
-function fixture(): ParallelFetchReport {
+function fixture(concurrencies = DEFAULT_PARALLEL_FETCH_CONFIG.concurrencies): ParallelFetchReport {
   const config = structuredClone(DEFAULT_PARALLEL_FETCH_CONFIG)
+  config.concurrencies = [...concurrencies]
   const trials: ParallelFetchTrial[] = config.concurrencies.map(concurrency => ({
     concurrency, repetition: 1, state: 'complete', startedAt, finishedAt, preparationMs: 10000,
     measurementMs: concurrency === 1 ? 200000 : 100000, totalMs: concurrency === 1 ? 210000 : 110000,
@@ -18,7 +19,7 @@ function fixture(): ParallelFetchReport {
       ...Array.from({ length: 20 }, (_, index) => ({ worker: index % concurrency + 1, page: index + 1, phase: 'measure' as const,
         startedAt, durationMs: 1000, httpStatus: 200, errorCode: null, totalCount: 2000, totalPages: 100 })),
     ], workers: Array.from({ length: concurrency }, (_, index) => ({ id: index + 1, page: null, state: 'complete' as const,
-      completedPages: 20 / concurrency })), errorCode: null,
+      completedPages: Math.ceil((20 - index) / concurrency) })), errorCode: null,
   }))
   return { schemaVersion: 1, runId: 'test-run', config, state: 'complete', startedAt, finishedAt, trials, errorCode: null }
 }
@@ -43,6 +44,76 @@ test('bounded defaults include each worker preparation in the planned count', ()
   for (const patch of [{ intervalMs: 0 }, { startPage: -1 }, { pageCount: 1000 }, { concurrencies: [] }, { concurrencies: [2] },
     { concurrencies: [1, 1] }, { concurrencies: [2, 1] }, { concurrencies: [1, 4, 2] }, { target: 'https://other.test' }]) {
     assert.throws(() => parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, ...patch }))
+  }
+})
+
+test('comma-separated concurrency input normalizes whitespace and order within the worker limit', () => {
+  assert.equal(PARALLEL_FETCH_MAX_CONCURRENCY, 8)
+  assert.deepEqual(parseParallelFetchConcurrencyInput(' 8, 3 , 1 '), [1, 3, 8])
+  assert.deepEqual(parseParallelFetchConcurrencyInput('1'), [1])
+  assert.deepEqual(parseParallelFetchConcurrencyInput('8,7,6,5,4,3,2,1'), [1, 2, 3, 4, 5, 6, 7, 8])
+})
+
+test('concurrency input rejects missing values, duplicates, missing baseline and nondecimal integers', () => {
+  for (const input of ['', ' ', ',1', '1,', '1,,3', '1, ,3', '1,1', '1,3, 3', '3,8',
+    '0,1', '1,9', '1,-2', '1,+2', '1,2.0', '1,2.5', '1,2e0', '1,0x2', '1,02', '1,NaN',
+    '1,Infinity', '1 3', '1;3', '1,三', '1,9007199254740992', '1,2,3,4,5,6,7,8,1']) {
+    assert.throws(() => parseParallelFetchConcurrencyInput(input), Error, input)
+  }
+  assert.throws(() => parseParallelFetchConcurrencyInput('2'), /並列数1/)
+  assert.throws(() => parseParallelFetchConcurrencyInput('1,1'), /重複/)
+  assert.throws(() => parseParallelFetchConcurrencyInput('1,9'), /1〜8/)
+})
+
+test('concurrency input rejects text beyond the 128-character UI limit before parsing', () => {
+  assert.deepEqual(parseParallelFetchConcurrencyInput('1,8'.padEnd(128)), [1, 8])
+  assert.throws(() => parseParallelFetchConcurrencyInput('1,8'.padEnd(129)), /128文字/)
+  assert.throws(() => parseParallelFetchConcurrencyInput('1,'.repeat(10000)), /128文字/)
+})
+
+test('numeric configs accept all eight workers while preserving canonical order and global limits', () => {
+  const all = { ...DEFAULT_PARALLEL_FETCH_CONFIG, concurrencies: [1, 2, 3, 4, 5, 6, 7, 8],
+    intervalMs: 3000, intervalMsList: [3000] }
+  const parsed = parseParallelFetchConfig(all)
+  assert.deepEqual(parsed, all)
+  assert.equal(plannedParallelFetchAttempts(parsed), 196)
+  assert.equal(minimumPlannedWaitMs(parsed), 585000)
+  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...all, concurrencies: [1, 2, 3], repetitions: 3 })), 198)
+  for (const concurrencies of [[1, 0], [1, 9], [1, 3.5], [1, Infinity], [1, NaN], [1, '3'],
+    [1, 8, 3], [1, 3, 3], [1, 2, 3, 4, 5, 6, 7, 8, 8]]) {
+    assert.throws(() => parseParallelFetchConfig({ ...all, concurrencies }))
+  }
+  const sparse = [1, 2, 3]
+  delete sparse[1]
+  assert.throws(() => parseParallelFetchConfig({ ...all, concurrencies: sparse }))
+  assert.throws(() => parseParallelFetchConfig({ ...all, pageCount: 50 }))
+  assert.throws(() => parseParallelFetchConfig({ ...all, repetitions: 3 }))
+  assert.throws(() => parseParallelFetchConfig({ ...all, intervalMs: 5000, intervalMsList: [5000] }))
+})
+
+test('both report versions accept eight conditions and keep trials, workers and attempts bounded', () => {
+  for (const schemaVersion of [1, 2] as const) {
+    const report = fixture([1, 2, 3, 4, 5, 6, 7, 8])
+    if (schemaVersion === 2) {
+      report.schemaVersion = 2
+      report.config.intervalMs = 3000
+      report.config.intervalMsList = [3000]
+      report.trials.forEach(trial => { trial.intervalMs = 3000 })
+    }
+    assert.deepEqual(parseParallelFetchReport(JSON.parse(JSON.stringify(report))), report)
+    assert.equal(report.trials.at(-1)!.workers.length, 8)
+    assert.deepEqual(summarizeParallelFetch(report).map(summary => summary.concurrency), report.config.concurrencies)
+    const tooManyTrials = structuredClone(report)
+    tooManyTrials.trials.push(structuredClone(report.trials.at(-1)!))
+    assert.throws(() => parseParallelFetchReport(tooManyTrials))
+    const tooManyWorkers = structuredClone(report)
+    tooManyWorkers.trials.at(-1)!.workers.push({ id: 9, page: null, state: 'complete', completedPages: 0 })
+    assert.throws(() => parseParallelFetchReport(tooManyWorkers))
+    const retry = { ...report.trials[0].attempts[0], errorCode: 'server-error' as const, httpStatus: 503, totalCount: null, totalPages: null }
+    report.trials[0].attempts.push(...Array.from({ length: 4 }, () => ({ ...retry })))
+    assert.deepEqual(parseParallelFetchReport(report), report)
+    report.trials[0].attempts.push({ ...retry })
+    assert.throws(() => parseParallelFetchReport(report))
   }
 })
 

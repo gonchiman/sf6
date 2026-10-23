@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { parseParallelFetchReport } from '../src/lib/parallelFetch.ts'
+import { parseParallelFetchConcurrencyInput, parseParallelFetchReport } from '../src/lib/parallelFetch.ts'
 import { cloudConfig, parseCloudIntervalOptions } from '../src/lib/parallelFetchCloud.ts'
 import { PARALLEL_FETCH_ERRORS } from '../src/types/parallelFetch.ts'
 import type { ParallelFetchErrorCode, ParallelFetchReport } from '../src/types/parallelFetch.ts'
@@ -29,7 +29,7 @@ node scripts/test-parallel-fetch-cloud.ts --interval-compare --intervals=5000,30
 
 --serial: LPの1〜20ページを並列数1で3回（事前確認を含め63取得予定）
 --compare: 同じ20ページを並列数1・2で各1回（事前確認を含め43取得予定）
---interval-compare: 10秒・5秒・3秒の選択と並列数1・2を組み合わせ、長い間隔から比較
+--interval-compare: 10秒・5秒・3秒の選択と並列数1〜8（1必須、カンマ区切り）を組み合わせ、長い間隔から比較
 固定テストの開始間隔は5秒。全条件合計200取得以内、最大10分。認証・チャレンジ検出時は停止します。
 指定のmain上の手動workflow、または既存の検証ブランチ・GitHub hosted Windows専用です。
 mainのworkflowでは PARALLEL_FETCH_REQUEST_ID に小文字のUUID v4を指定します。`
@@ -51,10 +51,11 @@ export function parseParallelFetchCloudArguments(args: string[]): { mode: Parall
   }
   if (args.length === 4 && args[0] === '--interval-compare'
     && /^--intervals=(?:10000|5000|3000)(?:,(?:10000|5000|3000)){0,2}$/.test(args[1])
-    && /^--concurrencies=[12](?:,[12])?$/.test(args[2]) && /^--repetitions=[13]$/.test(args[3])) {
+    && args[2].startsWith('--concurrencies=') && /^--repetitions=[13]$/.test(args[3])) {
     try {
       const options = parseCloudIntervalOptions({ intervalMsList: args[1].slice('--intervals='.length).split(',').map(Number),
-        concurrencies: args[2].slice('--concurrencies='.length).split(',').map(Number), repetitions: Number(args[3].slice('--repetitions='.length)) })
+        concurrencies: parseParallelFetchConcurrencyInput(args[2].slice('--concurrencies='.length)),
+        repetitions: Number(args[3].slice('--repetitions='.length)) })
       return { mode: 'interval-compare', options }
     } catch { /* Return the same bounded argument error without raw user input. */ }
   }

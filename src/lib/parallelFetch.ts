@@ -4,6 +4,7 @@ import type { ParallelFetchAttempt, ParallelFetchAuthenticationEvidence, Paralle
   ParallelFetchReport, ParallelFetchTrial, ParallelFetchWorker } from '../types/parallelFetch.ts'
 
 export const PARALLEL_FETCH_MAX_ATTEMPTS = 200
+export const PARALLEL_FETCH_MAX_CONCURRENCY = 8
 export const PARALLEL_FETCH_MAX_DURATION_MS = 10 * 60 * 1000
 export const PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS = 80
 export const PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS = 80
@@ -101,9 +102,26 @@ export function minimumPlannedWaitMs(config: ParallelFetchConfig): number {
   return parallelFetchIntervals(config).reduce((sum, intervalMs, index) =>
     sum + intervalMs * (attemptsPerInterval - (index === 0 ? 1 : 0)), 0)
 }
+export function parseParallelFetchConcurrencyInput(text: string): ParallelFetchConcurrency[] {
+  if (text.length > 128) throw new Error('並列数は128文字以内で入力してください。')
+  const tokens = text.split(',', PARALLEL_FETCH_MAX_CONCURRENCY + 1).map(token => token.trim())
+  if (tokens.length > PARALLEL_FETCH_MAX_CONCURRENCY) {
+    throw new Error(`並列数は${PARALLEL_FETCH_MAX_CONCURRENCY}個以内で指定してください。`)
+  }
+  const concurrencies = tokens.map(token => {
+    const value = Number(token)
+    if (!/^[1-9]\d*$/.test(token) || !Number.isSafeInteger(value) || value > PARALLEL_FETCH_MAX_CONCURRENCY) {
+      throw new Error(`並列数は1〜${PARALLEL_FETCH_MAX_CONCURRENCY}の整数をカンマで区切って入力してください。`)
+    }
+    return value
+  })
+  if (new Set(concurrencies).size !== concurrencies.length) throw new Error('並列数の重複を除いてください。')
+  if (!concurrencies.includes(1)) throw new Error('比較基準の並列数1を含めてください。')
+  return concurrencies.sort((a, b) => a - b)
+}
 export function parseParallelFetchConfig(value: unknown): ParallelFetchConfig {
   const input = object(value)
-  const concurrencies = list(input.concurrencies, 3).map(item => oneOf(item, [1, 2, 4] as const))
+  const concurrencies = Array.from(list(input.concurrencies, PARALLEL_FETCH_MAX_CONCURRENCY), item => integer(item, 1, PARALLEL_FETCH_MAX_CONCURRENCY))
   if (concurrencies[0] !== 1 || new Set(concurrencies).size !== concurrencies.length
     || concurrencies.some((item, index) => index > 0 && item < concurrencies[index - 1])) return invalid()
   const result: ParallelFetchConfig = {

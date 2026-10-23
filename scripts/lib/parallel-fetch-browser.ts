@@ -1,6 +1,7 @@
 import { lstat, readFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright'
+import { PARALLEL_FETCH_MAX_CONCURRENCY } from '../../src/lib/parallelFetch.ts'
 import { PARALLEL_FETCH_ERRORS } from '../../src/types/parallelFetch.ts'
 import type { ParallelFetchErrorCode, ParallelFetchInterval, ParallelFetchReadDiagnostics, ParallelFetchTarget } from '../../src/types/parallelFetch.ts'
 import { disableRankDistributionDiagnostics } from '../collect-rank-distribution.ts'
@@ -127,7 +128,7 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
   return {
     async createReader(workerId, target, signal, intervalMs = options.intervalMs) {
       if (![3000, 5000, 10000].includes(intervalMs)) throw new ParallelFetchReadError('invalid-request')
-      if (!Number.isSafeInteger(workerId) || workerId < 1 || workerId > 4 || !['lp', 'mr'].includes(target)) throw new ParallelFetchReadError('invalid-request')
+      if (!Number.isSafeInteger(workerId) || workerId < 1 || workerId > PARALLEL_FETCH_MAX_CONCURRENCY || !['lp', 'mr'].includes(target)) throw new ParallelFetchReadError('invalid-request')
       if (closed || options.signal.aborted || signal.aborted) throw new ParallelFetchReadError('cancelled')
       let page: Page
       try { page = await context.newPage() } catch { throw new ParallelFetchReadError(closed || signal.aborted ? 'cancelled' : 'browser-unavailable') }

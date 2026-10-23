@@ -82,6 +82,26 @@ test('one owned context has separate worker pages and rows never cross the adapt
   assert.deepEqual(f.stats(), { loaded: 1, launched: 1, browserClosed: 1, contextClosed: 1 })
 })
 
+test('LP and MR sessions support eight worker pages and reject a ninth before creating a page', async () => {
+  for (const target of ['lp', 'mr'] as const) {
+    const f = fixture(), controller = new AbortController()
+    const session = await createParallelFetchBrowserSession({ intervalMs: 3000, signal: controller.signal }, f.dependencies)
+    const readers = []
+    for (let workerId = 1; workerId <= 8; workerId++) {
+      readers.push(await session.createReader(workerId, target, controller.signal))
+    }
+    assert.equal(f.pages.length, 8)
+    assert.equal(new Set(f.pages).size, 8)
+    assert.deepEqual(await readers[7].readPage(1), { totalCount: 10000, totalPages: 500, httpStatus: 200 })
+    await assert.rejects(session.createReader(9, target, controller.signal), /invalid-request/)
+    assert.equal(f.pages.length, 8)
+    await Promise.all(readers.map(reader => reader.close()))
+    assert.deepEqual(f.pageCloses, Array(8).fill(1))
+    await session.close()
+    assert.deepEqual(f.stats(), { loaded: 1, launched: 1, browserClosed: 1, contextClosed: 1 })
+  }
+})
+
 test('each condition forwards its interval to both DOM readers while preserving the legacy default', async () => {
   const f = fixture(), controller = new AbortController()
   const session = await createParallelFetchBrowserSession({ intervalMs: 10000, signal: controller.signal }, f.dependencies)

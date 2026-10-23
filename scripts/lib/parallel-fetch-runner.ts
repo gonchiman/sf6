@@ -112,7 +112,7 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
     return reservation
   }
 
-  async function runTrial(concurrency: 1 | 2 | 4, repetition: number, intervalMs: ParallelFetchInterval): Promise<void> {
+  async function runTrial(concurrency: number, repetition: number, intervalMs: ParallelFetchInterval): Promise<void> {
     const trialStart = now()
     let measurementStart: number | null = null
     let measurementEnd: number | null = null

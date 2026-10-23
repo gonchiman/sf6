@@ -167,7 +167,10 @@ test('permanent workflow correlates requests, verifies dispatched code and expos
   const workflow = await readFile(new URL('../.github/workflows/parallel-fetch-test.yml', import.meta.url), 'utf8')
   assert.match(workflow, /^run-name: Parallel fetch \$\{\{ inputs\.request_id \}\}$/m)
   assert.match(workflow, /options: \['serial', 'compare', 'interval-compare'\]/)
-  assert.match(workflow, /options: \['1', '1,2'\]/)
+  assert.match(workflow, /concurrencies:\s+description: [^\n]+\s+required: true\s+type: string\s+default: '1,2'/)
+  assert.match(workflow, /parseParallelFetchCloudArguments\(e\.PARALLEL_TEST_MODE/)
+  assert.match(workflow, /PARALLEL_TEST_CONCURRENCIES: \$\{\{ inputs\.concurrencies \}\}/)
+  assert.doesNotMatch(workflow, /PARALLEL_TEST_CONCURRENCIES -cnotin/)
   assert.doesNotMatch(workflow, /^\s+(?:push|schedule|pull_request|workflow_call):/m)
   assert.match(workflow, /github\.repository == 'gonchiman\/sf6'.*github\.event_name == 'workflow_dispatch'.*github\.ref == 'refs\/heads\/main'/)
   assert.match(workflow, /group: rank-distribution-weekly-gonchiman-sf6/)
@@ -292,17 +295,33 @@ test('CLI help and disallowed invocations print neither secrets nor stack traces
 })
 
 const intervalArgs = ['--interval-compare', '--intervals=5000,3000', '--concurrencies=1,2', '--repetitions=1']
-test('interval CLI accepts only selected fixed values and rejects over-budget matrices', () => {
+test('interval CLI accepts bounded integer lists and rejects over-budget matrices', () => {
   assert.deepEqual(parseParallelFetchCloudArguments(intervalArgs), { mode: 'interval-compare',
     options: { intervalMsList: [5000, 3000], concurrencies: [1, 2], repetitions: 1 } })
+  assert.deepEqual(parseParallelFetchCloudArguments(intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies= 8, 1 ,3 '))),
+    { mode: 'interval-compare', options: { intervalMsList: [5000, 3000], concurrencies: [1, 3, 8], repetitions: 1 } })
+  assert.deepEqual(parseParallelFetchCloudArguments(['--interval-compare', '--intervals=3000', '--concurrencies=8,7,6,5,4,3,2,1', '--repetitions=1']),
+    { mode: 'interval-compare', options: { intervalMsList: [3000], concurrencies: [1, 2, 3, 4, 5, 6, 7, 8], repetitions: 1 } })
   for (const args of [['--interval-compare'], [...intervalArgs, '--url=other'],
     intervalArgs.map(arg => arg.replace('5000,3000', '5000,5000')),
     intervalArgs.map(arg => arg.replace('5000,3000', '1000')),
     intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=4')),
     intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=2')),
     intervalArgs.map(arg => arg.replace('--repetitions=1', '--repetitions=3')),
+    ['--interval-compare', '--intervals=3000', '--concurrencies=1,2,3,4,5,6,7,8', '--repetitions=3'],
+    ['--interval-compare', '--intervals=5000', '--concurrencies=1,2,3,4,5,6,7,8', '--repetitions=1'],
     ['--interval-compare', '--intervals=10000', '--concurrencies=1', '--repetitions=3']]) {
     assert.throws(() => parseParallelFetchCloudArguments(args), error => error instanceof ParallelFetchCloudError && error.code === 'arguments')
+  }
+})
+
+test('concurrency argument rejects malformed and injection-like input with a fixed error', () => {
+  for (const value of ['', '1,', ',1', '1,,2', '1,2,2', '1,0', '1,9', '1,-2', '1,2.5', '1,2e0', '1,0x2',
+    '1,+2', '1 2', '--help', '1,2;Write-Output injected', '1,$(Write-Output injected)', '1,`whoami`',
+    '1,2\n--url=private-input']) {
+    const args = intervalArgs.map(arg => arg.startsWith('--concurrencies=') ? `--concurrencies=${value}` : arg)
+    assert.throws(() => parseParallelFetchCloudArguments(args), error => error instanceof ParallelFetchCloudError
+      && error.code === 'arguments' && error.message === new ParallelFetchCloudError('arguments').message)
   }
 })
 
@@ -327,6 +346,21 @@ test('one cloud browser runs all interval conditions with the selected cadence a
   assert.equal(f.stats().closes, 1)
   assert.deepEqual(f.order, ['close', 'save', 'ready'])
   assert.equal(JSON.stringify(result).includes(SECRET), false)
+})
+
+test('cloud collection forwards and records new concurrency values across the same bounded runner', async () => {
+  const f = fixture(mainHosted())
+  const result = await runParallelFetchCloudTest(intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=8,1,3')), f.deps)
+  assert.equal(result.succeeded, true)
+  assert.deepEqual(result.report.config.concurrencies, [1, 3, 8])
+  assert.deepEqual(result.report.trials.map(trial => [trial.intervalMs, trial.concurrency]),
+    [[5000, 1], [5000, 3], [5000, 8], [3000, 1], [3000, 3], [3000, 8]])
+  assert.equal(f.reads.length, 144)
+  assert.equal(f.stats().readers, 24)
+  assert.equal(f.stats().closedReaders, 24)
+  assert.equal(f.stats().opens, 1)
+  assert.equal(f.stats().closes, 1)
+  assert.deepEqual(f.saved, [result.report])
 })
 
 test('interval mode fails safely before launch for invalid limits, branch or session', async () => {

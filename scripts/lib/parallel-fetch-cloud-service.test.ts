@@ -206,7 +206,7 @@ test('persistent state reconstructs safe fields and rejects malformed state with
 
 test('interval selection is saved before dispatch and preserved when importing an exact matching report', async () => {
   const f = fixture(); await f.ready()
-  const options = structuredClone(DEFAULT_CLOUD_INTERVAL_OPTIONS)
+  const options = { ...structuredClone(DEFAULT_CLOUD_INTERVAL_OPTIONS), concurrencies: [1, 3, 8] }
   let dispatches = 0
   f.github.dispatch = async (mode, requestId, selected) => {
     assert.equal(mode, 'interval-compare'); assert.equal(requestId, REQUEST)
@@ -221,11 +221,14 @@ test('interval selection is saved before dispatch and preserved when importing a
   const token = (await f.service.status()).token
   for (const body of [{ mode: 'interval-compare' }, { mode: 'serial', options },
     { mode: 'interval-compare', options: { ...options, repetitions: 3 } },
+    ...[[1, 9], [1, 0], [1, 3.5], [1, 3, 3], [3], [1, '3'], []].map(concurrencies =>
+      ({ mode: 'interval-compare', options: { ...options, concurrencies } })),
     { mode: 'interval-compare', options: { ...options, raw: SECRET } }]) {
     assert.equal((await invoke(f.service, 'run', { method: 'POST', token, body })).status, 400)
   }
   assert.equal(dispatches, 0)
-  assert.equal((await invoke(f.service, 'run', { method: 'POST', token, body: { mode: 'interval-compare', options } })).status, 202)
+  assert.equal((await invoke(f.service, 'run', { method: 'POST', token,
+    body: { mode: 'interval-compare', options: { ...options, concurrencies: [8, 1, 3] } } })).status, 202)
   await f.service.waitForIdle()
   f.setFound({ ...remote(), state: 'completed', conclusion: 'failure', finishedAt: TIME })
   const status = await f.refresh()

@@ -34,14 +34,12 @@ export function parseCloudIntervalOptions(value: unknown): CloudIntervalOptions 
     || !Array.isArray(row.intervalMsList) || row.intervalMsList.length < 1 || row.intervalMsList.length > 3
     || !row.intervalMsList.every(value => [3000, 5000, 10000].includes(value))
     || new Set(row.intervalMsList).size !== row.intervalMsList.length
-    || !Array.isArray(row.concurrencies) || row.concurrencies.length < 1 || row.concurrencies.length > 2
-    || !row.concurrencies.every(value => [1, 2].includes(value))
-    || new Set(row.concurrencies).size !== row.concurrencies.length
+    || !Array.isArray(row.concurrencies)
     || ![1, 3].includes(Number(row.repetitions)) || typeof row.repetitions !== 'number') return invalid()
   const intervalMsList = [...row.intervalMsList].sort((a, b) => b - a) as CloudIntervalOptions['intervalMsList']
   const concurrencies = [...row.concurrencies].sort((a, b) => a - b) as CloudIntervalOptions['concurrencies']
   const repetitions = row.repetitions as CloudIntervalOptions['repetitions']
-  // The shared parser enforces the single run's request count and guaranteed minimum duration.
+  // The shared parser enforces integer concurrency, baseline 1, uniqueness and the combined budgets.
   parseParallelFetchConfig({ target: 'lp', startPage: 1, pageCount: 20, intervalMs: intervalMsList[0], intervalMsList, concurrencies, repetitions })
   return { intervalMsList, concurrencies, repetitions }
 }

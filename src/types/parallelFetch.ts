@@ -1,5 +1,5 @@
 export type ParallelFetchTarget = 'lp' | 'mr'
-export type ParallelFetchConcurrency = 1 | 2 | 4
+export type ParallelFetchConcurrency = number
 export type ParallelFetchInterval = 3000 | 5000 | 10000
 export interface ParallelFetchConfig {
   target: ParallelFetchTarget

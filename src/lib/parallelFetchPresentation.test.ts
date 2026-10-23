@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_PARALLEL_FETCH_CONFIG } from './parallelFetch.ts'
-import { parallelFetchConditionStatus, parallelFetchConfigError, parallelFetchPlanRows } from './parallelFetchPresentation.ts'
+import { parallelFetchConditionStatus, parallelFetchConcurrencyDraft, parallelFetchConfigError, parallelFetchPlanRows } from './parallelFetchPresentation.ts'
 import type { ParallelFetchConfig, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
 
 const config: ParallelFetchConfig = { ...DEFAULT_PARALLEL_FETCH_CONFIG, intervalMs: 5000, intervalMsList: [5000, 3000], concurrencies: [1, 2], repetitions: 1 }
@@ -23,6 +23,21 @@ test('form explains empty selection, whole-run attempt cap and guaranteed timeou
   assert.match(parallelFetchConfigError({ ...config, intervalMsList: [] })!, /1つ以上/)
   assert.match(parallelFetchConfigError({ ...config, repetitions: 3 })!, /200/)
   assert.match(parallelFetchConfigError({ ...config, intervalMs: 10000, intervalMsList: [10000, 5000, 3000] })!, /10分/)
+})
+test('invalid concurrency drafts discard executable values until repaired', () => {
+  assert.deepEqual(parallelFetchConcurrencyDraft('8, 1, 3'), { values: [1, 3, 8], error: null })
+  for (const text of ['', '1,', '1,2,2', '1,9', '2,4']) {
+    const draft = parallelFetchConcurrencyDraft(text)
+    assert.deepEqual(draft.values, [])
+    assert.ok(draft.error)
+    assert.ok(parallelFetchConfigError({ ...config, concurrencies: draft.values }))
+  }
+  const repaired = parallelFetchConcurrencyDraft('1,3,8')
+  const selected: ParallelFetchConfig = { ...config, intervalMsList: [5000], concurrencies: repaired.values }
+  assert.equal(parallelFetchConfigError(selected), null)
+  assert.deepEqual(parallelFetchPlanRows(selected).map(row => row.concurrency), [1, 3, 8])
+  assert.match(parallelFetchConfigError({ ...selected, intervalMs: 10000, intervalMsList: [10000] })!, /10分/)
+  assert.match(parallelFetchConfigError({ ...selected, repetitions: 3 })!, /200/)
 })
 test('not-started interval cannot inherit completed state or zero observations from another interval', () => {
   const result = report([trial(5000)])

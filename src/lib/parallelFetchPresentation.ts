@@ -1,5 +1,10 @@
-import { minimumPlannedWaitMs, parallelFetchIntervals, PARALLEL_FETCH_MAX_ATTEMPTS, PARALLEL_FETCH_MAX_DURATION_MS, parseParallelFetchConfig, plannedParallelFetchAttempts } from './parallelFetch.ts'
+import { minimumPlannedWaitMs, parallelFetchIntervals, PARALLEL_FETCH_MAX_ATTEMPTS, PARALLEL_FETCH_MAX_DURATION_MS, parseParallelFetchConcurrencyInput, parseParallelFetchConfig, plannedParallelFetchAttempts } from './parallelFetch.ts'
 import type { ParallelFetchConfig, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
+
+export function parallelFetchConcurrencyDraft(text: string): { values: number[]; error: string | null } {
+  try { return { values: parseParallelFetchConcurrencyInput(text), error: null } }
+  catch (error) { return { values: [], error: error instanceof Error ? error.message : '並列数を確認してください。' } }
+}
 
 export function parallelFetchConfigError(config: ParallelFetchConfig): string | null {
   if (!parallelFetchIntervals(config).length) return '取得間隔を1つ以上選択してください。'
