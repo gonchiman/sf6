@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { parseCloudServiceStatus } from './parallelFetchCloud'
 import { CLOUD_ERRORS } from '../types/parallelFetchCloud'
-import type { CloudError, CloudMode, CloudServiceStatus } from '../types/parallelFetchCloud'
+import type { CloudError, CloudIntervalOptions, CloudMode, CloudServiceStatus } from '../types/parallelFetchCloud'
 
 const serviceUrl = `${import.meta.env.BASE_URL}__parallel-fetch-cloud`
 
@@ -61,7 +61,7 @@ export function useParallelFetchCloud(enabled: boolean) {
     return () => { active = false; clearTimeout(timer); controller?.abort() }
   }, [enabled, refreshVersion])
 
-  const command = async (action: 'run' | 'stop' | 'retry', payload: { mode: CloudMode } | { requestId: string }): Promise<CloudServiceStatus | null> => {
+  const command = async (action: 'run' | 'stop' | 'retry', payload: { mode: CloudMode; options?: CloudIntervalOptions } | { requestId: string }): Promise<CloudServiceStatus | null> => {
     if (!import.meta.env.DEV || !enabled || commandPending.current || !status?.token || connection !== 'connected') return null
     commandPending.current = true
     const requestGeneration = ++generation.current

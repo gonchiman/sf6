@@ -4,12 +4,12 @@ import { lstat, mkdir, open } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
-import { parseParallelFetchConfig, parseParallelFetchReport } from '../../src/lib/parallelFetch.ts'
+import { PARALLEL_FETCH_MAX_DURATION_MS, parseParallelFetchConfig, parseParallelFetchReport } from '../../src/lib/parallelFetch.ts'
 import type { ParallelFetchConfig, ParallelFetchReport, ParallelFetchServiceStatus } from '../../src/types/parallelFetch.ts'
 import { createBucklerSessionStore } from './buckler-session-store.ts'
 import { createParallelFetchBrowserSession } from './parallel-fetch-browser.ts'
 import type { ParallelFetchBrowserSession } from './parallel-fetch-browser.ts'
-import { runParallelFetch } from './parallel-fetch-runner.ts'
+import { ParallelFetchReadError, runParallelFetch } from './parallel-fetch-runner.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 export const PARALLEL_FETCH_API_PREFIX = '/sf6/__parallel-fetch'
@@ -166,22 +166,26 @@ export function createParallelFetchService(dependencies: ParallelFetchServiceDep
     active = job; persistenceError = false
     const sessionState: { promise: Promise<ParallelFetchBrowserSession> | null } = { promise: null }
     const startedAt = new Date().toISOString()
+    const timer = setTimeout(() => controller.abort(new ParallelFetchReadError('limit-reached')), PARALLEL_FETCH_MAX_DURATION_MS)
+    timer.unref()
     job.promise = (async () => {
       try {
         const result = await (dependencies.run ?? runParallelFetch)(config, {
           signal: controller.signal,
-          createReader: async (workerId, target, signal) => {
+          createReader: async (workerId, target, signal, intervalMs) => {
             sessionState.promise ??= openBrowser(config, controller.signal)
-            return (await sessionState.promise).createReader(workerId, target, signal)
+            return (await sessionState.promise).createReader(workerId, target, signal, intervalMs)
           },
           onUpdate: value => { report = parseParallelFetchReport(value) },
         })
         report = parseParallelFetchReport(result)
       } catch {
-        report = parseParallelFetchReport({ schemaVersion: 1, runId: randomBytes(16).toString('hex'), config,
+        report = parseParallelFetchReport({ schemaVersion: config.intervalMsList ? 2 : 1, runId: randomBytes(16).toString('hex'), config,
           state: controller.signal.aborted ? 'stopped' : 'error', startedAt, finishedAt: new Date().toISOString(),
-          trials: [], errorCode: controller.signal.aborted ? 'cancelled' : 'read-failed' })
+          trials: [], errorCode: controller.signal.aborted
+            ? controller.signal.reason instanceof ParallelFetchReadError ? controller.signal.reason.code : 'cancelled' : 'read-failed' })
       } finally {
+        clearTimeout(timer)
         if (sessionState.promise) { try { await (await sessionState.promise).close() } catch { /* Never surface browser/authentication details. */ } }
         if (report) { try { await saveReport(parseParallelFetchReport(report)) } catch { persistenceError = true } }
         if (active === job) active = null

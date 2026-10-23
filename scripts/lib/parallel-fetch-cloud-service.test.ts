@@ -5,7 +5,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { cloudConfig, parseCloudRun } from '../../src/lib/parallelFetchCloud.ts'
+import { cloudConfig, DEFAULT_CLOUD_INTERVAL_OPTIONS, parseCloudRun } from '../../src/lib/parallelFetchCloud.ts'
 import type { CloudRun } from '../../src/types/parallelFetchCloud.ts'
 import { createCloudStateStore, createParallelFetchCloudService, PARALLEL_FETCH_CLOUD_API_PREFIX as API } from './parallel-fetch-cloud-service.ts'
 import type { CloudStateStore } from './parallel-fetch-cloud-service.ts'
@@ -202,4 +202,41 @@ test('persistent state reconstructs safe fields and rejects malformed state with
   await assert.rejects(f.service.start('serial'))
   assert.equal(f.stats().dispatched, 0)
   await f.service.close()
+})
+
+test('interval selection is saved before dispatch and preserved when importing an exact matching report', async () => {
+  const f = fixture(); await f.ready()
+  const options = structuredClone(DEFAULT_CLOUD_INTERVAL_OPTIONS)
+  let dispatches = 0
+  f.github.dispatch = async (mode, requestId, selected) => {
+    assert.equal(mode, 'interval-compare'); assert.equal(requestId, REQUEST)
+    assert.deepEqual(selected, options); assert.deepEqual(f.disk()[0].options, options)
+    dispatches++
+  }
+  f.github.readReport = async (_run, mode, selected) => {
+    assert.equal(mode, 'interval-compare'); assert.deepEqual(selected, options)
+    return { schemaVersion: 2, runId: 'cloud-123-1-interval-compare', config: cloudConfig(mode, selected), state: 'error',
+      startedAt: TIME, finishedAt: TIME, trials: [], errorCode: 'authentication-unconfirmed' }
+  }
+  const token = (await f.service.status()).token
+  for (const body of [{ mode: 'interval-compare' }, { mode: 'serial', options },
+    { mode: 'interval-compare', options: { ...options, repetitions: 3 } },
+    { mode: 'interval-compare', options: { ...options, raw: SECRET } }]) {
+    assert.equal((await invoke(f.service, 'run', { method: 'POST', token, body })).status, 400)
+  }
+  assert.equal(dispatches, 0)
+  assert.equal((await invoke(f.service, 'run', { method: 'POST', token, body: { mode: 'interval-compare', options } })).status, 202)
+  await f.service.waitForIdle()
+  f.setFound({ ...remote(), state: 'completed', conclusion: 'failure', finishedAt: TIME })
+  const status = await f.refresh()
+  assert.equal(status.runs[0].report?.schemaVersion, 2)
+  assert.deepEqual(status.runs[0].options, options)
+  assert.equal(dispatches, 1)
+  await f.service.close()
+  const restarted = createParallelFetchCloudService(f.deps)
+  await restarted.status(); await restarted.waitForIdle()
+  assert.deepEqual((await restarted.status()).runs[0].options, options)
+  await restarted.retry(REQUEST); await restarted.waitForIdle()
+  assert.equal(dispatches, 1)
+  await restarted.close()
 })

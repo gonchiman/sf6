@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { cloudConfig, cloudRunUrl, parseCloudRun, parseCloudServiceStatus, parseParallelFetchResult } from './parallelFetchCloud.ts'
+import { cloudConfig, cloudRunUrl, DEFAULT_CLOUD_INTERVAL_OPTIONS, parseCloudIntervalOptions, parseCloudRun, parseCloudServiceStatus, parseParallelFetchResult } from './parallelFetchCloud.ts'
 import { plannedParallelFetchAttempts } from './parallelFetch.ts'
 import type { CloudRun } from '../types/parallelFetchCloud.ts'
 
@@ -51,4 +51,29 @@ test('import/export retains environment; legacy reports stay unknown; mismatched
 test('run links can only target a numeric run in the fixed repository', () => {
   assert.equal(cloudRunUrl('123'), 'https://github.com/gonchiman/sf6/actions/runs/123')
   for (const value of ['../evil', 'https://evil.test', '0', '1?token=x']) assert.throws(() => cloudRunUrl(value))
+})
+
+test('interval selections are canonical, independent and bounded across all conditions', () => {
+  const options = parseCloudIntervalOptions({ intervalMsList: [3000, 5000], concurrencies: [2, 1], repetitions: 1 })
+  assert.deepEqual(options, DEFAULT_CLOUD_INTERVAL_OPTIONS)
+  assert.equal(plannedParallelFetchAttempts(cloudConfig('interval-compare', options)), 86)
+  options.intervalMsList.push(10000)
+  assert.deepEqual(DEFAULT_CLOUD_INTERVAL_OPTIONS.intervalMsList, [5000, 3000])
+  for (const change of [{ intervalMsList: [] }, { intervalMsList: [5000, 5000] }, { intervalMsList: [0] },
+    { intervalMsList: ['3000'] }, { concurrencies: [4] }, { concurrencies: [2] }, { concurrencies: [1, 1] }, { repetitions: '1' },
+    { repetitions: 3 }, { intervalMsList: [10000], concurrencies: [1], repetitions: 3 }, { url: 'https://other.example' }]) {
+    assert.throws(() => parseCloudIntervalOptions({ ...DEFAULT_CLOUD_INTERVAL_OPTIONS, ...change }))
+  }
+  assert.throws(() => cloudConfig('serial', DEFAULT_CLOUD_INTERVAL_OPTIONS))
+})
+
+test('interval reports are bound to persisted selections and legacy records remain unchanged', () => {
+  const options = parseCloudIntervalOptions(DEFAULT_CLOUD_INTERVAL_OPTIONS)
+  const value = { ...run(), mode: 'interval-compare', options, report: { ...run().report,
+    schemaVersion: 2, runId: 'cloud-123-1-interval-compare', config: cloudConfig('interval-compare', options) } }
+  assert.deepEqual(parseCloudRun(value), value)
+  assert.throws(() => parseCloudRun({ ...value, options: undefined }))
+  assert.throws(() => parseCloudRun({ ...value, options: { ...options, intervalMsList: [5000] } }))
+  assert.throws(() => parseCloudRun({ ...run(), options }))
+  assert.deepEqual(parseCloudRun(run()), run())
 })

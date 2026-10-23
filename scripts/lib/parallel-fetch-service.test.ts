@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import test from 'node:test'
-import { DEFAULT_PARALLEL_FETCH_CONFIG, parseParallelFetchReport } from '../../src/lib/parallelFetch.ts'
+import { DEFAULT_PARALLEL_FETCH_CONFIG, PARALLEL_FETCH_MAX_DURATION_MS, parseParallelFetchReport } from '../../src/lib/parallelFetch.ts'
 import type { ParallelFetchConfig, ParallelFetchReadDiagnostics, ParallelFetchReport } from '../../src/types/parallelFetch.ts'
 import { createParallelFetchService, createParallelFetchReportWriter, PARALLEL_FETCH_API_PREFIX as API } from './parallel-fetch-service.ts'
 import { ParallelFetchReadError, runParallelFetch } from './parallel-fetch-runner.ts'
@@ -13,7 +13,7 @@ import type { ParallelFetchDependencies } from './parallel-fetch-runner.ts'
 
 const config = (): ParallelFetchConfig => structuredClone(DEFAULT_PARALLEL_FETCH_CONFIG)
 function report(value: ParallelFetchConfig, state: 'running' | 'stopped' = 'running'): ParallelFetchReport {
-  return { schemaVersion: 1, runId: 'test-run', config: value, state, startedAt: '2026-10-20T00:00:00.000Z',
+  return { schemaVersion: value.intervalMsList ? 2 : 1, runId: 'test-run', config: value, state, startedAt: '2026-10-20T00:00:00.000Z',
     finishedAt: state === 'running' ? null : '2026-10-20T00:00:01.000Z', trials: [], errorCode: state === 'running' ? null : 'cancelled' }
 }
 interface RequestOptions { method?: string; host?: string; origin?: string | null; token?: string; remote?: string; localPort?: number; body?: unknown; chunks?: Buffer[]; headers?: Record<string, string> }
@@ -164,6 +164,39 @@ test('browser session is opened lazily once on an authorized run and is closed b
   await invoke(service, 'run', { method: 'POST', token, body: config() })
   await done; await service.close()
   assert.deepEqual(readers, [1, 2]); assert.equal(opened, 1); assert.equal(saved, 1)
+})
+
+test('intervals reach the shared browser and the one ten-minute deadline is not reset by the next condition', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const intervals: (number | undefined)[] = [], saved: ParallelFetchReport[] = []
+  let runDependencies: ParallelFetchDependencies | undefined
+  const service = createParallelFetchService({ sessionAvailable: async () => true,
+    openBrowser: async () => ({ createReader: async (_worker, _target, _signal, intervalMs) => {
+      intervals.push(intervalMs)
+      return { readPage: async () => ({ totalCount: 2000, totalPages: 100, httpStatus: 200 }), close: async () => {} }
+    }, close: async () => {} }),
+    run: async (input, dependencies) => {
+      runDependencies = dependencies
+      dependencies.onUpdate?.(report(input))
+      await dependencies.createReader(1, 'lp', dependencies.signal!, 5000)
+      await new Promise<void>(resolve => dependencies.signal!.addEventListener('abort', () => resolve(), { once: true }))
+      return { ...report(input, 'stopped'), errorCode: (dependencies.signal!.reason as ParallelFetchReadError).code }
+    }, saveReport: async value => { saved.push(value) },
+  })
+  const token = (await invoke(service, 'status')).value.token
+  assert.equal((await invoke(service, 'run', { method: 'POST', token,
+    body: { ...config(), intervalMsList: [5000, 3000] } })).status, 202)
+  t.mock.timers.tick(300000)
+  await runDependencies!.createReader(1, 'lp', runDependencies!.signal!, 3000)
+  t.mock.timers.tick(PARALLEL_FETCH_MAX_DURATION_MS - 300000 - 1)
+  assert.equal(runDependencies!.signal!.aborted, false)
+  t.mock.timers.tick(1)
+  assert.equal(runDependencies!.signal!.aborted, true)
+  assert.equal(runDependencies!.signal!.reason.code, 'limit-reached')
+  await service.close()
+  assert.deepEqual(intervals, [5000, 3000])
+  assert.equal(saved[0].schemaVersion, 2)
+  assert.equal(saved[0].errorCode, 'limit-reached')
 })
 
 test('safe report writer saves only terminal allowlisted data and refuses overwrite', async t => {

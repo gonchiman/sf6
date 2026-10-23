@@ -1,6 +1,11 @@
-import type { ParallelFetchReport } from './parallelFetch.ts'
+import type { ParallelFetchInterval, ParallelFetchReport } from './parallelFetch.ts'
 
-export type CloudMode = 'serial' | 'compare'
+export type CloudMode = 'serial' | 'compare' | 'interval-compare'
+export interface CloudIntervalOptions {
+  intervalMsList: ParallelFetchInterval[]
+  concurrencies: (1 | 2)[]
+  repetitions: 1 | 3
+}
 export const CLOUD_STATES = ['dispatching', 'dispatch-unknown', 'queued', 'preparing', 'collecting',
   'loading-result', 'complete', 'failed', 'cancel-requested', 'cancelled'] as const
 export type CloudState = typeof CLOUD_STATES[number]
@@ -11,6 +16,7 @@ export type CloudError = typeof CLOUD_ERRORS[number]
 export interface CloudRun {
   requestId: string
   mode: CloudMode
+  options?: CloudIntervalOptions
   createdAt: string
   updatedAt: string
   dispatchState: 'pending' | 'sent' | 'uncertain'

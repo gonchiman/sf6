@@ -166,7 +166,8 @@ test('serial and comparison modes use the fixed existing engine and save only al
 test('permanent workflow correlates requests, verifies dispatched code and exposes the Secret only to the bounded step', async () => {
   const workflow = await readFile(new URL('../.github/workflows/parallel-fetch-test.yml', import.meta.url), 'utf8')
   assert.match(workflow, /^run-name: Parallel fetch \$\{\{ inputs\.request_id \}\}$/m)
-  assert.match(workflow, /options: \['serial', 'compare'\]/)
+  assert.match(workflow, /options: \['serial', 'compare', 'interval-compare'\]/)
+  assert.match(workflow, /options: \['1', '1,2'\]/)
   assert.doesNotMatch(workflow, /^\s+(?:push|schedule|pull_request|workflow_call):/m)
   assert.match(workflow, /github\.repository == 'gonchiman\/sf6'.*github\.event_name == 'workflow_dispatch'.*github\.ref == 'refs\/heads\/main'/)
   assert.match(workflow, /group: rank-distribution-weekly-gonchiman-sf6/)
@@ -176,6 +177,7 @@ test('permanent workflow correlates requests, verifies dispatched code and expos
   assert.equal((workflow.match(/\$\{\{ secrets\./g) ?? []).length, 1)
   assert.match(workflow, /name: Run bounded collection test\s+id: collect\s+shell: pwsh\s+env:\s+BUCKLER_WEEKLY_SESSION: \$\{\{ secrets\.BUCKLER_WEEKLY_SESSION \}\}/)
   assert.ok(workflow.indexOf('name: Validate fixed test inputs') < workflow.indexOf('secrets.BUCKLER_WEEKLY_SESSION'))
+  assert.ok(workflow.indexOf('name: Validate combined test budget without session') < workflow.indexOf('secrets.BUCKLER_WEEKLY_SESSION'))
   for (const action of workflow.matchAll(/uses: (actions\/[a-z-]+)@([^\s]+)/g)) assert.match(action[2], /^[0-9a-f]{40}$/)
   assert.match(workflow, /if: always\(\) && steps\.collect\.outputs\.artifact_ready == 'true'/)
   assert.match(workflow, /path: \.local\/parallel-fetch\/parallel-fetch-cloud-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}-\$\{\{ env\.PARALLEL_TEST_MODE \}\}\.json/)
@@ -287,4 +289,58 @@ test('CLI help and disallowed invocations print neither secrets nor stack traces
     assert.equal((result.stdout + result.stderr).includes(SECRET), false)
     assert.doesNotMatch(result.stderr, /\bat .*\(.+:\d+/)
   }
+})
+
+const intervalArgs = ['--interval-compare', '--intervals=5000,3000', '--concurrencies=1,2', '--repetitions=1']
+test('interval CLI accepts only selected fixed values and rejects over-budget matrices', () => {
+  assert.deepEqual(parseParallelFetchCloudArguments(intervalArgs), { mode: 'interval-compare',
+    options: { intervalMsList: [5000, 3000], concurrencies: [1, 2], repetitions: 1 } })
+  for (const args of [['--interval-compare'], [...intervalArgs, '--url=other'],
+    intervalArgs.map(arg => arg.replace('5000,3000', '5000,5000')),
+    intervalArgs.map(arg => arg.replace('5000,3000', '1000')),
+    intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=4')),
+    intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=2')),
+    intervalArgs.map(arg => arg.replace('--repetitions=1', '--repetitions=3')),
+    ['--interval-compare', '--intervals=10000', '--concurrencies=1', '--repetitions=3']]) {
+    assert.throws(() => parseParallelFetchCloudArguments(args), error => error instanceof ParallelFetchCloudError && error.code === 'arguments')
+  }
+})
+
+test('one cloud browser runs all interval conditions with the selected cadence and a versioned artifact', async () => {
+  const f = fixture(mainHosted()), open = f.deps.openBrowser!, intervals: (number | undefined)[] = []
+  f.deps.openBrowser = async (...args) => {
+    const session = await open(...args)
+    return { ...session, createReader: async (worker, target, signal, intervalMs) => {
+      intervals.push(intervalMs)
+      return session.createReader(worker, target, signal, intervalMs)
+    } }
+  }
+  const result = await runParallelFetchCloudTest(intervalArgs, f.deps)
+  assert.equal(result.succeeded, true)
+  assert.equal(result.report.schemaVersion, 2)
+  assert.equal(result.report.runId, 'cloud-123456789-2-interval-compare')
+  assert.deepEqual(result.report.config.intervalMsList, [5000, 3000])
+  assert.deepEqual(result.report.trials.map(trial => [trial.intervalMs, trial.concurrency]), [[5000, 1], [5000, 2], [3000, 1], [3000, 2]])
+  assert.deepEqual(intervals, [5000, 5000, 5000, 3000, 3000, 3000])
+  assert.equal(f.reads.length, 86)
+  assert.equal(f.stats().opens, 1)
+  assert.equal(f.stats().closes, 1)
+  assert.deepEqual(f.order, ['close', 'save', 'ready'])
+  assert.equal(JSON.stringify(result).includes(SECRET), false)
+})
+
+test('interval mode fails safely before launch for invalid limits, branch or session', async () => {
+  const branch = fixture()
+  await assert.rejects(runParallelFetchCloudTest(intervalArgs, branch.deps), error => error instanceof ParallelFetchCloudError && error.code === 'runner')
+  assert.equal(branch.stats().opens, 0)
+  const overBudget = fixture(mainHosted())
+  await assert.rejects(runParallelFetchCloudTest(intervalArgs.map(arg => arg.replace('--repetitions=1', '--repetitions=3')), overBudget.deps))
+  assert.equal(overBudget.stats().opens, 0)
+  const missing = fixture(mainHosted()); delete missing.env[BUCKLER_WEEKLY_SESSION_SECRET]
+  const result = await runParallelFetchCloudTest(intervalArgs, missing.deps)
+  assert.equal(result.report.errorCode, 'session-unavailable')
+  assert.equal(result.report.schemaVersion, 2)
+  assert.equal(result.report.trials.length, 0)
+  assert.equal(result.artifactReady, true)
+  assert.equal(missing.stats().opens, 0)
 })

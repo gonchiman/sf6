@@ -82,6 +82,19 @@ test('one owned context has separate worker pages and rows never cross the adapt
   assert.deepEqual(f.stats(), { loaded: 1, launched: 1, browserClosed: 1, contextClosed: 1 })
 })
 
+test('each condition forwards its interval to both DOM readers while preserving the legacy default', async () => {
+  const f = fixture(), controller = new AbortController()
+  const session = await createParallelFetchBrowserSession({ intervalMs: 10000, signal: controller.signal }, f.dependencies)
+  await session.createReader(1, 'lp', controller.signal)
+  await session.createReader(1, 'lp', controller.signal, 3000)
+  await session.createReader(1, 'mr', controller.signal, 5000)
+  assert.deepEqual(f.captured.slice(1).map(value => (value as { options: { minIntervalMs: number } }).options.minIntervalMs),
+    [10000, 3000, 5000])
+  await assert.rejects(session.createReader(1, 'lp', controller.signal, 1000 as never), /invalid-request/)
+  assert.equal(f.pages.length, 3)
+  await session.close()
+})
+
 test('a new response or navigation timeout cannot reuse a previous HTTP status', async () => {
   const f = fixture(), controller = new AbortController()
   const session = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: controller.signal }, f.dependencies)

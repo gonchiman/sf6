@@ -22,6 +22,11 @@
 .parallel-fetch-concurrencies > div { min-height: 36px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .parallel-fetch-concurrencies label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .parallel-fetch-concurrencies input { margin: 0; accent-color: var(--link); }
+.parallel-fetch-plan { display: grid; gap: 8px; margin-top: 16px; font-size: 12px; }
+.parallel-fetch-plan > div { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.parallel-fetch-plan > div > span { color: var(--text-muted); }
+.parallel-fetch-plan ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 24px; margin: 0; padding-left: 22px; }
+.parallel-fetch-cloud-conditions > .parallel-fetch-plan { margin-top: 0; }
 .parallel-fetch-page button { min-height: 34px; padding: 6px 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 0; font-size: 12px; cursor: pointer; }
 .parallel-fetch-page button:hover:not(:disabled) { background: var(--surface-hover); }
 .parallel-fetch-page button:disabled, .parallel-fetch-fields :disabled { color: var(--text-muted); cursor: default; }
@@ -47,8 +52,8 @@
 .parallel-fetch-details dt { color: var(--text-muted); }
 .parallel-fetch-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .parallel-fetch-scroll { max-height: 440px; }
-.parallel-fetch-comparison { min-width: 820px; }
-.parallel-fetch-trials { min-width: 760px; }
+.parallel-fetch-comparison { min-width: 1000px; }
+.parallel-fetch-trials { min-width: 850px; }
 .parallel-fetch-trials caption { text-align: left; padding: 0 0 8px; color: var(--text-soft); font-size: 13px; }
 .parallel-fetch-page .data-table th > span, .parallel-fetch-state-cell > span { display: block; color: var(--text-muted); font-size: 11px; }
 .parallel-fetch-failure-rate { display: block; color: var(--text-muted); font-size: 12px; }
@@ -56,6 +61,7 @@
 .parallel-fetch-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 1100px) { .parallel-fetch-top { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 640px) {
+  .parallel-fetch-plan ol { grid-template-columns: minmax(0, 1fr); }
   .parallel-fetch-fields { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .parallel-fetch-details > div { grid-template-columns: minmax(0, 1fr); gap: 1px; }
   .parallel-fetch-workers li { grid-template-columns: 40px minmax(36px, 1fr) minmax(70px, 1.2fr); }

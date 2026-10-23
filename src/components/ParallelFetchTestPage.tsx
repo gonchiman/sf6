@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent 
 import { timestampLabel } from '../lib/dateTime'
 import {
   DEFAULT_PARALLEL_FETCH_CONFIG, PARALLEL_FETCH_MAX_ATTEMPTS,
-  parseParallelFetchConfig, parseParallelFetchReport, plannedParallelFetchAttempts, summarizeParallelFetch,
+  parallelFetchIntervals, parseParallelFetchConfig, parseParallelFetchReport, plannedParallelFetchAttempts, summarizeParallelFetch,
 } from '../lib/parallelFetch'
-import { CLOUD_WORKFLOW_URL, cloudConfig, cloudRunUrl, isCloudRunActive, parseParallelFetchResult } from '../lib/parallelFetchCloud'
+import { CLOUD_WORKFLOW_URL, DEFAULT_CLOUD_INTERVAL_OPTIONS, cloudConfig, cloudRunUrl, isCloudRunActive, parseParallelFetchResult } from '../lib/parallelFetchCloud'
+import { parallelFetchConditionStatus, parallelFetchConfigError, parallelFetchPlanRows } from '../lib/parallelFetchPresentation'
 import { useParallelFetchCloud } from '../lib/useParallelFetchCloud'
-import type { CloudError, CloudMode, CloudRun, CloudServiceStatus, CloudState, ParallelFetchResult } from '../types/parallelFetchCloud'
+import type { CloudError, CloudIntervalOptions, CloudMode, CloudRun, CloudServiceStatus, CloudState, ParallelFetchResult } from '../types/parallelFetchCloud'
 import type {
-  ParallelFetchConfig, ParallelFetchConcurrency, ParallelFetchErrorCode, ParallelFetchReport,
+  ParallelFetchConfig, ParallelFetchConcurrency, ParallelFetchErrorCode, ParallelFetchInterval, ParallelFetchReport,
   ParallelFetchServiceStatus, ParallelFetchTrial, ParallelFetchWorker,
 } from '../types/parallelFetch'
 import { StatisticsPanel } from './StatisticsPanel'
@@ -22,7 +23,7 @@ const durationLabel = (value: number | null) => value === null ? '—' : `${numb
 const estimateLabel = (value: number | null) => value === null ? '算出不可'
   : value >= 86_400_000 ? `約 ${numberLabel(value / 86_400_000)} 日` : `約 ${numberLabel(value / 3_600_000)} 時間`
 const errorLabels: Record<ParallelFetchErrorCode, string> = {
-  cancelled: '停止しました', 'limit-reached': '取得回数の上限', 'out-of-range': '対象ページが範囲外',
+  cancelled: '停止しました', 'limit-reached': '取得回数・時間の上限', 'out-of-range': '対象ページが範囲外',
   'http-denied': 'アクセス制限', 'server-error': '取得先のサーバーエラー', 'http-error': '取得先の応答エラー',
   maintenance: 'メンテナンス中', 'login-required': 'ログインが必要',
   'authentication-unconfirmed': 'ログイン状態を確認できません', 'human-verification': 'ロボット認証が必要',
@@ -34,6 +35,8 @@ const errorLabels: Record<ParallelFetchErrorCode, string> = {
 const trialStateLabels: Record<ParallelFetchTrial['state'], string> = {
   preparing: '準備中', running: '測定中', complete: '完了', stopped: '停止', error: '失敗',
 }
+const cloudModeLabels: Record<CloudMode, string> = { serial: '直列を3回', compare: '並列1・2を比較', 'interval-compare': '取得間隔 × 並列数' }
+const conditionStateLabels = { ...trialStateLabels, 'not-run': '未実行', pending: '一部完了' }
 const workerStateLabels: Record<ParallelFetchWorker['state'], string> = {
   idle: '待機', waiting: '取得間隔の待機', reading: '取得中', complete: '完了', stopped: '停止',
 }
@@ -88,7 +91,8 @@ function CloudStatus({ cloud, run }: { cloud: ReturnType<typeof useParallelFetch
     {run?.error && run.error !== cloud.status?.error && <p className="parallel-fetch-message" role="status">{cloudErrorLabels[run.error]}</p>}
     {run?.report?.errorCode && <p className="parallel-fetch-message" role="status">{errorLabels[run.report.errorCode]}</p>}
     {run && <dl className="parallel-fetch-details">
-      <div><dt>テスト</dt><dd>{run.mode === 'serial' ? '直列を3回' : '並列1・2を比較'}</dd></div>
+      <div><dt>テスト</dt><dd>{cloudModeLabels[run.mode]}</dd></div>
+      {run.mode === 'interval-compare' && run.options && <div><dt>取得間隔</dt><dd>{run.options.intervalMsList.map(value => value / 1000).join('・')} 秒</dd></div>}
       <div><dt>Actions実行</dt><dd>{run.runId ? `#${run.runId} · 試行 ${run.runAttempt}` : '実行番号を確認中'}</dd></div>
       <div><dt>受付日時</dt><dd><RecordedTime value={run.createdAt} /></dd></div>
       <div><dt>ジョブ開始</dt><dd><RecordedTime value={run.startedAt} /></dd></div>
@@ -210,11 +214,28 @@ function RecordedTime({ value }: { value: string | null }) {
   return value ? <time dateTime={value}>{timestampLabel(value)}</time> : <>—</>
 }
 
+function IntervalChoices({ intervals, onChange }: { intervals: ParallelFetchInterval[]; onChange: (values: ParallelFetchInterval[]) => void }) {
+  return <fieldset className="parallel-fetch-concurrencies"><legend>取得開始間隔（全タブ共通）</legend><div>
+    {([10000, 5000, 3000] as const).map(value => <label key={value}><input type="checkbox" checked={intervals.includes(value)} onChange={() => onChange(intervals.includes(value)
+      ? intervals.filter(item => item !== value) : [...intervals, value].sort((a, b) => b - a))} /><span>{value / 1000} 秒</span></label>)}
+  </div></fieldset>
+}
+
+function ExecutionPlan({ config }: { config: ParallelFetchConfig }) {
+  const rows = parallelFetchPlanRows(config)
+  return <div className="parallel-fetch-plan">
+    <div className="parallel-fetch-progress-heading"><strong>実行順</strong><span>{parallelFetchIntervals(config).length * config.concurrencies.length} 条件 · 測定 {rows.length * config.pageCount} ページ</span></div>
+    <ol>{rows.map(row => <li key={`${row.intervalMs}-${row.concurrency}-${row.repetition}`}>
+      {row.intervalMs / 1000} 秒 · 並列 {row.concurrency}{config.repetitions > 1 && <> · {row.repetition} 回目</>}
+    </li>)}</ol>
+  </div>
+}
+
 function Conditions({ config }: { config: ParallelFetchConfig }) {
   return <dl className="parallel-fetch-details">
     <div><dt>対象</dt><dd>{config.target === 'lp' ? 'LP · 総合・最大LP' : 'MR · 総合・最大MR・現在のACT'} · 全地域・全プラットフォーム</dd></div>
     <div><dt>測定ページ</dt><dd>{numberLabel(config.startPage)}〜{numberLabel(config.startPage + config.pageCount - 1)}（各 {config.pageCount} ページ）</dd></div>
-    <div><dt>比較条件</dt><dd>並列 {config.concurrencies.join('・')} · 各 {config.repetitions} 回 · 全体で {config.intervalMs / 1000} 秒間隔</dd></div>
+    <div><dt>比較条件</dt><dd>並列 {config.concurrencies.join('・')} · 各 {config.repetitions} 回 · 全体で {parallelFetchIntervals(config).map(value => value / 1000).join('・')} 秒間隔</dd></div>
   </dl>
 }
 
@@ -229,23 +250,26 @@ function Results({ report }: { report: ParallelFetchReport }) {
       <div><dt>取得終了</dt><dd><RecordedTime value={report.finishedAt} /></dd></div>
       <div><dt>観測した総ページ数</dt><dd>{totalRange}</dd></div>
       <div><dt>集計</dt><dd>完走した測定の中央値 · 失敗・再読は全測定の合計</dd></div>
+      <div><dt>直列比の基準</dt><dd>同じ取得間隔の並列1</dd></div>
       <div><dt>失敗率の分母</dt><dd>準備・再読を含む取得回数</dd></div>
     </dl>
-    <div className="data-table-scroll parallel-fetch-scroll" role="region" tabIndex={0} aria-label="並列数別の比較結果・横スクロール領域">
-      <table className="data-table parallel-fetch-comparison"><caption className="parallel-fetch-visually-hidden">同じページを取得した並列数別の測定結果</caption>
-        <thead><tr><th scope="col">並列数</th><th scope="col">完走回数</th><th scope="col">所要時間<span>中央値</span></th><th scope="col">ページ／分</th><th scope="col">直列比</th><th scope="col">全巡回<span>参考概算</span></th><th scope="col">成功<span>ページ</span></th><th scope="col">失敗<span>回／率</span></th><th scope="col">再読<span>回</span></th></tr></thead>
-        <tbody>{rows.map(row => <tr key={row.concurrency}>
-          <th scope="row">{row.concurrency}</th><td>{row.completedTrials} / {row.plannedTrials}</td><td>{durationLabel(row.medianMs)}</td>
+    <div className="data-table-scroll parallel-fetch-scroll" role="region" tabIndex={0} aria-label="取得間隔・並列数別の比較結果・横スクロール領域">
+      <table className="data-table parallel-fetch-comparison"><caption className="parallel-fetch-visually-hidden">同じページを取得した取得間隔・並列数別の測定結果</caption>
+        <thead><tr><th scope="col">間隔</th><th scope="col">並列数</th><th scope="col">状態</th><th scope="col">完走回数</th><th scope="col">所要時間<span>中央値</span></th><th scope="col">ページ／分</th><th scope="col">直列比</th><th scope="col">全巡回<span>参考概算</span></th><th scope="col">成功<span>ページ</span></th><th scope="col">失敗<span>回／率</span></th><th scope="col">再読<span>回</span></th></tr></thead>
+        <tbody>{rows.map(row => { const condition = parallelFetchConditionStatus(report, row.intervalMs, row.concurrency); return <tr key={`${row.intervalMs}-${row.concurrency}`}>
+          <th scope="row">{row.intervalMs / 1000} 秒</th><th scope="row">{row.concurrency}</th>
+          <td className="parallel-fetch-state-cell">{conditionStateLabels[condition.state]}{condition.errorCode && <span>{errorLabels[condition.errorCode]}</span>}</td>
+          <td>{row.completedTrials} / {row.plannedTrials}</td><td>{durationLabel(row.medianMs)}</td>
           <td>{row.pagesPerMinute === null ? '—' : numberLabel(row.pagesPerMinute)}</td><td>{row.speedup === null ? '算出不可' : `${numberLabel(row.speedup)} 倍`}</td>
-          <td>{estimateLabel(row.estimatedFullScanMs)}</td><td>{row.successfulPages}</td><td>{row.failedAttempts} 回<span className="parallel-fetch-failure-rate">{row.failedAttemptRate === null ? '—' : `${numberLabel(row.failedAttemptRate * 100)}%`}</span></td><td>{row.retries}</td>
-        </tr>)}</tbody>
+          <td>{estimateLabel(row.estimatedFullScanMs)}</td><td>{condition.started ? row.successfulPages : '—'}</td><td>{condition.attempted ? `${row.failedAttempts} 回` : '—'}<span className="parallel-fetch-failure-rate">{row.failedAttemptRate === null ? '—' : `${numberLabel(row.failedAttemptRate * 100)}%`}</span></td><td>{condition.attempted ? row.retries : '—'}</td>
+        </tr> })}</tbody>
       </table>
     </div>
     {report.trials.length > 0 && <div className="data-table-scroll parallel-fetch-scroll" role="region" tabIndex={0} aria-label="各測定の記録・横スクロール領域">
       <table className="data-table parallel-fetch-trials"><caption>各測定の記録</caption>
-        <thead><tr><th scope="col">並列・回</th><th scope="col">状態</th><th scope="col">成功ページ</th><th scope="col">準備時間</th><th scope="col">測定時間</th><th scope="col">合計時間</th><th scope="col">失敗／再読</th></tr></thead>
-        <tbody>{report.trials.map(trial => <tr key={`${trial.concurrency}-${trial.repetition}`}>
-          <th scope="row">並列 {trial.concurrency} · {trial.repetition} 回目</th>
+        <thead><tr><th scope="col">間隔・並列・回</th><th scope="col">状態</th><th scope="col">成功ページ</th><th scope="col">準備時間</th><th scope="col">測定時間</th><th scope="col">合計時間</th><th scope="col">失敗／再読</th></tr></thead>
+        <tbody>{report.trials.map(trial => <tr key={`${trial.intervalMs ?? report.config.intervalMs}-${trial.concurrency}-${trial.repetition}`}>
+          <th scope="row">{(trial.intervalMs ?? report.config.intervalMs) / 1000} 秒 · 並列 {trial.concurrency} · {trial.repetition} 回目</th>
           <td className="parallel-fetch-state-cell">{trialStateLabels[trial.state]}{trial.errorCode && <span>{errorLabels[trial.errorCode]}</span>}</td>
           <td>{trial.completedPages.length} / {report.config.pageCount}</td><td>{durationLabel(trial.preparationMs)}</td>
           <td>{durationLabel(trial.measurementMs)}</td><td>{durationLabel(trial.totalMs)}</td>
@@ -258,8 +282,9 @@ function Results({ report }: { report: ParallelFetchReport }) {
 
 export function ParallelFetchTestPage() {
   const [environment, setEnvironment] = useState<'local' | 'github-actions'>('local')
-  const [cloudMode, setCloudMode] = useState<CloudMode>('serial')
-  const [config, setConfig] = useState<ParallelFetchConfig>(() => ({ ...DEFAULT_PARALLEL_FETCH_CONFIG, concurrencies: [...DEFAULT_PARALLEL_FETCH_CONFIG.concurrencies] }))
+  const [cloudMode, setCloudMode] = useState<CloudMode>('interval-compare')
+  const [cloudOptions, setCloudOptions] = useState<CloudIntervalOptions>(() => structuredClone(DEFAULT_CLOUD_INTERVAL_OPTIONS))
+  const [config, setConfig] = useState<ParallelFetchConfig>(() => ({ ...DEFAULT_PARALLEL_FETCH_CONFIG, intervalMsList: [5000, 3000], concurrencies: [...DEFAULT_PARALLEL_FETCH_CONFIG.concurrencies] }))
   const [startPage, setStartPage] = useState(String(DEFAULT_PARALLEL_FETCH_CONFIG.startPage))
   const [localHistory, setLocalHistory] = useState<ParallelFetchResult[]>([])
   const [imports, setImports] = useState<ParallelFetchResult[]>([])
@@ -274,7 +299,10 @@ export function ParallelFetchTestPage() {
   const running = liveReport?.state === 'running'
   const cloudRunning = !!cloud.status?.runs.some(isCloudRunActive)
   const busy = running || service.pending || cloudRunning || cloud.pending || cloud.unconfirmed
-  const cloudPreset = cloudConfig(cloudMode)
+  const cloudPreset: ParallelFetchConfig = cloudMode === 'interval-compare'
+    ? { ...cloudConfig(cloudMode), ...cloudOptions, intervalMs: cloudOptions.intervalMsList[0] ?? 5000 }
+    : cloudConfig(cloudMode)
+  const cloudConfigError = parallelFetchConfigError(cloudPreset)
   const cloudStateInvalid = cloud.status?.error === 'state-invalid' || cloud.status?.error === 'state-save-failed'
   const choices = useMemo<ResultChoice[]>(() => {
     const local = liveReport ? [resultEnvelope(liveReport, 'local'), ...localHistory.filter(item => item.report.runId !== liveReport.runId)] : localHistory
@@ -296,8 +324,7 @@ export function ParallelFetchTestPage() {
   const planned = plannedParallelFetchAttempts(draft)
   let validConfig: ParallelFetchConfig | null = null
   try { validConfig = parseParallelFetchConfig(draft) } catch { /* Invalid form values stay editable. */ }
-  const configError = planned > PARALLEL_FETCH_MAX_ATTEMPTS ? `予定取得数が上限 ${PARALLEL_FETCH_MAX_ATTEMPTS} 回を超えています。`
-    : validConfig ? null : '開始ページは 1〜1,000,000 の整数で指定してください。'
+  const configError = parallelFetchConfigError(draft)
   const connected = service.connection === 'connected'
   const connectionLabel = service.connection === 'static' ? '結果JSONの表示モード'
     : service.connection === 'checking' ? '取得サービスを確認中'
@@ -330,9 +357,9 @@ export function ParallelFetchTestPage() {
   }
   const runCloud = async (event: FormEvent) => {
     event.preventDefault()
-    if (busy || importing || cloudStateInvalid || cloud.connection !== 'connected' || cloud.status?.readiness !== 'ready') return
+    if (busy || importing || cloudStateInvalid || cloudConfigError || cloud.connection !== 'connected' || cloud.status?.readiness !== 'ready') return
     setFileError(null)
-    const next = await cloud.command('run', { mode: cloudMode })
+    const next = await cloud.command('run', cloudMode === 'interval-compare' ? { mode: cloudMode, options: cloudOptions } : { mode: cloudMode })
     if (next?.activeRequestId) setSelectedKey(`cloud:${next.activeRequestId}`)
   }
   const importReport = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -382,20 +409,31 @@ export function ParallelFetchTestPage() {
             <label><span>測定ページ数</span><select aria-label="測定ページ数" value={config.pageCount} onChange={event => setConfig({ ...config, pageCount: Number(event.target.value) as 20 | 50 })}><option value={20}>20 ページ</option><option value={50}>50 ページ</option></select></label>
             <fieldset className="parallel-fetch-concurrencies"><legend>並列数</legend><div>{([1, 2, 4] as const).map(value => <label key={value}><input type="checkbox" checked={config.concurrencies.includes(value)} disabled={value === 1} onChange={() => toggleConcurrency(value)} /><span>{value}{value === 1 && '（基準）'}</span></label>)}</div></fieldset>
             <label><span>繰り返し</span><select aria-label="繰り返し" value={config.repetitions} onChange={event => setConfig({ ...config, repetitions: Number(event.target.value) as 1 | 3 })}><option value={1}>各 1 回</option><option value={3}>各 3 回</option></select></label>
-            <label><span>全タブ共通の取得開始間隔</span><select aria-label="全タブ共通の取得開始間隔" value={config.intervalMs} onChange={event => setConfig({ ...config, intervalMs: Number(event.target.value) as 5000 | 10000 })}><option value={5000}>5 秒</option><option value={10000}>10 秒</option></select></label>
+            <IntervalChoices intervals={parallelFetchIntervals(config)} onChange={intervalMsList => setConfig({ ...config, intervalMs: intervalMsList[0] ?? 5000, intervalMsList })} />
           </fieldset>
+          <ExecutionPlan config={draft} />
           <div className="parallel-fetch-actions"><span>準備＋測定 {planned} / {PARALLEL_FETCH_MAX_ATTEMPTS} 回</span><button type="submit" disabled={!validConfig || busy || importing || !connected || !service.status?.sessionAvailable}>テスト開始</button></div>
           {configError && <p className="parallel-fetch-message" role="alert">{configError}</p>}
         </form> : <form onSubmit={event => { void runCloud(event) }} className="parallel-fetch-cloud-conditions">
           <label className="parallel-fetch-mode"><span>テスト内容</span><select aria-label="Actionsのテスト内容" value={cloudMode} disabled={busy} onChange={event => setCloudMode(event.target.value as CloudMode)}>
-            <option value="serial">直列を3回</option><option value="compare">並列1・2を比較</option>
+            <option value="interval-compare">取得間隔 × 並列数</option><option value="serial">直列を3回</option><option value="compare">並列1・2を比較</option>
           </select></label>
+          {cloudMode === 'interval-compare' && <fieldset className="parallel-fetch-fields" disabled={busy} aria-label="Actionsの比較条件">
+            <IntervalChoices intervals={cloudOptions.intervalMsList} onChange={intervalMsList => setCloudOptions({ ...cloudOptions, intervalMsList })} />
+            <fieldset className="parallel-fetch-concurrencies"><legend>並列数</legend><div>
+              <label><input type="checkbox" checked disabled /><span>1（基準）</span></label>
+              <label><input type="checkbox" checked={cloudOptions.concurrencies.includes(2)} onChange={event => setCloudOptions({ ...cloudOptions, concurrencies: event.target.checked ? [1, 2] : [1] })} /><span>2</span></label>
+            </div></fieldset>
+            <label><span>繰り返し</span><select aria-label="Actionsの繰り返し" value={cloudOptions.repetitions} onChange={event => setCloudOptions({ ...cloudOptions, repetitions: Number(event.target.value) as 1 | 3 })}><option value={1}>各 1 回</option><option value={3}>各 3 回</option></select></label>
+          </fieldset>}
           <Conditions config={cloudPreset} />
+          {cloudMode === 'interval-compare' && <ExecutionPlan config={cloudPreset} />}
           <dl className="parallel-fetch-details"><div><dt>取得認証</dt><dd>Actionsでの実行時に確認</dd></div></dl>
           <div className="parallel-fetch-actions"><span>準備＋測定 {plannedParallelFetchAttempts(cloudPreset)} / {PARALLEL_FETCH_MAX_ATTEMPTS} 回</span>
-            {import.meta.env.DEV ? <button type="submit" disabled={busy || importing || cloudStateInvalid || cloud.connection !== 'connected' || cloud.status?.readiness !== 'ready'}>Actionsで開始</button>
+            {import.meta.env.DEV ? <button type="submit" disabled={busy || importing || cloudConfigError !== null || cloudStateInvalid || cloud.connection !== 'connected' || cloud.status?.readiness !== 'ready'}>Actionsで開始</button>
               : <a href={CLOUD_WORKFLOW_URL} target="_blank" rel="noreferrer">GitHub Actionsで開く</a>}
           </div>
+          {cloudConfigError && <p className="parallel-fetch-message" role="alert">{cloudConfigError}</p>}
         </form>}
       </StatisticsPanel>
       <StatisticsPanel title="実行状況" headerContent={<span className="monthly-statistics-panel-summary">{environmentLabels[environment]}</span>}>
@@ -403,7 +441,7 @@ export function ParallelFetchTestPage() {
           <p className="parallel-fetch-connection" role="status">{connectionLabel}</p>
           {service.status?.error === 'report-save-failed' && <p className="parallel-fetch-message" role="alert">結果の自動保存に失敗しました。JSONの保存は利用できます。</p>}
           {service.commandError && <p className="parallel-fetch-message" role="alert">{service.commandError}</p>}
-          <div className="parallel-fetch-progress-heading"><strong role="status" aria-live="polite">{runState}{latestTrial && <> · 並列 {latestTrial.concurrency} · {latestTrial.repetition} / {liveReport!.config.repetitions} 回目</>}</strong>
+          <div className="parallel-fetch-progress-heading"><strong role="status" aria-live="polite">{runState}{latestTrial && <> · {(latestTrial.intervalMs ?? liveReport!.config.intervalMs) / 1000} 秒 · 並列 {latestTrial.concurrency} · {latestTrial.repetition} / {liveReport!.config.repetitions} 回目</>}</strong>
             {running && <button type="button" disabled={service.pending || !connected} onClick={() => { void service.command('stop') }}>停止</button>}
           </div>
           {liveReport?.errorCode && <p className="parallel-fetch-message" role="status">{errorLabels[liveReport.errorCode]}</p>}

@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process'
 import { inflateRawSync } from 'node:zlib'
 import { parseParallelFetchReport } from '../../src/lib/parallelFetch.ts'
-import { cloudConfig } from '../../src/lib/parallelFetchCloud.ts'
+import { cloudConfig, parseCloudIntervalOptions } from '../../src/lib/parallelFetchCloud.ts'
 import type { ParallelFetchReport } from '../../src/types/parallelFetch.ts'
-import type { CloudError, CloudMode } from '../../src/types/parallelFetchCloud.ts'
+import type { CloudError, CloudIntervalOptions, CloudMode } from '../../src/types/parallelFetchCloud.ts'
 import { cloudSecretEnvironment } from '../send-buckler-cloud-session.ts'
 
 const REPO = 'repos/gonchiman/sf6'
@@ -27,11 +27,11 @@ export interface CloudRemoteRun {
 }
 export interface CloudGitHub {
   readiness(): Promise<'ready' | 'gh-unavailable' | 'github-unavailable' | 'workflow-unavailable'>
-  dispatch(mode: CloudMode, requestId: string): Promise<void>
+  dispatch(mode: CloudMode, requestId: string, options?: CloudIntervalOptions): Promise<void>
   findRun(requestId: string): Promise<CloudRemoteRun | null>
   getRun(runId: string, attempt?: number): Promise<CloudRemoteRun>
   cancel(runId: string): Promise<void>
-  readReport(run: CloudRemoteRun, mode: CloudMode): Promise<ParallelFetchReport>
+  readReport(run: CloudRemoteRun, mode: CloudMode, options?: CloudIntervalOptions): Promise<ParallelFetchReport>
 }
 export type CloudGhCommand = (args: string[], limit: number) => Promise<Buffer>
 
@@ -150,11 +150,18 @@ export function createCloudGitHub(command: CloudGhCommand = runCloudGhCommand): 
       try { const workflow = await api(`${REPO}/actions/workflows/${WORKFLOW}`); return workflow.state === 'active' ? 'ready' : 'workflow-unavailable' }
       catch { return 'workflow-unavailable' }
     },
-    async dispatch(mode, requestId) {
+    async dispatch(mode, requestId, options) {
       uuid(requestId)
-      if (!['serial', 'compare'].includes(mode)) return fail('invalid-request')
-      await command(['workflow', 'run', WORKFLOW, '--repo', 'gonchiman/sf6', '--ref', 'main',
-        '--raw-field', `mode=${mode}`, '--raw-field', `request_id=${requestId}`], 16384)
+      let selected: CloudIntervalOptions | undefined
+      try {
+        selected = mode === 'interval-compare' ? parseCloudIntervalOptions(options) : undefined
+        cloudConfig(mode, selected ?? options)
+      } catch { return fail('invalid-request') }
+      const args = ['workflow', 'run', WORKFLOW, '--repo', 'gonchiman/sf6', '--ref', 'main',
+        '--raw-field', `mode=${mode}`, '--raw-field', `request_id=${requestId}`]
+      if (selected) args.push('--raw-field', `intervals=${selected.intervalMsList.join(',')}`,
+        '--raw-field', `concurrencies=${selected.concurrencies.join(',')}`, '--raw-field', `repetitions=${selected.repetitions}`)
+      await command(args, 16384)
     },
     async findRun(requestId) {
       uuid(requestId)
@@ -170,7 +177,12 @@ export function createCloudGitHub(command: CloudGhCommand = runCloudGhCommand): 
     },
     getRun,
     async cancel(runId) { await command(['api', '--hostname', 'github.com', '--method', 'POST', `${REPO}/actions/runs/${id(runId)}/cancel`], 16384) },
-    async readReport(run, mode) {
+    async readReport(run, mode, options) {
+      let config
+      try {
+        if (mode === 'interval-compare') parseCloudIntervalOptions(options)
+        config = cloudConfig(mode, options)
+      } catch { return fail('invalid-report') }
       const expected = `parallel-fetch-cloud-${id(run.runId)}-${run.runAttempt}-${mode}`
       let value: Record<string, unknown>
       try { value = await api(`${REPO}/actions/runs/${run.runId}/artifacts?per_page=100`) } catch { return fail('artifact-download-failed') }
@@ -186,7 +198,7 @@ export function createCloudGitHub(command: CloudGhCommand = runCloudGhCommand): 
       try {
         const report = parseParallelFetchReport(JSON.parse(new TextDecoder('utf8', { fatal: true }).decode(extractCloudReportZip(zip, `${expected}.json`))))
         if (report.runId !== `cloud-${run.runId}-${run.runAttempt}-${mode}` || report.state === 'running'
-          || JSON.stringify(report.config) !== JSON.stringify(cloudConfig(mode))) return fail('invalid-report')
+          || JSON.stringify(report.config) !== JSON.stringify(config)) return fail('invalid-report')
         return report
       } catch { return fail('invalid-report') }
     },

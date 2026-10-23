@@ -1,12 +1,14 @@
 export type ParallelFetchTarget = 'lp' | 'mr'
 export type ParallelFetchConcurrency = 1 | 2 | 4
+export type ParallelFetchInterval = 3000 | 5000 | 10000
 export interface ParallelFetchConfig {
   target: ParallelFetchTarget
   startPage: number
   pageCount: 20 | 50
   concurrencies: ParallelFetchConcurrency[]
   repetitions: 1 | 3
-  intervalMs: 5000 | 10000
+  intervalMs: ParallelFetchInterval
+  intervalMsList?: ParallelFetchInterval[]
 }
 export const PARALLEL_FETCH_ERRORS = ['cancelled', 'limit-reached', 'out-of-range', 'http-denied', 'server-error',
   'http-error', 'maintenance', 'login-required', 'authentication-unconfirmed', 'human-verification',
@@ -70,6 +72,7 @@ export interface ParallelFetchWorker {
 }
 export interface ParallelFetchTrial {
   concurrency: ParallelFetchConcurrency
+  intervalMs?: ParallelFetchInterval
   repetition: number
   state: ParallelFetchTrialState
   startedAt: string
@@ -83,7 +86,7 @@ export interface ParallelFetchTrial {
   errorCode: ParallelFetchErrorCode | null
 }
 export interface ParallelFetchReport {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   runId: string
   config: ParallelFetchConfig
   state: ParallelFetchRunState

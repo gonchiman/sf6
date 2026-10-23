@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
-import { PARALLEL_FETCH_MAX_ATTEMPTS, parseParallelFetchConfig, parseParallelFetchReadDiagnostics } from '../../src/lib/parallelFetch.ts'
+import { PARALLEL_FETCH_MAX_ATTEMPTS, parallelFetchIntervals, parseParallelFetchConfig, parseParallelFetchReadDiagnostics } from '../../src/lib/parallelFetch.ts'
 import { PARALLEL_FETCH_ERRORS } from '../../src/types/parallelFetch.ts'
 import type {
-  ParallelFetchAttempt, ParallelFetchConfig, ParallelFetchErrorCode, ParallelFetchReadDiagnostics, ParallelFetchReport, ParallelFetchTarget,
+  ParallelFetchAttempt, ParallelFetchConfig, ParallelFetchErrorCode, ParallelFetchInterval, ParallelFetchReadDiagnostics, ParallelFetchReport, ParallelFetchTarget,
   ParallelFetchTrial, ParallelFetchWorker,
 } from '../../src/types/parallelFetch.ts'
 
@@ -28,7 +28,7 @@ export interface ParallelFetchReader {
   close(): Promise<void>
 }
 export interface ParallelFetchDependencies {
-  createReader(workerId: number, target: ParallelFetchTarget, signal: AbortSignal): Promise<ParallelFetchReader>
+  createReader(workerId: number, target: ParallelFetchTarget, signal: AbortSignal, intervalMs?: ParallelFetchInterval): Promise<ParallelFetchReader>
   onUpdate?(report: ParallelFetchReport): void
   signal?: AbortSignal
   now?(): number
@@ -61,7 +61,7 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
   const controller = new AbortController()
   const signal = controller.signal
   const report: ParallelFetchReport = {
-    schemaVersion: 1, runId: dependencies.runId ?? randomUUID(), config: structuredClone(config),
+    schemaVersion: config.intervalMsList ? 2 : 1, runId: dependencies.runId ?? randomUUID(), config: structuredClone(config),
     state: 'running', startedAt: wallNow(), finishedAt: null, trials: [], errorCode: null,
   }
   let failure: ParallelFetchReadError | null = null
@@ -76,7 +76,8 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
     controller.abort()
   }
   function failureCode(): ParallelFetchErrorCode { return failure?.code ?? 'read-failed' }
-  const onAbort = () => stop(new ParallelFetchReadError('cancelled'))
+  const onAbort = () => stop(new ParallelFetchReadError(dependencies.signal?.reason instanceof ParallelFetchReadError
+    && dependencies.signal.reason.code === 'limit-reached' ? 'limit-reached' : 'cancelled'))
   dependencies.signal?.addEventListener('abort', onAbort, { once: true })
   if (dependencies.signal?.aborted) onAbort()
   function checkStopped(): void {
@@ -87,12 +88,12 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
     try { dependencies.onUpdate?.(structuredClone(report)) } catch { /* A view failure must not start another fetch. */ }
   }
 
-  function reserveStart(): Promise<void> {
+  function reserveStart(intervalMs: ParallelFetchInterval): Promise<void> {
     const reservation = startQueue.then(async () => {
       checkStopped()
       // Retry backoff can extend while another worker is already waiting here.
       while (true) {
-        const due = Math.max(pausedUntil, lastStart === null ? now() : lastStart + config.intervalMs)
+        const due = Math.max(pausedUntil, lastStart === null ? now() : lastStart + intervalMs)
         const remaining = due - now()
         if (remaining <= 0) break
         await wait(remaining, signal)
@@ -111,7 +112,7 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
     return reservation
   }
 
-  async function runTrial(concurrency: 1 | 2 | 4, repetition: number): Promise<void> {
+  async function runTrial(concurrency: 1 | 2 | 4, repetition: number, intervalMs: ParallelFetchInterval): Promise<void> {
     const trialStart = now()
     let measurementStart: number | null = null
     let measurementEnd: number | null = null
@@ -122,6 +123,7 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
       preparationMs: null, measurementMs: null, totalMs: 0, completedPages: [], attempts: [],
       workers: Array.from({ length: concurrency }, (_, index) => ({ id: index + 1, page: null, state: 'idle', completedPages: 0 })),
       errorCode: null,
+      ...(config.intervalMsList ? { intervalMs } : {}),
     }
     const endPage = config.startPage + config.pageCount - 1
     report.trials.push(trial)
@@ -136,7 +138,7 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
         worker.page = page
         worker.state = 'waiting'
         publish()
-        await reserveStart()
+        await reserveStart(intervalMs)
         checkStopped()
         const started = now()
         const attempt: ParallelFetchAttempt = {
@@ -206,7 +208,7 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
     try {
       for (const worker of trial.workers) {
         checkStopped()
-        readers.push(await dependencies.createReader(worker.id, config.target, signal))
+        readers.push(await dependencies.createReader(worker.id, config.target, signal, intervalMs))
         checkStopped()
       }
       await Promise.all(trial.workers.map(worker => work(worker, () => read(worker, 1, 'prepare'))))
@@ -265,11 +267,13 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
 
   try {
     emit()
-    for (const concurrency of config.concurrencies) {
-      for (let repetition = 1; repetition <= config.repetitions; repetition += 1) {
-        checkStopped()
-        await runTrial(concurrency, repetition)
-        checkStopped()
+    for (const intervalMs of parallelFetchIntervals(config)) {
+      for (const concurrency of config.concurrencies) {
+        for (let repetition = 1; repetition <= config.repetitions; repetition += 1) {
+          checkStopped()
+          await runTrial(concurrency, repetition, intervalMs)
+          checkStopped()
+        }
       }
     }
     report.state = 'complete'

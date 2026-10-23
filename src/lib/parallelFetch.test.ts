@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULT_PARALLEL_FETCH_CONFIG, parseParallelFetchConfig, parseParallelFetchReadDiagnostics, parseParallelFetchReport,
   PARALLEL_FETCH_MAX_POST_STOP_MS, PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS, PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS,
-  plannedParallelFetchAttempts, summarizeParallelFetch } from './parallelFetch.ts'
+  minimumPlannedWaitMs, parallelFetchIntervals, plannedParallelFetchAttempts, summarizeParallelFetch } from './parallelFetch.ts'
 import type { ParallelFetchReadDiagnostics, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
 
 const startedAt = '2026-10-20T00:00:00.000Z', finishedAt = '2026-10-20T00:10:00.000Z'
@@ -205,4 +205,57 @@ test('retry failures remain in counts without double counting successful pages',
   assert.equal(summary.failedAttempts, 1)
   assert.equal(summary.failedAttemptRate, 1 / 22)
   assert.equal(summary.successfulPages, 20)
+})
+
+function intervalFixture(): ParallelFetchReport {
+  const legacy = fixture()
+  return { ...legacy, schemaVersion: 2, config: { ...legacy.config, intervalMsList: [5000, 3000] },
+    trials: [5000, 3000].flatMap(intervalMs => legacy.trials.map(trial => ({ ...structuredClone(trial),
+      intervalMs: intervalMs as 5000 | 3000, measurementMs: trial.measurementMs! * (intervalMs === 3000 ? 0.5 : 1) }))) }
+}
+test('interval selections preserve legacy shape and include preparation and boundary waits across conditions', () => {
+  const legacy = parseParallelFetchConfig(DEFAULT_PARALLEL_FETCH_CONFIG)
+  assert.equal('intervalMsList' in legacy, false)
+  assert.deepEqual(parallelFetchIntervals(legacy), [5000])
+  const config = parseParallelFetchConfig({ ...legacy, intervalMsList: [5000, 3000] })
+  assert.equal(plannedParallelFetchAttempts(config), 86)
+  assert.equal(minimumPlannedWaitMs(config), 42 * 5000 + 43 * 3000)
+  const copied = parallelFetchIntervals(config)
+  copied.pop()
+  assert.deepEqual(config.intervalMsList, [5000, 3000])
+  assert.equal(parseParallelFetchConfig({ ...legacy, intervalMs: 3000, intervalMsList: [3000] }).intervalMs, 3000)
+  for (const patch of [{ intervalMsList: [] }, { intervalMsList: [3000, 5000] }, { intervalMsList: [5000, 5000] },
+    { intervalMsList: [10000, 5000] }, { intervalMsList: [5000, 2000] }, { intervalMsList: null },
+    { intervalMsList: [5000, 3000], repetitions: 3 }, { intervalMs: 3000 }]) {
+    assert.throws(() => parseParallelFetchConfig({ ...legacy, ...patch }))
+  }
+  const legacyLong = { ...legacy, intervalMs: 10000, concurrencies: [1], repetitions: 3 }
+  assert.equal(parseParallelFetchConfig(legacyLong).intervalMs, 10000, 'historical over-time configs remain importable')
+  assert.throws(() => parseParallelFetchConfig({ ...legacyLong, intervalMsList: [10000] }), 'new guaranteed over-time configs fail before execution')
+})
+test('version 2 round-trips strict interval membership and ordered trial prefixes without changing version 1 reports', () => {
+  const report = intervalFixture()
+  assert.deepEqual(parseParallelFetchReport(report), report)
+  assert.deepEqual(parseParallelFetchReport(fixture()), fixture())
+  const mutations: ((value: ParallelFetchReport) => void)[] = [
+    value => { value.schemaVersion = 1 }, value => { delete value.config.intervalMsList },
+    value => { delete value.trials[0].intervalMs }, value => { value.trials[0].intervalMs = 10000 },
+    value => { value.trials[1] = structuredClone(value.trials[0]) },
+    value => { [value.trials[0], value.trials[1]] = [value.trials[1], value.trials[0]] },
+    value => { value.trials.pop() },
+  ]
+  for (const mutate of mutations) { const value = structuredClone(report); mutate(value); assert.throws(() => parseParallelFetchReport(value)) }
+  const partial = { ...report, state: 'stopped' as const, errorCode: 'cancelled' as const, trials: report.trials.slice(0, 1) }
+  assert.deepEqual(parseParallelFetchReport(partial), partial)
+})
+test('summaries expose unstarted interval conditions and use a serial baseline from the same interval only', () => {
+  const report = intervalFixture()
+  assert.deepEqual(summarizeParallelFetch(report).map(item => [item.intervalMs, item.concurrency, item.speedup]),
+    [[5000, 1, 1], [5000, 2, 2], [3000, 1, 1], [3000, 2, 2]])
+  report.trials = report.trials.slice(0, 2)
+  const summaries = summarizeParallelFetch(report)
+  assert.deepEqual(summaries.slice(2).map(item => [item.intervalMs, item.completedTrials, item.medianMs, item.speedup, item.failedAttemptRate]),
+    [[3000, 0, null, null, null], [3000, 0, null, null, null]])
+  report.config.repetitions = 3
+  assert.ok(summarizeParallelFetch(report).every(item => item.speedup === null))
 })

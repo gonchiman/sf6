@@ -1,9 +1,10 @@
 import { PARALLEL_FETCH_ERRORS } from '../types/parallelFetch.ts'
 import type { ParallelFetchAttempt, ParallelFetchAuthenticationEvidence, ParallelFetchConcurrency, ParallelFetchConfig,
-  ParallelFetchErrorCode, ParallelFetchNetworkEvent, ParallelFetchReadDiagnostics, ParallelFetchReadTrace,
+  ParallelFetchErrorCode, ParallelFetchInterval, ParallelFetchNetworkEvent, ParallelFetchReadDiagnostics, ParallelFetchReadTrace,
   ParallelFetchReport, ParallelFetchTrial, ParallelFetchWorker } from '../types/parallelFetch.ts'
 
 export const PARALLEL_FETCH_MAX_ATTEMPTS = 200
+export const PARALLEL_FETCH_MAX_DURATION_MS = 10 * 60 * 1000
 export const PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS = 80
 export const PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS = 80
 export const PARALLEL_FETCH_MAX_POST_STOP_MS = 35000
@@ -86,8 +87,19 @@ export function parseParallelFetchReadDiagnostics(value: unknown): ParallelFetch
   if (input.trace !== undefined) result.trace = parseReadTrace(input.trace)
   return result
 }
+export function parallelFetchIntervals(config: ParallelFetchConfig): ParallelFetchInterval[] {
+  return config.intervalMsList ? [...config.intervalMsList] : [config.intervalMs]
+}
 export function plannedParallelFetchAttempts(config: ParallelFetchConfig): number {
-  return config.repetitions * config.concurrencies.reduce((sum, concurrency) => sum + config.pageCount + concurrency, 0)
+  return parallelFetchIntervals(config).length * config.repetitions
+    * config.concurrencies.reduce((sum, concurrency) => sum + config.pageCount + concurrency, 0)
+}
+/** Lower bound only: first start is immediate; every later start includes the current condition's gap. */
+export function minimumPlannedWaitMs(config: ParallelFetchConfig): number {
+  const attemptsPerInterval = config.repetitions
+    * config.concurrencies.reduce((sum, concurrency) => sum + config.pageCount + concurrency, 0)
+  return parallelFetchIntervals(config).reduce((sum, intervalMs, index) =>
+    sum + intervalMs * (attemptsPerInterval - (index === 0 ? 1 : 0)), 0)
 }
 export function parseParallelFetchConfig(value: unknown): ParallelFetchConfig {
   const input = object(value)
@@ -97,7 +109,14 @@ export function parseParallelFetchConfig(value: unknown): ParallelFetchConfig {
   const result: ParallelFetchConfig = {
     target: oneOf(input.target, ['lp', 'mr']), startPage: integer(input.startPage, 1, 1000000),
     pageCount: oneOf(input.pageCount, [20, 50]), concurrencies,
-    repetitions: oneOf(input.repetitions, [1, 3]), intervalMs: oneOf(input.intervalMs, [5000, 10000]),
+    repetitions: oneOf(input.repetitions, [1, 3]), intervalMs: oneOf(input.intervalMs, input.intervalMsList === undefined ? [5000, 10000] : [3000, 5000, 10000]),
+  }
+  if (input.intervalMsList !== undefined) {
+    const intervals = list(input.intervalMsList, 3).map(item => oneOf(item, [3000, 5000, 10000] as const))
+    if (!intervals.length || intervals[0] !== result.intervalMs || new Set(intervals).size !== intervals.length
+      || intervals.some((item, index) => index > 0 && item > intervals[index - 1])) return invalid()
+    result.intervalMsList = intervals
+    if (minimumPlannedWaitMs(result) >= PARALLEL_FETCH_MAX_DURATION_MS) return invalid()
   }
   if (plannedParallelFetchAttempts(result) > PARALLEL_FETCH_MAX_ATTEMPTS) return invalid()
   return result
@@ -125,7 +144,7 @@ function parseWorker(value: unknown, concurrency: number): ParallelFetchWorker {
   return { id: integer(input.id, 1, concurrency), page: input.page === null ? null : integer(input.page, 1, 1000050),
     state: oneOf(input.state, ['idle', 'waiting', 'reading', 'complete', 'stopped']), completedPages: integer(input.completedPages, 0, 50) }
 }
-function parseTrial(value: unknown, config: ParallelFetchConfig): ParallelFetchTrial {
+function parseTrial(value: unknown, config: ParallelFetchConfig, schemaVersion: 1 | 2): ParallelFetchTrial {
   const input = object(value)
   const concurrency = oneOf(input.concurrency, config.concurrencies)
   const result: ParallelFetchTrial = {
@@ -138,6 +157,8 @@ function parseTrial(value: unknown, config: ParallelFetchConfig): ParallelFetchT
     attempts: list(input.attempts, PARALLEL_FETCH_MAX_ATTEMPTS).map(item => parseAttempt(item, config, concurrency)),
     workers: list(input.workers, concurrency).map(item => parseWorker(item, concurrency)), errorCode: errorCode(input.errorCode),
   }
+  if (schemaVersion === 2) result.intervalMs = oneOf(input.intervalMs, parallelFetchIntervals(config))
+  else if (input.intervalMs !== undefined) return invalid()
   if (result.workers.length !== concurrency || new Set(result.workers.map(worker => worker.id)).size !== result.workers.length
     || new Set(result.completedPages).size !== result.completedPages.length) return invalid()
   const successes = result.attempts.filter(attempt => attempt.phase === 'measure' && attempt.errorCode === null).map(attempt => attempt.page)
@@ -157,27 +178,34 @@ function parseTrial(value: unknown, config: ParallelFetchConfig): ParallelFetchT
 /** Reconstructs an allowlisted report. Credentials, raw rows, URLs and arbitrary errors never survive import/export. */
 export function parseParallelFetchReport(value: unknown): ParallelFetchReport {
   const input = object(value)
-  if (input.schemaVersion !== 1 || typeof input.runId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(input.runId)) return invalid()
+  if (input.schemaVersion !== 1 && input.schemaVersion !== 2 || typeof input.runId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(input.runId)) return invalid()
   const config = parseParallelFetchConfig(input.config)
+  if ((input.schemaVersion === 2) !== (config.intervalMsList !== undefined)) return invalid()
+  const expectedTrials = parallelFetchIntervals(config).flatMap(intervalMs => config.concurrencies.flatMap(concurrency =>
+    Array.from({ length: config.repetitions }, (_, index) => `${intervalMs}:${concurrency}:${index + 1}`)))
   const result: ParallelFetchReport = {
-    schemaVersion: 1, runId: input.runId, config, state: oneOf(input.state, ['running', 'complete', 'stopped', 'error']),
+    schemaVersion: input.schemaVersion, runId: input.runId, config, state: oneOf(input.state, ['running', 'complete', 'stopped', 'error']),
     startedAt: date(input.startedAt), finishedAt: input.finishedAt === null ? null : date(input.finishedAt),
-    trials: list(input.trials, config.concurrencies.length * config.repetitions).map(item => parseTrial(item, config)),
+    trials: list(input.trials, expectedTrials.length).map(item => parseTrial(item, config, input.schemaVersion as 1 | 2)),
     errorCode: errorCode(input.errorCode),
   }
-  if (new Set(result.trials.map(trial => `${trial.concurrency}:${trial.repetition}`)).size !== result.trials.length
+  if (new Set(result.trials.map(trial => `${trial.intervalMs ?? config.intervalMs}:${trial.concurrency}:${trial.repetition}`)).size !== result.trials.length
     || result.trials.reduce((sum, trial) => sum + trial.attempts.length, 0) > PARALLEL_FETCH_MAX_ATTEMPTS) return invalid()
+  if (result.schemaVersion === 2 && result.trials.some((trial, index) =>
+    `${trial.intervalMs}:${trial.concurrency}:${trial.repetition}` !== expectedTrials[index]
+    || index < result.trials.length - 1 && trial.state !== 'complete')) return invalid()
   if ((result.state !== 'running') !== (result.finishedAt !== null)
     || result.finishedAt && result.finishedAt < result.startedAt) return invalid()
   const active = result.trials.filter(trial => trial.state === 'running' || trial.state === 'preparing')
   if (active.length > 1 || result.state !== 'running' && active.length > 0) return invalid()
-  if (result.state === 'complete' && (result.trials.length !== config.concurrencies.length * config.repetitions
+  if (result.state === 'complete' && (result.trials.length !== expectedTrials.length
     || result.trials.some(trial => trial.state !== 'complete') || result.errorCode !== null)) return invalid()
   return result
 }
 
 export interface ParallelFetchSummary {
   concurrency: ParallelFetchConcurrency
+  intervalMs: ParallelFetchInterval
   completedTrials: number
   plannedTrials: number
   medianMs: number | null
@@ -195,8 +223,9 @@ function median(values: number[]): number | null {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
 }
 export function summarizeParallelFetch(report: ParallelFetchReport): ParallelFetchSummary[] {
-  const summaries = report.config.concurrencies.map(concurrency => {
-    const trials = report.trials.filter(trial => trial.concurrency === concurrency)
+  const summaries = parallelFetchIntervals(report.config).flatMap(intervalMs => report.config.concurrencies.map(concurrency => {
+    const trials = report.trials.filter(trial => trial.concurrency === concurrency
+      && (trial.intervalMs ?? report.config.intervalMs) === intervalMs)
     const completed = trials.filter(trial => trial.state === 'complete')
     const medianMs = median(completed.map(trial => trial.measurementMs!))
     const pagesPerMinute = medianMs !== null && medianMs > 0 ? report.config.pageCount * 60000 / medianMs : null
@@ -206,7 +235,7 @@ export function summarizeParallelFetch(report: ParallelFetchReport): ParallelFet
     const attempts = trials.flatMap(trial => trial.attempts)
     const failedAttempts = attempts.filter(attempt => attempt.errorCode !== null).length
     return {
-      concurrency, completedTrials: completed.length, plannedTrials: report.config.repetitions, medianMs, pagesPerMinute,
+      concurrency, intervalMs, completedTrials: completed.length, plannedTrials: report.config.repetitions, medianMs, pagesPerMinute,
       speedup: null as number | null,
       estimatedFullScanMs: pagesPerMinute !== null && fullPages !== undefined ? fullPages / pagesPerMinute * 60000 : null,
       successfulPages: trials.reduce((sum, trial) => sum + trial.completedPages.length, 0),
@@ -215,9 +244,9 @@ export function summarizeParallelFetch(report: ParallelFetchReport): ParallelFet
       retries: trials.reduce((sum, trial) => sum + trial.attempts.length
         - new Set(trial.attempts.map(attempt => `${attempt.phase}:${attempt.phase === 'prepare' ? attempt.worker : ''}:${attempt.page}`)).size, 0),
     }
-  })
-  const baseline = summaries.find(summary => summary.concurrency === 1)
+  }))
   for (const summary of summaries) {
+    const baseline = summaries.find(candidate => candidate.concurrency === 1 && candidate.intervalMs === summary.intervalMs)
     if (baseline?.medianMs && baseline.completedTrials === baseline.plannedTrials && summary.medianMs
       && summary.completedTrials === summary.plannedTrials) summary.speedup = baseline.medianMs / summary.medianMs
   }

@@ -1,10 +1,10 @@
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseParallelFetchReport } from '../src/lib/parallelFetch.ts'
-import { cloudConfig } from '../src/lib/parallelFetchCloud.ts'
+import { cloudConfig, parseCloudIntervalOptions } from '../src/lib/parallelFetchCloud.ts'
 import { PARALLEL_FETCH_ERRORS } from '../src/types/parallelFetch.ts'
 import type { ParallelFetchErrorCode, ParallelFetchReport } from '../src/types/parallelFetch.ts'
-import type { CloudMode } from '../src/types/parallelFetchCloud.ts'
+import type { CloudIntervalOptions, CloudMode } from '../src/types/parallelFetchCloud.ts'
 import { disableRankDistributionDiagnostics } from './collect-rank-distribution.ts'
 import { markRankDistributionArtifactReady } from './collect-rank-distribution-cloud.ts'
 import { BUCKLER_WEEKLY_SESSION_SECRET, parseBucklerWeeklySession } from './lib/buckler-weekly-session.ts'
@@ -25,17 +25,19 @@ const HELP = `Bucklerランキングの小規模クラウド取得テスト
 
 node scripts/test-parallel-fetch-cloud.ts --serial
 node scripts/test-parallel-fetch-cloud.ts --compare
+node scripts/test-parallel-fetch-cloud.ts --interval-compare --intervals=5000,3000 --concurrencies=1,2 --repetitions=1
 
 --serial: LPの1〜20ページを並列数1で3回（事前確認を含め63取得予定）
 --compare: 同じ20ページを並列数1・2で各1回（事前確認を含め43取得予定）
-全体の開始間隔は5秒以上、最大10分。認証・チャレンジ検出時は停止します。
+--interval-compare: 10秒・5秒・3秒の選択と並列数1・2を組み合わせ、長い間隔から比較
+固定テストの開始間隔は5秒。全条件合計200取得以内、最大10分。認証・チャレンジ検出時は停止します。
 指定のmain上の手動workflow、または既存の検証ブランチ・GitHub hosted Windows専用です。
 mainのworkflowでは PARALLEL_FETCH_REQUEST_ID に小文字のUUID v4を指定します。`
 
 export class ParallelFetchCloudError extends Error {
   readonly code: 'arguments' | 'runner' | 'time'
   constructor(code: 'arguments' | 'runner' | 'time') {
-    super({ arguments: '--serial、--compare、--help のいずれか1つを指定してください。',
+    super({ arguments: 'テスト種別と許可された取得間隔・並列数・反復回数を確認してください。',
       runner: '指定ブランチ・手動workflowのGitHub hosted Windows実行が必要です。',
       time: 'クラウドテストの実行日時を確認できません。' }[code])
     this.name = 'ParallelFetchCloudError'
@@ -43,9 +45,18 @@ export class ParallelFetchCloudError extends Error {
   }
 }
 
-export function parseParallelFetchCloudArguments(args: string[]): { mode: ParallelFetchCloudMode | 'help' } {
+export function parseParallelFetchCloudArguments(args: string[]): { mode: ParallelFetchCloudMode | 'help'; options?: CloudIntervalOptions } {
   if (args.length === 1 && ['--serial', '--compare', '--help'].includes(args[0])) {
     return { mode: args[0].slice(2) as ParallelFetchCloudMode | 'help' }
+  }
+  if (args.length === 4 && args[0] === '--interval-compare'
+    && /^--intervals=(?:10000|5000|3000)(?:,(?:10000|5000|3000)){0,2}$/.test(args[1])
+    && /^--concurrencies=[12](?:,[12])?$/.test(args[2]) && /^--repetitions=[13]$/.test(args[3])) {
+    try {
+      const options = parseCloudIntervalOptions({ intervalMsList: args[1].slice('--intervals='.length).split(',').map(Number),
+        concurrencies: args[2].slice('--concurrencies='.length).split(',').map(Number), repetitions: Number(args[3].slice('--repetitions='.length)) })
+      return { mode: 'interval-compare', options }
+    } catch { /* Return the same bounded argument error without raw user input. */ }
   }
   throw new ParallelFetchCloudError('arguments')
 }
@@ -103,12 +114,13 @@ export async function runParallelFetchCloudTest(args: string[], dependencies: Pa
   const options = parseParallelFetchCloudArguments(args)
   if (options.mode === 'help') throw new ParallelFetchCloudError('arguments')
   if (!isAllowedParallelFetchCloudExecution(env)) throw new ParallelFetchCloudError('runner')
+  if (options.mode === 'interval-compare' && env.GITHUB_REF !== 'refs/heads/main') throw new ParallelFetchCloudError('runner')
   const now = dependencies.now ?? (() => new Date())
   const startedAt = timestamp(now)
-  const config = cloudConfig(options.mode)
+  const config = cloudConfig(options.mode, options.options)
   const runId = `cloud-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-${options.mode}`
   const failedReport = (code: ParallelFetchErrorCode): ParallelFetchReport => parseParallelFetchReport({
-    schemaVersion: 1, runId, config, startedAt, finishedAt: timestamp(now), trials: [],
+    schemaVersion: options.mode === 'interval-compare' ? 2 : 1, runId, config, startedAt, finishedAt: timestamp(now), trials: [],
     state: code === 'cancelled' ? 'stopped' : 'error', errorCode: code,
   })
   let storageState: BucklerWeeklyStorageState | undefined
@@ -149,7 +161,7 @@ export async function runParallelFetchCloudTest(args: string[], dependencies: Pa
       if (controller.signal.aborted) throw new ParallelFetchReadError('cancelled')
       report = parseParallelFetchReport(await (dependencies.run ?? runParallelFetch)(config, {
         runId, signal: controller.signal, wallNow: () => timestamp(now),
-        createReader: (worker, target, signal) => session!.createReader(worker, target, signal),
+        createReader: (worker, target, signal, intervalMs) => session!.createReader(worker, target, signal, intervalMs),
       }))
       if (report.state === 'running' || report.runId !== runId || JSON.stringify(report.config) !== JSON.stringify(config)) throw new Error()
       if (timedOut) report = parseParallelFetchReport({ ...report, state: 'error', errorCode: 'timeout' })

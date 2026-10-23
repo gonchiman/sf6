@@ -4,8 +4,8 @@ import { lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
-import { isCloudRunActive, parseCloudRun, parseCloudServiceStatus } from '../../src/lib/parallelFetchCloud.ts'
-import type { CloudError, CloudMode, CloudRun, CloudServiceStatus } from '../../src/types/parallelFetchCloud.ts'
+import { cloudConfig, isCloudRunActive, parseCloudIntervalOptions, parseCloudRun, parseCloudServiceStatus } from '../../src/lib/parallelFetchCloud.ts'
+import type { CloudError, CloudIntervalOptions, CloudMode, CloudRun, CloudServiceStatus } from '../../src/types/parallelFetchCloud.ts'
 import { requestOrigin, requireWrite, readBody, reply, ServiceError } from './parallel-fetch-service.ts'
 import { createCloudGitHub, ParallelFetchCloudServiceError } from './parallel-fetch-github.ts'
 import type { CloudGitHub, CloudRemoteRun } from './parallel-fetch-github.ts'
@@ -156,7 +156,7 @@ export function createParallelFetchCloudService(dependencies: ParallelFetchCloud
       }
       run.state = 'loading-result'
       try {
-        const report = await github.readReport(remote, run.mode)
+        const report = await github.readReport(remote, run.mode, run.options)
         const validated = parseCloudRun({ ...run, report })
         run.report = validated.report
         run.state = remote.conclusion === 'cancelled' ? 'cancelled' : report.state === 'complete' && remote.conclusion === 'success' ? 'complete' : 'failed'
@@ -192,14 +192,19 @@ export function createParallelFetchCloudService(dependencies: ParallelFetchCloud
     void poll()
     return snapshot()
   }
-  async function start(mode: CloudMode): Promise<CloudServiceStatus> {
+  async function start(mode: CloudMode, inputOptions?: CloudIntervalOptions): Promise<CloudServiceStatus> {
+    let options: CloudIntervalOptions | undefined
+    try {
+      options = mode === 'interval-compare' ? parseCloudIntervalOptions(inputOptions) : undefined
+      cloudConfig(mode, mode === 'interval-compare' ? options : inputOptions)
+    } catch { return fail('invalid-request') }
     await initialize()
     await exclusive(async () => {
       if (closed) fail('service-closed')
       if (serviceError === 'state-invalid' || serviceError === 'state-save-failed') fail(serviceError)
       if (runs.some(isCloudRunActive)) fail('already-running')
       if (readiness !== 'ready') fail(readiness === 'workflow-unavailable' ? 'workflow-unavailable' : 'github-unavailable')
-      const run = parseCloudRun({ requestId: uuid(), mode, createdAt: timestamp(), updatedAt: timestamp(), dispatchState: 'pending',
+      const run = parseCloudRun({ requestId: uuid(), mode, ...(options ? { options } : {}), createdAt: timestamp(), updatedAt: timestamp(), dispatchState: 'pending',
         runId: null, runAttempt: null, state: 'dispatching', startedAt: null, finishedAt: null, headSha: null, conclusion: null, report: null, error: null })
       const previous = runs
       runs = [run, ...runs].slice(0, 20)
@@ -208,7 +213,7 @@ export function createParallelFetchCloudService(dependencies: ParallelFetchCloud
       const dispatch = (async () => {
         let sent = false
         try {
-          await github.dispatch(mode, run.requestId)
+          await github.dispatch(mode, run.requestId, run.options)
           sent = true
         } catch { /* An ambiguous response never authorizes another dispatch. */ }
         await exclusive(async () => {
@@ -269,13 +274,14 @@ export function createParallelFetchCloudService(dependencies: ParallelFetchCloud
         if (req.method === 'POST' && ['run', 'stop', 'retry'].some(path => req.url === `${PARALLEL_FETCH_CLOUD_API_PREFIX}/${path}`)) {
           requireWrite(req, origin, token)
           const body = await readBody(req)
-          if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 1) fail('invalid-request')
+          if (!body || typeof body !== 'object' || Array.isArray(body)) fail('invalid-request')
           const input = body as Record<string, unknown>
           if (req.url.endsWith('/run')) {
-            if (input.mode !== 'serial' && input.mode !== 'compare') fail('invalid-request')
-            reply(res, 202, await start(input.mode))
+            if (input.mode !== 'serial' && input.mode !== 'compare' && input.mode !== 'interval-compare') fail('invalid-request')
+            if (Object.keys(input).length !== (input.mode === 'interval-compare' ? 2 : 1)) fail('invalid-request')
+            reply(res, 202, await start(input.mode, input.options as CloudIntervalOptions | undefined))
           } else {
-            if (typeof input.requestId !== 'string') fail('invalid-request')
+            if (Object.keys(input).length !== 1 || typeof input.requestId !== 'string') fail('invalid-request')
             reply(res, 202, await request(input.requestId, req.url.endsWith('/stop') ? 'stop' : 'retry'))
           }
           return

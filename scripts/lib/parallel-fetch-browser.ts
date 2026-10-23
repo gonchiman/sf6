@@ -2,7 +2,7 @@ import { lstat, readFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright'
 import { PARALLEL_FETCH_ERRORS } from '../../src/types/parallelFetch.ts'
-import type { ParallelFetchErrorCode, ParallelFetchReadDiagnostics, ParallelFetchTarget } from '../../src/types/parallelFetch.ts'
+import type { ParallelFetchErrorCode, ParallelFetchInterval, ParallelFetchReadDiagnostics, ParallelFetchTarget } from '../../src/types/parallelFetch.ts'
 import { disableRankDistributionDiagnostics } from '../collect-rank-distribution.ts'
 import { rankDistributionCloudBrowserEnvironment } from '../collect-rank-distribution-cloud.ts'
 import { BUCKLER_SESSION_CAPTURE_PATH, createBucklerSessionStore, validateBucklerSessionState } from './buckler-session-store.ts'
@@ -16,7 +16,7 @@ import { createParallelFetchDiagnosticRecorder } from './parallel-fetch-diagnost
 
 type StorageState = Exclude<NonNullable<BrowserContextOptions['storageState']>, string>
 export interface ParallelFetchBrowserSession {
-  createReader(workerId: number, target: ParallelFetchTarget, signal: AbortSignal): Promise<ParallelFetchReader>
+  createReader(workerId: number, target: ParallelFetchTarget, signal: AbortSignal, intervalMs?: ParallelFetchInterval): Promise<ParallelFetchReader>
   close(): Promise<void>
 }
 export interface ParallelFetchBrowserDependencies {
@@ -83,9 +83,9 @@ function safeReadCode(error: unknown): ParallelFetchErrorCode {
 }
 
 /** One browser/context per user-started run; each worker owns one independent Page. */
-export async function createParallelFetchBrowserSession(options: { intervalMs: 5000 | 10000; signal: AbortSignal },
+export async function createParallelFetchBrowserSession(options: { intervalMs: ParallelFetchInterval; signal: AbortSignal },
   dependencies: ParallelFetchBrowserDependencies = {}): Promise<ParallelFetchBrowserSession> {
-  if (![5000, 10000].includes(options.intervalMs)) throw new ParallelFetchReadError('invalid-request')
+  if (![3000, 5000, 10000].includes(options.intervalMs)) throw new ParallelFetchReadError('invalid-request')
   const check = (): void => { if (options.signal.aborted) throw new ParallelFetchReadError('cancelled') }
   check()
   let state: StorageState
@@ -125,7 +125,8 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: 5
   options.signal.addEventListener('abort', aborted, { once: true })
   if (options.signal.aborted) { await close(); throw new ParallelFetchReadError('cancelled') }
   return {
-    async createReader(workerId, target, signal) {
+    async createReader(workerId, target, signal, intervalMs = options.intervalMs) {
+      if (![3000, 5000, 10000].includes(intervalMs)) throw new ParallelFetchReadError('invalid-request')
       if (!Number.isSafeInteger(workerId) || workerId < 1 || workerId > 4 || !['lp', 'mr'].includes(target)) throw new ParallelFetchReadError('invalid-request')
       if (closed || options.signal.aborted || signal.aborted) throw new ParallelFetchReadError('cancelled')
       let page: Page
@@ -177,10 +178,10 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: 5
         rankingReadable: value.rankingReadable, humanVerification: false,
       })
       const lp = target === 'lp' ? (dependencies.createLpReader ?? createRankDistributionPageReader)(guarded, {
-        signal, minIntervalMs: options.intervalMs, totalCountPolicy: 'record', allowReadablePagesAfterSignIn: false, onObservation,
+        signal, minIntervalMs: intervalMs, totalCountPolicy: 'record', allowReadablePagesAfterSignIn: false, onObservation,
       }) : null
       const mr = target === 'mr' ? (dependencies.createMrReader ?? createMrDistributionPageReader)(guarded, {
-        signal, minIntervalMs: options.intervalMs, allowReadablePagesAfterSignIn: false, onObservation,
+        signal, minIntervalMs: intervalMs, allowReadablePagesAfterSignIn: false, onObservation,
       }) : null
       const readDiagnostics = (pageNumber: number): ParallelFetchReadDiagnostics | undefined => {
         // Only an observation made after this read's navigation may contribute.
