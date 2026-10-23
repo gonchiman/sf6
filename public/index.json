@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-22T18:13:47.838Z",
+  "generatedAt": "2026-10-23T18:01:55.441Z",
   "source": {
     "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/master",
     "title": "Buckler MRランキング"
@@ -70,5 +70,10 @@
       "captureEndedAt": "2026-10-17T16:42:47.921Z",
       "totalCount": 501
     }
-  ]
+  ],
+  "availability": {
+    "status": "collection-failed",
+    "checkedAt": "2026-10-23T18:01:29.854Z",
+    "message": "今回の取得を完了できませんでした。取得完了データのみを表示します。"
+  }
 }
