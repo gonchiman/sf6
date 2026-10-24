@@ -1,15 +1,26 @@
-import { minimumPlannedWaitMs, parallelFetchIntervals, PARALLEL_FETCH_MAX_ATTEMPTS, PARALLEL_FETCH_MAX_DURATION_MS, parseParallelFetchConcurrencyInput, parseParallelFetchConfig, plannedParallelFetchAttempts } from './parallelFetch.ts'
-import type { ParallelFetchConfig, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
+import { minimumPlannedWaitMs, parallelFetchIntervals, parallelFetchIntervalScope, PARALLEL_FETCH_MAX_ATTEMPTS, PARALLEL_FETCH_MAX_DURATION_MS, parseParallelFetchConcurrencyInput, parseParallelFetchConfig, parseParallelFetchIntervalInput, plannedParallelFetchAttempts } from './parallelFetch.ts'
+import type { ParallelFetchConfig, ParallelFetchIntervalScope, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
+
+export const parallelFetchIntervalScopeLabels: Record<ParallelFetchIntervalScope, string> = { global: '全タブ共通', 'per-tab': 'タブごと' }
 
 export function parallelFetchConcurrencyDraft(text: string): { values: number[]; error: string | null } {
   try { return { values: parseParallelFetchConcurrencyInput(text), error: null } }
   catch (error) { return { values: [], error: error instanceof Error ? error.message : '並列数を確認してください。' } }
 }
 
+export function parallelFetchIntervalDraft(text: string): { values: number[]; error: string | null } {
+  try { return { values: parseParallelFetchIntervalInput(text), error: null } }
+  catch (error) { return { values: [], error: error instanceof Error ? error.message : '取得開始間隔を確認してください。' } }
+}
+
+export function parallelFetchIntervalScopeLabel(config: ParallelFetchConfig): string {
+  return parallelFetchIntervalScopeLabels[parallelFetchIntervalScope(config)]
+}
+
 export function parallelFetchConfigError(config: ParallelFetchConfig): string | null {
-  if (!parallelFetchIntervals(config).length) return '取得間隔を1つ以上選択してください。'
+  if (!parallelFetchIntervals(config).length) return '取得開始間隔を1つ以上入力してください。'
   if (plannedParallelFetchAttempts(config) > PARALLEL_FETCH_MAX_ATTEMPTS) return `予定取得数が上限 ${PARALLEL_FETCH_MAX_ATTEMPTS} 回を超えています。`
-  if (config.intervalMsList && minimumPlannedWaitMs(config) >= PARALLEL_FETCH_MAX_DURATION_MS) return '開始間隔の待ち時間だけで10分に達します。条件数か繰り返しを減らしてください。'
+  if (minimumPlannedWaitMs(config) >= PARALLEL_FETCH_MAX_DURATION_MS) return '開始間隔の待ち時間だけで10分に達します。条件数か繰り返しを減らしてください。'
   if (!Number.isInteger(config.startPage) || config.startPage < 1 || config.startPage > 1_000_000) return '開始ページは 1〜1,000,000 の整数で指定してください。'
   try { parseParallelFetchConfig(config); return null } catch { return '取得条件を確認してください。' }
 }

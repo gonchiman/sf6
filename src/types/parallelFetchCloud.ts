@@ -1,10 +1,11 @@
-import type { ParallelFetchConcurrency, ParallelFetchInterval, ParallelFetchReport } from './parallelFetch.ts'
+import type { ParallelFetchConcurrency, ParallelFetchInterval, ParallelFetchIntervalScope, ParallelFetchReport } from './parallelFetch.ts'
 
 export type CloudMode = 'serial' | 'compare' | 'interval-compare'
 export interface CloudIntervalOptions {
   intervalMsList: ParallelFetchInterval[]
   concurrencies: ParallelFetchConcurrency[]
   repetitions: 1 | 3
+  intervalScope?: ParallelFetchIntervalScope
 }
 export const CLOUD_STATES = ['dispatching', 'dispatch-unknown', 'queued', 'preparing', 'collecting',
   'loading-result', 'complete', 'failed', 'cancel-requested', 'cancelled'] as const

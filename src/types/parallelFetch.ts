@@ -1,6 +1,7 @@
 export type ParallelFetchTarget = 'lp' | 'mr'
 export type ParallelFetchConcurrency = number
-export type ParallelFetchInterval = 3000 | 5000 | 10000
+export type ParallelFetchInterval = number
+export type ParallelFetchIntervalScope = 'global' | 'per-tab'
 export interface ParallelFetchConfig {
   target: ParallelFetchTarget
   startPage: number
@@ -9,6 +10,8 @@ export interface ParallelFetchConfig {
   repetitions: 1 | 3
   intervalMs: ParallelFetchInterval
   intervalMsList?: ParallelFetchInterval[]
+  /** Omitted in legacy records, where all tabs shared one start interval. */
+  intervalScope?: ParallelFetchIntervalScope
 }
 export const PARALLEL_FETCH_ERRORS = ['cancelled', 'limit-reached', 'out-of-range', 'http-denied', 'server-error',
   'http-error', 'maintenance', 'login-required', 'authentication-unconfirmed', 'human-verification',
@@ -86,7 +89,7 @@ export interface ParallelFetchTrial {
   errorCode: ParallelFetchErrorCode | null
 }
 export interface ParallelFetchReport {
-  schemaVersion: 1 | 2
+  schemaVersion: 1 | 2 | 3
   runId: string
   config: ParallelFetchConfig
   state: ParallelFetchRunState

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
-import { PARALLEL_FETCH_MAX_ATTEMPTS, parallelFetchIntervals, parseParallelFetchConfig, parseParallelFetchReadDiagnostics } from '../../src/lib/parallelFetch.ts'
+import { PARALLEL_FETCH_MAX_ATTEMPTS, parallelFetchIntervals, parallelFetchIntervalScope, parseParallelFetchConfig, parseParallelFetchReadDiagnostics } from '../../src/lib/parallelFetch.ts'
 import { PARALLEL_FETCH_ERRORS } from '../../src/types/parallelFetch.ts'
 import type {
   ParallelFetchAttempt, ParallelFetchConfig, ParallelFetchErrorCode, ParallelFetchInterval, ParallelFetchReadDiagnostics, ParallelFetchReport, ParallelFetchTarget,
@@ -22,8 +22,9 @@ export class ParallelFetchReadError extends Error {
   }
 }
 
+export type ParallelFetchNavigationGate = <T>(navigate: () => Promise<T>) => Promise<T>
 export interface ParallelFetchReader {
-  readPage(page: number): Promise<{ totalCount: number; totalPages: number; httpStatus: number | null; diagnostics?: ParallelFetchReadDiagnostics }>
+  readPage(page: number, navigateWithPacing: ParallelFetchNavigationGate): Promise<{ totalCount: number; totalPages: number; httpStatus: number | null; diagnostics?: ParallelFetchReadDiagnostics }>
   observeAfterStop?(signal: AbortSignal): Promise<ParallelFetchReadDiagnostics | undefined>
   close(): Promise<void>
 }
@@ -52,23 +53,22 @@ function stoppedState(code: ParallelFetchErrorCode): 'stopped' | 'error' {
   return code === 'cancelled' || code === 'limit-reached' ? 'stopped' : 'error'
 }
 
-/** Every tab has its own reader; all navigation starts share one paced, bounded queue. */
+/** Each navigation is paced immediately before starting, with shared stop and attempt limits. */
 export async function runParallelFetch(input: ParallelFetchConfig, dependencies: ParallelFetchDependencies): Promise<ParallelFetchReport> {
-  const config = parseParallelFetchConfig(input)
+  const config = { ...parseParallelFetchConfig(input), intervalScope: parallelFetchIntervalScope(input) }
   const now = dependencies.now ?? (() => performance.now())
   const wallNow = dependencies.wallNow ?? (() => new Date().toISOString())
   const wait = dependencies.wait ?? (async (milliseconds, signal) => { await delay(milliseconds, undefined, { signal }) })
   const controller = new AbortController()
   const signal = controller.signal
   const report: ParallelFetchReport = {
-    schemaVersion: config.intervalMsList ? 2 : 1, runId: dependencies.runId ?? randomUUID(), config: structuredClone(config),
+    schemaVersion: 3, runId: dependencies.runId ?? randomUUID(), config: structuredClone(config),
     state: 'running', startedAt: wallNow(), finishedAt: null, trials: [], errorCode: null,
   }
   let failure: ParallelFetchReadError | null = null
   let totalAttempts = 0
-  let lastStart: number | null = null
+  const globalClock = { lastStart: null as number | null }
   let pausedUntil = 0
-  let startQueue: Promise<void> = Promise.resolve()
 
   function stop(error: ParallelFetchReadError): void {
     if (failure) return
@@ -88,16 +88,17 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
     try { dependencies.onUpdate?.(structuredClone(report)) } catch { /* A view failure must not start another fetch. */ }
   }
 
-  function reserveStart(intervalMs: ParallelFetchInterval): Promise<void> {
-    const reservation = startQueue.then(async () => {
+  async function startNavigation<T>(intervalMs: ParallelFetchInterval, tabClock: { lastStart: number | null }, navigate: () => Promise<T>): Promise<T> {
+    const clock = config.intervalScope === 'global' ? globalClock : tabClock
+    // Independent waiters recheck shared state before committing. No waiter holds
+    // a queue while sleeping, so one tab cannot delay another eligible tab.
+    while (true) {
       checkStopped()
-      // Retry backoff can extend while another worker is already waiting here.
-      while (true) {
-        const due = Math.max(pausedUntil, lastStart === null ? now() : lastStart + intervalMs)
-        const remaining = due - now()
-        if (remaining <= 0) break
+      const due = Math.max(pausedUntil, clock.lastStart === null ? now() : clock.lastStart + intervalMs)
+      const remaining = due - now()
+      if (remaining > 0) {
         await wait(remaining, signal)
-        checkStopped()
+        continue
       }
       if (totalAttempts >= PARALLEL_FETCH_MAX_ATTEMPTS) {
         const error = new ParallelFetchReadError('limit-reached')
@@ -106,10 +107,11 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
       }
       checkStopped()
       totalAttempts += 1
-      lastStart = now()
-    })
-    startQueue = reservation.catch(() => {})
-    return reservation
+      clock.lastStart = now()
+      // Commit and start in the same stack. Awaiting a grant or publishing a
+      // progress snapshot here can let another reservation overtake the start.
+      return navigate()
+    }
   }
 
   async function runTrial(concurrency: number, repetition: number, intervalMs: ParallelFetchInterval): Promise<void> {
@@ -117,13 +119,13 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
     let measurementStart: number | null = null
     let measurementEnd: number | null = null
     const readers: ParallelFetchReader[] = []
+    const tabClocks = Array.from({ length: concurrency }, () => ({ lastStart: null as number | null }))
     const postStop: { candidate?: { attempt: ParallelFetchAttempt; reader: ParallelFetchReader } } = {}
     const trial: ParallelFetchTrial = {
       concurrency, repetition, state: 'preparing', startedAt: wallNow(), finishedAt: null,
       preparationMs: null, measurementMs: null, totalMs: 0, completedPages: [], attempts: [],
       workers: Array.from({ length: concurrency }, (_, index) => ({ id: index + 1, page: null, state: 'idle', completedPages: 0 })),
-      errorCode: null,
-      ...(config.intervalMsList ? { intervalMs } : {}),
+      errorCode: null, intervalMs,
     }
     const endPage = config.startPage + config.pageCount - 1
     report.trials.push(trial)
@@ -138,18 +140,25 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
         worker.page = page
         worker.state = 'waiting'
         publish()
-        await reserveStart(intervalMs)
-        checkStopped()
-        const started = now()
-        const attempt: ParallelFetchAttempt = {
-          worker: worker.id, page, phase, startedAt: wallNow(), durationMs: 0,
-          httpStatus: null as number | null, errorCode: null as ParallelFetchErrorCode | null,
-          totalCount: null as number | null, totalPages: null as number | null,
-        }
-        worker.state = 'reading'
-        publish()
+        let started = 0
+        let attempt: ParallelFetchAttempt | undefined
+        let hookCalled = false
         try {
-          const value = await readers[worker.id - 1].readPage(page)
+          const value = await readers[worker.id - 1].readPage(page, navigate => {
+            if (hookCalled) throw new ParallelFetchReadError('invalid-request')
+            hookCalled = true
+            return startNavigation(intervalMs, tabClocks[worker.id - 1], () => {
+              checkStopped()
+              started = now()
+              attempt = { worker: worker.id, page, phase, startedAt: wallNow(), durationMs: 0,
+                httpStatus: null, errorCode: null, totalCount: null, totalPages: null }
+              worker.state = 'reading'
+              const response = navigate()
+              publish()
+              return response
+            })
+          })
+          if (!attempt) throw new ParallelFetchReadError('invalid-request')
           checkStopped()
           const diagnostics = safeDiagnostics(value.diagnostics)
           if (diagnostics) attempt.diagnostics = diagnostics
@@ -175,6 +184,8 @@ export async function runParallelFetch(input: ParallelFetchConfig, dependencies:
           return
         } catch (error) {
           const safe = safeError(error, signal.aborted)
+          // Validation and cancelled pacing do not count as navigation attempts.
+          if (!attempt) throw safe
           attempt.durationMs = Math.max(0, now() - started)
           attempt.errorCode = safe.code
           attempt.httpStatus = safe.httpStatus ?? attempt.httpStatus

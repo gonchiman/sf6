@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULT_PARALLEL_FETCH_CONFIG, parseParallelFetchConcurrencyInput, parseParallelFetchConfig, parseParallelFetchReadDiagnostics, parseParallelFetchReport,
+  isParallelFetchInterval, parseParallelFetchIntervalInput, parallelFetchIntervalScope, parseHistoricalParallelFetchConfig,
   PARALLEL_FETCH_MAX_CONCURRENCY, PARALLEL_FETCH_MAX_POST_STOP_MS, PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS, PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS,
   minimumPlannedWaitMs, parallelFetchIntervals, plannedParallelFetchAttempts, summarizeParallelFetch } from './parallelFetch.ts'
 import type { ParallelFetchReadDiagnostics, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
@@ -39,9 +40,9 @@ function traceFixture(): ParallelFetchReadDiagnostics {
 }
 test('bounded defaults include each worker preparation in the planned count', () => {
   assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig(DEFAULT_PARALLEL_FETCH_CONFIG)), 43)
-  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, repetitions: 3 })), 129)
+  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, intervalMs: 3000, repetitions: 3 })), 129)
   assert.throws(() => parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, repetitions: 3, concurrencies: [1, 2, 4] }))
-  for (const patch of [{ intervalMs: 0 }, { startPage: -1 }, { pageCount: 1000 }, { concurrencies: [] }, { concurrencies: [2] },
+  for (const patch of [{ intervalMs: -100 }, { startPage: -1 }, { pageCount: 1000 }, { concurrencies: [] }, { concurrencies: [2] },
     { concurrencies: [1, 1] }, { concurrencies: [2, 1] }, { concurrencies: [1, 4, 2] }, { target: 'https://other.test' }]) {
     assert.throws(() => parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, ...patch }))
   }
@@ -122,7 +123,7 @@ test('a serial-only configuration includes preparation in all three repetitions'
   const serial = parseParallelFetchConfig(input)
   assert.deepEqual(serial, input)
   assert.equal(plannedParallelFetchAttempts(serial), 63)
-  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...input, pageCount: 50 })), 153)
+  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...input, pageCount: 50, intervalMs: 3000 })), 153)
 })
 test('report parser reconstructs allowlisted aggregates only', () => {
   const report = fixture()
@@ -296,12 +297,13 @@ test('interval selections preserve legacy shape and include preparation and boun
   assert.deepEqual(config.intervalMsList, [5000, 3000])
   assert.equal(parseParallelFetchConfig({ ...legacy, intervalMs: 3000, intervalMsList: [3000] }).intervalMs, 3000)
   for (const patch of [{ intervalMsList: [] }, { intervalMsList: [3000, 5000] }, { intervalMsList: [5000, 5000] },
-    { intervalMsList: [10000, 5000] }, { intervalMsList: [5000, 2000] }, { intervalMsList: null },
-    { intervalMsList: [5000, 3000], repetitions: 3 }, { intervalMs: 3000 }]) {
+    { intervalMsList: [10000, 5000] }, { intervalMsList: [5000, 2001] }, { intervalMsList: null },
+    { intervalMsList: [5000, 3000], repetitions: 3 }]) {
     assert.throws(() => parseParallelFetchConfig({ ...legacy, ...patch }))
   }
   const legacyLong = { ...legacy, intervalMs: 10000, concurrencies: [1], repetitions: 3 }
-  assert.equal(parseParallelFetchConfig(legacyLong).intervalMs, 10000, 'historical over-time configs remain importable')
+  assert.equal(parseHistoricalParallelFetchConfig(legacyLong).intervalMs, 10000, 'historical over-time configs remain importable')
+  assert.throws(() => parseParallelFetchConfig(legacyLong), 'even a single interval obeys the current execution budget')
   assert.throws(() => parseParallelFetchConfig({ ...legacyLong, intervalMsList: [10000] }), 'new guaranteed over-time configs fail before execution')
 })
 test('version 2 round-trips strict interval membership and ordered trial prefixes without changing version 1 reports', () => {
@@ -329,4 +331,70 @@ test('summaries expose unstarted interval conditions and use a serial baseline f
     [[3000, 0, null, null, null], [3000, 0, null, null, null]])
   report.config.repetitions = 3
   assert.ok(summarizeParallelFetch(report).every(item => item.speedup === null))
+})
+
+test('interval text accepts zero and one decimal place, with numeric ordering and integer milliseconds', () => {
+  assert.deepEqual(parseParallelFetchIntervalInput(' 0, 4.5, 60.0 '), [60000, 4500, 0])
+  assert.deepEqual(parseParallelFetchIntervalInput('0.1,5,0.3'), [5000, 300, 100])
+  assert.deepEqual(parseParallelFetchIntervalInput('5'.padEnd(128)), [5000])
+  for (const value of [0, 100, 4500, 60000]) assert.equal(isParallelFetchInterval(value), true)
+  for (const value of [-100, 1, 250, 60001, 60100, 0.1, NaN, Infinity, '5000', null]) assert.equal(isParallelFetchInterval(value), false)
+})
+
+test('interval text rejects ambiguous, unfinished, excessive and duplicate conditions', () => {
+  for (const value of ['', ' ', '5,', ',5', '5,,3', '5,5.0', '0,0.0', '1,2,3,4', '0.05', '-1', '+5',
+    '1e1', '0x5', '.5', '5.', '05', 'NaN', 'Infinity', '60.1', '5 3', '５', '5'.padEnd(129)]) {
+    assert.throws(() => parseParallelFetchIntervalInput(value), Error, value)
+  }
+})
+
+test('execution budget uses shared starts or each new tab preparation and measured page starts', () => {
+  const global = { ...DEFAULT_PARALLEL_FETCH_CONFIG, intervalScope: 'global' as const }
+  const perTab = { ...global, intervalScope: 'per-tab' as const }
+  assert.equal(minimumPlannedWaitMs(global), 210000)
+  assert.equal(minimumPlannedWaitMs(perTab), 150000)
+  assert.equal(minimumPlannedWaitMs({ ...perTab, intervalMsList: [5000, 3000] }), 240000)
+  assert.equal(minimumPlannedWaitMs({ ...perTab, concurrencies: [1, 3], repetitions: 3 }), 405000)
+  assert.equal(parallelFetchIntervalScope(DEFAULT_PARALLEL_FETCH_CONFIG), 'global')
+  const manyTabs = { ...perTab, concurrencies: [1, 2, 3, 4, 5, 6, 7, 8] }
+  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig(manyTabs)), 196)
+  assert.throws(() => parseParallelFetchConfig({ ...manyTabs, intervalScope: 'global' }))
+  assert.equal(parseParallelFetchConfig({ ...manyTabs, intervalMs: 0 }).intervalMs, 0)
+  assert.throws(() => parseParallelFetchConfig({ ...manyTabs, intervalMs: 0, repetitions: 3 }))
+  assert.throws(() => parseParallelFetchConfig({ ...perTab, concurrencies: [1], intervalMs: 30000 }))
+  assert.throws(() => parseParallelFetchConfig({ ...global, intervalScope: 'worker' }))
+  const sparse = [5000, 3000]; delete sparse[1]
+  assert.throws(() => parseParallelFetchConfig({ ...global, intervalMsList: sparse }))
+})
+
+test('v3 saves explicit scope and decimal/zero intervals, retaining strict trial membership and ordering', () => {
+  for (const intervalScope of ['global', 'per-tab'] as const) {
+    const base = fixture()
+    const report: ParallelFetchReport = { ...base, schemaVersion: 3,
+      config: { ...base.config, intervalScope, intervalMs: 4500, intervalMsList: [4500, 0] },
+      trials: [4500, 0].flatMap(intervalMs => base.trials.map(trial => ({ ...structuredClone(trial), intervalMs }))),
+    }
+    assert.deepEqual(parseParallelFetchReport(JSON.parse(JSON.stringify(report))), report)
+    for (const mutate of [
+      (value: ParallelFetchReport) => { delete value.config.intervalScope },
+      (value: ParallelFetchReport) => { delete value.trials[0].intervalMs },
+      (value: ParallelFetchReport) => { value.trials[0].intervalMs = 4400 },
+      (value: ParallelFetchReport) => { [value.trials[0], value.trials[1]] = [value.trials[1], value.trials[0]] },
+      (value: ParallelFetchReport) => { value.schemaVersion = 2 },
+    ]) { const changed = structuredClone(report); mutate(changed); assert.throws(() => parseParallelFetchReport(changed)) }
+    const single = { ...base, schemaVersion: 3 as const, config: { ...base.config, intervalScope, intervalMs: 0 },
+      trials: base.trials.map(trial => ({ ...trial, intervalMs: 0 })) }
+    assert.deepEqual(parseParallelFetchReport(single), single)
+  }
+})
+
+test('legacy reports retain shape and known global meaning without the new execution-time check', () => {
+  const historical = fixture([1, 2, 3, 4, 5, 6, 7, 8])
+  assert.throws(() => parseParallelFetchConfig(historical.config))
+  assert.deepEqual(parseParallelFetchReport(historical), historical)
+  assert.equal(parallelFetchIntervalScope(parseParallelFetchReport(historical).config), 'global')
+  for (const report of [fixture(), intervalFixture()]) {
+    assert.throws(() => parseParallelFetchReport({ ...report, config: { ...report.config, intervalScope: 'per-tab' } }))
+    assert.throws(() => parseParallelFetchReport({ ...report, config: { ...report.config, intervalMs: 4500, intervalMsList: [4500] } }))
+  }
 })

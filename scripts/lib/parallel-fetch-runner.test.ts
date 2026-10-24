@@ -41,7 +41,7 @@ class Clock {
 
 interface ReadEvent { instance: number; worker: number; page: number; occurrence: number; started: number }
 function fixture(options: {
-  latency?: number
+  latency?: number | ((event: ReadEvent) => number)
   outcome?(event: ReadEvent): Awaited<ReturnType<ParallelFetchReader['readPage']>>
 } = {}) {
   const clock = new Clock()
@@ -62,19 +62,21 @@ function fixture(options: {
       signals.push(signal)
       let busy = false
       return {
-        readPage: async page => {
+        readPage: async (page, navigateWithPacing) => {
           assert.equal(busy, false, 'one reader is never used concurrently')
           busy = true
-          active += 1
-          peak = Math.max(peak, active)
-          const occurrence = (occurrences.get(page) ?? 0) + 1
-          occurrences.set(page, occurrence)
-          const event = { instance, worker, page, occurrence, started: clock.time }
-          reads.push(event)
-          try {
-            await clock.wait(options.latency ?? 12000, signal)
-            return options.outcome?.(event) ?? { totalCount: 2000, totalPages: 100, httpStatus: 200 }
-          } finally { busy = false; active -= 1 }
+          return navigateWithPacing(async () => {
+            active += 1
+            peak = Math.max(peak, active)
+            const occurrence = (occurrences.get(page) ?? 0) + 1
+            occurrences.set(page, occurrence)
+            const event = { instance, worker, page, occurrence, started: clock.time }
+            reads.push(event)
+            try {
+              await clock.wait(typeof options.latency === 'function' ? options.latency(event) : options.latency ?? 12000, signal)
+              return options.outcome?.(event) ?? { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+            } finally { busy = false; active -= 1 }
+          })
         },
         close: async () => { closed.push(instance) },
       }
@@ -100,6 +102,100 @@ test('uses the same exact target pages, fresh readers and one global interval ac
   for (let index = 1; index < f.reads.length; index += 1) assert.ok(f.reads[index].started - f.reads[index - 1].started >= 5000)
   assert.equal(f.reads.length, 43)
   assert.deepEqual(parseParallelFetchReport(report), report)
+})
+
+test('per-tab intervals preserve preparation clocks and allow fresh tabs to start together', async () => {
+  const f = fixture({ latency: 25 })
+  const report = await f.clock.finish(runParallelFetch({ ...config, intervalScope: 'per-tab',
+    intervalMs: 1000, intervalMsList: [1000], concurrencies: [1, 3, 8] }, f.dependencies))
+  assert.equal(report.state, 'complete')
+  assert.equal(report.schemaVersion, 3)
+  assert.equal(report.config.intervalScope, 'per-tab')
+  assert.equal(f.peak(), 8)
+  for (let instance = 1; instance <= 12; instance++) {
+    const reads = f.reads.filter(read => read.instance === instance)
+    assert.equal(reads[1].started - reads[0].started, 1000, 'preparation start remains the tab clock for measurement')
+    for (let index = 1; index < reads.length; index++) assert.ok(reads[index].started - reads[index - 1].started >= 1000)
+  }
+  const three = f.reads.filter(read => read.instance >= 2 && read.instance <= 4 && read.page === 1)
+  assert.deepEqual(three.map(read => read.worker), [1, 2, 3])
+  assert.equal(new Set(three.map(read => read.started)).size, 1)
+  const preceding = f.reads.filter(read => read.instance === 1).at(-1)!
+  assert.equal(three[0].started - preceding.started, 25, 'new tabs do not inherit clocks from a preceding trial')
+  assert.deepEqual(report.trials.map(trial => trial.measurementMs), [20000, 7000, 3000])
+})
+
+test('one slow tab does not hold the pacing gate for other tabs', async () => {
+  const f = fixture({ latency: event => event.instance === 2 ? 1200 : 25 })
+  const report = await f.clock.finish(runParallelFetch({ ...config, intervalScope: 'per-tab', intervalMs: 1000 }, f.dependencies))
+  assert.equal(report.state, 'complete')
+  const fast = f.reads.filter(read => read.instance === 3 && read.page !== 1)
+  assert.ok(fast.length > 10)
+  for (let index = 1; index < fast.length; index++) assert.equal(fast[index].started - fast[index - 1].started, 1000)
+})
+
+test('per-tab retries extend the shared cooldown while other tabs are waiting', async () => {
+  const failedAt: number[] = []
+  const f = fixture({ latency: event => event.instance === 3 ? 300 : 100, outcome: event => {
+    if (event.instance >= 2 && event.page >= 7 && event.page <= 8 && event.occurrence === 1) {
+      failedAt.push(f.clock.time)
+      throw new ParallelFetchReadError('server-error', 503)
+    }
+    return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+  } })
+  const report = await f.clock.finish(runParallelFetch({ ...config, intervalScope: 'per-tab', intervalMs: 1000 }, f.dependencies))
+  assert.equal(report.state, 'complete')
+  assert.equal(failedAt.length, 2)
+  const subsequent = f.reads.filter(read => read.started > failedAt[0])
+  assert.ok(subsequent.length)
+  assert.ok(subsequent.every(read => read.started >= failedAt[1] + 5000))
+  assert.equal(report.trials[1].attempts.filter(attempt => attempt.errorCode === 'server-error').length, 2)
+})
+
+test('zero interval adds no wait and retains the shared attempt cap with eight tabs', async () => {
+  const f = fixture({ latency: 1, outcome: event => {
+    if (event.occurrence === 1) throw new ParallelFetchReadError('server-error', 503)
+    return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+  } })
+  const report = await f.clock.finish(runParallelFetch({ ...config, intervalScope: 'per-tab', intervalMs: 0,
+    concurrencies: [1, 8], repetitions: 3 }, f.dependencies))
+  assert.equal(report.state, 'stopped')
+  assert.equal(report.errorCode, 'limit-reached')
+  assert.ok(f.reads.length <= 200)
+  assert.equal(report.trials.reduce((sum, trial) => sum + trial.attempts.length, 0), f.reads.length)
+  assert.ok(f.peak() <= 8)
+  assert.equal(f.active(), 0)
+  assert.ok(f.signals.every(signal => signal.aborted))
+  const immediate = fixture({ latency: 1 })
+  const complete = await immediate.clock.finish(runParallelFetch({ ...config, intervalScope: 'global', intervalMs: 0 }, immediate.dependencies))
+  assert.equal(complete.state, 'complete')
+  assert.equal(complete.trials[0].measurementMs, 20)
+  assert.equal(complete.trials[1].measurementMs, 10)
+})
+
+test('navigation gate is required exactly once and records time at the actual start', async () => {
+  const f = fixture({ latency: 25 })
+  const original = f.dependencies.createReader
+  f.dependencies.createReader = async (worker, target, signal, interval) => {
+    const reader = await original(worker, target, signal, interval)
+    return { ...reader, readPage: async (page, gate) => {
+      await f.clock.wait(75, signal)
+      return reader.readPage(page, gate)
+    } }
+  }
+  const report = await f.clock.finish(runParallelFetch({ ...config, intervalMs: 0, concurrencies: [1] }, f.dependencies))
+  assert.equal(report.trials[0].attempts[0].startedAt, new Date(Date.UTC(2026, 0, 1) + 75).toISOString())
+  assert.ok(report.trials[0].attempts.every(attempt => attempt.durationMs === 25))
+  for (const calls of [0, 2]) {
+    const broken = fixture()
+    broken.dependencies.createReader = async () => ({ close: async () => {}, readPage: async (_page, gate) => {
+      for (let call = 0; call < calls; call++) await gate(async () => {})
+      return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+    } })
+    const failed = await broken.clock.finish(runParallelFetch(config, broken.dependencies))
+    assert.equal(failed.errorCode, 'invalid-request')
+    assert.equal(failed.trials[0].attempts.length, calls === 0 ? 0 : 1)
+  }
 })
 
 test('three and eight workers share paced starts and complete every page exactly once', async () => {
@@ -130,6 +226,7 @@ test('three and eight workers share paced starts and complete every page exactly
 
 test('a fatal read cancels active and queued work with eight workers', async () => {
   let failureAt = -1
+  let readsAtStop: number | null = null
   const f = fixture({ outcome: event => {
     if (event.instance === 2 && event.page === 7) {
       failureAt = f.clock.time
@@ -137,6 +234,13 @@ test('a fatal read cancels active and queued work with eight workers', async () 
     }
     return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
   } })
+  const onUpdate = f.dependencies.onUpdate
+  f.dependencies.onUpdate = report => {
+    onUpdate?.(report)
+    if (readsAtStop === null && report.trials.some(trial => trial.attempts.some(attempt => attempt.errorCode === 'http-denied'))) {
+      readsAtStop = f.reads.length
+    }
+  }
   const report = await f.clock.finish(runParallelFetch({ ...config, concurrencies: [1, 8],
     intervalMs: 3000, intervalMsList: [3000] }, f.dependencies))
   assert.equal(report.state, 'error')
@@ -147,7 +251,8 @@ test('a fatal read cancels active and queued work with eight workers', async () 
   assert.deepEqual(report.trials[1].completedPages, [])
   assert.ok(report.trials[1].attempts.some(attempt => attempt.errorCode === 'cancelled'))
   assert.ok(failureAt >= 0)
-  assert.ok(f.reads.every(event => event.started < failureAt))
+  assert.ok(f.reads.every(event => event.started <= failureAt))
+  assert.equal(f.reads.length, readsAtStop, 'no navigation starts after the fatal result is handled')
   assert.equal(f.active(), 0)
   assert.ok(f.signals.every(signal => signal.aborted))
   assert.deepEqual(f.closed, Array.from({ length: 9 }, (_, index) => index + 1))
@@ -163,7 +268,7 @@ test('interval conditions share one queue, use actual 3-second pacing, and pass 
     return originalCreate(worker, target, signal, intervalMs)
   }
   const report = await f.clock.finish(runParallelFetch({ ...config, intervalMsList: [5000, 3000] }, f.dependencies))
-  assert.equal(report.schemaVersion, 2)
+  assert.equal(report.schemaVersion, 3)
   assert.deepEqual(report.trials.map(trial => [trial.intervalMs, trial.concurrency, trial.repetition]),
     [[5000, 1, 1], [5000, 2, 1], [3000, 1, 1], [3000, 2, 1]])
   assert.deepEqual(intervals, [5000, 5000, 5000, 3000, 3000, 3000])
@@ -551,7 +656,7 @@ test('retries cannot exceed the global 200-attempt cap', async () => {
     if (event.occurrence === 1) throw new ParallelFetchReadError('server-error', 503)
     return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
   } })
-  const report = await f.clock.finish(runParallelFetch({ ...config, repetitions: 3 }, f.dependencies))
+  const report = await f.clock.finish(runParallelFetch({ ...config, intervalMs: 1000, repetitions: 3 }, f.dependencies))
   assert.equal(report.state, 'stopped')
   assert.equal(report.errorCode, 'limit-reached')
   assert.equal(f.reads.length, 200)

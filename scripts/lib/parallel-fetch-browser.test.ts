@@ -3,11 +3,14 @@ import test from 'node:test'
 import { EventEmitter } from 'node:events'
 import type { Browser, Page } from 'playwright'
 import { createParallelFetchBrowserSession, observeParallelFetchChallenge } from './parallel-fetch-browser.ts'
-import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
+import { ParallelFetchReadError, runParallelFetch } from './parallel-fetch-runner.ts'
+import type { ParallelFetchNavigationGate } from './parallel-fetch-runner.ts'
 import { RankDistributionDomError } from './rank-distribution-dom.ts'
 import { MrDistributionDomError } from './mr-distribution-dom.ts'
 import type { ParallelFetchBrowserDependencies } from './parallel-fetch-browser.ts'
 import { createParallelFetchDiagnosticRecorder } from './parallel-fetch-diagnostics.ts'
+
+const navigateWithPacing: ParallelFetchNavigationGate = navigate => navigate()
 
 function state() { return { cookies: [{ name: 'synthetic', value: 'private-cookie', domain: 'www.streetfighter.com', path: '/', expires: -1,
   httpOnly: true, secure: true, sameSite: 'Lax' as const }], origins: [] } }
@@ -15,19 +18,29 @@ function fixture() {
   let loaded = 0, launched = 0, browserClosed = 0, contextClosed = 0, challenge = false, status = 200, diagnosticStatus = 200
   let gotoError: Error | null = null
   let readDiagnostics: Record<string, unknown> | null = null, readError: Error | null = null
-  let clock = 0, emitObservations = false, postReads = 0
+  let clock = 0, emitObservations = false, postReads = 0, recordStartEvidence = false
   let afterWait: (() => void) | undefined
   let postRead: (() => Promise<unknown>) | undefined
   const defaultSnapshot = () => ({ authenticationEvidence: readDiagnostics?.lastAuthenticationEvidence ?? null,
     loginRequiredHeading: readDiagnostics?.lastLoginRequiredHeading ?? null, rankingReadable: readDiagnostics?.lastRankingReadable ?? null })
   const pageCloses: number[] = [], captured: unknown[] = [], readTargets: string[] = []
+  const navigationTimes: number[] = []
   const pages: Page[] = []
   const browser = { close: async () => { browserClosed++ }, newContext: async (options: unknown) => {
     captured.push(options)
     return { close: async () => { contextClosed++ }, newPage: async () => {
       const id = pages.length
       const page = Object.assign(new EventEmitter(), { close: async () => { pageCloses[id] = (pageCloses[id] ?? 0) + 1 }, url: () => 'fixed ranking',
-        goto: async (url: string) => { readTargets.push(url); if (gotoError) throw gotoError; return { status: () => status } },
+        goto: async (url: string) => {
+          readTargets.push(url); navigationTimes.push(clock)
+          if (recordStartEvidence) {
+            const request = { url: () => url, resourceType: () => 'document' }
+            ;(page as unknown as EventEmitter).emit('request', request)
+            ;(page as unknown as EventEmitter).emit('requestfailed', request)
+          }
+          if (gotoError) throw gotoError
+          return { status: () => status }
+        },
         evaluate: async (fn: unknown) => fn === observeParallelFetchChallenge ? challenge : null }) as unknown as Page
       pages.push(page)
       return page
@@ -37,7 +50,8 @@ function fixture() {
     captured.push({ target, options })
     let diagnostics: Record<string, unknown> = {}
     return { fetchPage: async (pageNumber: number, url: string) => {
-      await page.goto(url)
+      if (recordStartEvidence) { await Promise.resolve(); await Promise.resolve() }
+      await (options as { navigateWithPacing: ParallelFetchNavigationGate }).navigateWithPacing(() => page.goto(url))
       diagnosticStatus = status
       if (status === 429) throw new RankDistributionDomError('http-denied')
       if (readDiagnostics) {
@@ -53,7 +67,9 @@ function fixture() {
   const dependencies: ParallelFetchBrowserDependencies = { loadSession: async () => { loaded++; return state() },
     launch: async () => { launched++; return browser }, createLpReader: factory('lp') as never, createMrReader: factory('mr') as never,
     now: () => clock, wait: async (milliseconds, signal) => { if (signal.aborted) throw new Error(); clock += milliseconds; afterWait?.(); if (signal.aborted) throw new Error() } }
-  return { dependencies, pages, pageCloses, captured, readTargets,
+  return { dependencies, pages, pageCloses, captured, readTargets, navigationTimes,
+    now: () => clock, advance: (milliseconds: number) => { clock += milliseconds },
+    recordStartEvidence: () => { recordStartEvidence = true },
     setChallenge: () => { challenge = true }, setStatus: (value: number) => { status = value },
     setGotoError: (error: Error) => { gotoError = error },
     setReadDiagnostics: (value: Record<string, unknown> | null) => { readDiagnostics = value },
@@ -70,11 +86,11 @@ test('one owned context has separate worker pages and rows never cross the adapt
   const session = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: run.signal }, f.dependencies)
   const first = await session.createReader(1, 'lp', trial.signal), second = await session.createReader(2, 'mr', trial.signal)
   assert.equal(f.pages.length, 2)
-  assert.deepEqual(await first.readPage(1), { totalCount: 10000, totalPages: 500, httpStatus: 200 })
-  assert.deepEqual(await second.readPage(1), { totalCount: 10000, totalPages: 500, httpStatus: 200 })
+  assert.deepEqual(await first.readPage(1, navigateWithPacing), { totalCount: 10000, totalPages: 500, httpStatus: 200 })
+  assert.deepEqual(await second.readPage(1, navigateWithPacing), { totalCount: 10000, totalPages: 500, httpStatus: 200 })
   assert.match(f.readTargets[0], /^https:\/\/www\.streetfighter\.com\/6\/buckler\/ja-jp\/ranking\/league\?/)
   assert.match(f.readTargets[1], /^https:\/\/www\.streetfighter\.com\/6\/buckler\/ja-jp\/ranking\/master\?/)
-  assert.doesNotMatch(JSON.stringify(await first.readPage(2)), /private|account|row|url/)
+  assert.doesNotMatch(JSON.stringify(await first.readPage(2, navigateWithPacing)), /private|account|row|url/)
   assert.equal((f.captured[1] as { options: { allowReadablePagesAfterSignIn: boolean } }).options.allowReadablePagesAfterSignIn, false)
   await first.close(); await first.close()
   assert.equal(f.pageCloses[0], 1); assert.equal(f.stats().contextClosed, 0)
@@ -92,7 +108,7 @@ test('LP and MR sessions support eight worker pages and reject a ninth before cr
     }
     assert.equal(f.pages.length, 8)
     assert.equal(new Set(f.pages).size, 8)
-    assert.deepEqual(await readers[7].readPage(1), { totalCount: 10000, totalPages: 500, httpStatus: 200 })
+    assert.deepEqual(await readers[7].readPage(1, navigateWithPacing), { totalCount: 10000, totalPages: 500, httpStatus: 200 })
     await assert.rejects(session.createReader(9, target, controller.signal), /invalid-request/)
     assert.equal(f.pages.length, 8)
     await Promise.all(readers.map(reader => reader.close()))
@@ -102,34 +118,96 @@ test('LP and MR sessions support eight worker pages and reject a ninth before cr
   }
 })
 
-test('each condition forwards its interval to both DOM readers while preserving the legacy default', async () => {
+test('each condition delegates pacing to the caller for LP and MR, including zero and long intervals', async () => {
   const f = fixture(), controller = new AbortController()
   const session = await createParallelFetchBrowserSession({ intervalMs: 10000, signal: controller.signal }, f.dependencies)
   await session.createReader(1, 'lp', controller.signal)
-  await session.createReader(1, 'lp', controller.signal, 3000)
-  await session.createReader(1, 'mr', controller.signal, 5000)
-  assert.deepEqual(f.captured.slice(1).map(value => (value as { options: { minIntervalMs: number } }).options.minIntervalMs),
-    [10000, 3000, 5000])
-  await assert.rejects(session.createReader(1, 'lp', controller.signal, 1000 as never), /invalid-request/)
+  await session.createReader(1, 'lp', controller.signal, 0)
+  await session.createReader(1, 'mr', controller.signal, 60000)
+  for (const value of f.captured.slice(1)) {
+    const options = (value as { options: { minIntervalMs?: number; navigateWithPacing?: unknown } }).options
+    assert.equal(options.minIntervalMs, undefined)
+    assert.equal(typeof options.navigateWithPacing, 'function')
+  }
+  for (const interval of [-1, 1, 250, 60001, NaN, Infinity]) {
+    await assert.rejects(session.createReader(1, 'lp', controller.signal, interval), /invalid-request/)
+  }
   assert.equal(f.pages.length, 3)
   await session.close()
+})
+
+test('the adapter requires and awaits the caller gate immediately before each navigation', async () => {
+  for (const target of ['lp', 'mr'] as const) {
+    const f = fixture(), controller = new AbortController()
+    const session = await createParallelFetchBrowserSession({ intervalMs: 0, signal: controller.signal }, f.dependencies)
+    const reader = await session.createReader(1, target, controller.signal, 60000)
+    await assert.rejects(reader.readPage(1, undefined as never), /invalid-request/)
+    assert.equal(f.readTargets.length, 0)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const pending = reader.readPage(1, navigate => gate.then(navigate))
+    await Promise.resolve()
+    assert.equal(f.readTargets.length, 0)
+    release()
+    await pending
+    assert.equal(f.readTargets.length, 1)
+    await reader.readPage(2, navigate => { assert.equal(f.readTargets.length, 1); return navigate() })
+    assert.equal(f.readTargets.length, 2)
+    await session.close()
+  }
+})
+
+test('expensive progress updates cannot compress actual starts or move the diagnostic clock', async () => {
+  for (const target of ['lp', 'mr'] as const) {
+    const f = fixture(), controller = new AbortController()
+    f.recordStartEvidence()
+    const session = await createParallelFetchBrowserSession({ intervalMs: 100, signal: controller.signal }, f.dependencies)
+    const seenReading = new Set<string>()
+    const epoch = Date.UTC(2026, 0, 1)
+    const report = await runParallelFetch({ target, startPage: 1, pageCount: 20,
+      concurrencies: [1, 2], repetitions: 1, intervalMs: 100, intervalScope: 'global' }, {
+      now: f.now, wallNow: () => new Date(epoch + f.now()).toISOString(),
+      wait: async milliseconds => { f.advance(milliseconds) },
+      createReader: (...args) => session.createReader(...args),
+      onUpdate: snapshot => {
+        const trial = snapshot.trials.at(-1)
+        for (const worker of trial?.workers ?? []) {
+          const key = `${snapshot.trials.length}:${trial!.state}:${worker.id}:${worker.page}`
+          if (worker.state === 'reading' && !seenReading.has(key)) {
+            seenReading.add(key)
+            f.advance(250)
+          }
+        }
+      },
+    })
+    assert.equal(report.state, 'complete')
+    assert.equal(f.navigationTimes.length, 43)
+    for (let index = 1; index < f.navigationTimes.length; index++) {
+      assert.ok(f.navigationTimes[index] - f.navigationTimes[index - 1] >= 100)
+    }
+    const attempts = report.trials.flatMap(trial => trial.attempts)
+    assert.deepEqual(attempts.map(attempt => Date.parse(attempt.startedAt) - epoch).sort((a, b) => a - b),
+      [...f.navigationTimes].sort((a, b) => a - b))
+    assert.ok(attempts.every(attempt => attempt.diagnostics?.trace?.network[0]?.elapsedMs === 0))
+    await session.close()
+  }
 })
 
 test('a new response or navigation timeout cannot reuse a previous HTTP status', async () => {
   const f = fixture(), controller = new AbortController()
   const session = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: controller.signal }, f.dependencies)
   const reader = await session.createReader(1, 'lp', controller.signal)
-  assert.equal((await reader.readPage(1)).httpStatus, 200)
+  assert.equal((await reader.readPage(1, navigateWithPacing)).httpStatus, 200)
   f.setStatus(403); f.setChallenge()
-  await assert.rejects(reader.readPage(2), (error: unknown) => error instanceof ParallelFetchReadError
+  await assert.rejects(reader.readPage(2, navigateWithPacing), (error: unknown) => error instanceof ParallelFetchReadError
     && error.code === 'human-verification' && error.httpStatus === 403)
   await session.close()
   const next = fixture(), second = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: controller.signal }, next.dependencies)
   const another = await second.createReader(1, 'mr', controller.signal)
-  assert.equal((await another.readPage(1)).httpStatus, 200)
+  assert.equal((await another.readPage(1, navigateWithPacing)).httpStatus, 200)
   const timeout = new Error('private navigation information'); timeout.name = 'TimeoutError'
   next.setGotoError(timeout)
-  await assert.rejects(another.readPage(2), (error: unknown) => error instanceof ParallelFetchReadError
+  await assert.rejects(another.readPage(2, navigateWithPacing), (error: unknown) => error instanceof ParallelFetchReadError
     && error.code === 'timeout' && error.httpStatus === null)
   await second.close()
 })
@@ -141,13 +219,13 @@ test('success and authentication failure expose only current allowlisted DOM dia
     const reader = await session.createReader(1, target, controller.signal)
     f.setReadDiagnostics({ lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true,
       cookies: 'private-cookie', accountKey: 'private-account', sourceUrl: 'private-url' })
-    const result = await reader.readPage(1)
+    const result = await reader.readPage(1, navigateWithPacing)
     assert.deepEqual(result.diagnostics, { authenticationEvidence: 'logout-control', loginRequiredHeading: false, rankingReadable: true })
     assert.doesNotMatch(JSON.stringify(result), /private|cookies|accountKey|sourceUrl/)
     f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: true,
       rawText: 'private-page-text' })
     f.setReadError(new RankDistributionDomError('authentication-unconfirmed'))
-    await assert.rejects(reader.readPage(2), (error: unknown) => {
+    await assert.rejects(reader.readPage(2, navigateWithPacing), (error: unknown) => {
       assert.ok(error instanceof ParallelFetchReadError)
       assert.equal(error.code, 'authentication-unconfirmed')
       assert.deepEqual(error.diagnostics, { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: true })
@@ -164,10 +242,10 @@ test('same-page navigation failure cannot inherit prior authentication observati
     const session = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: controller.signal }, f.dependencies)
     const reader = await session.createReader(1, target, controller.signal)
     f.setReadDiagnostics({ lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
-    assert.equal((await reader.readPage(1)).diagnostics?.authenticationEvidence, 'logout-control')
+    assert.equal((await reader.readPage(1, navigateWithPacing)).diagnostics?.authenticationEvidence, 'logout-control')
     const timeout = new Error('private navigation information'); timeout.name = 'TimeoutError'
     f.setGotoError(timeout)
-    await assert.rejects(reader.readPage(1), (error: unknown) => error instanceof ParallelFetchReadError
+    await assert.rejects(reader.readPage(1, navigateWithPacing), (error: unknown) => error instanceof ParallelFetchReadError
       && error.code === 'timeout' && error.httpStatus === null && error.diagnostics === undefined)
     await session.close()
   }
@@ -178,11 +256,11 @@ test('missing, mismatched, or unsupported diagnostic fields are omitted or norma
   const session = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: controller.signal }, f.dependencies)
   const reader = await session.createReader(1, 'lp', controller.signal)
   f.setReadDiagnostics({ lastAuthenticationEvidence: 'private-unrecognized-value', lastLoginRequiredHeading: 'private', lastRankingReadable: {} })
-  assert.equal((await reader.readPage(1)).diagnostics, undefined)
+  assert.equal((await reader.readPage(1, navigateWithPacing)).diagnostics, undefined)
   f.setReadDiagnostics({ lastAuthenticationEvidence: 'private-unrecognized-value', lastLoginRequiredHeading: true, lastRankingReadable: false })
-  assert.deepEqual((await reader.readPage(2)).diagnostics, { authenticationEvidence: null, loginRequiredHeading: true, rankingReadable: false })
+  assert.deepEqual((await reader.readPage(2, navigateWithPacing)).diagnostics, { authenticationEvidence: null, loginRequiredHeading: true, rankingReadable: false })
   f.setReadDiagnostics({ lastAttemptedPage: 2, lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
-  assert.equal((await reader.readPage(3)).diagnostics, undefined)
+  assert.equal((await reader.readPage(3, navigateWithPacing)).diagnostics, undefined)
   await session.close()
 })
 
@@ -208,14 +286,14 @@ test('visible challenges and HTTP 429 stop with safe fixed codes', async () => {
     const session = await createParallelFetchBrowserSession({ intervalMs: 10000, signal: run.signal }, f.dependencies)
     const reader = await session.createReader(1, target, trial.signal)
     f.setChallenge()
-    await assert.rejects(reader.readPage(1), (error: unknown) => error instanceof ParallelFetchReadError && error.code === 'human-verification')
+    await assert.rejects(reader.readPage(1, navigateWithPacing), (error: unknown) => error instanceof ParallelFetchReadError && error.code === 'human-verification')
     await session.close()
   }
   const f = fixture(), controller = new AbortController()
   const session = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: controller.signal }, f.dependencies)
   const reader = await session.createReader(1, 'lp', controller.signal)
   f.setStatus(429)
-  await assert.rejects(reader.readPage(1), (error: unknown) => error instanceof ParallelFetchReadError && error.code === 'http-denied' && error.httpStatus === 429)
+  await assert.rejects(reader.readPage(1, navigateWithPacing), (error: unknown) => error instanceof ParallelFetchReadError && error.code === 'http-denied' && error.httpStatus === 429)
   await session.close()
 })
 
@@ -224,7 +302,7 @@ test('trial abort closes owned pages; run abort closes the owned context and bro
   const session = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: run.signal }, f.dependencies)
   const reader = await session.createReader(1, 'lp', trial.signal)
   trial.abort()
-  await assert.rejects(reader.readPage(1), (error: unknown) => error instanceof ParallelFetchReadError && error.code === 'cancelled')
+  await assert.rejects(reader.readPage(1, navigateWithPacing), (error: unknown) => error instanceof ParallelFetchReadError && error.code === 'cancelled')
   assert.equal(f.pageCloses[0], 1); assert.equal(f.stats().contextClosed, 0)
   run.abort(); await session.close()
   assert.equal(f.stats().contextClosed, 1); assert.equal(f.stats().browserClosed, 1)
@@ -255,7 +333,7 @@ test('after auth failure only the failing page survives internal abort; passive 
     f.enableObservations()
     f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
     f.setReadError(new RankDistributionDomError('authentication-unconfirmed'))
-    await assert.rejects(first.readPage(7), /authentication-unconfirmed/)
+    await assert.rejects(first.readPage(7, navigateWithPacing), /authentication-unconfirmed/)
     trial.abort()
     assert.equal(f.pageCloses[0], undefined)
     assert.equal(f.pageCloses[1], 1)
@@ -268,7 +346,7 @@ test('after auth failure only the failing page survives internal abort; passive 
     assert.ok(observations.some(item => item.phase === 'after-stop' && item.authenticationEvidence === 'logout-control' && item.elapsedMs === 5000))
     assert.equal(f.postReads(), 6)
     assert.equal(f.readTargets.length, 1, 'no goto/reload during observation')
-    await assert.rejects(first.readPage(8), /cancelled/)
+    await assert.rejects(first.readPage(8, navigateWithPacing), /cancelled/)
     assert.equal(await first.observeAfterStop!(run.signal), undefined, 'no second observation window')
     await first.close(); await session.close()
     assert.equal(f.pageCloses[0], 1)
@@ -282,7 +360,7 @@ test('passive observation is cancelled promptly and ends on challenge or page fa
     const reader = await session.createReader(1, 'lp', trial.signal)
     f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: false })
     f.setReadError(new RankDistributionDomError('authentication-unconfirmed'))
-    await assert.rejects(reader.readPage(1), /authentication-unconfirmed/)
+    await assert.rejects(reader.readPage(1, navigateWithPacing), /authentication-unconfirmed/)
     trial.abort()
     if (outcome === 'cancelled') f.setAfterWait(() => run.abort())
     if (outcome === 'human-verification') f.setAfterWait(() => f.setChallenge())
@@ -302,7 +380,7 @@ test('an in-flight passive DOM sample does not prevent user cancellation', async
   const session = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: run.signal }, f.dependencies)
   const reader = await session.createReader(1, 'lp', trial.signal)
   f.setReadError(new RankDistributionDomError('authentication-unconfirmed'))
-  await assert.rejects(reader.readPage(1), /authentication-unconfirmed/)
+  await assert.rejects(reader.readPage(1, navigateWithPacing), /authentication-unconfirmed/)
   trial.abort()
   f.setPostRead(() => new Promise(() => {}))
   const observing = reader.observeAfterStop!(run.signal)
@@ -316,7 +394,7 @@ test('an unresponsive passive DOM sample ends at the observation deadline', asyn
   const session = await createParallelFetchBrowserSession({ intervalMs: 5000, signal: run.signal }, f.dependencies)
   const reader = await session.createReader(1, 'lp', trial.signal)
   f.setReadError(new RankDistributionDomError('authentication-unconfirmed'))
-  await assert.rejects(reader.readPage(1), /authentication-unconfirmed/)
+  await assert.rejects(reader.readPage(1, navigateWithPacing), /authentication-unconfirmed/)
   trial.abort()
   f.setPostRead(() => new Promise(() => {}))
   t.mock.timers.enable({ apis: ['setTimeout'] })
@@ -335,7 +413,7 @@ test('MR challenge detection after the initial guard is reflected in the final t
   f.enableObservations()
   f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: false })
   f.setReadError(new MrDistributionDomError('human-verification'))
-  await assert.rejects(reader.readPage(1), (error: unknown) => {
+  await assert.rejects(reader.readPage(1, navigateWithPacing), (error: unknown) => {
     assert.ok(error instanceof ParallelFetchReadError)
     assert.equal(error.code, 'human-verification')
     assert.equal(error.diagnostics?.trace?.observations.at(-1)?.humanVerification, true)

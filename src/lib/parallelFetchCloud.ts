@@ -1,4 +1,5 @@
-import { parseParallelFetchConfig, parseParallelFetchReport } from './parallelFetch.ts'
+import { isParallelFetchInterval, parallelFetchIntervalScope, PARALLEL_FETCH_MAX_INTERVALS,
+  parseHistoricalParallelFetchConfig, parseParallelFetchConfig, parseParallelFetchReport } from './parallelFetch.ts'
 import type { ParallelFetchConfig } from '../types/parallelFetch.ts'
 import { CLOUD_ERRORS, CLOUD_READINESS, CLOUD_STATES } from '../types/parallelFetchCloud.ts'
 import type { CloudIntervalOptions, CloudMode, CloudRun, CloudServiceStatus, ParallelFetchResult } from '../types/parallelFetchCloud.ts'
@@ -26,33 +27,45 @@ function timestamp(value: unknown): string {
 function nullableTime(value: unknown): string | null { return value === null ? null : timestamp(value) }
 
 export const DEFAULT_CLOUD_INTERVAL_OPTIONS: CloudIntervalOptions = {
-  intervalMsList: [5000, 3000], concurrencies: [1, 2], repetitions: 1,
+  intervalMsList: [5000, 3000], concurrencies: [1, 2], repetitions: 1, intervalScope: 'global',
 }
-export function parseCloudIntervalOptions(value: unknown): CloudIntervalOptions {
+export function parseCloudIntervalOptions(value: unknown, validation: { historical?: boolean } = {}): CloudIntervalOptions {
   const row = object(value)
-  if (Object.keys(row).length !== 3 || !['intervalMsList', 'concurrencies', 'repetitions'].every(key => key in row)
-    || !Array.isArray(row.intervalMsList) || row.intervalMsList.length < 1 || row.intervalMsList.length > 3
-    || !row.intervalMsList.every(value => [3000, 5000, 10000].includes(value))
+  if (!Object.keys(row).every(key => ['intervalMsList', 'concurrencies', 'repetitions', 'intervalScope'].includes(key))
+    || !['intervalMsList', 'concurrencies', 'repetitions'].every(key => key in row)
+    || !Array.isArray(row.intervalMsList) || row.intervalMsList.length < 1 || row.intervalMsList.length > PARALLEL_FETCH_MAX_INTERVALS
+    || !row.intervalMsList.every(isParallelFetchInterval)
     || new Set(row.intervalMsList).size !== row.intervalMsList.length
     || !Array.isArray(row.concurrencies)
+    || row.intervalScope !== undefined && row.intervalScope !== 'global' && row.intervalScope !== 'per-tab'
     || ![1, 3].includes(Number(row.repetitions)) || typeof row.repetitions !== 'number') return invalid()
   const intervalMsList = [...row.intervalMsList].sort((a, b) => b - a) as CloudIntervalOptions['intervalMsList']
   const concurrencies = [...row.concurrencies].sort((a, b) => a - b) as CloudIntervalOptions['concurrencies']
   const repetitions = row.repetitions as CloudIntervalOptions['repetitions']
+  const intervalScope = row.intervalScope ?? 'global'
   // The shared parser enforces integer concurrency, baseline 1, uniqueness and the combined budgets.
-  parseParallelFetchConfig({ target: 'lp', startPage: 1, pageCount: 20, intervalMs: intervalMsList[0], intervalMsList, concurrencies, repetitions })
-  return { intervalMsList, concurrencies, repetitions }
+  const validate = validation.historical ? parseHistoricalParallelFetchConfig : parseParallelFetchConfig
+  validate({ target: 'lp', startPage: 1, pageCount: 20, intervalMs: intervalMsList[0], intervalMsList, concurrencies, repetitions, intervalScope })
+  return { intervalMsList, concurrencies, repetitions, intervalScope }
 }
-export function cloudConfig(mode: CloudMode, options?: CloudIntervalOptions): ParallelFetchConfig {
+export function cloudConfig(mode: CloudMode, options?: CloudIntervalOptions, validation: { historical?: boolean } = {}): ParallelFetchConfig {
   if (mode === 'interval-compare') {
-    const selected = parseCloudIntervalOptions(options ?? DEFAULT_CLOUD_INTERVAL_OPTIONS)
+    const selected = parseCloudIntervalOptions(options ?? DEFAULT_CLOUD_INTERVAL_OPTIONS, validation)
     return { target: 'lp', startPage: 1, pageCount: 20, concurrencies: selected.concurrencies,
-      repetitions: selected.repetitions, intervalMs: selected.intervalMsList[0], intervalMsList: selected.intervalMsList }
+      repetitions: selected.repetitions, intervalMs: selected.intervalMsList[0], intervalMsList: selected.intervalMsList, intervalScope: selected.intervalScope }
   }
   if (options !== undefined) return invalid()
   if (mode !== 'serial' && mode !== 'compare') return invalid()
   return { target: 'lp', startPage: 1, pageCount: 20, concurrencies: mode === 'serial' ? [1] : [1, 2],
-    repetitions: mode === 'serial' ? 3 : 1, intervalMs: 5000 }
+    repetitions: mode === 'serial' ? 3 : 1, intervalMs: 5000, intervalScope: 'global' }
+}
+/** Compare acquisition semantics, including legacy records without an explicit global scope. */
+export function sameParallelFetchConfig(left: ParallelFetchConfig, right: ParallelFetchConfig): boolean {
+  return left.target === right.target && left.startPage === right.startPage && left.pageCount === right.pageCount
+    && left.repetitions === right.repetitions && left.intervalMs === right.intervalMs
+    && parallelFetchIntervalScope(left) === parallelFetchIntervalScope(right)
+    && JSON.stringify(left.intervalMsList ?? [left.intervalMs]) === JSON.stringify(right.intervalMsList ?? [right.intervalMs])
+    && JSON.stringify(left.concurrencies) === JSON.stringify(right.concurrencies)
 }
 export function cloudRunUrl(runId: string): string {
   if (!RUN_ID.test(runId) || runId !== runId.trim()) return invalid()
@@ -66,7 +79,7 @@ export function parseCloudRun(value: unknown): CloudRun {
   const row = object(value)
   if (typeof row.requestId !== 'string' || row.requestId.length !== 36 || !CLOUD_REQUEST_ID.test(row.requestId)) return invalid()
   const mode = member(row.mode, ['serial', 'compare', 'interval-compare'] as const)
-  const options = mode === 'interval-compare' ? parseCloudIntervalOptions(row.options) : undefined
+  const options = mode === 'interval-compare' ? parseCloudIntervalOptions(row.options, { historical: true }) : undefined
   if (mode !== 'interval-compare' && row.options !== undefined) return invalid()
   const runId = row.runId === null ? null : typeof row.runId === 'string' && RUN_ID.test(row.runId) && row.runId === row.runId.trim() ? row.runId : invalid()
   const runAttempt = row.runAttempt === null ? null : typeof row.runAttempt === 'number' && Number.isSafeInteger(row.runAttempt)
@@ -75,7 +88,7 @@ export function parseCloudRun(value: unknown): CloudRun {
   const state = member(row.state, CLOUD_STATES)
   const report = row.report === null ? null : parseParallelFetchReport(row.report)
   if (report && (runId === null || report.state === 'running' || report.runId !== `cloud-${runId}-${runAttempt}-${mode}`
-    || JSON.stringify(report.config) !== JSON.stringify(cloudConfig(mode, options)))) return invalid()
+    || !sameParallelFetchConfig(report.config, cloudConfig(mode, options, { historical: true })))) return invalid()
   if (state === 'complete' && (!report || report.state !== 'complete')) return invalid()
   const headSha = row.headSha === null ? null : typeof row.headSha === 'string' && row.headSha.length === 40 && /^[a-f0-9]{40}$/.test(row.headSha) ? row.headSha : invalid()
   return { requestId: row.requestId, mode, ...(options ? { options } : {}), createdAt: timestamp(row.createdAt), updatedAt: timestamp(row.updatedAt),

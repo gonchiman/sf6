@@ -1,12 +1,14 @@
 .parallel-fetch-page { display: grid; gap: 16px; min-width: 0; }
-.parallel-fetch-environment { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; margin: 0 0 18px; padding: 0; border: 0; }
-.parallel-fetch-environment legend { margin-bottom: 6px; padding: 0; color: var(--text-soft); font-size: 12px; }
-.parallel-fetch-environment label { position: relative; display: flex; justify-content: center; align-items: center; min-height: 36px; padding: 7px 10px; border: 1px solid var(--border-strong); cursor: pointer; font-size: 13px; }
-.parallel-fetch-environment label + label { border-left: 0; }
-.parallel-fetch-environment label.is-selected { color: var(--surface); background: var(--text); }
-.parallel-fetch-environment input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.parallel-fetch-environment label:focus-within { outline: 2px solid var(--link); outline-offset: 2px; z-index: 1; }
-.parallel-fetch-environment label:has(input:disabled) { opacity: .55; cursor: default; }
+.parallel-fetch-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; margin: 0; padding: 0; border: 0; }
+.parallel-fetch-environment { margin-bottom: 18px; }
+.parallel-fetch-scope { grid-column: 1 / -1; }
+.parallel-fetch-choice legend { margin-bottom: 6px; padding: 0; color: var(--text-soft); font-size: 12px; }
+.parallel-fetch-choice label { position: relative; display: flex; justify-content: center; align-items: center; min-height: 36px; padding: 7px 10px; border: 1px solid var(--border-strong); cursor: pointer; font-size: 13px; }
+.parallel-fetch-choice label + label { border-left: 0; }
+.parallel-fetch-choice label.is-selected { color: var(--surface); background: var(--text); }
+.parallel-fetch-choice input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.parallel-fetch-choice label:focus-within { outline: 2px solid var(--link); outline-offset: 2px; z-index: 1; }
+.parallel-fetch-choice label:has(input:disabled) { opacity: .55; cursor: default; }
 .parallel-fetch-cloud-conditions { display: grid; gap: 14px; }
 .parallel-fetch-mode, .parallel-fetch-history { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--text-soft); font-size: 12px; }
 .parallel-fetch-mode select, .parallel-fetch-history select { min-width: 0; width: 100%; min-height: 36px; border: 1px solid var(--border-strong); border-radius: 0; padding: 6px 8px; background: var(--surface); color: var(--text); font-size: 14px; }
@@ -17,11 +19,7 @@
 .parallel-fetch-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; min-width: 0; border: 0; margin: 0; padding: 0; }
 .parallel-fetch-fields > label { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--text-soft); font-size: 12px; }
 .parallel-fetch-fields input[type="number"], .parallel-fetch-fields input[type="text"], .parallel-fetch-fields select { width: 100%; min-width: 0; min-height: 36px; border: 1px solid var(--border-strong); border-radius: 0; padding: 6px 8px; background: var(--surface); color: var(--text); font-size: 14px; }
-.parallel-fetch-concurrencies { min-width: 0; border: 0; margin: 0; padding: 0; }
-.parallel-fetch-concurrencies legend { margin: 0 0 6px; padding: 0; font-size: 12px; color: var(--text-soft); }
-.parallel-fetch-concurrencies > div { min-height: 36px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.parallel-fetch-concurrencies label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
-.parallel-fetch-concurrencies input { margin: 0; accent-color: var(--link); }
+.parallel-fetch-fields input[aria-invalid="true"] { border-color: var(--text-soft); outline: 1px solid var(--text-soft); }
 .parallel-fetch-plan { display: grid; gap: 8px; margin-top: 16px; font-size: 12px; }
 .parallel-fetch-plan > div { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
 .parallel-fetch-plan > div > span { color: var(--text-muted); }
@@ -69,6 +67,5 @@
 }
 @media (max-width: 760px), (pointer: coarse) {
   .parallel-fetch-page button, .parallel-fetch-fields input[type="number"], .parallel-fetch-fields input[type="text"], .parallel-fetch-fields select, .parallel-fetch-mode select, .parallel-fetch-history select { min-height: 44px; font-size: 16px; }
-  .parallel-fetch-concurrencies label { min-height: 44px; }
-  .parallel-fetch-environment label { min-height: 44px; }
+  .parallel-fetch-choice label { min-height: 44px; }
 }

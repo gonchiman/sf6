@@ -183,6 +183,8 @@ export interface RankDistributionPageReaderOptions {
   allowReadablePagesAfterSignIn?: boolean
   /** Delay between navigations, not an automatic retry policy. */
   minIntervalMs?: number
+  /** A caller-owned gate starts the supplied navigation in the same stack as its pacing commit. */
+  navigateWithPacing?: <T>(navigate: () => Promise<T>) => Promise<T>
   timeoutMs?: number
   now?: () => number
   wait?: (milliseconds: number) => Promise<void>
@@ -212,6 +214,7 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
   const timeout = options.timeoutMs ?? 10_000
   const totalCountPolicy = options.totalCountPolicy ?? 'stable'
   if (!Number.isSafeInteger(minInterval) || minInterval < 250 || minInterval > 10_000
+    || options.navigateWithPacing !== undefined && typeof options.navigateWithPacing !== 'function'
     || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 10_000
     || !['stable', 'record'].includes(totalCountPolicy)
     || options.allowReadablePagesAfterSignIn !== undefined && typeof options.allowReadablePagesAfterSignIn !== 'boolean') throw new RankDistributionDomError('invalid-request')
@@ -244,15 +247,18 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
     if (diagnostics.pageSize === null && pageNumber !== 1) throw new RankDistributionDomError('first-page-required')
     running = true
     try {
-      if (lastNavigation !== null) await wait(Math.max(0, minInterval - (now() - lastNavigation)))
-      checkCancelled()
-      lastNavigation = now()
-      diagnostics.requestCount++
-      diagnostics.lastAttemptedPage = pageNumber
-      diagnostics.lastAuthenticationEvidence = null
-      diagnostics.lastLoginRequiredHeading = null
-      diagnostics.lastRankingReadable = null
-      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+      if (!options.navigateWithPacing && lastNavigation !== null) await wait(Math.max(0, minInterval - (now() - lastNavigation)))
+      const navigate = () => {
+        checkCancelled()
+        lastNavigation = now()
+        diagnostics.requestCount++
+        diagnostics.lastAttemptedPage = pageNumber
+        diagnostics.lastAuthenticationEvidence = null
+        diagnostics.lastLoginRequiredHeading = null
+        diagnostics.lastRankingReadable = null
+        return page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+      }
+      const response = await (options.navigateWithPacing ? options.navigateWithPacing(navigate) : navigate())
       checkCancelled()
       const status = response?.status()
       diagnostics.lastHttpStatus = status !== undefined && Number.isSafeInteger(status) && status >= 0 && status <= 599 ? status : null

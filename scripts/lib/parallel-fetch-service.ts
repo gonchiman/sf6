@@ -180,7 +180,8 @@ export function createParallelFetchService(dependencies: ParallelFetchServiceDep
         })
         report = parseParallelFetchReport(result)
       } catch {
-        report = parseParallelFetchReport({ schemaVersion: config.intervalMsList ? 2 : 1, runId: randomBytes(16).toString('hex'), config,
+        report = parseParallelFetchReport({ schemaVersion: 3, runId: randomBytes(16).toString('hex'),
+          config: { ...config, intervalScope: config.intervalScope ?? 'global' },
           state: controller.signal.aborted ? 'stopped' : 'error', startedAt, finishedAt: new Date().toISOString(),
           trials: [], errorCode: controller.signal.aborted
             ? controller.signal.reason instanceof ParallelFetchReadError ? controller.signal.reason.code : 'cancelled' : 'read-failed' })

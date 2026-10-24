@@ -1,10 +1,13 @@
 import { PARALLEL_FETCH_ERRORS } from '../types/parallelFetch.ts'
 import type { ParallelFetchAttempt, ParallelFetchAuthenticationEvidence, ParallelFetchConcurrency, ParallelFetchConfig,
-  ParallelFetchErrorCode, ParallelFetchInterval, ParallelFetchNetworkEvent, ParallelFetchReadDiagnostics, ParallelFetchReadTrace,
+  ParallelFetchErrorCode, ParallelFetchInterval, ParallelFetchIntervalScope, ParallelFetchNetworkEvent, ParallelFetchReadDiagnostics, ParallelFetchReadTrace,
   ParallelFetchReport, ParallelFetchTrial, ParallelFetchWorker } from '../types/parallelFetch.ts'
 
 export const PARALLEL_FETCH_MAX_ATTEMPTS = 200
 export const PARALLEL_FETCH_MAX_CONCURRENCY = 8
+export const PARALLEL_FETCH_MAX_INTERVAL_MS = 60000
+export const PARALLEL_FETCH_INTERVAL_STEP_MS = 100
+export const PARALLEL_FETCH_MAX_INTERVALS = 3
 export const PARALLEL_FETCH_MAX_DURATION_MS = 10 * 60 * 1000
 export const PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS = 80
 export const PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS = 80
@@ -91,12 +94,41 @@ export function parseParallelFetchReadDiagnostics(value: unknown): ParallelFetch
 export function parallelFetchIntervals(config: ParallelFetchConfig): ParallelFetchInterval[] {
   return config.intervalMsList ? [...config.intervalMsList] : [config.intervalMs]
 }
+export function parallelFetchIntervalScope(config: Pick<ParallelFetchConfig, 'intervalScope'>): ParallelFetchIntervalScope {
+  return config.intervalScope ?? 'global'
+}
+export function isParallelFetchInterval(value: unknown): value is ParallelFetchInterval {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    && value <= PARALLEL_FETCH_MAX_INTERVAL_MS && value % PARALLEL_FETCH_INTERVAL_STEP_MS === 0
+}
+function interval(value: unknown): ParallelFetchInterval {
+  return isParallelFetchInterval(value) ? value : invalid()
+}
+export function parseParallelFetchIntervalInput(text: string): ParallelFetchInterval[] {
+  if (text.length > 128) throw new Error('取得開始間隔は128文字以内で入力してください。')
+  const tokens = text.split(',', PARALLEL_FETCH_MAX_INTERVALS + 1).map(token => token.trim())
+  if (tokens.length > PARALLEL_FETCH_MAX_INTERVALS) throw new Error(`取得開始間隔は${PARALLEL_FETCH_MAX_INTERVALS}個以内で入力してください。`)
+  const intervals = tokens.map(token => {
+    const milliseconds = Math.round(Number(token) * 1000)
+    if (!/^(?:0|[1-9]\d*)(?:\.\d)?$/.test(token) || !isParallelFetchInterval(milliseconds)) {
+      throw new Error('取得開始間隔は0〜60秒・小数1桁までの数値をカンマで区切って入力してください。')
+    }
+    return milliseconds
+  })
+  if (new Set(intervals).size !== intervals.length) throw new Error('取得開始間隔の重複を除いてください。')
+  return intervals.sort((a, b) => b - a)
+}
 export function plannedParallelFetchAttempts(config: ParallelFetchConfig): number {
   return parallelFetchIntervals(config).length * config.repetitions
     * config.concurrencies.reduce((sum, concurrency) => sum + config.pageCount + concurrency, 0)
 }
-/** Lower bound only: first start is immediate; every later start includes the current condition's gap. */
+/** Zero-duration reads give a lower bound, not a completion-time prediction. */
 export function minimumPlannedWaitMs(config: ParallelFetchConfig): number {
+  if (parallelFetchIntervalScope(config) === 'per-tab') {
+    // Each new tab prepares once, then keeps its start clock for its share of pages.
+    return parallelFetchIntervals(config).reduce((sum, intervalMs) => sum + intervalMs * config.repetitions
+      * config.concurrencies.reduce((count, concurrency) => count + Math.ceil(config.pageCount / concurrency), 0), 0)
+  }
   const attemptsPerInterval = config.repetitions
     * config.concurrencies.reduce((sum, concurrency) => sum + config.pageCount + concurrency, 0)
   return parallelFetchIntervals(config).reduce((sum, intervalMs, index) =>
@@ -119,7 +151,8 @@ export function parseParallelFetchConcurrencyInput(text: string): ParallelFetchC
   if (!concurrencies.includes(1)) throw new Error('比較基準の並列数1を含めてください。')
   return concurrencies.sort((a, b) => a - b)
 }
-export function parseParallelFetchConfig(value: unknown): ParallelFetchConfig {
+/** Reads saved conditions without applying today's execution-time budget to old records. */
+export function parseHistoricalParallelFetchConfig(value: unknown): ParallelFetchConfig {
   const input = object(value)
   const concurrencies = Array.from(list(input.concurrencies, PARALLEL_FETCH_MAX_CONCURRENCY), item => integer(item, 1, PARALLEL_FETCH_MAX_CONCURRENCY))
   if (concurrencies[0] !== 1 || new Set(concurrencies).size !== concurrencies.length
@@ -127,16 +160,21 @@ export function parseParallelFetchConfig(value: unknown): ParallelFetchConfig {
   const result: ParallelFetchConfig = {
     target: oneOf(input.target, ['lp', 'mr']), startPage: integer(input.startPage, 1, 1000000),
     pageCount: oneOf(input.pageCount, [20, 50]), concurrencies,
-    repetitions: oneOf(input.repetitions, [1, 3]), intervalMs: oneOf(input.intervalMs, input.intervalMsList === undefined ? [5000, 10000] : [3000, 5000, 10000]),
+    repetitions: oneOf(input.repetitions, [1, 3]), intervalMs: interval(input.intervalMs),
   }
+  if (input.intervalScope !== undefined) result.intervalScope = oneOf(input.intervalScope, ['global', 'per-tab'] as const)
   if (input.intervalMsList !== undefined) {
-    const intervals = list(input.intervalMsList, 3).map(item => oneOf(item, [3000, 5000, 10000] as const))
+    const intervals = Array.from(list(input.intervalMsList, PARALLEL_FETCH_MAX_INTERVALS), interval)
     if (!intervals.length || intervals[0] !== result.intervalMs || new Set(intervals).size !== intervals.length
       || intervals.some((item, index) => index > 0 && item > intervals[index - 1])) return invalid()
     result.intervalMsList = intervals
-    if (minimumPlannedWaitMs(result) >= PARALLEL_FETCH_MAX_DURATION_MS) return invalid()
   }
   if (plannedParallelFetchAttempts(result) > PARALLEL_FETCH_MAX_ATTEMPTS) return invalid()
+  return result
+}
+export function parseParallelFetchConfig(value: unknown): ParallelFetchConfig {
+  const result = parseHistoricalParallelFetchConfig(value)
+  if (minimumPlannedWaitMs(result) >= PARALLEL_FETCH_MAX_DURATION_MS) return invalid()
   return result
 }
 
@@ -162,7 +200,7 @@ function parseWorker(value: unknown, concurrency: number): ParallelFetchWorker {
   return { id: integer(input.id, 1, concurrency), page: input.page === null ? null : integer(input.page, 1, 1000050),
     state: oneOf(input.state, ['idle', 'waiting', 'reading', 'complete', 'stopped']), completedPages: integer(input.completedPages, 0, 50) }
 }
-function parseTrial(value: unknown, config: ParallelFetchConfig, schemaVersion: 1 | 2): ParallelFetchTrial {
+function parseTrial(value: unknown, config: ParallelFetchConfig, schemaVersion: ParallelFetchReport['schemaVersion']): ParallelFetchTrial {
   const input = object(value)
   const concurrency = oneOf(input.concurrency, config.concurrencies)
   const result: ParallelFetchTrial = {
@@ -175,7 +213,7 @@ function parseTrial(value: unknown, config: ParallelFetchConfig, schemaVersion: 
     attempts: list(input.attempts, PARALLEL_FETCH_MAX_ATTEMPTS).map(item => parseAttempt(item, config, concurrency)),
     workers: list(input.workers, concurrency).map(item => parseWorker(item, concurrency)), errorCode: errorCode(input.errorCode),
   }
-  if (schemaVersion === 2) result.intervalMs = oneOf(input.intervalMs, parallelFetchIntervals(config))
+  if (schemaVersion >= 2) result.intervalMs = oneOf(input.intervalMs, parallelFetchIntervals(config))
   else if (input.intervalMs !== undefined) return invalid()
   if (result.workers.length !== concurrency || new Set(result.workers.map(worker => worker.id)).size !== result.workers.length
     || new Set(result.completedPages).size !== result.completedPages.length) return invalid()
@@ -196,20 +234,26 @@ function parseTrial(value: unknown, config: ParallelFetchConfig, schemaVersion: 
 /** Reconstructs an allowlisted report. Credentials, raw rows, URLs and arbitrary errors never survive import/export. */
 export function parseParallelFetchReport(value: unknown): ParallelFetchReport {
   const input = object(value)
-  if (input.schemaVersion !== 1 && input.schemaVersion !== 2 || typeof input.runId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(input.runId)) return invalid()
-  const config = parseParallelFetchConfig(input.config)
-  if ((input.schemaVersion === 2) !== (config.intervalMsList !== undefined)) return invalid()
+  if (input.schemaVersion !== 1 && input.schemaVersion !== 2 && input.schemaVersion !== 3
+    || typeof input.runId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(input.runId)) return invalid()
+  const config = input.schemaVersion === 3 ? parseParallelFetchConfig(input.config) : parseHistoricalParallelFetchConfig(input.config)
+  if (input.schemaVersion === 3) {
+    if (config.intervalScope === undefined) return invalid()
+  } else {
+    if (config.intervalScope !== undefined || (input.schemaVersion === 2) !== (config.intervalMsList !== undefined)) return invalid()
+    if (parallelFetchIntervals(config).some(value => !(input.schemaVersion === 1 ? [5000, 10000] : [3000, 5000, 10000]).includes(value))) return invalid()
+  }
   const expectedTrials = parallelFetchIntervals(config).flatMap(intervalMs => config.concurrencies.flatMap(concurrency =>
     Array.from({ length: config.repetitions }, (_, index) => `${intervalMs}:${concurrency}:${index + 1}`)))
   const result: ParallelFetchReport = {
     schemaVersion: input.schemaVersion, runId: input.runId, config, state: oneOf(input.state, ['running', 'complete', 'stopped', 'error']),
     startedAt: date(input.startedAt), finishedAt: input.finishedAt === null ? null : date(input.finishedAt),
-    trials: list(input.trials, expectedTrials.length).map(item => parseTrial(item, config, input.schemaVersion as 1 | 2)),
+    trials: list(input.trials, expectedTrials.length).map(item => parseTrial(item, config, input.schemaVersion as ParallelFetchReport['schemaVersion'])),
     errorCode: errorCode(input.errorCode),
   }
   if (new Set(result.trials.map(trial => `${trial.intervalMs ?? config.intervalMs}:${trial.concurrency}:${trial.repetition}`)).size !== result.trials.length
     || result.trials.reduce((sum, trial) => sum + trial.attempts.length, 0) > PARALLEL_FETCH_MAX_ATTEMPTS) return invalid()
-  if (result.schemaVersion === 2 && result.trials.some((trial, index) =>
+  if (result.schemaVersion >= 2 && result.trials.some((trial, index) =>
     `${trial.intervalMs}:${trial.concurrency}:${trial.repetition}` !== expectedTrials[index]
     || index < result.trials.length - 1 && trial.state !== 'complete')) return invalid()
   if ((result.state !== 'running') !== (result.finishedAt !== null)

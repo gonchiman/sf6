@@ -28,7 +28,7 @@ function zip(name: string, text: string): Buffer {
   return Buffer.concat([local, filename, packed, central, filename, end])
 }
 function report() {
-  return { schemaVersion: 1, runId: 'cloud-123-1-serial', config: cloudConfig('serial'), state: 'error',
+  return { schemaVersion: 3, runId: 'cloud-123-1-serial', config: cloudConfig('serial'), state: 'error',
     startedAt: '2026-10-21T00:00:00.000Z', finishedAt: '2026-10-21T00:00:01.000Z', trials: [], errorCode: 'human-verification' }
 }
 function mocked(answer: (args: string[]) => unknown | Buffer) {
@@ -127,10 +127,10 @@ test('interval dispatch uses only canonical allowlisted inputs and rejects inval
   const f = mocked(() => Buffer.alloc(0))
   await f.github.dispatch('interval-compare', REQUEST, { intervalMsList: [3000, 5000], concurrencies: [2, 1], repetitions: 1 })
   assert.deepEqual(f.calls[0].args.slice(7), ['--raw-field', 'mode=interval-compare', '--raw-field', `request_id=${REQUEST}`,
-    '--raw-field', 'intervals=5000,3000', '--raw-field', 'concurrencies=1,2', '--raw-field', 'repetitions=1'])
+    '--raw-field', 'interval_seconds=5,3', '--raw-field', 'concurrencies=1,2', '--raw-field', 'repetitions=1', '--raw-field', 'interval_scope=global'])
   await f.github.dispatch('interval-compare', REQUEST, { intervalMsList: [3000, 5000], concurrencies: [8, 3, 1], repetitions: 1 })
   assert.deepEqual(f.calls[1].args.slice(7), ['--raw-field', 'mode=interval-compare', '--raw-field', `request_id=${REQUEST}`,
-    '--raw-field', 'intervals=5000,3000', '--raw-field', 'concurrencies=1,3,8', '--raw-field', 'repetitions=1'])
+    '--raw-field', 'interval_seconds=5,3', '--raw-field', 'concurrencies=1,3,8', '--raw-field', 'repetitions=1', '--raw-field', 'interval_scope=global'])
   await assert.rejects(f.github.dispatch('interval-compare', REQUEST))
   await assert.rejects(f.github.dispatch('interval-compare', REQUEST, { ...DEFAULT_CLOUD_INTERVAL_OPTIONS, repetitions: 3 }))
   await assert.rejects(f.github.dispatch('compare', REQUEST, DEFAULT_CLOUD_INTERVAL_OPTIONS))
@@ -142,14 +142,33 @@ test('interval dispatch uses only canonical allowlisted inputs and rejects inval
 
 test('interval artifacts must match the exact selected intervals, concurrencies and repetitions', async () => {
   const name = 'parallel-fetch-cloud-123-1-interval-compare', options = { ...DEFAULT_CLOUD_INTERVAL_OPTIONS, concurrencies: [1, 3, 8] }
-  const value = { ...report(), schemaVersion: 2, runId: 'cloud-123-1-interval-compare', config: cloudConfig('interval-compare', options) }
+  const value = { ...report(), schemaVersion: 3, runId: 'cloud-123-1-interval-compare', config: cloudConfig('interval-compare', options) }
   const f = mocked(args => args.at(-1)!.endsWith('/zip') ? zip(`${name}.json`, JSON.stringify(value))
     : { artifacts: [{ id: 456, name, size_in_bytes: 100, expired: false }] })
   assert.deepEqual(await f.github.readReport(remote(), 'interval-compare', options), value)
   for (const changed of [{ ...options, intervalMsList: [5000] as const }, { ...options, concurrencies: [1] as const },
-    { ...options, concurrencies: [1, 3, 7] as const }]) {
+    { ...options, concurrencies: [1, 3, 7] as const }, { ...options, intervalScope: 'per-tab' }]) {
     await assert.rejects(f.github.readReport(remote(), 'interval-compare', structuredClone(changed) as never),
       error => error instanceof ParallelFetchCloudServiceError && error.code === 'invalid-report')
   }
   await assert.rejects(f.github.readReport(remote(), 'interval-compare'))
+})
+
+test('dispatch encodes fractional seconds and per-tab scope and rejects invalid values before gh', async () => {
+  const f = mocked(() => Buffer.alloc(0))
+  await f.github.dispatch('interval-compare', REQUEST, { intervalMsList: [0, 5100], concurrencies: [1, 2], repetitions: 1, intervalScope: 'per-tab' })
+  assert.ok(f.calls[0].args.includes('interval_seconds=5.1,0'))
+  assert.ok(f.calls[0].args.includes('interval_scope=per-tab'))
+  for (const change of [{ intervalScope: 'global;injected' }, { intervalMsList: [50] }, { intervalMsList: [60100] }]) {
+    await assert.rejects(f.github.dispatch('interval-compare', REQUEST, { ...DEFAULT_CLOUD_INTERVAL_OPTIONS, ...change } as never))
+  }
+  assert.equal(f.calls.length, 1)
+})
+
+test('old artifact config without scope matches the normalized global request', async () => {
+  const name = 'parallel-fetch-cloud-123-1-serial', value = { ...report(), schemaVersion: 1 }
+  delete value.config.intervalScope
+  const f = mocked(args => args.at(-1)!.endsWith('/zip') ? zip(`${name}.json`, JSON.stringify(value))
+    : { artifacts: [{ id: 456, name, size_in_bytes: 100, expired: false }] })
+  assert.deepEqual(await f.github.readReport(remote(), 'serial'), value)
 })

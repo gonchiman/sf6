@@ -1,7 +1,7 @@
 import { lstat, readFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright'
-import { PARALLEL_FETCH_MAX_CONCURRENCY } from '../../src/lib/parallelFetch.ts'
+import { isParallelFetchInterval, PARALLEL_FETCH_MAX_CONCURRENCY } from '../../src/lib/parallelFetch.ts'
 import { PARALLEL_FETCH_ERRORS } from '../../src/types/parallelFetch.ts'
 import type { ParallelFetchErrorCode, ParallelFetchInterval, ParallelFetchReadDiagnostics, ParallelFetchTarget } from '../../src/types/parallelFetch.ts'
 import { disableRankDistributionDiagnostics } from '../collect-rank-distribution.ts'
@@ -12,7 +12,7 @@ import { mrDistributionPageUrl } from './mr-distribution-collector.ts'
 import { rankBoundaryPageUrl, RANK_BOUNDARY_SOURCE_URL } from './rank-distribution-boundaries.ts'
 import { createRankDistributionPageReader, RankDistributionDomError } from './rank-distribution-dom.ts'
 import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
-import type { ParallelFetchReader } from './parallel-fetch-runner.ts'
+import type { ParallelFetchNavigationGate, ParallelFetchReader } from './parallel-fetch-runner.ts'
 import { createParallelFetchDiagnosticRecorder } from './parallel-fetch-diagnostics.ts'
 
 type StorageState = Exclude<NonNullable<BrowserContextOptions['storageState']>, string>
@@ -86,7 +86,7 @@ function safeReadCode(error: unknown): ParallelFetchErrorCode {
 /** One browser/context per user-started run; each worker owns one independent Page. */
 export async function createParallelFetchBrowserSession(options: { intervalMs: ParallelFetchInterval; signal: AbortSignal },
   dependencies: ParallelFetchBrowserDependencies = {}): Promise<ParallelFetchBrowserSession> {
-  if (![3000, 5000, 10000].includes(options.intervalMs)) throw new ParallelFetchReadError('invalid-request')
+  if (!isParallelFetchInterval(options.intervalMs)) throw new ParallelFetchReadError('invalid-request')
   const check = (): void => { if (options.signal.aborted) throw new ParallelFetchReadError('cancelled') }
   check()
   let state: StorageState
@@ -127,7 +127,7 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
   if (options.signal.aborted) { await close(); throw new ParallelFetchReadError('cancelled') }
   return {
     async createReader(workerId, target, signal, intervalMs = options.intervalMs) {
-      if (![3000, 5000, 10000].includes(intervalMs)) throw new ParallelFetchReadError('invalid-request')
+      if (!isParallelFetchInterval(intervalMs)) throw new ParallelFetchReadError('invalid-request')
       if (!Number.isSafeInteger(workerId) || workerId < 1 || workerId > PARALLEL_FETCH_MAX_CONCURRENCY || !['lp', 'mr'].includes(target)) throw new ParallelFetchReadError('invalid-request')
       if (closed || options.signal.aborted || signal.aborted) throw new ParallelFetchReadError('cancelled')
       let page: Page
@@ -150,6 +150,14 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
       signal.addEventListener('abort', abortPage, { once: true })
       if (closed || options.signal.aborted || signal.aborted) { await closePage(); throw new ParallelFetchReadError('cancelled') }
       let challenge = false, httpStatus: number | null = null, domObserved = false
+      let navigationGate: ParallelFetchNavigationGate | null = null
+      const navigateWithPacing: ParallelFetchNavigationGate = navigate => {
+        if (!navigationGate) throw new ParallelFetchReadError('invalid-request')
+        return navigationGate(() => {
+          recorder.begin()
+          return navigate()
+        })
+      }
       const inspectChallenge = async (): Promise<void> => {
         if (await page.evaluate(observeParallelFetchChallenge)) {
           challenge = true
@@ -179,10 +187,10 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
         rankingReadable: value.rankingReadable, humanVerification: false,
       })
       const lp = target === 'lp' ? (dependencies.createLpReader ?? createRankDistributionPageReader)(guarded, {
-        signal, minIntervalMs: intervalMs, totalCountPolicy: 'record', allowReadablePagesAfterSignIn: false, onObservation,
+        signal, navigateWithPacing, totalCountPolicy: 'record', allowReadablePagesAfterSignIn: false, onObservation,
       }) : null
       const mr = target === 'mr' ? (dependencies.createMrReader ?? createMrDistributionPageReader)(guarded, {
-        signal, minIntervalMs: intervalMs, allowReadablePagesAfterSignIn: false, onObservation,
+        signal, navigateWithPacing, allowReadablePagesAfterSignIn: false, onObservation,
       }) : null
       const readDiagnostics = (pageNumber: number): ParallelFetchReadDiagnostics | undefined => {
         // Only an observation made after this read's navigation may contribute.
@@ -198,9 +206,10 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
         return { authenticationEvidence, loginRequiredHeading, rankingReadable }
       }
       return {
-        async readPage(pageNumber) {
+        async readPage(pageNumber, navigateWithPacing) {
           if (closed || pageClosed || signal.aborted || options.signal.aborted) throw new ParallelFetchReadError('cancelled')
-          recorder.begin()
+          if (typeof navigateWithPacing !== 'function' || navigationGate) throw new ParallelFetchReadError('invalid-request')
+          navigationGate = navigateWithPacing
           challenge = false; httpStatus = null; domObserved = false
           try {
             const value = lp ? await lp.fetchPage(pageNumber, rankBoundaryPageUrl(RANK_BOUNDARY_SOURCE_URL, pageNumber))
@@ -225,7 +234,7 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
               recorder.afterStop()
             } else recorder.end()
             throw new ParallelFetchReadError(code, status, diagnostics)
-          }
+          } finally { navigationGate = null }
         },
         async observeAfterStop(externalSignal) {
           const pending = pendingStop

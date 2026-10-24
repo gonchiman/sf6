@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { inflateRawSync } from 'node:zlib'
 import { parseParallelFetchReport } from '../../src/lib/parallelFetch.ts'
-import { cloudConfig, parseCloudIntervalOptions } from '../../src/lib/parallelFetchCloud.ts'
+import { cloudConfig, parseCloudIntervalOptions, sameParallelFetchConfig } from '../../src/lib/parallelFetchCloud.ts'
 import type { ParallelFetchReport } from '../../src/types/parallelFetch.ts'
 import type { CloudError, CloudIntervalOptions, CloudMode } from '../../src/types/parallelFetchCloud.ts'
 import { cloudSecretEnvironment } from '../send-buckler-cloud-session.ts'
@@ -159,8 +159,9 @@ export function createCloudGitHub(command: CloudGhCommand = runCloudGhCommand): 
       } catch { return fail('invalid-request') }
       const args = ['workflow', 'run', WORKFLOW, '--repo', 'gonchiman/sf6', '--ref', 'main',
         '--raw-field', `mode=${mode}`, '--raw-field', `request_id=${requestId}`]
-      if (selected) args.push('--raw-field', `intervals=${selected.intervalMsList.join(',')}`,
-        '--raw-field', `concurrencies=${selected.concurrencies.join(',')}`, '--raw-field', `repetitions=${selected.repetitions}`)
+      if (selected) args.push('--raw-field', `interval_seconds=${selected.intervalMsList.map(value => value / 1000).join(',')}`,
+        '--raw-field', `concurrencies=${selected.concurrencies.join(',')}`, '--raw-field', `repetitions=${selected.repetitions}`,
+        '--raw-field', `interval_scope=${selected.intervalScope}`)
       await command(args, 16384)
     },
     async findRun(requestId) {
@@ -180,8 +181,8 @@ export function createCloudGitHub(command: CloudGhCommand = runCloudGhCommand): 
     async readReport(run, mode, options) {
       let config
       try {
-        if (mode === 'interval-compare') parseCloudIntervalOptions(options)
-        config = cloudConfig(mode, options)
+        if (mode === 'interval-compare') parseCloudIntervalOptions(options, { historical: true })
+        config = cloudConfig(mode, options, { historical: true })
       } catch { return fail('invalid-report') }
       const expected = `parallel-fetch-cloud-${id(run.runId)}-${run.runAttempt}-${mode}`
       let value: Record<string, unknown>
@@ -198,7 +199,7 @@ export function createCloudGitHub(command: CloudGhCommand = runCloudGhCommand): 
       try {
         const report = parseParallelFetchReport(JSON.parse(new TextDecoder('utf8', { fatal: true }).decode(extractCloudReportZip(zip, `${expected}.json`))))
         if (report.runId !== `cloud-${run.runId}-${run.runAttempt}-${mode}` || report.state === 'running'
-          || JSON.stringify(report.config) !== JSON.stringify(config)) return fail('invalid-report')
+          || !sameParallelFetchConfig(report.config, config)) return fail('invalid-report')
         return report
       } catch { return fail('invalid-report') }
     },

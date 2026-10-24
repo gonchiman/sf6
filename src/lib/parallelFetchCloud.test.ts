@@ -9,7 +9,7 @@ function run(): CloudRun {
     createdAt: '2026-10-21T00:00:00.000Z', updatedAt: '2026-10-21T00:05:00.000Z', dispatchState: 'sent',
     runId: '123', runAttempt: 1, state: 'failed', startedAt: '2026-10-21T00:01:00.000Z', finishedAt: '2026-10-21T00:05:00.000Z',
     headSha: 'a'.repeat(40), conclusion: 'failure', error: null,
-    report: { schemaVersion: 1, runId: 'cloud-123-1-serial', config: cloudConfig('serial'),
+    report: { schemaVersion: 3, runId: 'cloud-123-1-serial', config: cloudConfig('serial'),
       startedAt: '2026-10-21T00:02:00.000Z', finishedAt: '2026-10-21T00:04:00.000Z',
       state: 'error', errorCode: 'human-verification', trials: [] } }
 }
@@ -59,7 +59,8 @@ test('interval selections are canonical, independent and bounded across all cond
   assert.equal(plannedParallelFetchAttempts(cloudConfig('interval-compare', options)), 86)
   options.intervalMsList.push(10000)
   assert.deepEqual(DEFAULT_CLOUD_INTERVAL_OPTIONS.intervalMsList, [5000, 3000])
-  for (const change of [{ intervalMsList: [] }, { intervalMsList: [5000, 5000] }, { intervalMsList: [0] },
+  for (const change of [{ intervalMsList: [] }, { intervalMsList: [5000, 5000] }, { intervalMsList: [-100] },
+    { intervalMsList: [60001] }, { intervalMsList: [50] }, { intervalScope: 'worker' },
     { intervalMsList: ['3000'] }, { concurrencies: [] }, { concurrencies: [4] }, { concurrencies: [2] },
     { concurrencies: [1, 1] }, { concurrencies: [1, 0] }, { concurrencies: [1, 9] }, { concurrencies: [1, 2.5] },
     { concurrencies: [1, '3'] }, { concurrencies: [1, null] }, { repetitions: '1' },
@@ -84,7 +85,7 @@ test('cloud options accept every integer through eight and keep the request and 
 test('interval reports are bound to persisted selections and legacy records remain unchanged', () => {
   const options = parseCloudIntervalOptions({ ...DEFAULT_CLOUD_INTERVAL_OPTIONS, concurrencies: [1, 3, 8] })
   const value = { ...run(), mode: 'interval-compare', options, report: { ...run().report,
-    schemaVersion: 2, runId: 'cloud-123-1-interval-compare', config: cloudConfig('interval-compare', options) } }
+    schemaVersion: 3, runId: 'cloud-123-1-interval-compare', config: cloudConfig('interval-compare', options) } }
   assert.deepEqual(parseCloudRun(value), value)
   assert.throws(() => parseCloudRun({ ...value, options: undefined }))
   assert.throws(() => parseCloudRun({ ...value, options: { ...options, intervalMsList: [5000] } }))
@@ -93,4 +94,30 @@ test('interval reports are bound to persisted selections and legacy records rema
     config: { ...value.report.config, concurrencies: [1, 3, 7] } } }))
   assert.throws(() => parseCloudRun({ ...run(), options }))
   assert.deepEqual(parseCloudRun(run()), run())
+})
+
+test('fractional and zero intervals carry scope, while results cannot change that scope', () => {
+  const options = parseCloudIntervalOptions({ intervalMsList: [0, 5100], concurrencies: [1, 2], repetitions: 1, intervalScope: 'per-tab' })
+  assert.deepEqual(options.intervalMsList, [5100, 0])
+  const report = { ...run().report!, runId: 'cloud-123-1-interval-compare', config: cloudConfig('interval-compare', options) }
+  const value = { ...run(), mode: 'interval-compare', options, report }
+  assert.deepEqual(parseCloudRun(value).report, report)
+  assert.throws(() => parseCloudRun({ ...value, options: { ...options, intervalScope: 'global' } }))
+  assert.throws(() => parseCloudRun({ ...value, report: { ...report, config: { ...report.config, intervalScope: 'global' } } }))
+})
+
+test('old reports and persisted interval history without scope remain global after normalization', () => {
+  for (const schemaVersion of [1, 2]) {
+    const mode = schemaVersion === 1 ? 'serial' : 'interval-compare'
+    const options = schemaVersion === 1 ? undefined : { intervalMsList: [5000, 3000], concurrencies: [1, 2], repetitions: 1 as const }
+    const config = cloudConfig(mode, options)
+    delete config.intervalScope
+    const report = { ...run().report!, schemaVersion, runId: `cloud-123-1-${mode}`, config }
+    const value = { ...run(), mode, ...(options ? { options } : {}), report }
+    const parsed = parseCloudRun(value)
+    assert.deepEqual(parsed.report, report)
+    if (options) assert.equal(parsed.options?.intervalScope, 'global')
+    assert.deepEqual(parseCloudRun(parsed), parsed)
+    assert.deepEqual(parseParallelFetchResult({ schemaVersion: 1, kind: 'parallel-fetch-result', environment: 'github-actions', cloud: value, report }).report, report)
+  }
 })

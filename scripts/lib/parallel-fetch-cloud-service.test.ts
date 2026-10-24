@@ -38,7 +38,7 @@ function fixture(saved: CloudRun[] = []) {
     cancel: async id => { assert.equal(id, '123'); cancelled++ },
     readReport: async () => {
       downloads++
-      return { schemaVersion: 1, runId: 'cloud-123-1-serial', config: cloudConfig('serial'), state: 'error',
+      return { schemaVersion: 3, runId: 'cloud-123-1-serial', config: cloudConfig('serial'), state: 'error',
         startedAt: TIME, finishedAt: TIME, trials: [], errorCode: 'authentication-unconfirmed' }
     },
   }
@@ -206,7 +206,7 @@ test('persistent state reconstructs safe fields and rejects malformed state with
 
 test('interval selection is saved before dispatch and preserved when importing an exact matching report', async () => {
   const f = fixture(); await f.ready()
-  const options = { ...structuredClone(DEFAULT_CLOUD_INTERVAL_OPTIONS), concurrencies: [1, 3, 8] }
+  const options = { ...structuredClone(DEFAULT_CLOUD_INTERVAL_OPTIONS), intervalScope: 'per-tab' as const, intervalMsList: [5100, 0], concurrencies: [1, 3, 8] }
   let dispatches = 0
   f.github.dispatch = async (mode, requestId, selected) => {
     assert.equal(mode, 'interval-compare'); assert.equal(requestId, REQUEST)
@@ -215,7 +215,7 @@ test('interval selection is saved before dispatch and preserved when importing a
   }
   f.github.readReport = async (_run, mode, selected) => {
     assert.equal(mode, 'interval-compare'); assert.deepEqual(selected, options)
-    return { schemaVersion: 2, runId: 'cloud-123-1-interval-compare', config: cloudConfig(mode, selected), state: 'error',
+    return { schemaVersion: 3, runId: 'cloud-123-1-interval-compare', config: cloudConfig(mode, selected), state: 'error',
       startedAt: TIME, finishedAt: TIME, trials: [], errorCode: 'authentication-unconfirmed' }
   }
   const token = (await f.service.status()).token
@@ -232,7 +232,7 @@ test('interval selection is saved before dispatch and preserved when importing a
   await f.service.waitForIdle()
   f.setFound({ ...remote(), state: 'completed', conclusion: 'failure', finishedAt: TIME })
   const status = await f.refresh()
-  assert.equal(status.runs[0].report?.schemaVersion, 2)
+  assert.equal(status.runs[0].report?.schemaVersion, 3)
   assert.deepEqual(status.runs[0].options, options)
   assert.equal(dispatches, 1)
   await f.service.close()
@@ -242,4 +242,22 @@ test('interval selection is saved before dispatch and preserved when importing a
   await restarted.retry(REQUEST); await restarted.waitForIdle()
   assert.equal(dispatches, 1)
   await restarted.close()
+})
+
+test('restart restores old scope-free interval history without redispatch or losing its report', async () => {
+  const options = { intervalMsList: [5000, 3000], concurrencies: [1, 2], repetitions: 1 as const }
+  const config = cloudConfig('interval-compare', options)
+  delete config.intervalScope
+  const stored: CloudRun = { ...pending(), mode: 'interval-compare', options, dispatchState: 'sent',
+    runId: '123', runAttempt: 1, state: 'failed', startedAt: TIME, finishedAt: TIME,
+    headSha: 'a'.repeat(40), conclusion: 'failure', report: { schemaVersion: 2,
+      runId: 'cloud-123-1-interval-compare', config, startedAt: TIME, finishedAt: TIME,
+      state: 'error', errorCode: 'authentication-unconfirmed', trials: [] } }
+  const f = fixture([stored]); await f.ready()
+  const status = await f.service.status()
+  assert.equal(status.error, null)
+  assert.equal(status.runs[0].options?.intervalScope, 'global')
+  assert.deepEqual(status.runs[0].report, stored.report)
+  assert.equal(f.stats().dispatched, 0)
+  await f.service.close()
 })

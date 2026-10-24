@@ -267,6 +267,28 @@ test('reader requires first page and exact fixed-condition URLs before navigatio
   assert.equal(navigations.length, 0)
 })
 
+test('external pacing gates each LP navigation without a second internal wait', async () => {
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let starts = 0
+  const setup = harness(undefined, 200, { navigateWithPacing: async navigate => { starts++; await gate; return navigate() } })
+  const first = setup.reader.fetchPage(1, pageUrl(1))
+  await Promise.resolve()
+  assert.equal(starts, 1)
+  assert.equal(setup.navigations.length, 0)
+  release()
+  await first
+  await setup.reader.fetchPage(2, pageUrl(2))
+  assert.equal(starts, 2)
+  assert.deepEqual(setup.navigationTimes, [0, 0])
+  const controller = new AbortController()
+  const stopped = harness(undefined, 200, { signal: controller.signal,
+    navigateWithPacing: navigate => { controller.abort(); return navigate() } })
+  await assert.rejects(stopped.reader.fetchPage(1, pageUrl(1)), errorCode('cancelled'))
+  assert.equal(stopped.navigations.length, 0)
+  assert.throws(() => harness(undefined, 200, { navigateWithPacing: true as never }), errorCode('invalid-request'))
+})
+
 test('reader waits for page hydration, selected page, counters, authentication and lazy images together', async () => {
   const { reader, evaluations } = harness((page, evaluation) => evaluation === 1
     ? { ...observation(page), signedIn: false, selectedPage: null, entries: null, rankIcons: 'pending' }

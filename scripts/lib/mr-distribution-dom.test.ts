@@ -140,6 +140,28 @@ test('page 1 then a deep final page are checked against ranges, both page contro
   await assert.rejects(setup.reader.fetchPage(1, `${mrDistributionPageUrl(1)}&user_status=1`), errorCode('invalid-request'))
 })
 
+test('external pacing gates each MR navigation without a second internal wait', async () => {
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let starts = 0
+  const setup = browser({ options: { navigateWithPacing: async navigate => { starts++; await gate; return navigate() } } })
+  const first = setup.reader.fetchPage(1)
+  await Promise.resolve()
+  assert.equal(starts, 1)
+  assert.equal(setup.requests.length, 0)
+  release()
+  await first
+  await setup.reader.fetchPage(2)
+  assert.equal(starts, 2)
+  assert.deepEqual(setup.waits, [])
+  const controller = new AbortController()
+  const stopped = browser({ options: { signal: controller.signal,
+    navigateWithPacing: navigate => { controller.abort(); return navigate() } } })
+  await assert.rejects(stopped.reader.fetchPage(1), errorCode('cancelled'))
+  assert.equal(stopped.requests.length, 0)
+  assert.throws(() => browser({ options: { navigateWithPacing: true as never } }), errorCode('invalid-request'))
+})
+
 test('first anonymous pages remain unconfirmed; only later fully readable login-control pages can pass after ten seconds', async () => {
   const anonymous = (page: number): MrDistributionDomObservation => ({ ...observation(page), signedIn: false, authenticationEvidence: 'login-control' })
   const first = browser({ observe: anonymous, options: { allowReadablePagesAfterSignIn: true } })

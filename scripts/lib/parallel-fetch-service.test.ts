@@ -149,7 +149,8 @@ test('browser session is opened lazily once on an authorized run and is closed b
   const done = new Promise<void>(resolve => { savedDone = resolve })
   const service = createParallelFetchService({ sessionAvailable: async () => true,
     openBrowser: async () => { opened++; return { createReader: async id => {
-      readers.push(id); return { readPage: async () => ({ totalCount: 1, totalPages: 1, httpStatus: 200 }), close: async () => {} }
+      readers.push(id); return { readPage: async (_page, navigateWithPacing) => navigateWithPacing(async () =>
+        ({ totalCount: 1, totalPages: 1, httpStatus: 200 })), close: async () => {} }
     }, close: async () => { closed++ } } },
     run: async (input, dependencies) => {
       dependencies.onUpdate?.(report(input))
@@ -173,7 +174,8 @@ test('intervals reach the shared browser and the one ten-minute deadline is not 
   const service = createParallelFetchService({ sessionAvailable: async () => true,
     openBrowser: async () => ({ createReader: async (_worker, _target, _signal, intervalMs) => {
       intervals.push(intervalMs)
-      return { readPage: async () => ({ totalCount: 2000, totalPages: 100, httpStatus: 200 }), close: async () => {} }
+      return { readPage: async (_page, navigateWithPacing) => navigateWithPacing(async () =>
+        ({ totalCount: 2000, totalPages: 100, httpStatus: 200 })), close: async () => {} }
     }, close: async () => {} }),
     run: async (input, dependencies) => {
       runDependencies = dependencies
@@ -233,12 +235,12 @@ test('compact report storage round-trips 200 attempts with detailed failures or 
         droppedObservations: 0, droppedNetworkEvents: 0,
       },
     })
-    const input = await runParallelFetch({ ...config(), pageCount: 50, concurrencies: [1, 2, 4] }, {
+    const input = await runParallelFetch({ ...config(), pageCount: 50, concurrencies: [1, 2, 4], intervalMs: 3000 }, {
       now: () => clock, wallNow: () => new Date(Date.parse('2026-10-20T00:00:00.000Z') + clock).toISOString(),
       wait: async milliseconds => { clock += milliseconds }, runId: `diagnostic-${scenario.failures}`,
       createReader: async () => {
         let retrying = false
-        return { readPage: async () => {
+        return { readPage: async (_page, navigateWithPacing) => navigateWithPacing(async () => {
           clock++
           if (!retrying && failures < scenario.failures) {
             failures++; retrying = true
@@ -246,7 +248,7 @@ test('compact report storage round-trips 200 attempts with detailed failures or 
           }
           retrying = false
           return { totalCount: 2000, totalPages: 100, httpStatus: 200, diagnostics: diagnostics(false) }
-        }, close: async () => {} }
+        }), close: async () => {} }
       },
     })
     assert.equal(input.state, scenario.state)
@@ -304,4 +306,24 @@ test('service save failures expose a fixed status and shutdown prevents another 
   assert.equal(result.value.error, 'report-save-failed'); assert.equal(result.value.available, false)
   assert.doesNotMatch(JSON.stringify(result.value), /cookies|C:\/auth/)
   assert.equal((await invoke(service, 'run', { method: 'POST', token, body: config() })).status, 503)
+})
+
+test('unexpected runner failure preserves new interval scope and zero seconds in the saved v3 report', async () => {
+  const saved: ParallelFetchReport[] = []
+  let savedDone!: () => void
+  const done = new Promise<void>(resolve => { savedDone = resolve })
+  const service = createParallelFetchService({ sessionAvailable: async () => true,
+    run: async () => { throw new Error('private runner failure') },
+    saveReport: async report => { saved.push(report); savedDone() },
+  })
+  const token = (await invoke(service, 'status')).value.token
+  const input = { ...config(), intervalMs: 0, intervalMsList: [0], intervalScope: 'per-tab' }
+  assert.equal((await invoke(service, 'run', { method: 'POST', token, body: input })).status, 202)
+  await done
+  await service.close()
+  assert.equal(saved.length, 1)
+  assert.equal(saved[0].schemaVersion, 3)
+  assert.equal(saved[0].errorCode, 'read-failed')
+  assert.deepEqual(saved[0].config, input)
+  assert.equal(JSON.stringify(saved[0]).includes('private'), false)
 })

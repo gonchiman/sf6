@@ -42,7 +42,7 @@ function fixture(env = hosted()) {
     openBrowser: async (options, dependencies) => {
       opens++
       browserSignal = options.signal
-      assert.equal(options.intervalMs, 5000)
+      assert.ok(options.intervalMs >= 0 && options.intervalMs <= 60000)
       assert.equal(env[BUCKLER_WEEKLY_SESSION_SECRET], undefined)
       assert.ok(dependencies?.loadSession, 'the browser receives a memory loader, not a private file location')
       assert.equal((await dependencies.loadSession()).cookies[0].value, SECRET)
@@ -52,12 +52,12 @@ function fixture(env = hosted()) {
           assert.equal(target, 'lp')
           readers++
           return {
-            readPage: async page => {
+            readPage: async (page, navigationGate) => navigationGate(async () => {
               assert.equal(signal.aborted, false)
               reads.push({ worker, page }); ticks += 1000
               return { totalCount: 3000000, totalPages: 150000, httpStatus: 200,
-                diagnostics: { authenticationEvidence: 'logout-control', loginRequiredHeading: false, rankingReadable: true } }
-            },
+                diagnostics: { authenticationEvidence: 'logout-control' as const, loginRequiredHeading: false, rankingReadable: true } }
+            }),
             close: async () => { closedReaders++ },
           }
         },
@@ -148,7 +148,7 @@ test('serial and comparison modes use the fixed existing engine and save only al
     assert.equal(result.outputError, null)
     assert.equal(result.report.runId, `cloud-123456789-2-${mode}`)
     assert.deepEqual(result.report.config, { target: 'lp', startPage: 1, pageCount: 20,
-      concurrencies: mode === 'serial' ? [1] : [1, 2], repetitions: mode === 'serial' ? 3 : 1, intervalMs: 5000 })
+      concurrencies: mode === 'serial' ? [1] : [1, 2], repetitions: mode === 'serial' ? 3 : 1, intervalMs: 5000, intervalScope: 'global' })
     assert.equal(f.reads.length, mode === 'serial' ? 63 : 43)
     assert.equal(f.reads.length, plannedParallelFetchAttempts(result.report.config))
     assert.ok(f.reads.every(read => read.page >= 1 && read.page <= 20))
@@ -170,6 +170,11 @@ test('permanent workflow correlates requests, verifies dispatched code and expos
   assert.match(workflow, /concurrencies:\s+description: [^\n]+\s+required: true\s+type: string\s+default: '1,2'/)
   assert.match(workflow, /parseParallelFetchCloudArguments\(e\.PARALLEL_TEST_MODE/)
   assert.match(workflow, /PARALLEL_TEST_CONCURRENCIES: \$\{\{ inputs\.concurrencies \}\}/)
+  assert.match(workflow, /interval_seconds:\s+description: [^\n]+\s+required: true\s+type: string\s+default: '5,3'/)
+  assert.match(workflow, /PARALLEL_TEST_INTERVAL_SECONDS: \$\{\{ inputs\.interval_seconds \}\}/)
+  assert.match(workflow, /PARALLEL_TEST_INTERVAL_SCOPE: \$\{\{ inputs\.interval_scope \}\}/)
+  assert.match(workflow, /--interval-seconds=/)
+  assert.match(workflow, /--interval-scope=/)
   assert.doesNotMatch(workflow, /PARALLEL_TEST_CONCURRENCIES -cnotin/)
   assert.doesNotMatch(workflow, /^\s+(?:push|schedule|pull_request|workflow_call):/m)
   assert.match(workflow, /github\.repository == 'gonchiman\/sf6'.*github\.event_name == 'workflow_dispatch'.*github\.ref == 'refs\/heads\/main'/)
@@ -213,10 +218,12 @@ test('challenge stops the shared engine without a later trial or authentication 
     const session = await openBrowser(...args)
     return { ...session, createReader: async (...readerArgs) => {
       const reader = await session.createReader(...readerArgs)
-      return { ...reader, readPage: async page => {
-        if (page === 3) throw new ParallelFetchReadError('human-verification', 405,
-          { authenticationEvidence: 'no-control', loginRequiredHeading: false, rankingReadable: false })
-        return reader.readPage(page)
+      return { ...reader, readPage: async (page, navigationGate) => {
+        if (page === 3) return navigationGate(async () => {
+          throw new ParallelFetchReadError('human-verification', 405,
+            { authenticationEvidence: 'no-control', loginRequiredHeading: false, rankingReadable: false })
+        })
+        return reader.readPage(page, navigationGate)
       } }
     } }
   }
@@ -297,14 +304,14 @@ test('CLI help and disallowed invocations print neither secrets nor stack traces
 const intervalArgs = ['--interval-compare', '--intervals=5000,3000', '--concurrencies=1,2', '--repetitions=1']
 test('interval CLI accepts bounded integer lists and rejects over-budget matrices', () => {
   assert.deepEqual(parseParallelFetchCloudArguments(intervalArgs), { mode: 'interval-compare',
-    options: { intervalMsList: [5000, 3000], concurrencies: [1, 2], repetitions: 1 } })
+    options: { intervalMsList: [5000, 3000], concurrencies: [1, 2], repetitions: 1, intervalScope: 'global' } })
   assert.deepEqual(parseParallelFetchCloudArguments(intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies= 8, 1 ,3 '))),
-    { mode: 'interval-compare', options: { intervalMsList: [5000, 3000], concurrencies: [1, 3, 8], repetitions: 1 } })
+    { mode: 'interval-compare', options: { intervalMsList: [5000, 3000], concurrencies: [1, 3, 8], repetitions: 1, intervalScope: 'global' } })
   assert.deepEqual(parseParallelFetchCloudArguments(['--interval-compare', '--intervals=3000', '--concurrencies=8,7,6,5,4,3,2,1', '--repetitions=1']),
-    { mode: 'interval-compare', options: { intervalMsList: [3000], concurrencies: [1, 2, 3, 4, 5, 6, 7, 8], repetitions: 1 } })
+    { mode: 'interval-compare', options: { intervalMsList: [3000], concurrencies: [1, 2, 3, 4, 5, 6, 7, 8], repetitions: 1, intervalScope: 'global' } })
   for (const args of [['--interval-compare'], [...intervalArgs, '--url=other'],
     intervalArgs.map(arg => arg.replace('5000,3000', '5000,5000')),
-    intervalArgs.map(arg => arg.replace('5000,3000', '1000')),
+    intervalArgs.map(arg => arg.replace('5000,3000', '50')),
     intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=4')),
     intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=2')),
     intervalArgs.map(arg => arg.replace('--repetitions=1', '--repetitions=3')),
@@ -336,7 +343,7 @@ test('one cloud browser runs all interval conditions with the selected cadence a
   }
   const result = await runParallelFetchCloudTest(intervalArgs, f.deps)
   assert.equal(result.succeeded, true)
-  assert.equal(result.report.schemaVersion, 2)
+  assert.equal(result.report.schemaVersion, 3)
   assert.equal(result.report.runId, 'cloud-123456789-2-interval-compare')
   assert.deepEqual(result.report.config.intervalMsList, [5000, 3000])
   assert.deepEqual(result.report.trials.map(trial => [trial.intervalMs, trial.concurrency]), [[5000, 1], [5000, 2], [3000, 1], [3000, 2]])
@@ -373,8 +380,38 @@ test('interval mode fails safely before launch for invalid limits, branch or ses
   const missing = fixture(mainHosted()); delete missing.env[BUCKLER_WEEKLY_SESSION_SECRET]
   const result = await runParallelFetchCloudTest(intervalArgs, missing.deps)
   assert.equal(result.report.errorCode, 'session-unavailable')
-  assert.equal(result.report.schemaVersion, 2)
+  assert.equal(result.report.schemaVersion, 3)
   assert.equal(result.report.trials.length, 0)
   assert.equal(result.artifactReady, true)
   assert.equal(missing.stats().opens, 0)
+})
+
+test('seconds CLI normalizes zero, decimal and whitespace values with an explicit scope', () => {
+  const args = ['--interval-compare', '--interval-seconds= 0, 5.1 ,0.1 ', '--concurrencies=1,2', '--repetitions=1', '--interval-scope=per-tab']
+  assert.deepEqual(parseParallelFetchCloudArguments(args), { mode: 'interval-compare', options: {
+    intervalMsList: [5100, 100, 0], concurrencies: [1, 2], repetitions: 1, intervalScope: 'per-tab',
+  } })
+  assert.equal(parseParallelFetchCloudArguments(args.slice(0, 4)).options?.intervalScope, 'global')
+  for (const value of ['', '1,', ',1', '1,,2', '-1', '60.1', '0.01', '5,5.0', '1,2,3,4',
+    '1e0', '0x5', '1;Write-Output injected', '1,$(Write-Output injected)', '1,`whoami`']) {
+    assert.throws(() => parseParallelFetchCloudArguments(args.map(arg => arg.startsWith('--interval-seconds=') ? `--interval-seconds=${value}` : arg)),
+      error => error instanceof ParallelFetchCloudError && error.code === 'arguments')
+  }
+  for (const scope of ['worker', 'per-tab;injected', '', 'GLOBAL']) {
+    assert.throws(() => parseParallelFetchCloudArguments([...args.slice(0, 4), `--interval-scope=${scope}`]))
+  }
+})
+
+test('cloud decimal and zero intervals preserve per-tab semantics in version 3 artifacts', async () => {
+  const f = fixture(mainHosted())
+  const result = await runParallelFetchCloudTest(['--interval-compare', '--interval-seconds=0,5.1', '--concurrencies=1,2', '--repetitions=1', '--interval-scope=per-tab'], f.deps)
+  assert.equal(result.succeeded, true)
+  assert.equal(result.report.schemaVersion, 3)
+  assert.equal(result.report.config.intervalScope, 'per-tab')
+  assert.deepEqual(result.report.config.intervalMsList, [5100, 0])
+  assert.deepEqual(result.report.trials.map(trial => [trial.intervalMs, trial.concurrency]), [[5100, 1], [5100, 2], [0, 1], [0, 2]])
+  assert.equal(f.reads.length, 86)
+  assert.deepEqual(f.saved, [result.report])
+  assert.equal(f.stats().opens, 1)
+  assert.equal(f.stats().closes, 1)
 })
