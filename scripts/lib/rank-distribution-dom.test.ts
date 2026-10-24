@@ -214,7 +214,7 @@ function observation(page = 1, total = 43): RankDistributionDomObservation {
   }
 }
 
-function harness(observe: (page: number, evaluation: number) => RankDistributionDomObservation = page => observation(page), status = 200,
+function harness(observe: (page: number, evaluation: number, readOnly?: boolean) => RankDistributionDomObservation = page => observation(page), status = 200,
   options: RankDistributionPageReaderOptions = {}) {
   let currentUrl = ''
   let evaluations = 0
@@ -224,7 +224,7 @@ function harness(observe: (page: number, evaluation: number) => RankDistribution
   const fakePage = {
     goto: async (url: string) => { currentUrl = url; navigations.push(url); navigationTimes.push(clock); return { status: () => status } },
     url: () => currentUrl,
-    evaluate: async () => observe(Number(new URL(currentUrl).searchParams.get('page')), ++evaluations),
+    evaluate: async (_fn: unknown, input?: { readOnly?: boolean }) => observe(Number(new URL(currentUrl).searchParams.get('page')), ++evaluations, input?.readOnly),
   } as unknown as Page
   const reader = createRankDistributionPageReader(fakePage, { timeoutMs: 1000, now: () => clock, wait: async ms => { clock += ms }, ...options })
   return { reader, fakePage, navigations, navigationTimes, evaluations: () => evaluations, elapsed: () => clock }
@@ -295,6 +295,80 @@ test('reader waits for page hydration, selected page, counters, authentication a
     : observation(page))
   assert.equal((await reader.fetchPage(1, pageUrl(1))).entries.length, 20)
   assert.equal(evaluations(), 2)
+})
+
+test('a slow LP sample gets one passive refresh before stale authentication is rejected', async () => {
+  let clock = 0
+  const modes: boolean[] = []
+  const setup = harness((page, count, readOnly) => {
+    modes.push(readOnly === true)
+    if (count === 1) {
+      clock = 2000
+      return { ...observation(page), signedIn: false, authenticationEvidence: 'login-control', rankIcons: 'pending', entries: null }
+    }
+    return observation(page)
+  }, 200, { now: () => clock, wait: async () => { assert.fail('a final passive sample must not add a wait') } })
+  const result = await setup.reader.fetchPage(1, pageUrl(1))
+  assert.equal(result.entries.length, 20)
+  assert.deepEqual(modes, [false, true])
+  assert.equal(setup.navigations.length, 1)
+  assert.equal(setup.evaluations(), 2)
+  assert.equal(setup.reader.getDiagnostics().successfulReadCount, 1)
+  assert.equal(setup.reader.getDiagnostics().lastAuthenticationEvidence, 'logout-control')
+  assert.equal(setup.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+})
+
+test('the final LP sample preserves strict authentication, condition, page and complete-layout checks', async () => {
+  const cases: { patch: Partial<RankDistributionDomObservation>; code: RankDistributionDomErrorCode }[] = [
+    { patch: { signedIn: false, authenticationEvidence: 'login-control' }, code: 'authentication-unconfirmed' },
+    { patch: { loginRequiredHeading: true }, code: 'login-required' },
+    { patch: { conditionsMatch: false }, code: 'condition-mismatch' },
+    { patch: { selectedPage: 2 }, code: 'page-mismatch' },
+    { patch: { entries: observation().entries!.slice(0, 19) }, code: 'unsupported-dom' },
+    { patch: { rankIcons: 'pending', entries: null }, code: 'read-failed' },
+  ]
+  for (const { patch, code } of cases) {
+    let clock = 0
+    const modes: boolean[] = []
+    const setup = harness((page, count, readOnly) => {
+      modes.push(readOnly === true)
+      clock = 2000
+      return count === 1
+        ? { ...observation(page), signedIn: false, authenticationEvidence: 'login-control', rankIcons: 'pending', entries: null }
+        : { ...observation(page), ...patch }
+    }, 200, { now: () => clock, wait: async () => { assert.fail('a final passive sample must not add a wait') } })
+    await assert.rejects(setup.reader.fetchPage(1, pageUrl(1)), errorCode(code))
+    assert.deepEqual(modes, [false, true], code)
+    assert.equal(setup.navigations.length, 1)
+    assert.equal(setup.evaluations(), 2)
+    assert.equal(setup.reader.getDiagnostics().successfulReadCount, 0)
+  }
+})
+
+test('LP deadline headings and cancellation cannot be rescued by a final passive sample', async () => {
+  let clock = 0
+  const heading = harness((page, count) => {
+    clock = 2000
+    return count === 1 ? { ...observation(page), loginRequiredHeading: true } : observation(page)
+  }, 200, { now: () => clock })
+  await assert.rejects(heading.reader.fetchPage(1, pageUrl(1)), errorCode('login-required'))
+  assert.equal(heading.evaluations(), 1)
+  assert.equal(heading.navigations.length, 1)
+  for (const abortAt of [1, 2]) {
+    let elapsed = 0
+    const controller = new AbortController()
+    const setup = harness((page, count) => {
+      elapsed = 2000
+      if (count === abortAt) controller.abort()
+      return count === 1
+        ? { ...observation(page), signedIn: false, authenticationEvidence: 'login-control', entries: null }
+        : observation(page)
+    }, 200, { now: () => elapsed, signal: controller.signal })
+    await assert.rejects(setup.reader.fetchPage(1, pageUrl(1)), errorCode('cancelled'))
+    assert.equal(setup.evaluations(), abortAt)
+    assert.equal(setup.navigations.length, 1)
+    assert.equal(setup.reader.getDiagnostics().successfulReadCount, 0)
+  }
 })
 
 test('an initial login-required heading can hydrate into a signed-in readable page within one navigation', async () => {

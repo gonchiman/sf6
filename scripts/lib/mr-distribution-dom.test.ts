@@ -107,7 +107,7 @@ function observation(page = 1, total = 43): MrDistributionDomObservation {
     entries: Array.from({ length: to - from + 1 }, (_, i) => ({ masterRating: 1600 - from - i, accountKey: (from + i).toString(16).padStart(64, '0') })) }
 }
 function browser(configuration: {
-  observe?: (page: number, count: number) => MrDistributionDomObservation
+  observe?: (page: number, count: number, readOnly?: boolean) => MrDistributionDomObservation
   status?: number; redirect?: (url: string) => string
   options?: MrDistributionPageReaderOptions
 } = {}) {
@@ -117,7 +117,9 @@ function browser(configuration: {
     goto: async (url: string) => { requests.push(url); pageNumber = Number(new URL(url).searchParams.get('page')); currentUrl = configuration.redirect?.(url) ?? url
       return { status: () => configuration.status ?? 200 } },
     url: () => currentUrl,
-    evaluate: async () => { evaluations++; return configuration.observe?.(pageNumber, evaluations) ?? observation(pageNumber) },
+    evaluate: async (_fn: unknown, input?: { readOnly?: boolean }) => {
+      evaluations++; return configuration.observe?.(pageNumber, evaluations, input?.readOnly) ?? observation(pageNumber)
+    },
   } as unknown as Page
   const reader = createMrDistributionPageReader(fake, { now: () => clock,
     wait: async ms => { waits.push(ms); clock += ms }, ...configuration.options })
@@ -205,6 +207,87 @@ test('temporary hydration headings/pending rows settle within one navigation; pe
   const pending = browser({ observe: page => ({ ...observation(page), entries: null }) })
   await assert.rejects(pending.reader.fetchPage(1, mrDistributionPageUrl(1)), errorCode('read-failed'))
   assert.equal(pending.reader.getDiagnostics().lastRankingReadable, false)
+})
+
+test('a slow MR sample gets one passive refresh before stale authentication is rejected', async () => {
+  let clock = 0
+  const modes: boolean[] = []
+  const setup = browser({ observe: (page, count, readOnly) => {
+    modes.push(readOnly === true)
+    if (count === 1) {
+      clock = 20000
+      return { ...observation(page), signedIn: false, authenticationEvidence: 'login-control', entries: null }
+    }
+    return observation(page)
+  }, options: { now: () => clock, wait: async () => { assert.fail('a final passive sample must not add a wait') } } })
+  const result = await setup.reader.fetchPage(1)
+  assert.equal(result.entries.length, 20)
+  assert.deepEqual(modes, [false, true])
+  assert.equal(setup.requests.length, 1)
+  assert.equal(setup.evaluations(), 2)
+  assert.equal(setup.reader.getDiagnostics().successfulReadCount, 1)
+  assert.equal(setup.reader.getDiagnostics().lastAuthenticationEvidence, 'logout-control')
+  assert.equal(setup.reader.getDiagnostics().readableWithoutSignInReadCount, 0)
+})
+
+test('the final MR sample preserves strict authentication, current Act, page and complete-layout checks', async () => {
+  const cases: { patch: Partial<MrDistributionDomObservation>; code: string }[] = [
+    { patch: { signedIn: false, authenticationEvidence: 'login-control' }, code: 'authentication-unconfirmed' },
+    { patch: { loginRequiredHeading: true }, code: 'login-required' },
+    { patch: { conditionsMatch: false }, code: 'condition-mismatch' },
+    { patch: { currentActMatch: false }, code: 'condition-mismatch' },
+    { patch: { selectedPage: 2 }, code: 'page-mismatch' },
+    { patch: { entries: observation().entries!.slice(0, 19) }, code: 'unsupported-dom' },
+    { patch: { entries: null }, code: 'read-failed' },
+    { patch: { humanVerificationRequired: true }, code: 'human-verification' },
+  ]
+  for (const { patch, code } of cases) {
+    let clock = 0
+    const modes: boolean[] = []
+    const setup = browser({ observe: (page, count, readOnly) => {
+      modes.push(readOnly === true)
+      clock = 20000
+      return count === 1
+        ? { ...observation(page), signedIn: false, authenticationEvidence: 'login-control', entries: null }
+        : { ...observation(page), ...patch }
+    }, options: { now: () => clock, wait: async () => { assert.fail('a final passive sample must not add a wait') } } })
+    await assert.rejects(setup.reader.fetchPage(1), errorCode(code))
+    assert.deepEqual(modes, [false, true], code)
+    assert.equal(setup.requests.length, 1)
+    assert.equal(setup.evaluations(), 2)
+    assert.equal(setup.reader.getDiagnostics().successfulReadCount, 0)
+  }
+})
+
+test('MR deadline headings, human verification and cancellation stop without extra observation or acceptance', async () => {
+  for (const [patch, code] of [
+    [{ loginRequiredHeading: true }, 'login-required'],
+    [{ humanVerificationRequired: true }, 'human-verification'],
+  ] as const) {
+    let clock = 0
+    const setup = browser({ observe: (page, count) => {
+      clock = 20000
+      return count === 1 ? { ...observation(page), ...patch } : observation(page)
+    }, options: { now: () => clock } })
+    await assert.rejects(setup.reader.fetchPage(1), errorCode(code))
+    assert.equal(setup.evaluations(), 1)
+    assert.equal(setup.requests.length, 1)
+  }
+  for (const abortAt of [1, 2]) {
+    let clock = 0
+    const controller = new AbortController()
+    const setup = browser({ observe: (page, count) => {
+      clock = 20000
+      if (count === abortAt) controller.abort()
+      return count === 1
+        ? { ...observation(page), signedIn: false, authenticationEvidence: 'login-control', entries: null }
+        : observation(page)
+    }, options: { now: () => clock, signal: controller.signal } })
+    await assert.rejects(setup.reader.fetchPage(1), errorCode('cancelled'))
+    assert.equal(setup.evaluations(), abortAt)
+    assert.equal(setup.requests.length, 1)
+    assert.equal(setup.reader.getDiagnostics().successfulReadCount, 0)
+  }
 })
 
 test('HTTP denial/server/other errors stop before DOM reading; redirects and raw exceptions stay sanitized', async () => {

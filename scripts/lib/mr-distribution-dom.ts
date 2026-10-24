@@ -180,9 +180,10 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
       if (status !== undefined && status >= 400) throw new MrDistributionDomError('http-error')
       const deadline = now() + timeout
       let latest: MrDistributionDomObservation | null = null
+      let finalObservation = false
       do {
         check()
-        latest = await page.evaluate(observeMrDistributionDom, { salt })
+        latest = await page.evaluate(observeMrDistributionDom, { salt, ...(finalObservation ? { readOnly: true } : {}) })
         check()
         const valid = layout(latest, pageNumber, diagnostics.pageSize)
         const snapshot = distributionPageObservationSnapshot(latest.authenticationEvidence, latest.loginRequiredHeading,
@@ -209,7 +210,13 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
           if (readableAfterWait) diagnostics.readableWithoutSignInReadCount++
           return { sourceUrl: page.url(), ...valid }
         }
-        if (now() >= deadline) break
+        if (now() >= deadline) {
+          // Async row observation can leave the initial header snapshot stale.
+          // One passive refresh still goes through every normal acceptance check.
+          if (finalObservation || latest.loginRequiredHeading) break
+          finalObservation = true
+          continue
+        }
         await wait(250)
       } while (true)
       if (latest?.loginRequiredHeading) throw new MrDistributionDomError('login-required')

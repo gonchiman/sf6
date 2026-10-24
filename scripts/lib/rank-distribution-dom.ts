@@ -267,9 +267,10 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
       if (status !== undefined && status >= 400) throw new RankDistributionDomError('http-error')
       const deadline = now() + timeout
       let latest: RankDistributionDomObservation | null = null
+      let finalObservation = false
       do {
         checkCancelled()
-        latest = await page.evaluate(observeRankDistributionDom, { salt })
+        latest = await page.evaluate(observeRankDistributionDom, { salt, ...(finalObservation ? { readOnly: true } : {}) })
         checkCancelled()
         const layout = readableLayout(latest, pageNumber, diagnostics.pageSize)
         const snapshot = distributionPageObservationSnapshot(latest.authenticationEvidence, latest.loginRequiredHeading,
@@ -308,7 +309,13 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
           if (pageNumber === layout.totalPages) diagnostics.tailRankIds = [...new Set(layout.entries.map(entry => entry.rankId))].sort((a, b) => a - b)
           return { sourceUrl: page.url(), ...layout }
         }
-        if (now() >= deadline) break
+        if (now() >= deadline) {
+          // Scrolling/awaiting lazy images can outlive the deadline and leave
+          // the header snapshot stale. Refresh once without scrolling or navigation.
+          if (finalObservation || latest.loginRequired || latest.loginRequiredHeading) break
+          finalObservation = true
+          continue
+        }
         await wait(250)
       } while (true)
       if (latest?.loginRequired === true || latest?.loginRequiredHeading === true) throw new RankDistributionDomError('login-required')

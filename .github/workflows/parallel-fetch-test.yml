@@ -92,7 +92,7 @@ jobs:
         run: |
           node --input-type=module -e "import {parseParallelFetchCloudArguments} from './scripts/test-parallel-fetch-cloud.ts'; const e=process.env; parseParallelFetchCloudArguments(e.PARALLEL_TEST_MODE==='interval-compare' ? ['--interval-compare','--interval-seconds='+e.PARALLEL_TEST_INTERVAL_SECONDS,'--concurrencies='+e.PARALLEL_TEST_CONCURRENCIES,'--repetitions='+e.PARALLEL_TEST_REPETITIONS,'--interval-scope='+e.PARALLEL_TEST_INTERVAL_SCOPE] : ['--'+e.PARALLEL_TEST_MODE]);"
       - name: Test bounded collection with synthetic state
-        run: node --test src/lib/parallelFetch.test.ts scripts/lib/parallel-fetch-runner.test.ts scripts/lib/parallel-fetch-browser.test.ts scripts/lib/parallel-fetch-service.test.ts scripts/test-parallel-fetch-cloud.test.ts
+        run: node --test src/lib/parallelFetch.test.ts scripts/lib/parallel-fetch-runner.test.ts scripts/lib/parallel-fetch-browser.test.ts scripts/lib/parallel-fetch-service.test.ts scripts/test-parallel-fetch-cloud.test.ts scripts/lib/rank-distribution-dom.test.ts scripts/lib/mr-distribution-dom.test.ts
       - name: Run bounded collection test
         id: collect
         shell: pwsh
