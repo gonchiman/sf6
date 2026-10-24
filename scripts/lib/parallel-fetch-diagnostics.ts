@@ -4,13 +4,14 @@ import type { ParallelFetchNetworkEvent, ParallelFetchPostStopDiagnostics, Paral
   ParallelFetchReadObservation, ParallelFetchReadTrace } from '../../src/types/parallelFetch.ts'
 
 /** Per-page event recording. URLs are classified immediately and never retained. */
-export function createParallelFetchDiagnosticRecorder(page: Page, now: () => number) {
+export function createParallelFetchDiagnosticRecorder(page: Page, now: () => number, onWafAction?: () => void) {
   let active = false, generation = 0, started = 0
   let phase: 'read' | 'after-stop' = 'read'
   let trace: ParallelFetchReadTrace = { observations: [], network: [], droppedObservations: 0, droppedNetworkEvents: 0 }
   const requests = new WeakMap<Request, number>()
   const elapsed = () => Math.min(7 * 86400000, Math.max(0, now() - started))
-  function network(request: Request, kind: ParallelFetchNetworkEvent['kind'], status: number | null): void {
+  function network(request: Request, kind: ParallelFetchNetworkEvent['kind'], status: number | null,
+    wafAction?: ParallelFetchNetworkEvent['wafAction']): void {
     if (!active || requests.get(request) !== generation) return
     try {
       const hostname = new URL(request.url()).hostname
@@ -19,18 +20,29 @@ export function createParallelFetchDiagnosticRecorder(page: Page, now: () => num
       const rawResource = request.resourceType()
       const resource = ['document', 'xhr', 'fetch', 'script', 'stylesheet', 'image'].includes(rawResource)
         ? rawResource as ParallelFetchNetworkEvent['resource'] : 'other'
-      trace.network.push({ elapsedMs: elapsed(), phase, kind, resource, site, status })
+      trace.network.push({ elapsedMs: elapsed(), phase, kind, resource, site, status,
+        ...(wafAction !== undefined ? { wafAction } : {}) })
       if (trace.network.length > PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS) {
         trace.network.shift(); trace.droppedNetworkEvents++
       }
+      if (kind === 'waf-action' && site !== 'other') onWafAction?.()
     } catch { /* Diagnostic event failures cannot affect collection. */ }
   }
   const onRequest = (request: Request) => { if (active) requests.set(request, generation) }
   const onResponse = (response: Response) => {
     try {
       const status = response.status()
-      if (Number.isInteger(status) && status >= 400 && status <= 599) network(response.request(), 'http-error', status)
-    } catch { /* Never retain response objects, headers, bodies or error text. */ }
+      if (!Number.isInteger(status) || status < 100 || status > 599) return
+      // Keep only the documented action enum, never raw headers (including cookies).
+      // The synchronous accessor avoids a late event being attributed to a later read.
+      let wafAction: ParallelFetchNetworkEvent['wafAction']
+      try {
+        const value = response.headers()['x-amzn-waf-action']
+        wafAction = value === 'captcha' || value === 'challenge' ? value : null
+      } catch { /* Missing evidence stays omitted, distinct from checked-but-absent. */ }
+      if (wafAction) network(response.request(), 'waf-action', status, wafAction)
+      else if (status >= 400) network(response.request(), 'http-error', status, wafAction)
+    } catch { /* Never retain response objects, raw headers, bodies or error text. */ }
   }
   const onFailed = (request: Request) => network(request, 'request-failed', null)
   page.on('request', onRequest)

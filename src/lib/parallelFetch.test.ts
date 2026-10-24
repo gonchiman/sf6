@@ -202,6 +202,55 @@ test('detailed diagnostics strip secrets and arbitrary strings at every nesting 
   assert.deepEqual(parsed.trials[0].attempts[0].diagnostics, diagnostics)
   assert.equal(JSON.stringify(parsed).includes('secret'), false)
 })
+test('WAF action diagnostics round-trip with legacy events and strip all response details', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  trace.network.push(
+    { ...trace.network[0], status: 405, wafAction: null },
+    { ...trace.network[0], status: 405, wafAction: 'captcha' },
+    { ...trace.network[0], kind: 'waf-action', status: 405, wafAction: 'captcha' },
+    { ...trace.network[0], kind: 'waf-action', status: 202, wafAction: 'challenge' },
+    { ...trace.network[0], kind: 'waf-action', status: 100, wafAction: 'challenge' },
+    { ...trace.network[0], kind: 'waf-action', status: 599, wafAction: 'captcha' },
+  )
+  for (const schemaVersion of [1, 3] as const) {
+    const report = fixture()
+    report.schemaVersion = schemaVersion
+    if (schemaVersion === 3) {
+      report.config.intervalScope = 'per-tab'
+      report.trials.forEach(trial => { trial.intervalMs = report.config.intervalMs })
+    }
+    report.trials[0].attempts[0].diagnostics = { ...diagnostics, trace: { ...trace,
+      network: trace.network.map(item => ({ ...item, url: 'secret-url', body: 'secret-body',
+        headers: { 'x-amzn-waf-action': item.wafAction, 'set-cookie': 'secret-cookie' } })),
+    } }
+    const parsed = parseParallelFetchReport(JSON.parse(JSON.stringify(report)))
+    assert.deepEqual(parsed.trials[0].attempts[0].diagnostics, diagnostics)
+    assert.deepEqual(parseParallelFetchReport(JSON.parse(JSON.stringify(parsed))), parsed)
+    assert.equal('wafAction' in parsed.trials[0].attempts[0].diagnostics!.trace!.network[0], false)
+    assert.equal(JSON.stringify(parsed).includes('secret'), false)
+  }
+})
+
+test('WAF action diagnostics reject unknown actions and incompatible event kinds or statuses', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  const wafEvent = { ...trace.network[0], kind: 'waf-action', status: 405, wafAction: 'captcha' }
+  const invalidEvents = [
+    ...[undefined, null, '', 'secret-token', 'CAPTCHA', 'captcha,challenge', false, 1, {}]
+      .map(wafAction => ({ ...wafEvent, wafAction })),
+    { ...trace.network[0], kind: 'waf-action', status: 405 },
+    ...[null, 99, 600, 202.5, '202', NaN, Infinity].map(status => ({ ...wafEvent, status })),
+    ...[undefined, null, 'captcha', 'challenge', 'secret-token']
+      .map(wafAction => ({ ...trace.network[1], wafAction })),
+    ...['secret-token', '', false, {}].map(wafAction => ({ ...trace.network[0], wafAction })),
+    { ...trace.network[0], status: 202, wafAction: 'challenge' },
+  ]
+  for (const event of invalidEvents) {
+    const report = fixture()
+    report.trials[0].attempts[0].diagnostics = { ...diagnostics, trace: { ...trace, network: [event] } } as never
+    assert.throws(() => parseParallelFetchReport(report))
+  }
+})
+
 test('detailed diagnostics bound list lengths, durations, and dropped counts', () => {
   const diagnostics = traceFixture(), trace = diagnostics.trace!
   trace.observations = Array.from({ length: PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS }, () => ({ ...trace.observations[0], elapsedMs: 7 * 86400000 }))

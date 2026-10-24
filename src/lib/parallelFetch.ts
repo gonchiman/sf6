@@ -62,14 +62,18 @@ function parseReadTrace(value: unknown): ParallelFetchReadTrace {
     }),
     network: list(input.network, PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS).map(value => {
       const item = object(value)
+      const kind = oneOf(item.kind, ['http-error', 'request-failed', 'waf-action'] as const)
       const event: ParallelFetchNetworkEvent = {
         elapsedMs: duration(item.elapsedMs), phase: oneOf(item.phase, ['read', 'after-stop']),
-        kind: oneOf(item.kind, ['http-error', 'request-failed']),
+        kind,
         resource: oneOf(item.resource, ['document', 'xhr', 'fetch', 'script', 'stylesheet', 'image', 'other']),
         site: oneOf(item.site, ['buckler', 'capcom-auth', 'other']),
-        status: item.status === null ? null : integer(item.status, 400, 599),
+        status: item.status === null ? null : integer(item.status, kind === 'waf-action' ? 100 : 400, 599),
       }
       if ((event.kind === 'request-failed') !== (event.status === null)) return invalid()
+      if (event.kind === 'request-failed' && 'wafAction' in item) return invalid()
+      if (item.wafAction !== undefined) event.wafAction = item.wafAction === null ? null : oneOf(item.wafAction, ['captcha', 'challenge'] as const)
+      if (event.kind === 'waf-action' && !event.wafAction) return invalid()
       return event
     }),
     droppedObservations: integer(input.droppedObservations), droppedNetworkEvents: integer(input.droppedNetworkEvents),

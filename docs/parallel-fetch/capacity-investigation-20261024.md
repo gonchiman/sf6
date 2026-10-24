@@ -164,6 +164,20 @@ MRも非同期の行観測を持つため同じ処理を適用したが、この
 並列4の短時間取得は可能だが、全巡回に使える連続安定性は未確認。次の検証前には、取得元の利用可能な条件・通信エラーの原因を確認し、頻度をさらに上げる根拠にはしない。
 修正コミットのCI・Pages配信は成功した。
 
+## HTTP 405の原因の切り分け
+
+実行 `40092529457` の3回目では、準備の4タブすべてがログイン済み・ランキング読取可だった。
+測定を12:08:40.780 UTCに同時開始し、停止したワーカー2では1.778秒後に画像のHTTP 405、2.017秒後にfetchのHTTP 405が記録された。
+その後のDOM観測はログイン表示・一覧読取不可だった。69件の405はこのワーカーの記録であり、中断したほかの3タブも同じだったとは断定しない。
+
+[AWSの公式仕様](https://docs.aws.amazon.com/waf/latest/developerguide/waf-captcha-and-challenge-actions.html)では、CAPTCHA要求はHTTP 405と `x-amzn-waf-action: captcha`、Challenge要求はHTTP 202と `x-amzn-waf-action: challenge` を返す。
+[AWSの解説](https://aws.amazon.com/blogs/networking-and-content-delivery/protect-against-bots-with-aws-waf-challenge-and-captcha-actions/)は、画像・JavaScript・fetchへのCAPTCHA応答では画面に認証パネルが出ず、表示が壊れる場合を説明している。
+既存記録はステータスだけでこの識別情報がないため、この段階ではWAF CAPTCHAを原因と断定できない。
+
+原因確認用に既存の診断記録を拡張し、応答から `captcha` / `challenge` の固定値だけを残すようにした。生のヘッダー・Cookie・URL・応答本文は保存しない。
+明示的なactionが返った場合は即座に取得を止め、画面の認証表示を待って取得を続けない。認証を解いたり迂回したりする処理は追加していない。
+旧結果の読込、固定値以外の拒否、秘密情報の除去、LP/MRの途中停止を含む並列取得テスト159件とビルドを確認した。
+
 ## 保存先
 
 アプリの「GitHub Actions」の履歴に各実行と取得結果を保存済み。

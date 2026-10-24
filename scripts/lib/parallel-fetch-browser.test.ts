@@ -20,6 +20,7 @@ function fixture() {
   let readDiagnostics: Record<string, unknown> | null = null, readError: Error | null = null
   let clock = 0, emitObservations = false, postReads = 0, recordStartEvidence = false
   let afterWait: (() => void) | undefined
+  let afterNavigation: (() => Promise<void>) | undefined
   let postRead: (() => Promise<unknown>) | undefined
   const defaultSnapshot = () => ({ authenticationEvidence: readDiagnostics?.lastAuthenticationEvidence ?? null,
     loginRequiredHeading: readDiagnostics?.lastLoginRequiredHeading ?? null, rankingReadable: readDiagnostics?.lastRankingReadable ?? null })
@@ -52,6 +53,7 @@ function fixture() {
     return { fetchPage: async (pageNumber: number, url: string) => {
       if (recordStartEvidence) { await Promise.resolve(); await Promise.resolve() }
       await (options as { navigateWithPacing: ParallelFetchNavigationGate }).navigateWithPacing(() => page.goto(url))
+      await afterNavigation?.()
       diagnosticStatus = status
       if (status === 429) throw new RankDistributionDomError('http-denied')
       if (readDiagnostics) {
@@ -76,6 +78,7 @@ function fixture() {
     setReadError: (error: Error) => { readError = error },
     enableObservations: () => { emitObservations = true },
     setAfterWait: (value: () => void) => { afterWait = value },
+    setAfterNavigation: (value: () => Promise<void>) => { afterNavigation = value },
     setPostRead: (value: () => Promise<unknown>) => { postRead = value },
     postReads: () => postReads,
     stats: () => ({ loaded, launched, browserClosed, contextClosed }) }
@@ -466,4 +469,66 @@ test('trace bounds retain newest events with truncation counts and compact succe
   assert.equal(success.observations.length, 8); assert.equal(success.network.length, 8)
   assert.equal(success.droppedObservations, 82); assert.equal(success.droppedNetworkEvents, 82)
   recorder.dispose()
+})
+
+test('response diagnostics retain only known WAF actions and notify only for current first-party requests', () => {
+  const page = new EventEmitter(), calls: number[] = []
+  const recorder = createParallelFetchDiagnosticRecorder(page as unknown as Page, () => 0, () => { calls.push(1) })
+  const request = (host: string) => ({ url: () => `https://${host}/private?token=secret`, resourceType: () => 'fetch' })
+  const response = (req: unknown, status: number, action: string | undefined) => page.emit('response', {
+    request: () => req, status: () => status,
+    headers: () => ({ 'x-amzn-waf-action': action, 'set-cookie': 'private-cookie', authorization: 'secret-token' }),
+  })
+  recorder.begin()
+  const stale = request('www.streetfighter.com')
+  page.emit('request', stale)
+  recorder.begin(); response(stale, 405, 'captcha')
+  for (const [host, status, action] of [
+    ['www.streetfighter.com', 405, 'captcha'], ['auth.cid.capcom.com', 202, 'challenge'],
+    ['external.example.com', 405, 'captcha'], ['www.streetfighter.com', 405, undefined],
+    ['www.streetfighter.com', 405, 'private-arbitrary-header'],
+  ] as const) {
+    const req = request(host)
+    page.emit('request', req); response(req, status, action)
+  }
+  const trace = recorder.snapshot()!.trace!
+  assert.deepEqual(trace.network.map(({ kind, status, wafAction }) => ({ kind, status, wafAction })), [
+    { kind: 'waf-action', status: 405, wafAction: 'captcha' },
+    { kind: 'waf-action', status: 202, wafAction: 'challenge' },
+    { kind: 'waf-action', status: 405, wafAction: 'captcha' },
+    { kind: 'http-error', status: 405, wafAction: null },
+    { kind: 'http-error', status: 405, wafAction: null },
+  ])
+  assert.equal(calls.length, 2)
+  assert.doesNotMatch(JSON.stringify(trace), /https|private|secret|cookie|authorization|token/)
+  recorder.end(); response(stale, 405, 'captcha')
+  assert.equal(calls.length, 2)
+  recorder.dispose()
+})
+
+test('LP and MR stop an in-flight read on a WAF subresource action without a visible challenge or further navigation', async () => {
+  for (const target of ['lp', 'mr'] as const) for (const [status, action] of [[405, 'captcha'], [202, 'challenge']] as const) {
+    const f = fixture(), controller = new AbortController()
+    const session = await createParallelFetchBrowserSession({ intervalMs: 10000, signal: controller.signal }, f.dependencies)
+    const reader = await session.createReader(1, target, controller.signal)
+    f.setAfterNavigation(async () => {
+      const page = f.pages[0] as unknown as EventEmitter
+      const req = { url: () => 'https://www.streetfighter.com/private-data', resourceType: () => 'fetch' }
+      page.emit('request', req)
+      page.emit('response', { request: () => req, status: () => status, headers: () => ({ 'x-amzn-waf-action': action }) })
+      await new Promise(() => {}) // A stalled DOM read must not delay stopping.
+    })
+    await assert.rejects(reader.readPage(1, navigateWithPacing), (error: unknown) => {
+      assert.ok(error instanceof ParallelFetchReadError)
+      assert.equal(error.code, 'human-verification')
+      assert.equal(error.httpStatus, 200, 'top-level navigation status remains distinct from the subresource')
+      assert.equal(error.diagnostics?.trace?.network[0].wafAction, action)
+      assert.equal(error.diagnostics?.trace?.observations.at(-1)?.humanVerification, true)
+      return true
+    })
+    await assert.rejects(reader.readPage(2, navigateWithPacing), /human-verification/)
+    assert.equal(f.readTargets.length, 1)
+    assert.equal(await reader.observeAfterStop!(controller.signal), undefined)
+    await reader.close(); await session.close()
+  }
 })

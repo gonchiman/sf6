@@ -134,7 +134,14 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
       try { page = await context.newPage() } catch { throw new ParallelFetchReadError(closed || signal.aborted ? 'cancelled' : 'browser-unavailable') }
       pages.add(page)
       let pageClosed = false
-      const recorder = createParallelFetchDiagnosticRecorder(page, now)
+      let challenge = false, wafStopped = false, httpStatus: number | null = null, domObserved = false
+      let rejectProtection: ((error: Error) => void) | null = null
+      const recorder = createParallelFetchDiagnosticRecorder(page, now, () => {
+        challenge = true; wafStopped = true
+        // Subresources can demand CAPTCHA without displaying a visible challenge.
+        // Reject the current read promptly; the runner stops all other workers.
+        rejectProtection?.(new ParallelFetchReadError('human-verification'))
+      })
       let pendingStop: { pageNumber: number; diagnostics?: ParallelFetchReadDiagnostics } | null = null
       const closePage = async (): Promise<void> => {
         if (pageClosed) return
@@ -149,7 +156,6 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
       const abortPage = (): void => { if (!pendingStop || options.signal.aborted) void closePage() }
       signal.addEventListener('abort', abortPage, { once: true })
       if (closed || options.signal.aborted || signal.aborted) { await closePage(); throw new ParallelFetchReadError('cancelled') }
-      let challenge = false, httpStatus: number | null = null, domObserved = false
       let navigationGate: ParallelFetchNavigationGate | null = null
       const navigateWithPacing: ParallelFetchNavigationGate = navigate => {
         if (!navigationGate) throw new ParallelFetchReadError('invalid-request')
@@ -159,6 +165,7 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
         })
       }
       const inspectChallenge = async (): Promise<void> => {
+        if (wafStopped) throw new ParallelFetchReadError('human-verification')
         if (await page.evaluate(observeParallelFetchChallenge)) {
           challenge = true
           recorder.observe({ authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: null, humanVerification: true })
@@ -208,12 +215,15 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
       return {
         async readPage(pageNumber, navigateWithPacing) {
           if (closed || pageClosed || signal.aborted || options.signal.aborted) throw new ParallelFetchReadError('cancelled')
+          if (wafStopped) throw new ParallelFetchReadError('human-verification')
           if (typeof navigateWithPacing !== 'function' || navigationGate) throw new ParallelFetchReadError('invalid-request')
           navigationGate = navigateWithPacing
           challenge = false; httpStatus = null; domObserved = false
+          const protection = new Promise<never>((_, reject) => { rejectProtection = reject })
           try {
-            const value = lp ? await lp.fetchPage(pageNumber, rankBoundaryPageUrl(RANK_BOUNDARY_SOURCE_URL, pageNumber))
-              : await mr!.fetchPage(pageNumber, mrDistributionPageUrl(pageNumber))
+            const value = await Promise.race([protection, Promise.resolve().then(async () => lp
+              ? await lp.fetchPage(pageNumber, rankBoundaryPageUrl(RANK_BOUNDARY_SOURCE_URL, pageNumber))
+              : await mr!.fetchPage(pageNumber, mrDistributionPageUrl(pageNumber)))])
             if (closed || pageClosed || signal.aborted || options.signal.aborted) throw new ParallelFetchReadError('cancelled')
             // Rows/IDs/salts/URLs are deliberately discarded at this boundary.
             const diagnostics = recorder.snapshot(readDiagnostics(pageNumber), true)
@@ -234,7 +244,7 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
               recorder.afterStop()
             } else recorder.end()
             throw new ParallelFetchReadError(code, status, diagnostics)
-          } finally { navigationGate = null }
+          } finally { navigationGate = null; rejectProtection = null }
         },
         async observeAfterStop(externalSignal) {
           const pending = pendingStop

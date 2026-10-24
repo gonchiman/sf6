@@ -33,10 +33,11 @@ export interface ParallelFetchReadObservation {
 export interface ParallelFetchNetworkEvent {
   elapsedMs: number
   phase: ParallelFetchDiagnosticPhase
-  kind: 'http-error' | 'request-failed'
+  kind: 'http-error' | 'request-failed' | 'waf-action'
   resource: 'document' | 'xhr' | 'fetch' | 'script' | 'stylesheet' | 'image' | 'other'
   site: 'buckler' | 'capcom-auth' | 'other'
   status: number | null
+  wafAction?: 'captcha' | 'challenge' | null
 }
 export interface ParallelFetchPostStopDiagnostics {
   durationMs: number
