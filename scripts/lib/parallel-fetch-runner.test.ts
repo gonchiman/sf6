@@ -211,6 +211,85 @@ test('zero interval adds no wait and retains the shared attempt cap with eight t
   assert.equal(complete.trials[1].measurementMs, 10)
 })
 
+test('offline concurrency benchmark measures fixed-latency overlap without predicting live service capacity', async t => {
+  const targets = Array.from({ length: 20 }, (_, index) => index + config.startPage)
+  for (const latencyMs of [4000, 12000]) for (const globalIntervalMs of [0, 5000]) {
+    for (const concurrency of [1, 2, 4, 8]) {
+      const f = fixture({ latency: latencyMs })
+      const report = await f.clock.finish(runParallelFetch({ ...config, concurrencies: [concurrency], repetitions: 1,
+        intervalScope: 'global', intervalMs: globalIntervalMs, intervalMsList: [globalIntervalMs] }, f.dependencies))
+      assert.equal(report.state, 'complete')
+      assert.equal(report.trials.length, 1)
+      const trial = report.trials[0]
+      const preparation = trial.attempts.filter(attempt => attempt.phase === 'prepare')
+      const measured = trial.attempts.filter(attempt => attempt.phase === 'measure')
+      const workerIds = Array.from({ length: concurrency }, (_, index) => index + 1)
+      assert.deepEqual(preparation.map(attempt => attempt.worker), workerIds)
+      assert.ok(preparation.every(attempt => attempt.page === 1))
+      assert.deepEqual(measured.map(attempt => attempt.page).sort((a, b) => a - b), targets)
+      assert.deepEqual(trial.completedPages, targets)
+      assert.equal(f.reads.length, 20 + concurrency)
+      assert.equal(trial.attempts.length, f.reads.length)
+      assert.ok(f.reads.length <= 200)
+      assert.ok(trial.attempts.every(attempt => attempt.errorCode === null && attempt.durationMs === latencyMs))
+      assert.deepEqual(f.closed, workerIds)
+      assert.equal(f.active(), 0)
+      assert.ok(f.peak() <= concurrency)
+      for (let index = 1; index < f.reads.length; index++) {
+        assert.ok(f.reads[index].started - f.reads[index - 1].started >= globalIntervalMs)
+      }
+      // The existing fixture rejects overlapping calls to an individual reader.
+      // These assertions also prove the queue uses all workers when pacing permits it.
+      if (globalIntervalMs === 0) {
+        assert.equal(f.peak(), concurrency)
+        assert.equal(trial.preparationMs, latencyMs)
+        assert.equal(trial.measurementMs, Math.ceil(20 / concurrency) * latencyMs)
+      } else {
+        assert.equal(f.peak(), Math.min(concurrency, Math.ceil(latencyMs / globalIntervalMs)))
+      }
+      assert.equal(trial.totalMs, trial.preparationMs! + trial.measurementMs!)
+      const summary = summarizeParallelFetch(report)[0]
+      assert.equal(summary.pagesPerMinute, 20 * 60000 / trial.measurementMs!)
+      t.diagnostic(JSON.stringify({ model: 'offline-fixed-latency', latencyMs, globalIntervalMs, concurrency,
+        measurementMs: trial.measurementMs, totalMs: trial.totalMs, peakReads: f.peak(), pagesPerMinute: summary.pagesPerMinute }))
+    }
+  }
+})
+
+test('offline concurrency benchmark stops eight workers and later conditions on a simulated CAPTCHA response', async () => {
+  let failureAt = -1
+  const diagnostics: ParallelFetchReadDiagnostics = { authenticationEvidence: 'login-control',
+    loginRequiredHeading: false, rankingReadable: true, trace: { observations: [],
+      network: [{ elapsedMs: 4000, phase: 'read', kind: 'waf-action', resource: 'fetch', site: 'buckler',
+        status: 405, wafAction: 'captcha' }], droppedObservations: 0, droppedNetworkEvents: 0 } }
+  const f = fixture({ latency: 4000, outcome: event => {
+    if (event.page === config.startPage) {
+      failureAt = f.clock.time
+      throw new ParallelFetchReadError('human-verification', 200, diagnostics)
+    }
+    return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+  } })
+  const report = await f.clock.finish(runParallelFetch({ ...config, concurrencies: [8], repetitions: 3,
+    intervalScope: 'global', intervalMs: 100, intervalMsList: [100, 0] }, f.dependencies))
+  assert.equal(report.state, 'error')
+  assert.equal(report.errorCode, 'human-verification')
+  assert.deepEqual(report.trials.map(trial => [trial.concurrency, trial.repetition, trial.intervalMs]), [[8, 1, 100]])
+  assert.deepEqual(report.trials[0].completedPages, [])
+  const attempts = report.trials[0].attempts
+  assert.equal(attempts.filter(attempt => attempt.phase === 'prepare' && attempt.errorCode === null).length, 8)
+  assert.equal(attempts.filter(attempt => attempt.errorCode === 'cancelled').length, 7)
+  const failure = attempts.find(attempt => attempt.errorCode === 'human-verification')!
+  assert.equal(failure.httpStatus, 200)
+  assert.deepEqual(failure.diagnostics, diagnostics)
+  assert.equal(f.peak(), 8)
+  assert.equal(f.reads.length, 16)
+  assert.ok(failureAt >= 0 && f.reads.every(event => event.started < failureAt))
+  assert.ok(f.signals.every(signal => signal.aborted))
+  assert.equal(f.active(), 0)
+  assert.deepEqual(f.closed, Array.from({ length: 8 }, (_, index) => index + 1))
+  assert.deepEqual(parseParallelFetchReport(report), report)
+})
+
 test('navigation gate is required exactly once and records time at the actual start', async () => {
   const f = fixture({ latency: 25 })
   const original = f.dependencies.createReader
