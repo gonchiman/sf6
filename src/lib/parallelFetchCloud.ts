@@ -43,7 +43,7 @@ export function parseCloudIntervalOptions(value: unknown, validation: { historic
   const concurrencies = [...row.concurrencies].sort((a, b) => a - b) as CloudIntervalOptions['concurrencies']
   const repetitions = row.repetitions as CloudIntervalOptions['repetitions']
   const intervalScope = row.intervalScope ?? 'global'
-  // The shared parser enforces integer concurrency, baseline 1, uniqueness and the combined budgets.
+  // The shared parser enforces nonempty integer concurrency, uniqueness and the combined budgets.
   const validate = validation.historical ? parseHistoricalParallelFetchConfig : parseParallelFetchConfig
   validate({ target: 'lp', startPage: 1, pageCount: 20, intervalMs: intervalMsList[0], intervalMsList, concurrencies, repetitions, intervalScope })
   return { intervalMsList, concurrencies, repetitions, intervalScope }

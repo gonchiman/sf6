@@ -148,14 +148,13 @@ export function parseParallelFetchConcurrencyInput(text: string): ParallelFetchC
     return value
   })
   if (new Set(concurrencies).size !== concurrencies.length) throw new Error('並列数の重複を除いてください。')
-  if (!concurrencies.includes(1)) throw new Error('比較基準の並列数1を含めてください。')
   return concurrencies.sort((a, b) => a - b)
 }
 /** Reads saved conditions without applying today's execution-time budget to old records. */
 export function parseHistoricalParallelFetchConfig(value: unknown): ParallelFetchConfig {
   const input = object(value)
   const concurrencies = Array.from(list(input.concurrencies, PARALLEL_FETCH_MAX_CONCURRENCY), item => integer(item, 1, PARALLEL_FETCH_MAX_CONCURRENCY))
-  if (concurrencies[0] !== 1 || new Set(concurrencies).size !== concurrencies.length
+  if (concurrencies.length === 0 || new Set(concurrencies).size !== concurrencies.length
     || concurrencies.some((item, index) => index > 0 && item < concurrencies[index - 1])) return invalid()
   const result: ParallelFetchConfig = {
     target: oneOf(input.target, ['lp', 'mr']), startPage: integer(input.startPage, 1, 1000000),

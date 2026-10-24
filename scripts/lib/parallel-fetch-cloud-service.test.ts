@@ -221,7 +221,7 @@ test('interval selection is saved before dispatch and preserved when importing a
   const token = (await f.service.status()).token
   for (const body of [{ mode: 'interval-compare' }, { mode: 'serial', options },
     { mode: 'interval-compare', options: { ...options, repetitions: 3 } },
-    ...[[1, 9], [1, 0], [1, 3.5], [1, 3, 3], [3], [1, '3'], []].map(concurrencies =>
+    ...[[1, 9], [1, 0], [1, 3.5], [1, 3, 3], [1, '3'], []].map(concurrencies =>
       ({ mode: 'interval-compare', options: { ...options, concurrencies } })),
     { mode: 'interval-compare', options: { ...options, raw: SECRET } }]) {
     assert.equal((await invoke(f.service, 'run', { method: 'POST', token, body })).status, 400)

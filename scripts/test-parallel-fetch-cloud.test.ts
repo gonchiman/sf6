@@ -312,8 +312,6 @@ test('interval CLI accepts bounded integer lists and rejects over-budget matrice
   for (const args of [['--interval-compare'], [...intervalArgs, '--url=other'],
     intervalArgs.map(arg => arg.replace('5000,3000', '5000,5000')),
     intervalArgs.map(arg => arg.replace('5000,3000', '50')),
-    intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=4')),
-    intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=2')),
     intervalArgs.map(arg => arg.replace('--repetitions=1', '--repetitions=3')),
     ['--interval-compare', '--intervals=3000', '--concurrencies=1,2,3,4,5,6,7,8', '--repetitions=3'],
     ['--interval-compare', '--intervals=5000', '--concurrencies=1,2,3,4,5,6,7,8', '--repetitions=1'],
@@ -365,6 +363,25 @@ test('cloud collection forwards and records new concurrency values across the sa
   assert.equal(f.reads.length, 144)
   assert.equal(f.stats().readers, 24)
   assert.equal(f.stats().closedReaders, 24)
+  assert.equal(f.stats().opens, 1)
+  assert.equal(f.stats().closes, 1)
+  assert.deepEqual(f.saved, [result.report])
+})
+
+test('cloud collection repeats a single concurrency without adding a serial trial', async () => {
+  const f = fixture(mainHosted())
+  const args = ['--interval-compare', '--interval-seconds=10', '--concurrencies=4', '--repetitions=3', '--interval-scope=per-tab']
+  assert.deepEqual(parseParallelFetchCloudArguments(args), { mode: 'interval-compare', options: {
+    intervalMsList: [10000], concurrencies: [4], repetitions: 3, intervalScope: 'per-tab',
+  } })
+  const result = await runParallelFetchCloudTest(args, f.deps)
+  assert.equal(result.succeeded, true)
+  assert.deepEqual(result.report.config.concurrencies, [4])
+  assert.deepEqual(result.report.trials.map(trial => [trial.concurrency, trial.repetition, trial.completedPages.length]),
+    [[4, 1, 20], [4, 2, 20], [4, 3, 20]])
+  assert.equal(f.reads.length, 72)
+  assert.equal(f.stats().readers, 12)
+  assert.equal(f.stats().closedReaders, 12)
   assert.equal(f.stats().opens, 1)
   assert.equal(f.stats().closes, 1)
   assert.deepEqual(f.saved, [result.report])

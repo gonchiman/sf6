@@ -265,7 +265,7 @@ function Results({ report }: { report: ParallelFetchReport }) {
       <div><dt>取得終了</dt><dd><RecordedTime value={report.finishedAt} /></dd></div>
       <div><dt>観測した総ページ数</dt><dd>{totalRange}</dd></div>
       <div><dt>集計</dt><dd>完走した測定の中央値 · 失敗・再読は全測定の合計</dd></div>
-      <div><dt>直列比の基準</dt><dd>同じ適用範囲・取得間隔の並列1</dd></div>
+      <div><dt>直列比の基準</dt><dd>{report.config.concurrencies.includes(1) ? '同じ適用範囲・取得間隔の並列1' : '並列1未選択'}</dd></div>
       <div><dt>失敗率の分母</dt><dd>準備・再読を含む取得回数</dd></div>
     </dl>
     <div className="data-table-scroll parallel-fetch-scroll" role="region" tabIndex={0} aria-label="取得間隔・並列数別の比較結果・横スクロール領域">

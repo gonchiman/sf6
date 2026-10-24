@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { cloudConfig, cloudRunUrl, DEFAULT_CLOUD_INTERVAL_OPTIONS, parseCloudIntervalOptions, parseCloudRun, parseCloudServiceStatus, parseParallelFetchResult } from './parallelFetchCloud.ts'
-import { plannedParallelFetchAttempts } from './parallelFetch.ts'
+import { minimumPlannedWaitMs, plannedParallelFetchAttempts } from './parallelFetch.ts'
 import type { CloudRun } from '../types/parallelFetchCloud.ts'
 
 function run(): CloudRun {
@@ -61,7 +61,7 @@ test('interval selections are canonical, independent and bounded across all cond
   assert.deepEqual(DEFAULT_CLOUD_INTERVAL_OPTIONS.intervalMsList, [5000, 3000])
   for (const change of [{ intervalMsList: [] }, { intervalMsList: [5000, 5000] }, { intervalMsList: [-100] },
     { intervalMsList: [60001] }, { intervalMsList: [50] }, { intervalScope: 'worker' },
-    { intervalMsList: ['3000'] }, { concurrencies: [] }, { concurrencies: [4] }, { concurrencies: [2] },
+    { intervalMsList: ['3000'] }, { concurrencies: [] },
     { concurrencies: [1, 1] }, { concurrencies: [1, 0] }, { concurrencies: [1, 9] }, { concurrencies: [1, 2.5] },
     { concurrencies: [1, '3'] }, { concurrencies: [1, null] }, { repetitions: '1' },
     { repetitions: 3 }, { intervalMsList: [10000], concurrencies: [1], repetitions: 3 }, { url: 'https://other.example' }]) {
@@ -80,6 +80,24 @@ test('cloud options accept every integer through eight and keep the request and 
   assert.throws(() => parseCloudIntervalOptions({ ...options, intervalMsList: [5000] }))
   assert.throws(() => parseCloudIntervalOptions({ ...options, repetitions: 3 }))
   assert.throws(() => parseCloudIntervalOptions({ ...options, intervalMsList: [5000, 3000] }))
+})
+
+test('single concurrency repetitions retain their budgets and exact saved conditions', () => {
+  const options = parseCloudIntervalOptions({ intervalMsList: [10000], concurrencies: [4], repetitions: 3, intervalScope: 'per-tab' })
+  const config = cloudConfig('interval-compare', options)
+  assert.deepEqual(config.concurrencies, [4])
+  assert.equal(plannedParallelFetchAttempts(config), 72)
+  assert.equal(minimumPlannedWaitMs(config), 150000)
+  assert.deepEqual(parseCloudIntervalOptions({ ...options, concurrencies: [8, 3], repetitions: 1 }).concurrencies, [3, 8])
+  assert.throws(() => parseCloudIntervalOptions({ ...options, concurrencies: [] }))
+  assert.throws(() => parseCloudIntervalOptions({ ...options, intervalScope: 'global' }))
+  const value = { ...run(), mode: 'interval-compare', options, report: { ...run().report,
+    schemaVersion: 3, runId: 'cloud-123-1-interval-compare', config } }
+  assert.deepEqual(parseCloudRun(value), value)
+  const envelope = { schemaVersion: 1, kind: 'parallel-fetch-result', environment: 'github-actions', cloud: value, report: value.report }
+  assert.deepEqual(parseParallelFetchResult(JSON.parse(JSON.stringify(envelope))), envelope)
+  assert.throws(() => parseCloudRun({ ...value, options: { ...options, concurrencies: [2] } }))
+  assert.throws(() => parseCloudRun({ ...value, report: { ...value.report, config: { ...config, concurrencies: [2] } } }))
 })
 
 test('interval reports are bound to persisted selections and legacy records remain unchanged', () => {

@@ -134,7 +134,7 @@ test('interval dispatch uses only canonical allowlisted inputs and rejects inval
   await assert.rejects(f.github.dispatch('interval-compare', REQUEST))
   await assert.rejects(f.github.dispatch('interval-compare', REQUEST, { ...DEFAULT_CLOUD_INTERVAL_OPTIONS, repetitions: 3 }))
   await assert.rejects(f.github.dispatch('compare', REQUEST, DEFAULT_CLOUD_INTERVAL_OPTIONS))
-  for (const concurrencies of [[], [3], [1, 3, 3], [1, 9], [1, 0], [1, 3.5], [1, '3'], [1, '2;Write-Output injected']]) {
+  for (const concurrencies of [[], [1, 3, 3], [1, 9], [1, 0], [1, 3.5], [1, '3'], [1, '2;Write-Output injected']]) {
     await assert.rejects(f.github.dispatch('interval-compare', REQUEST, { ...DEFAULT_CLOUD_INTERVAL_OPTIONS, concurrencies } as never))
   }
   assert.equal(f.calls.length, 2)
@@ -152,6 +152,22 @@ test('interval artifacts must match the exact selected intervals, concurrencies 
       error => error instanceof ParallelFetchCloudServiceError && error.code === 'invalid-report')
   }
   await assert.rejects(f.github.readReport(remote(), 'interval-compare'))
+})
+
+test('single concurrency dispatch and artifact import retain the exact repeated selection', async () => {
+  const options = { intervalMsList: [10000], concurrencies: [4], repetitions: 3 as const, intervalScope: 'per-tab' as const }
+  const name = 'parallel-fetch-cloud-123-1-interval-compare'
+  const value = { ...report(), runId: 'cloud-123-1-interval-compare', config: cloudConfig('interval-compare', options) }
+  const f = mocked(args => args.at(-1)!.endsWith('/zip') ? zip(`${name}.json`, JSON.stringify(value))
+    : { artifacts: [{ id: 456, name, size_in_bytes: 100, expired: false }] })
+  await f.github.dispatch('interval-compare', REQUEST, options)
+  assert.deepEqual(f.calls[0].args.slice(7), ['--raw-field', 'mode=interval-compare', '--raw-field', `request_id=${REQUEST}`,
+    '--raw-field', 'interval_seconds=10', '--raw-field', 'concurrencies=4', '--raw-field', 'repetitions=3', '--raw-field', 'interval_scope=per-tab'])
+  assert.deepEqual(await f.github.readReport(remote(), 'interval-compare', options), value)
+  for (const changed of [{ ...options, concurrencies: [2] }, { ...options, repetitions: 1 as const }, { ...options, intervalMsList: [5000] }]) {
+    await assert.rejects(f.github.readReport(remote(), 'interval-compare', changed),
+      error => error instanceof ParallelFetchCloudServiceError && error.code === 'invalid-report')
+  }
 })
 
 test('dispatch encodes fractional seconds and per-tab scope and rejects invalid values before gh', async () => {

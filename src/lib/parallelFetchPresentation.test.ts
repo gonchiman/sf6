@@ -27,7 +27,7 @@ test('form explains empty selection, whole-run attempt cap and guaranteed timeou
 })
 test('invalid concurrency drafts discard executable values until repaired', () => {
   assert.deepEqual(parallelFetchConcurrencyDraft('8, 1, 3'), { values: [1, 3, 8], error: null })
-  for (const text of ['', '1,', '1,2,2', '1,9', '2,4']) {
+  for (const text of ['', '1,', '1,2,2', '1,9']) {
     const draft = parallelFetchConcurrencyDraft(text)
     assert.deepEqual(draft.values, [])
     assert.ok(draft.error)
@@ -39,6 +39,15 @@ test('invalid concurrency drafts discard executable values until repaired', () =
   assert.deepEqual(parallelFetchPlanRows(selected).map(row => row.concurrency), [1, 3, 8])
   assert.match(parallelFetchConfigError({ ...selected, intervalMs: 10000, intervalMsList: [10000] })!, /10分/)
   assert.match(parallelFetchConfigError({ ...selected, repetitions: 3 })!, /200/)
+})
+
+test('a targeted four-worker draft produces only the requested repeated conditions', () => {
+  const draft = parallelFetchConcurrencyDraft('4')
+  assert.deepEqual(draft, { values: [4], error: null })
+  const selected: ParallelFetchConfig = { ...config, concurrencies: draft.values, intervalMs: 10000,
+    intervalMsList: [10000], intervalScope: 'per-tab', repetitions: 3 }
+  assert.equal(parallelFetchConfigError(selected), null)
+  assert.deepEqual(parallelFetchPlanRows(selected), [1, 2, 3].map(repetition => ({ intervalMs: 10000, concurrency: 4, repetition })))
 })
 
 test('interval drafts keep zero and decimals while invalid drafts discard executable values', () => {

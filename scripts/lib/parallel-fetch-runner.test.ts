@@ -125,6 +125,44 @@ test('per-tab intervals preserve preparation clocks and allow fresh tabs to star
   assert.deepEqual(report.trials.map(trial => trial.measurementMs), [20000, 7000, 3000])
 })
 
+test('four workers alone complete three bounded repetitions without a serial baseline', async () => {
+  const f = fixture({ latency: 25 })
+  const report = await f.clock.finish(runParallelFetch({ ...config, concurrencies: [4], repetitions: 3,
+    intervalScope: 'per-tab', intervalMs: 10000, intervalMsList: [10000] }, f.dependencies))
+  assert.equal(report.state, 'complete')
+  assert.deepEqual(report.trials.map(trial => [trial.concurrency, trial.state]), [[4, 'complete'], [4, 'complete'], [4, 'complete']])
+  assert.equal(f.reads.length, 72)
+  assert.equal(f.peak(), 4)
+  assert.equal(f.closed.length, 12)
+  const targets = Array.from({ length: 20 }, (_, index) => index + config.startPage)
+  for (const trial of report.trials) {
+    assert.deepEqual(trial.completedPages, targets)
+    assert.equal(trial.attempts.filter(attempt => attempt.phase === 'prepare').length, 4)
+    assert.equal(trial.attempts.filter(attempt => attempt.phase === 'measure').length, 20)
+  }
+  for (let instance = 1; instance <= 12; instance++) {
+    const reads = f.reads.filter(read => read.instance === instance)
+    for (let index = 1; index < reads.length; index++) assert.ok(reads[index].started - reads[index - 1].started >= 10000)
+  }
+  assert.ok(summarizeParallelFetch(report).every(summary => summary.speedup === null))
+})
+
+test('four-worker repetitions stop the entire run on a human verification challenge', async () => {
+  const f = fixture({ latency: 25, outcome: event => {
+    if (event.page === config.startPage) throw new ParallelFetchReadError('human-verification', 405)
+    return { totalCount: 2000, totalPages: 100, httpStatus: 200 }
+  } })
+  const report = await f.clock.finish(runParallelFetch({ ...config, concurrencies: [4], repetitions: 3,
+    intervalScope: 'per-tab', intervalMs: 10000, intervalMsList: [10000] }, f.dependencies))
+  assert.equal(report.state, 'error')
+  assert.equal(report.errorCode, 'human-verification')
+  assert.equal(report.trials.length, 1)
+  assert.equal(f.closed.length, 4)
+  assert.equal(f.active(), 0)
+  assert.ok(f.reads.every(read => read.instance <= 4))
+  assert.ok(f.signals.every(signal => signal.aborted))
+})
+
 test('one slow tab does not hold the pacing gate for other tabs', async () => {
   const f = fixture({ latency: event => event.instance === 2 ? 1200 : 25 })
   const report = await f.clock.finish(runParallelFetch({ ...config, intervalScope: 'per-tab', intervalMs: 1000 }, f.dependencies))

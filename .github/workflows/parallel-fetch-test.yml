@@ -22,7 +22,7 @@ on:
         options: ['global', 'per-tab']
         default: 'global'
       concurrencies:
-        description: '間隔比較の並列数（1〜8、1必須、カンマ区切り）'
+        description: '間隔比較の並列数（1〜8、カンマ区切り）'
         required: true
         type: string
         default: '1,2'

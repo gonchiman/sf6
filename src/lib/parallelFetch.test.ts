@@ -42,7 +42,7 @@ test('bounded defaults include each worker preparation in the planned count', ()
   assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig(DEFAULT_PARALLEL_FETCH_CONFIG)), 43)
   assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, intervalMs: 3000, repetitions: 3 })), 129)
   assert.throws(() => parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, repetitions: 3, concurrencies: [1, 2, 4] }))
-  for (const patch of [{ intervalMs: -100 }, { startPage: -1 }, { pageCount: 1000 }, { concurrencies: [] }, { concurrencies: [2] },
+  for (const patch of [{ intervalMs: -100 }, { startPage: -1 }, { pageCount: 1000 }, { concurrencies: [] },
     { concurrencies: [1, 1] }, { concurrencies: [2, 1] }, { concurrencies: [1, 4, 2] }, { target: 'https://other.test' }]) {
     assert.throws(() => parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, ...patch }))
   }
@@ -52,16 +52,17 @@ test('comma-separated concurrency input normalizes whitespace and order within t
   assert.equal(PARALLEL_FETCH_MAX_CONCURRENCY, 8)
   assert.deepEqual(parseParallelFetchConcurrencyInput(' 8, 3 , 1 '), [1, 3, 8])
   assert.deepEqual(parseParallelFetchConcurrencyInput('1'), [1])
+  assert.deepEqual(parseParallelFetchConcurrencyInput('4'), [4])
+  assert.deepEqual(parseParallelFetchConcurrencyInput('8, 3'), [3, 8])
   assert.deepEqual(parseParallelFetchConcurrencyInput('8,7,6,5,4,3,2,1'), [1, 2, 3, 4, 5, 6, 7, 8])
 })
 
-test('concurrency input rejects missing values, duplicates, missing baseline and nondecimal integers', () => {
-  for (const input of ['', ' ', ',1', '1,', '1,,3', '1, ,3', '1,1', '1,3, 3', '3,8',
+test('concurrency input rejects missing values, duplicates and nondecimal integers', () => {
+  for (const input of ['', ' ', ',1', '1,', '1,,3', '1, ,3', '1,1', '1,3, 3',
     '0,1', '1,9', '1,-2', '1,+2', '1,2.0', '1,2.5', '1,2e0', '1,0x2', '1,02', '1,NaN',
     '1,Infinity', '1 3', '1;3', '1,三', '1,9007199254740992', '1,2,3,4,5,6,7,8,1']) {
     assert.throws(() => parseParallelFetchConcurrencyInput(input), Error, input)
   }
-  assert.throws(() => parseParallelFetchConcurrencyInput('2'), /並列数1/)
   assert.throws(() => parseParallelFetchConcurrencyInput('1,1'), /重複/)
   assert.throws(() => parseParallelFetchConcurrencyInput('1,9'), /1〜8/)
 })
@@ -124,6 +125,19 @@ test('a serial-only configuration includes preparation in all three repetitions'
   assert.deepEqual(serial, input)
   assert.equal(plannedParallelFetchAttempts(serial), 63)
   assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...input, pageCount: 50, intervalMs: 3000 })), 153)
+})
+
+test('targeted four-worker repetitions keep the attempt and duration budgets', () => {
+  const input = { ...DEFAULT_PARALLEL_FETCH_CONFIG, concurrencies: [4], repetitions: 3,
+    intervalMs: 10000, intervalMsList: [10000], intervalScope: 'per-tab' }
+  const selected = parseParallelFetchConfig(input)
+  assert.deepEqual(selected, input)
+  assert.equal(plannedParallelFetchAttempts(selected), 72)
+  assert.equal(minimumPlannedWaitMs(selected), 150000)
+  assert.throws(() => parseParallelFetchConfig({ ...input, concurrencies: [] }))
+  assert.throws(() => parseParallelFetchConfig({ ...input, concurrencies: [4, 4] }))
+  assert.throws(() => parseParallelFetchConfig({ ...input, intervalMs: 60000, intervalMsList: [60000] }))
+  assert.throws(() => parseParallelFetchConfig({ ...input, pageCount: 50, concurrencies: [4, 8] }))
 })
 test('report parser reconstructs allowlisted aggregates only', () => {
   const report = fixture()
@@ -255,6 +269,18 @@ test('same completed page set yields measured throughput, speedup and reference 
   assert.equal(summaries[1].speedup, 2)
   assert.ok(Math.abs(summaries[1].estimatedFullScanMs! - 500000) < 0.001)
   assert.equal(summaries[0].retries, 0)
+})
+
+test('completed conditions without a serial baseline retain throughput but have no speedup', () => {
+  const input = fixture([4, 8])
+  input.schemaVersion = 3
+  input.config.intervalScope = 'per-tab'
+  input.trials.forEach(trial => { trial.intervalMs = input.config.intervalMs })
+  const report = parseParallelFetchReport(input)
+  const summaries = summarizeParallelFetch(report)
+  assert.deepEqual(summaries.map(summary => summary.concurrency), [4, 8])
+  assert.ok(summaries.every(summary => summary.completedTrials === 1 && summary.pagesPerMinute === 12))
+  assert.ok(summaries.every(summary => summary.speedup === null))
 })
 test('partial trials remain visible but do not produce speedup or extrapolation', () => {
   const report = fixture(), trial = report.trials[1]
