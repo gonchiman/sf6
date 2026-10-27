@@ -16,7 +16,7 @@
   ],
   "availability": {
     "status": "collection-failed",
-    "message": "MR分布の取得を完了できませんでした。前回の正常データを保持しています。",
+    "message": "取得元でCAPTCHAによる人間確認が必要なため、MR分布の取得を停止しました。前回の正常データを保持しています。",
     "checkedAt": "2026-10-27T11:20:32.659Z"
   }
 }
