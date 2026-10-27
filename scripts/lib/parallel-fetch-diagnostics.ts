@@ -1,4 +1,5 @@
 import type { Page, Request, Response } from 'playwright'
+import { readWafAction } from './waf-action.ts'
 import { PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS, PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS } from '../../src/lib/parallelFetch.ts'
 import type { ParallelFetchNetworkEvent, ParallelFetchPostStopDiagnostics, ParallelFetchReadDiagnostics,
   ParallelFetchReadObservation, ParallelFetchReadTrace } from '../../src/types/parallelFetch.ts'
@@ -35,11 +36,8 @@ export function createParallelFetchDiagnosticRecorder(page: Page, now: () => num
       if (!Number.isInteger(status) || status < 100 || status > 599) return
       // Keep only the documented action enum, never raw headers (including cookies).
       // The synchronous accessor avoids a late event being attributed to a later read.
-      let wafAction: ParallelFetchNetworkEvent['wafAction']
-      try {
-        const value = response.headers()['x-amzn-waf-action']
-        wafAction = value === 'captcha' || value === 'challenge' ? value : null
-      } catch { /* Missing evidence stays omitted, distinct from checked-but-absent. */ }
+      const evidence = readWafAction(response)
+      const wafAction = evidence.checked ? evidence.action : undefined
       if (wafAction) network(response.request(), 'waf-action', status, wafAction)
       else if (status >= 400) network(response.request(), 'http-error', status, wafAction)
     } catch { /* Never retain response objects, raw headers, bodies or error text. */ }

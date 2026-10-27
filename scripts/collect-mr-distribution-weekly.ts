@@ -63,8 +63,9 @@ function datasetId(value: unknown): string {
 }
 
 function parseCaptureDiagnostics(value: unknown): MrDistributionCaptureDiagnostics {
+  const hasHumanVerification = value !== null && typeof value === 'object' && Object.hasOwn(value, 'humanVerification')
   const item = record(value, ['lastAttemptedPage', 'lastSuccessfulPage', 'lastHttpStatus', 'lastAuthenticationEvidence',
-    'lastLoginRequiredHeading', 'lastRankingReadable'])
+    'lastLoginRequiredHeading', 'lastRankingReadable', ...(hasHumanVerification ? ['humanVerification'] : [])])
   const page = (value: unknown): number | null => {
     if (value === null) return null
     const result = count(value, Number.MAX_SAFE_INTEGER)
@@ -73,10 +74,18 @@ function parseCaptureDiagnostics(value: unknown): MrDistributionCaptureDiagnosti
   }
   const status = item.lastHttpStatus === null ? null : count(item.lastHttpStatus, 599)
   if (status !== null && status < 100) reject()
-  return { lastAttemptedPage: page(item.lastAttemptedPage), lastSuccessfulPage: page(item.lastSuccessfulPage), lastHttpStatus: status,
+  const result: MrDistributionCaptureDiagnostics = { lastAttemptedPage: page(item.lastAttemptedPage), lastSuccessfulPage: page(item.lastSuccessfulPage), lastHttpStatus: status,
     lastAuthenticationEvidence: oneOf(item.lastAuthenticationEvidence, [null, 'logout-control', 'login-control', 'conflicting-controls', 'no-control']),
     lastLoginRequiredHeading: item.lastLoginRequiredHeading === null ? null : bool(item.lastLoginRequiredHeading),
     lastRankingReadable: item.lastRankingReadable === null ? null : bool(item.lastRankingReadable) }
+  if (hasHumanVerification) {
+    const evidence = record(item.humanVerification, ['wafHeaderChecked', 'wafAction', 'domDetected'])
+    result.humanVerification = { wafHeaderChecked: bool(evidence.wafHeaderChecked),
+      wafAction: oneOf(evidence.wafAction, [null, 'captcha', 'challenge']),
+      domDetected: evidence.domDetected === null ? null : bool(evidence.domDetected) }
+    if (!result.humanVerification.wafHeaderChecked && result.humanVerification.wafAction !== null) reject()
+  }
+  return result
 }
 
 function parseCapture(value: unknown): MrDistributionCaptureReport {

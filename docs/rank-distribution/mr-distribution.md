@@ -155,3 +155,11 @@ reader内部にはHTTP番号と試行ページがあったが、取得レポー�
 HTTP 405は[標準](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.6)では対象リソースが要求メソッドを許可しない応答だが、[AWS WAFの公式仕様](https://docs.aws.amazon.com/waf/latest/developerguide/waf-captcha-and-challenge-actions.html)ではCAPTCHA要求にも405と`x-amzn-waf-action: captcha`を使う。[過去の別テスト](../parallel-fetch/capacity-investigation-20261024.md)には405と同ヘッダーを同時に確認した記録があるため、今回も自動アクセス対策は原因候補。ただし今回のrunにはWAF識別ヘッダーやエラーページの観測がないため、CAPTCHA、認証失効、取得間隔、151ページ自体が原因だとは断定しない。初回の停止も405だったと遡って確定するものではない。判別には、その停止応答でWAFの既知actionの有無を記録する必要がある。追加の実サイト再試行は行っていない。
 
 取得ジョブは失敗、履歴保存ジョブは成功した。新しい不完全な分布は保存せず、10月16日の正常データ314,404件を維持し、失敗確認日時だけを16:27 JSTへ更新した。ローカルのMRページも再読み込みせずに16:27 JSTの失敗表示へ更新され、前回の取得日と314,404件が維持されることを確認した。診断修正のMRテスト101件、旧runと新しい診断付きrunの混在・不変性の検証、GitHub上の全体テスト1,239件とビルドは成功。週次自動収集は引き続き有効化していない。
+
+### CAPTCHAを識別する記録
+
+`diagnostics.humanVerification`に、主documentの`wafHeaderChecked`（識別ヘッダーを確認したか）、`wafAction`（`captcha`・`challenge`・既知action未検出の`null`）、`domDetected`（既存の画面判定で人間確認を検出したか、未観測なら`null`）を追加した。旧記録はこの項目を補完せず保持する。未検出はCAPTCHAが存在しない証明ではなく、特に画像やfetchなどのサブリソースの応答はMRの今回の診断対象に含めない。
+
+並列取得の固定enum抽出を`waf-action.ts`へ切り出して共用する。MRは現在の主document応答がBucklerまたはCAPCOM認証の許可済みHTTPS originである場合だけヘッダーを確認し、外部リダイレクトの応答を判定へ流用しない。`captcha`ならCAPTCHA要求、`challenge`なら自動アクセス検証要求として、HTTPエラーの分類やDOM読取より前に`human-verification`で停止する。HTTP番号は保持し、再試行、認証の操作、追加アクセスは行わない。通常の読取間隔・上限は変更しない。
+
+生ヘッダー、Cookie、URL、応答本文は保存しない。既知actionを確認できなかった405は従来どおり`http-error`とし、ヘッダー確認失敗を確認済みの未検出と区別する。各ページ移動時に証拠をリセットし、旧記録との互換、秘密情報の除去、第三者応答の除外、CAPTCHAとChallengeの即時停止を合成データで検証する。

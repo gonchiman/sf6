@@ -5,6 +5,8 @@ import { mrDistributionPageUrl } from './mr-distribution-collector.ts'
 import type { MrDistributionEntry, MrDistributionPage } from './mr-distribution-collector.ts'
 import { distributionPageObservationSnapshot } from './distribution-page-observation.ts'
 import type { DistributionPageObservationSnapshot } from './distribution-page-observation.ts'
+import { readWafAction } from './waf-action.ts'
+import type { WafAction } from './waf-action.ts'
 
 export type MrDistributionDomErrorCode = 'invalid-request' | 'concurrent-read' | 'first-page-required' | 'cancelled'
   | 'http-denied' | 'server-error' | 'http-error' | 'maintenance' | 'login-required' | 'authentication-unconfirmed'
@@ -99,12 +101,20 @@ export async function observeMrDistributionDom(input: { salt: string; readOnly?:
   return { ...base, entries }
 }
 
+export interface MrDistributionHumanVerificationDiagnostics {
+  wafHeaderChecked: boolean
+  wafAction: WafAction | null
+  domDetected: boolean | null
+}
+const emptyHumanVerification = (): MrDistributionHumanVerificationDiagnostics => ({ wafHeaderChecked: false, wafAction: null, domDetected: null })
+
 export interface MrDistributionPageReaderDiagnostics {
   requestCount: number; successfulReadCount: number; pageSize: number | null; totalCount: number | null
   lastPage: number | null; lastAttemptedPage: number | null; lastHttpStatus: number | null
   displayedConditionsConfirmed: boolean; currentActConfirmed: boolean; initialSignInConfirmed: boolean
   lastAuthenticationEvidence: MrDistributionAuthenticationEvidence | null; lastLoginRequiredHeading: boolean | null
   lastRankingReadable: boolean | null; readableWithoutSignInReadCount: number
+  humanVerification?: MrDistributionHumanVerificationDiagnostics
 }
 export interface MrDistributionPageReaderOptions {
   signal?: AbortSignal
@@ -145,7 +155,8 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
   const salt = randomBytes(32).toString('hex')
   const diagnostics: MrDistributionPageReaderDiagnostics = { requestCount: 0, successfulReadCount: 0, pageSize: null, totalCount: null,
     lastPage: null, lastAttemptedPage: null, lastHttpStatus: null, displayedConditionsConfirmed: false, currentActConfirmed: false,
-    initialSignInConfirmed: false, lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null, readableWithoutSignInReadCount: 0 }
+    initialSignInConfirmed: false, lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null, readableWithoutSignInReadCount: 0,
+    humanVerification: emptyHumanVerification() }
   let running = false, lastNavigation: number | null = null
   const check = (): void => { if (options.signal?.aborted) throw new MrDistributionDomError('cancelled') }
   const urlMatches = (url: string, pageNumber: number): boolean => {
@@ -169,12 +180,22 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
         diagnostics.lastAuthenticationEvidence = null
         diagnostics.lastLoginRequiredHeading = null
         diagnostics.lastRankingReadable = null
+        diagnostics.humanVerification = emptyHumanVerification()
         return page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
       }
       const response = await (options.navigateWithPacing ? options.navigateWithPacing(navigate) : navigate())
       check()
       const status = response?.status()
       diagnostics.lastHttpStatus = typeof status === 'number' && Number.isSafeInteger(status) && status >= 100 && status <= 599 ? status : null
+      try {
+        // Only the current main document from Buckler/CAPCOM can establish this evidence.
+        // Subresource responses and third-party redirects are outside this diagnostic's scope.
+        if (response && ['https://www.streetfighter.com', 'https://cid.capcom.com', 'https://auth.cid.capcom.com'].includes(new URL(response.url()).origin)) {
+          const evidence = readWafAction(response)
+          diagnostics.humanVerification = { wafHeaderChecked: evidence.checked, wafAction: evidence.action, domDetected: null }
+        }
+      } catch { /* Missing response evidence stays explicitly unchecked. */ }
+      if (diagnostics.humanVerification?.wafAction) throw new MrDistributionDomError('human-verification')
       if (status === 401 || status === 403 || status === 429) throw new MrDistributionDomError('http-denied')
       if (status !== undefined && status >= 500 && status <= 599) throw new MrDistributionDomError('server-error')
       if (status !== undefined && status >= 400) throw new MrDistributionDomError('http-error')
@@ -191,6 +212,7 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
         diagnostics.lastAuthenticationEvidence = snapshot.authenticationEvidence
         diagnostics.lastLoginRequiredHeading = snapshot.loginRequiredHeading
         diagnostics.lastRankingReadable = snapshot.rankingReadable
+        diagnostics.humanVerification!.domDetected = typeof latest.humanVerificationRequired === 'boolean' ? latest.humanVerificationRequired : null
         try { options.onObservation?.(snapshot) } catch { /* Diagnostics must not affect acceptance or stopping. */ }
         if (latest.maintenance) throw new MrDistributionDomError('maintenance')
         if (latest.humanVerificationRequired) throw new MrDistributionDomError('human-verification')
@@ -245,5 +267,6 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
       throw new MrDistributionDomError(error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'read-failed')
     } finally { running = false }
   }
-  return { fetchPage, observeCurrentPage, getDiagnostics: (): MrDistributionPageReaderDiagnostics => ({ ...diagnostics }) }
+  return { fetchPage, observeCurrentPage, getDiagnostics: (): MrDistributionPageReaderDiagnostics => ({ ...diagnostics,
+    humanVerification: { ...diagnostics.humanVerification! } }) }
 }

@@ -177,6 +177,52 @@ test('a diagnostic reader failure preserves the collection failure and closes th
   assert.equal(JSON.stringify(report).includes(SECRET), false)
 })
 
+test('human-verification evidence reaches the failed report and never triggers another request', async () => {
+  for (const humanVerification of [
+    { wafHeaderChecked: true, wafAction: 'captcha' as const, domDetected: null },
+    { wafHeaderChecked: true, wafAction: 'challenge' as const, domDetected: null },
+    { wafHeaderChecked: true, wafAction: null, domDetected: true },
+  ]) {
+    const setup = fixture({ failureCode: 'human-verification', failureAt: 3, httpStatus: humanVerification.domDetected ? 200 : 405 })
+    setup.diagnostics.humanVerification = humanVerification
+    const report = await runMrDistributionCollection(options, setup.deps)
+    assert.equal(report.status, 'failed')
+    assert.equal(report.readFailureCode, 'human-verification')
+    assert.equal(report.requestCount, 3)
+    assert.equal(report.successfulReadCount, 2)
+    assert.equal(report.retryCount, 0)
+    assert.deepEqual(report.diagnostics?.humanVerification, humanVerification)
+    assert.equal(report.diagnostics?.lastHttpStatus, humanVerification.domDetected ? 200 : 405)
+    assert.equal(report.datasetSaved, false)
+    assert.equal(report.browserClosed, true)
+    assert.equal(setup.datasets.length, 0)
+    assert.deepEqual(setup.waits, [])
+    assert.doesNotMatch(JSON.stringify(report), /synthetic-private-mr-cookie|rawCookie|accountKey|https?:/)
+  }
+})
+
+test('challenge diagnostics omit old observations and copy only normalized evidence from newer readers', async () => {
+  const legacy = await runMrDistributionCollection(options, fixture().deps)
+  assert.equal(Object.hasOwn(legacy.diagnostics!, 'humanVerification'), false)
+  const cases = [
+    { input: { wafHeaderChecked: true, wafAction: null, domDetected: false }, expected: { wafHeaderChecked: true, wafAction: null, domDetected: false } },
+    { input: { wafHeaderChecked: false, wafAction: null, domDetected: null }, expected: { wafHeaderChecked: false, wafAction: null, domDetected: null } },
+    { input: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: null, headers: { cookie: SECRET }, html: SECRET, url: SECRET },
+      expected: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: null } },
+    { input: { wafHeaderChecked: true, wafAction: SECRET, domDetected: SECRET }, expected: { wafHeaderChecked: true, wafAction: null, domDetected: null } },
+    { input: { wafHeaderChecked: 'true', wafAction: 'captcha', domDetected: 1 }, expected: { wafHeaderChecked: false, wafAction: null, domDetected: null } },
+    { input: { wafHeaderChecked: false, wafAction: 'challenge', domDetected: true }, expected: { wafHeaderChecked: false, wafAction: null, domDetected: true } },
+    { input: null, expected: { wafHeaderChecked: false, wafAction: null, domDetected: null } },
+  ]
+  for (const { input, expected } of cases) {
+    const setup = fixture({ failureCode: 'http-error', httpStatus: 405 })
+    setup.diagnostics.humanVerification = input as unknown as MrDistributionPageReaderDiagnostics['humanVerification']
+    const report = await runMrDistributionCollection(options, setup.deps)
+    assert.deepEqual(report.diagnostics?.humanVerification, expected)
+    assert.doesNotMatch(JSON.stringify(report), /synthetic-private-mr-cookie|headers|cookie|html|url/)
+  }
+})
+
 test('authentication, save and import errors are fixed classifications without private text', async () => {
   for (const stage of ['authentication', 'dataset-save', 'import'] as const) {
     const setup = fixture()

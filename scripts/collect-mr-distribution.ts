@@ -12,7 +12,7 @@ import { BUCKLER_SESSION_CAPTURE_PATH, createBucklerSessionStore, validateBuckle
 import { collectMrDistribution, MrDistributionCollectionError } from './lib/mr-distribution-collector.ts'
 import type { MrDistributionPage } from './lib/mr-distribution-collector.ts'
 import { createMrDistributionPageReader, MrDistributionDomError } from './lib/mr-distribution-dom.ts'
-import type { MrDistributionDomErrorCode, MrDistributionPageReaderDiagnostics } from './lib/mr-distribution-dom.ts'
+import type { MrDistributionDomErrorCode, MrDistributionHumanVerificationDiagnostics, MrDistributionPageReaderDiagnostics } from './lib/mr-distribution-dom.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const LOCAL = resolve(ROOT, '.local')
@@ -105,19 +105,31 @@ export interface MrDistributionCaptureDiagnostics {
   lastAuthenticationEvidence: MrDistributionPageReaderDiagnostics['lastAuthenticationEvidence']
   lastLoginRequiredHeading: boolean | null
   lastRankingReadable: boolean | null
+  /** Older readers and published records have no challenge observation. */
+  humanVerification?: MrDistributionHumanVerificationDiagnostics
 }
 /** Like LP capture diagnostics, retain only fixed scalar evidence, never transport text or rows. */
 function safeCaptureDiagnostics(input?: MrDistributionPageReaderDiagnostics): MrDistributionCaptureDiagnostics {
   const page = (value: unknown): number | null => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 ? value : null
   const status = input?.lastHttpStatus
   const authentication = input?.lastAuthenticationEvidence
-  return {
+  const result: MrDistributionCaptureDiagnostics = {
     lastAttemptedPage: page(input?.lastAttemptedPage), lastSuccessfulPage: page(input?.lastPage),
     lastHttpStatus: typeof status === 'number' && Number.isSafeInteger(status) && status >= 100 && status <= 599 ? status : null,
     lastAuthenticationEvidence: ['logout-control', 'login-control', 'conflicting-controls', 'no-control'].includes(authentication as string) ? authentication! : null,
     lastLoginRequiredHeading: typeof input?.lastLoginRequiredHeading === 'boolean' ? input.lastLoginRequiredHeading : null,
     lastRankingReadable: typeof input?.lastRankingReadable === 'boolean' ? input.lastRankingReadable : null,
   }
+  if (input && Object.hasOwn(input, 'humanVerification')) {
+    const value = input.humanVerification
+    const wafHeaderChecked = value?.wafHeaderChecked === true
+    result.humanVerification = {
+      wafHeaderChecked,
+      wafAction: wafHeaderChecked && (value?.wafAction === 'captcha' || value?.wafAction === 'challenge') ? value.wafAction : null,
+      domDetected: typeof value?.domDetected === 'boolean' ? value.domDetected : null,
+    }
+  }
+  return result
 }
 export interface MrDistributionCaptureReport {
   schemaVersion: 1; status: 'succeeded' | 'failed'; startedAt: string; endedAt: string

@@ -102,20 +102,21 @@ test('visible human-verification headings or the observed AWS begin button are h
 
 function observation(page = 1, total = 43): MrDistributionDomObservation {
   const from = (page - 1) * 20 + 1, to = Math.min(page * 20, total)
-  return { maintenance: false, loginRequiredHeading: false, signedIn: true, authenticationEvidence: 'logout-control',
+  return { maintenance: false, humanVerificationRequired: false, loginRequiredHeading: false, signedIn: true, authenticationEvidence: 'logout-control',
     conditionsMatch: true, currentActMatch: true, selectedPage: page, range: { from, to, total },
     entries: Array.from({ length: to - from + 1 }, (_, i) => ({ masterRating: 1600 - from - i, accountKey: (from + i).toString(16).padStart(64, '0') })) }
 }
 function browser(configuration: {
   observe?: (page: number, count: number, readOnly?: boolean) => MrDistributionDomObservation
   status?: number; redirect?: (url: string) => string
+  headers?: (requestCount: number) => Record<string, string>
   options?: MrDistributionPageReaderOptions
 } = {}) {
   let clock = 0, evaluations = 0, currentUrl = '', pageNumber = 1
   const requests: string[] = [], waits: number[] = []
   const fake = {
     goto: async (url: string) => { requests.push(url); pageNumber = Number(new URL(url).searchParams.get('page')); currentUrl = configuration.redirect?.(url) ?? url
-      return { status: () => configuration.status ?? 200 } },
+      return { status: () => configuration.status ?? 200, url: () => currentUrl, headers: () => configuration.headers?.(requests.length) ?? {} } },
     url: () => currentUrl,
     evaluate: async (_fn: unknown, input?: { readOnly?: boolean }) => {
       evaluations++; return configuration.observe?.(pageNumber, evaluations, input?.readOnly) ?? observation(pageNumber)
@@ -303,6 +304,67 @@ test('HTTP denial/server/other errors stop before DOM reading; redirects and raw
   const raw = browser({ observe: () => { throw new Error('private-cookie-error') } })
   await assert.rejects(raw.reader.fetchPage(1, mrDistributionPageUrl(1)), error => error instanceof MrDistributionDomError
     && error.code === 'read-failed' && !error.message.includes('private-cookie-error'))
+})
+
+test('trusted document CAPTCHA and Challenge headers stop before HTTP classification or DOM observation', async () => {
+  for (const [status, action] of [[405, 'captcha'], [202, 'challenge'], [200, 'captcha']] as const) {
+    const setup = browser({ status, headers: () => ({ 'x-amzn-waf-action': action, 'set-cookie': 'private-session', authorization: 'private-token' }) })
+    await assert.rejects(setup.reader.fetchPage(1), errorCode('human-verification'))
+    const diagnostics = setup.reader.getDiagnostics()
+    assert.equal(diagnostics.lastHttpStatus, status)
+    assert.equal(diagnostics.successfulReadCount, 0)
+    assert.deepEqual(diagnostics.humanVerification, { wafHeaderChecked: true, wafAction: action, domDetected: null })
+    assert.equal(diagnostics.lastAuthenticationEvidence, null)
+    assert.equal(setup.requests.length, 1)
+    assert.equal(setup.evaluations(), 0)
+    assert.deepEqual(setup.waits, [])
+    assert.doesNotMatch(JSON.stringify(diagnostics), /private-session|private-token|set-cookie|authorization|https?:/)
+    diagnostics.humanVerification!.wafAction = null
+    assert.equal(setup.reader.getDiagnostics().humanVerification!.wafAction, action)
+  }
+})
+
+test('405 alone, unknown WAF values and unreadable headers do not fabricate a CAPTCHA diagnosis', async () => {
+  for (const [headers, checked] of [
+    [() => ({}), true], [() => ({ 'x-amzn-waf-action': 'private-unknown-token' }), true],
+    [() => { throw new Error('private-header-error') }, false],
+  ] as const) {
+    const setup = browser({ status: 405, headers })
+    await assert.rejects(setup.reader.fetchPage(1), errorCode('http-error'))
+    assert.deepEqual(setup.reader.getDiagnostics().humanVerification, { wafHeaderChecked: checked, wafAction: null, domDetected: null })
+    assert.equal(setup.evaluations(), 0)
+    assert.doesNotMatch(JSON.stringify(setup.reader.getDiagnostics()), /private-unknown-token|private-header-error/)
+  }
+})
+
+test('only Buckler and CAPCOM HTTPS document responses establish WAF evidence', async () => {
+  for (const url of ['https://example.com/check', 'https://www.streetfighter.com.example.com/check', 'http://www.streetfighter.com/check']) {
+    const setup = browser({ status: 405, redirect: () => url, headers: () => ({ 'x-amzn-waf-action': 'captcha' }) })
+    await assert.rejects(setup.reader.fetchPage(1), errorCode('http-error'))
+    assert.deepEqual(setup.reader.getDiagnostics().humanVerification, { wafHeaderChecked: false, wafAction: null, domDetected: null })
+  }
+  for (const url of ['https://cid.capcom.com/check', 'https://auth.cid.capcom.com/check']) {
+    const setup = browser({ status: 405, redirect: () => url, headers: () => ({ 'x-amzn-waf-action': 'captcha' }) })
+    await assert.rejects(setup.reader.fetchPage(1), errorCode('human-verification'))
+    assert.equal(setup.reader.getDiagnostics().humanVerification?.wafAction, 'captcha')
+  }
+})
+
+test('a later explicit navigation resets WAF evidence rather than inheriting the previous response', async () => {
+  const setup = browser({ status: 405, headers: n => n === 1 ? { 'x-amzn-waf-action': 'captcha' } : {} })
+  await assert.rejects(setup.reader.fetchPage(1), errorCode('human-verification'))
+  await assert.rejects(setup.reader.fetchPage(1), errorCode('http-error'))
+  assert.deepEqual(setup.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: null })
+})
+
+test('rendered human verification and an ordinary readable page remain separate from WAF evidence', async () => {
+  const normal = browser()
+  await normal.reader.fetchPage(1)
+  assert.deepEqual(normal.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: false })
+  const rendered = browser({ observe: n => ({ ...observation(n), humanVerificationRequired: true }) })
+  await assert.rejects(rendered.reader.fetchPage(1), errorCode('human-verification'))
+  assert.deepEqual(rendered.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: true })
+  assert.equal(rendered.requests.length, 1)
 })
 
 test('a rendered challenge stops after one observation before URL or hydration retries, independently of login and maintenance', async () => {

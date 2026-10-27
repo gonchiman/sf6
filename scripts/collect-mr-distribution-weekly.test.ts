@@ -212,6 +212,52 @@ test('diagnostic capture parsing rejects missing fields, unknown keys and untrus
   }
 })
 
+test('challenge evidence extends existing diagnostic reports without altering older records', async () => {
+  const diagnostics = { lastAttemptedPage: 3602, lastSuccessfulPage: 15721, lastHttpStatus: 405,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null }
+  const legacy = { ...report(false), capture: { ...capture(false), diagnostics } }
+  const parsedLegacy = parseMrWeeklyRunReport(legacy)
+  assert.deepEqual(parsedLegacy, legacy)
+  assert.equal(Object.hasOwn(parsedLegacy.capture!.diagnostics!, 'humanVerification'), false)
+  for (const humanVerification of [
+    { wafHeaderChecked: false, wafAction: null, domDetected: null },
+    { wafHeaderChecked: true, wafAction: null, domDetected: false },
+    { wafHeaderChecked: true, wafAction: null, domDetected: true },
+    { wafHeaderChecked: true, wafAction: 'captcha' as const, domDetected: null },
+    { wafHeaderChecked: true, wafAction: 'challenge' as const, domDetected: null },
+  ]) {
+    const input = { ...legacy, capture: { ...legacy.capture, diagnostics: { ...diagnostics, humanVerification } } }
+    assert.deepEqual(parseMrWeeklyRunReport(input), input)
+  }
+  const fixture = setup(false)
+  const challenged = { ...capture(false), diagnostics: { ...diagnostics,
+    humanVerification: { wafHeaderChecked: true, wafAction: 'captcha' as const, domDetected: null } } }
+  fixture.deps.collect = async () => challenged
+  const result = await runMrWeekly(['--collect'], fixture.deps)
+  assert.equal(result.succeeded, false)
+  assert.equal(result.artifactReady, true)
+  assert.deepEqual(fixture.written[0].run.capture, challenged)
+  assert.equal(fixture.written[0].dataset, undefined)
+})
+
+test('challenge report parsing rejects raw headers, missing evidence and unverified action claims', () => {
+  const diagnostics = { lastAttemptedPage: 3602, lastSuccessfulPage: 15721, lastHttpStatus: 405,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null }
+  const valid = { wafHeaderChecked: true, wafAction: 'captcha', domDetected: null }
+  const invalid = [null, undefined, [], {},
+    { wafHeaderChecked: true, wafAction: 'captcha' }, { wafAction: 'captcha', domDetected: null },
+    { wafHeaderChecked: true, domDetected: null }, { ...valid, headers: PRIVATE }, { ...valid, html: PRIVATE },
+    { ...valid, url: PRIVATE }, { ...valid, wafHeaderChecked: 'true' }, { ...valid, wafHeaderChecked: null },
+    { ...valid, wafAction: PRIVATE }, { ...valid, wafAction: 'CAPTCHA' }, { ...valid, domDetected: 'false' },
+    { ...valid, domDetected: 1 }, { ...valid, wafHeaderChecked: false },
+    { ...valid, wafHeaderChecked: false, wafAction: 'challenge' }]
+  for (const humanVerification of invalid) {
+    assert.throws(() => parseMrWeeklyRunReport({ ...report(false), capture: { ...capture(false),
+      diagnostics: { ...diagnostics, humanVerification } } }),
+    (error: unknown) => error instanceof MrWeeklyError && !error.message.includes(PRIVATE))
+  }
+})
+
 test('output writer validates complete or failed snapshots before promotion and refuses overwrite', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'mr-weekly-output-test-'))
   try {
