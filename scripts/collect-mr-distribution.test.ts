@@ -3,7 +3,7 @@ import test from 'node:test'
 import { dirname } from 'node:path'
 import { createMrDistributionPrivateWriter, MR_DISTRIBUTION_CAPTURE_DIRECTORY,
   parseMrDistributionCaptureArguments, MrDistributionArgumentsError, runMrDistributionCollection } from './collect-mr-distribution.ts'
-import type { MrDistributionCaptureDependencies, MrDistributionPrivateWriterIo } from './collect-mr-distribution.ts'
+import type { MrDistributionCaptureDependencies, MrDistributionCaptureTransport, MrDistributionPrivateWriterIo } from './collect-mr-distribution.ts'
 import type { MrDistributionDataset } from '../src/types/mrDistribution.ts'
 import { MrDistributionDomError } from './lib/mr-distribution-dom.ts'
 import type { MrDistributionDomErrorCode, MrDistributionPageReaderDiagnostics } from './lib/mr-distribution-dom.ts'
@@ -75,12 +75,208 @@ test('complete synthetic collection saves one aggregate, closes the browser and 
     assert.equal(report.imported, imported)
     assert.equal(report.initialSignInConfirmed, true)
     assert.equal(report.browserClosed, true)
+    assert.equal(report.sessionRefreshCount, 0)
     assert.equal(setup.closed(), 1)
     assert.equal(setup.imports(), Number(imported))
     assert.equal(setup.datasets.length, 1)
     assert.equal(setup.datasets[0].entries.reduce((total, value) => total + value.count, 0), 104)
     assert.doesNotMatch(JSON.stringify([report, setup.datasets]), /synthetic-private-mr-cookie|rawCookie|accountKey|private-/)
   }
+})
+
+function refreshFixture(triggerAfter = 8, freshConfig: Parameters<typeof fixture>[0] = {}) {
+  const initial = fixture(), fresh = fixture(freshConfig)
+  const initialLaunch = initial.deps.launch, freshLaunch = fresh.deps.launch
+  const events: string[] = [], launchedStates: unknown[] = []
+  const hooks: { initial?: (transport: MrDistributionCaptureTransport) => MrDistributionCaptureTransport;
+    fresh?: (transport: MrDistributionCaptureTransport) => MrDistributionCaptureTransport } = {}
+  let elapsedMilliseconds = 0, launches = 0
+  initial.deps.elapsedNow = () => elapsedMilliseconds
+  initial.deps.launch = async (state, signal) => {
+    const generation = ++launches
+    assert.ok(generation <= 2, 'a completed refresh must not cause another immediate replacement')
+    events.push(`launch:${generation}`)
+    launchedStates.push(state)
+    let transport = await (generation === 1 ? initialLaunch : freshLaunch)(state, signal)
+    transport = (generation === 1 ? hooks.initial : hooks.fresh)?.(transport) ?? transport
+    return { ...transport, fetchPage: async (page, url) => {
+      events.push(`read:${generation}:${page}`)
+      const result = await transport.fetchPage(page, url)
+      if (generation === 1 && initial.requests.length >= triggerAfter) elapsedMilliseconds = 20 * 60_000
+      return result
+    }, close: async () => { events.push(`close:${generation}`); await transport.close() } }
+  }
+  return { initial, fresh, hooks, events, launchedStates, launchCount: () => launches,
+    setElapsed: (milliseconds: number) => { elapsedMilliseconds = milliseconds } }
+}
+
+test('MR performs the LP twenty-minute replacement with the same saved state and rechecks the first page', async () => {
+  const baseline = fixture()
+  const withoutRefresh = await runMrDistributionCollection(options, baseline.deps)
+  const setup = refreshFixture()
+  const report = await runMrDistributionCollection(options, setup.initial.deps)
+  assert.equal(report.status, 'succeeded')
+  assert.equal(report.sessionRefreshCount, 1)
+  assert.equal(report.requestCount, withoutRefresh.requestCount + 1)
+  assert.equal(report.requestCount, setup.initial.requests.length + setup.fresh.requests.length)
+  assert.equal(report.successfulReadCount, report.requestCount)
+  assert.equal(setup.fresh.requests[0].page, 1)
+  assert.equal(setup.launchedStates[0], setup.launchedStates[1])
+  assert.ok(setup.events.indexOf('close:1') < setup.events.indexOf('launch:2'))
+  assert.deepEqual(setup.initial.waits, [5000])
+  assert.equal(setup.initial.closed(), 1)
+  assert.equal(setup.fresh.closed(), 1)
+  assert.equal(report.browserClosed, true)
+  assert.equal(report.initialSignInConfirmed, true)
+  assert.equal(report.confirmedBoundaryCount, 25)
+  assert.deepEqual(setup.initial.datasets[0].entries, baseline.datasets[0].entries)
+  assert.equal(setup.initial.datasets[0].captureStartedAt, baseline.datasets[0].captureStartedAt)
+  assert.doesNotMatch(JSON.stringify(report), /synthetic-private-mr-cookie|rawCookie|accountKey|private-/)
+})
+
+test('replacement preserves the sum of readable-without-sign-in observations from both readers', async () => {
+  const setup = refreshFixture()
+  setup.initial.diagnostics.readableWithoutSignInReadCount = 2
+  setup.fresh.diagnostics.readableWithoutSignInReadCount = 3
+  const report = await runMrDistributionCollection(options, setup.initial.deps)
+  assert.equal(report.status, 'succeeded')
+  assert.equal(report.readableWithoutSignInReadCount, 5)
+})
+
+test('the replacement first-page check consumes the existing request allowance', async () => {
+  const setup = refreshFixture(3)
+  const report = await runMrDistributionCollection({ ...options, maxRequests: 4 }, setup.initial.deps)
+  assert.equal(report.reason, 'request-limit')
+  assert.equal(report.requestCount, 4)
+  assert.equal(setup.initial.requests.length, 3)
+  assert.deepEqual(setup.fresh.requests.map(item => item.page), [1])
+  assert.equal(report.sessionRefreshCount, 1)
+  assert.equal(setup.initial.datasets.length, 0)
+  assert.equal(setup.initial.closed(), 1)
+  assert.equal(setup.fresh.closed(), 1)
+})
+
+test('replacement login or CAPTCHA responses stop once without another browser or a partial dataset', async () => {
+  for (const failureCode of ['login-required', 'human-verification'] as const) {
+    const setup = refreshFixture(8, { failureCode, httpStatus: failureCode === 'human-verification' ? 405 : 200 })
+    if (failureCode === 'human-verification') setup.fresh.diagnostics.humanVerification = {
+      wafHeaderChecked: true, wafAction: 'captcha', domDetected: null,
+    }
+    const report = await runMrDistributionCollection(options, setup.initial.deps)
+    assert.equal(report.status, 'failed')
+    assert.equal(report.readFailureCode, failureCode)
+    assert.equal(report.sessionRefreshCount, 0)
+    assert.equal(report.retryCount, 0)
+    assert.equal(setup.launchCount(), 2)
+    assert.deepEqual(setup.fresh.requests.map(item => item.page), [1])
+    assert.equal(setup.initial.datasets.length, 0)
+    assert.equal(setup.initial.closed(), 1)
+    assert.equal(setup.fresh.closed(), 1)
+    assert.equal(report.browserClosed, true)
+    if (failureCode === 'human-verification') assert.equal(report.diagnostics?.humanVerification?.wafAction, 'captcha')
+  }
+})
+
+test('a CAPTCHA returned as the replacement time is reached never triggers the scheduled replacement', async () => {
+  const setup = refreshFixture()
+  setup.hooks.initial = transport => ({ ...transport, fetchPage: async (page, url) => {
+    if (setup.initial.requests.length === 2) {
+      setup.setElapsed(20 * 60_000)
+      throw new MrDistributionDomError('human-verification')
+    }
+    return transport.fetchPage(page, url)
+  } })
+  const report = await runMrDistributionCollection(options, setup.initial.deps)
+  assert.equal(report.readFailureCode, 'human-verification')
+  assert.equal(report.retryCount, 0)
+  assert.equal(report.sessionRefreshCount, 0)
+  assert.equal(setup.launchCount(), 1)
+  assert.equal(setup.fresh.requests.length, 0)
+  assert.equal(setup.initial.datasets.length, 0)
+  assert.equal(setup.initial.closed(), 1)
+})
+
+test('replacement must reconfirm authentication, conditions and page size before resuming MR boundaries', async () => {
+  for (const mismatch of ['initialSignInConfirmed', 'displayedConditionsConfirmed', 'currentActConfirmed', 'pageSize'] as const) {
+    const setup = refreshFixture()
+    setup.hooks.fresh = transport => ({ ...transport, getDiagnostics: () => ({ ...transport.getDiagnostics(),
+      [mismatch]: mismatch === 'pageSize' ? 19 : false }) })
+    const report = await runMrDistributionCollection(options, setup.initial.deps)
+    assert.equal(report.status, 'failed', mismatch)
+    assert.equal(report.sessionRefreshCount, 0, mismatch)
+    assert.deepEqual(setup.fresh.requests.map(item => item.page), [1], mismatch)
+    assert.equal(setup.initial.datasets.length, 0, mismatch)
+    assert.equal(setup.initial.closed(), 1)
+    assert.equal(setup.fresh.closed(), 1)
+  }
+})
+
+test('an old-browser close failure prevents any replacement and cannot leak its raw error', async () => {
+  const setup = refreshFixture()
+  let closeAttempts = 0
+  setup.hooks.initial = transport => ({ ...transport, close: async () => { closeAttempts++; throw new Error(SECRET) } })
+  const report = await runMrDistributionCollection(options, setup.initial.deps)
+  assert.equal(report.status, 'failed')
+  assert.equal(report.sessionRefreshCount, 0)
+  assert.equal(setup.launchCount(), 1)
+  assert.equal(closeAttempts, 1)
+  assert.equal(setup.fresh.requests.length, 0)
+  assert.equal(report.browserClosed, false)
+  assert.equal(setup.initial.datasets.length, 0)
+  assert.equal(JSON.stringify(report).includes(SECRET), false)
+})
+
+test('cancellation during the post-close spacing wait prevents the replacement launch', async () => {
+  const setup = refreshFixture()
+  const controller = new AbortController()
+  setup.initial.deps.signal = controller.signal
+  setup.initial.deps.wait = async (milliseconds, signal) => {
+    assert.equal(milliseconds, 5000)
+    assert.equal(setup.initial.closed(), 1)
+    assert.equal(setup.launchCount(), 1)
+    controller.abort()
+    signal.throwIfAborted()
+  }
+  const report = await runMrDistributionCollection(options, setup.initial.deps)
+  assert.equal(report.reason, 'cancelled')
+  assert.equal(report.sessionRefreshCount, 0)
+  assert.equal(setup.launchCount(), 1)
+  assert.equal(setup.initial.closed(), 1)
+  assert.equal(setup.fresh.closed(), 0)
+  assert.equal(setup.fresh.requests.length, 0)
+  assert.equal(setup.initial.datasets.length, 0)
+  assert.equal(report.browserClosed, true)
+})
+
+test('cancellation during replacement launch closes both owned browsers without reading the new page', async () => {
+  const setup = refreshFixture()
+  const controller = new AbortController()
+  setup.initial.deps.signal = controller.signal
+  const launch = setup.initial.deps.launch
+  setup.initial.deps.launch = async (state, signal) => {
+    const transport = await launch(state, signal)
+    if (setup.launchCount() === 2) controller.abort()
+    return transport
+  }
+  const report = await runMrDistributionCollection(options, setup.initial.deps)
+  assert.equal(report.reason, 'cancelled')
+  assert.equal(report.sessionRefreshCount, 0)
+  assert.equal(setup.initial.closed(), 1)
+  assert.equal(setup.fresh.closed(), 1)
+  assert.equal(setup.fresh.requests.length, 0)
+  assert.equal(setup.initial.datasets.length, 0)
+  assert.equal(report.browserClosed, true)
+})
+
+test('browser replacement cannot reset the thirty-minute total collection deadline', async () => {
+  const setup = refreshFixture()
+  setup.initial.deps.now = () => new Date(START + (setup.fresh.requests.length ? 31 * 60_000 : setup.initial.requests.length))
+  const report = await runMrDistributionCollection(options, setup.initial.deps)
+  assert.equal(report.reason, 'time-limit')
+  assert.equal(setup.initial.datasets.length, 0)
+  assert.equal(setup.launchCount(), 2)
+  assert.equal(setup.initial.closed(), 1)
+  assert.equal(setup.fresh.closed(), 1)
 })
 
 test('one same-URL reread recovers transient hydration while explicit denial and login headings are never retried', async () => {

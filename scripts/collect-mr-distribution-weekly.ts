@@ -90,9 +90,11 @@ function parseCaptureDiagnostics(value: unknown): MrDistributionCaptureDiagnosti
 
 function parseCapture(value: unknown): MrDistributionCaptureReport {
   const hasDiagnostics = value !== null && typeof value === 'object' && Object.hasOwn(value, 'diagnostics')
+  const hasSessionRefreshCount = value !== null && typeof value === 'object' && Object.hasOwn(value, 'sessionRefreshCount')
   const item = record(value, ['schemaVersion', 'status', 'startedAt', 'endedAt', 'stage', 'reason', 'readFailureCode',
     'requestCount', 'successfulReadCount', 'retryCount', 'confirmedBoundaryCount', 'datasetSaved', 'imported', 'browserClosed',
-    'initialSignInConfirmed', 'readableWithoutSignInReadCount', ...(hasDiagnostics ? ['diagnostics'] : [])])
+    'initialSignInConfirmed', 'readableWithoutSignInReadCount', ...(hasDiagnostics ? ['diagnostics'] : []),
+    ...(hasSessionRefreshCount ? ['sessionRefreshCount'] : [])])
   if (item.schemaVersion !== 1) reject()
   const result: MrDistributionCaptureReport = {
     schemaVersion: 1, status: oneOf(item.status, ['succeeded', 'failed']), startedAt: time(item.startedAt), endedAt: time(item.endedAt),
@@ -104,9 +106,11 @@ function parseCapture(value: unknown): MrDistributionCaptureReport {
     confirmedBoundaryCount: count(item.confirmedBoundaryCount, 25), datasetSaved: bool(item.datasetSaved), imported: bool(item.imported),
     browserClosed: bool(item.browserClosed), initialSignInConfirmed: bool(item.initialSignInConfirmed), readableWithoutSignInReadCount: count(item.readableWithoutSignInReadCount),
     ...(hasDiagnostics ? { diagnostics: parseCaptureDiagnostics(item.diagnostics) } : {}),
+    ...(hasSessionRefreshCount ? { sessionRefreshCount: count(item.sessionRefreshCount) } : {}),
   }
   if (Date.parse(result.startedAt) > Date.parse(result.endedAt) || result.successfulReadCount > result.requestCount
     || result.retryCount > result.requestCount || result.readableWithoutSignInReadCount > result.successfulReadCount || result.imported) reject()
+  if (result.sessionRefreshCount !== undefined && result.sessionRefreshCount > result.successfulReadCount) reject()
   if (result.status === 'succeeded' && (result.reason !== null || result.stage !== 'complete' || !result.datasetSaved
     || !result.initialSignInConfirmed || result.confirmedBoundaryCount !== 25 || result.successfulReadCount < 1)) reject()
   if (result.status === 'failed' && result.reason === null) reject()

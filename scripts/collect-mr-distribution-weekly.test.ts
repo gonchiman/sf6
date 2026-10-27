@@ -192,6 +192,24 @@ test('legacy and diagnostic captures round-trip without inventing evidence or li
   assert.deepEqual(parseMrWeeklyRunReport(recovered), recovered)
 })
 
+test('browser refresh counts survive publication while legacy captures stay unchanged and invalid counts are rejected', async () => {
+  const legacy = report(false)
+  assert.deepEqual(parseMrWeeklyRunReport(legacy), legacy)
+  assert.equal(Object.hasOwn(parseMrWeeklyRunReport(legacy).capture!, 'sessionRefreshCount'), false)
+  for (const sessionRefreshCount of [0, 1]) {
+    const input = { ...legacy, capture: { ...legacy.capture!, sessionRefreshCount } }
+    assert.deepEqual(parseMrWeeklyRunReport(input), input)
+    const fixture = setup(false)
+    fixture.deps.collect = async () => input.capture
+    const result = await runMrWeekly(['--collect'], fixture.deps)
+    assert.equal(result.run.capture!.sessionRefreshCount, sessionRefreshCount)
+    assert.equal(fixture.written[0].run.capture!.sessionRefreshCount, sessionRefreshCount)
+  }
+  for (const sessionRefreshCount of [undefined, null, -1, 0.5, '1', NaN, Infinity, 601, PRIVATE, legacy.capture!.successfulReadCount + 1]) {
+    assert.throws(() => parseMrWeeklyRunReport({ ...legacy, capture: { ...legacy.capture!, sessionRefreshCount } }), MrWeeklyError)
+  }
+})
+
 test('diagnostic capture parsing rejects missing fields, unknown keys and untrusted scalar evidence', () => {
   const diagnostics = { lastAttemptedPage: 3602, lastSuccessfulPage: 15721, lastHttpStatus: 404,
     lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null }

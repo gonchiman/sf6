@@ -637,6 +637,7 @@ test('estimate replaces its owned browser after twenty minutes and continues the
   assert.equal(initial.calls.load, 1)
   assert.equal(initial.calls.launch, 2)
   assert.equal(launchedStates[0], launchedStates[1])
+  assert.deepEqual(initial.waits, [5000])
   assert.equal(initial.calls.close, 1)
   assert.equal(fresh.calls.close, 1)
   assert.equal(report.browserClosed, true)
@@ -723,6 +724,28 @@ test('cancellation while launching a replacement still closes both owned browser
   assert.equal(report.browserClosed, true)
   assert.equal(fresh.requests.length, 0)
   assert.equal(initial.calls.publish, 0)
+})
+
+test('cancellation during the replacement spacing wait leaves the closed browser retired', async () => {
+  const { initial, fresh } = refreshFixture()
+  const controller = new AbortController()
+  initial.deps.signal = controller.signal
+  initial.deps.wait = async (milliseconds, signal) => {
+    assert.equal(milliseconds, 5000)
+    assert.equal(initial.calls.close, 1)
+    assert.equal(initial.calls.launch, 1)
+    controller.abort()
+    signal.throwIfAborted()
+  }
+  const report = await runRankDistributionCollection(estimateOptions, initial.deps)
+  assert.equal(report.reason, 'cancelled')
+  assert.equal(report.sessionRefreshCount, 0)
+  assert.equal(initial.calls.launch, 1)
+  assert.equal(initial.calls.close, 1)
+  assert.equal(fresh.calls.close, 0)
+  assert.equal(fresh.requests.length, 0)
+  assert.equal(initial.calls.publish, 0)
+  assert.equal(report.browserClosed, true)
 })
 
 test('a failed old-browser close prevents replacement launch and cannot leak its raw error', async () => {

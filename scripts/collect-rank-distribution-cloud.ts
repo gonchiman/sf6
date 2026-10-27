@@ -14,6 +14,8 @@ import type {
 } from './collect-rank-distribution.ts'
 import { importRankDistributionData } from './import-rank-distribution-data.ts'
 import { createRankDistributionPageReader } from './lib/rank-distribution-dom.ts'
+import { launchDistributionEdge } from './lib/distribution-browser.ts'
+import { DISTRIBUTION_START_INTERVAL_MS } from './lib/distribution-capture-policy.ts'
 import {
   createRankDistributionCheckpointStore, parseRankDistributionCheckpoint, RANK_DISTRIBUTION_CHECKPOINT_SIZE_LIMIT,
 } from './lib/rank-distribution-checkpoint.ts'
@@ -288,17 +290,10 @@ export function isAllowedRankDistributionCloudExecution(env: Environment, policy
 }
 
 async function launchCloudEdge(options: RankDistributionCloudLaunchOptions): Promise<RankDistributionCaptureTransport> {
-  const { chromium } = await import('playwright')
-  const browser = await chromium.launch({ channel: options.channel, headless: options.headless, env: options.env, timeout: 30_000 })
-  try {
-    options.signal.throwIfAborted()
-    const context = await browser.newContext({ locale: 'ja-JP', acceptDownloads: false, storageState: options.storageState })
-    const page = await context.newPage()
-    const reader = createRankDistributionPageReader(page, { signal: options.signal,
+  return launchDistributionEdge({ storageState: options.storageState, signal: options.signal, env: options.env,
+    createReader: page => createRankDistributionPageReader(page, { signal: options.signal,
       minIntervalMs: options.minIntervalMs, totalCountPolicy: options.totalCountPolicy,
-      allowReadablePagesAfterSignIn: options.allowReadablePagesAfterSignIn })
-    return { ...reader, close: () => browser.close() }
-  } catch (error) { await browser.close().catch(() => {}); throw error }
+      allowReadablePagesAfterSignIn: options.allowReadablePagesAfterSignIn }) })
 }
 
 /** No credential file is read or written. Only the supplied fixed env value enters memory. */
@@ -354,7 +349,7 @@ export async function runRankDistributionCloudCollection(args: string[], depende
     capture = await (dependencies.collect ?? runRankDistributionCollection)(options, {
       loadSession: async () => state!,
       launch: async (storageState, signal) => (dependencies.launch ?? launchCloudEdge)({ storageState, signal,
-        env: { ...childEnvironment }, channel: 'msedge', headless: false, minIntervalMs: 5000,
+        env: { ...childEnvironment }, channel: 'msedge', headless: false, minIntervalMs: DISTRIBUTION_START_INTERVAL_MS,
         totalCountPolicy: 'record', allowReadablePagesAfterSignIn: true }),
       loadCheckpoint: () => checkpoints.load(),
       saveCheckpoint: value => checkpoints.save(parseRankDistributionCheckpoint(value)),

@@ -616,6 +616,27 @@ test('HTTP 5xx and other HTTP errors stop before reading DOM and retain their nu
   }
 })
 
+test('a navigation timeout after HTTP 200 clears the prior response while retaining the last successful page', async t => {
+  const setup = harness()
+  await setup.reader.fetchPage(1, pageUrl(1))
+  assert.equal(setup.reader.getDiagnostics().lastHttpStatus, 200)
+  const evaluations = setup.evaluations()
+  const failure = new Error('synthetic navigation timeout')
+  failure.name = 'TimeoutError'
+  t.mock.method(setup.fakePage, 'goto', async () => { throw failure })
+  await assert.rejects(setup.reader.fetchPage(2, pageUrl(2)), errorCode('timeout'))
+  const diagnostics = setup.reader.getDiagnostics()
+  assert.equal(diagnostics.lastHttpStatus, null)
+  assert.equal(diagnostics.lastAttemptedPage, 2)
+  assert.equal(diagnostics.lastPage, 1)
+  assert.equal(diagnostics.requestCount, 2)
+  assert.equal(diagnostics.successfulReadCount, 1)
+  assert.equal(diagnostics.lastAuthenticationEvidence, null)
+  assert.equal(diagnostics.lastLoginRequiredHeading, null)
+  assert.equal(diagnostics.lastRankingReadable, null)
+  assert.equal(setup.evaluations(), evaluations)
+})
+
 test('failed authentication diagnostics distinguish readable login-button pages, explicit gates and missing controls or rows', async () => {
   const cases: Array<{ patch: Partial<RankDistributionDomObservation>; code: RankDistributionDomErrorCode; readable: boolean }> = [
     { patch: { signedIn: false, authenticationEvidence: 'login-control', loginRequiredHeading: false }, code: 'authentication-unconfirmed', readable: true },

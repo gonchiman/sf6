@@ -7,6 +7,8 @@ import { distributionPageObservationSnapshot } from './distribution-page-observa
 import type { DistributionPageObservationSnapshot } from './distribution-page-observation.ts'
 import { readWafAction } from './waf-action.ts'
 import type { WafAction } from './waf-action.ts'
+import { createDistributionNavigation } from './distribution-navigation.ts'
+import { DISTRIBUTION_START_INTERVAL_MS } from './distribution-capture-policy.ts'
 
 export type MrDistributionDomErrorCode = 'invalid-request' | 'concurrent-read' | 'first-page-required' | 'cancelled'
   | 'http-denied' | 'server-error' | 'http-error' | 'maintenance' | 'login-required' | 'authentication-unconfirmed'
@@ -145,7 +147,7 @@ function layout(value: MrDistributionDomObservation, page: number, knownSize: nu
 }
 
 export function createMrDistributionPageReader(page: Page, options: MrDistributionPageReaderOptions = {}) {
-  const minInterval = options.minIntervalMs ?? 5000, timeout = options.timeoutMs ?? 10_000
+  const minInterval = options.minIntervalMs ?? DISTRIBUTION_START_INTERVAL_MS, timeout = options.timeoutMs ?? 10_000
   if (!Number.isSafeInteger(minInterval) || minInterval < 250 || minInterval > 10_000
     || options.navigateWithPacing !== undefined && typeof options.navigateWithPacing !== 'function'
     || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 10_000
@@ -157,8 +159,10 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
     lastPage: null, lastAttemptedPage: null, lastHttpStatus: null, displayedConditionsConfirmed: false, currentActConfirmed: false,
     initialSignInConfirmed: false, lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null, readableWithoutSignInReadCount: 0,
     humanVerification: emptyHumanVerification() }
-  let running = false, lastNavigation: number | null = null
+  let running = false
   const check = (): void => { if (options.signal?.aborted) throw new MrDistributionDomError('cancelled') }
+  const navigate = createDistributionNavigation(page, { minIntervalMs: minInterval, now, wait,
+    check, navigateWithPacing: options.navigateWithPacing })
   const urlMatches = (url: string, pageNumber: number): boolean => {
     try { const value = new URL(url); return value.searchParams.getAll('page').length === 1 && value.searchParams.get('page') === String(pageNumber)
       && mrDistributionPageUrl(pageNumber, url) === mrDistributionPageUrl(pageNumber) } catch { return false }
@@ -170,10 +174,7 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
     if (!diagnostics.initialSignInConfirmed && pageNumber !== 1) throw new MrDistributionDomError('first-page-required')
     running = true
     try {
-      if (!options.navigateWithPacing && lastNavigation !== null) await wait(Math.max(0, minInterval - (now() - lastNavigation)))
-      const navigate = () => {
-        check()
-        lastNavigation = now()
+      const response = await navigate(url, () => {
         diagnostics.requestCount++
         diagnostics.lastAttemptedPage = pageNumber
         diagnostics.lastHttpStatus = null
@@ -181,9 +182,7 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
         diagnostics.lastLoginRequiredHeading = null
         diagnostics.lastRankingReadable = null
         diagnostics.humanVerification = emptyHumanVerification()
-        return page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
-      }
-      const response = await (options.navigateWithPacing ? options.navigateWithPacing(navigate) : navigate())
+      })
       check()
       const status = response?.status()
       diagnostics.lastHttpStatus = typeof status === 'number' && Number.isSafeInteger(status) && status >= 100 && status <= 599 ? status : null

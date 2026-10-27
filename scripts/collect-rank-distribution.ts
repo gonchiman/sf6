@@ -17,13 +17,15 @@ import type { RankDistributionDomErrorCode, RankDistributionPageReaderDiagnostic
 import { recordRankDistributionAvailability } from './lib/rank-distribution-status.ts'
 import type { RankDistributionAvailabilityReason, RecordRankDistributionAvailabilityOptions } from './lib/rank-distribution-status.ts'
 import { BUCKLER_SESSION_CAPTURE_PATH, createBucklerSessionStore, validateBucklerSessionState } from './lib/buckler-session-store.ts'
+import { launchDistributionEdge } from './lib/distribution-browser.ts'
+import { DISTRIBUTION_MAX_READ_ATTEMPTS, DISTRIBUTION_SESSION_REFRESH_MS, DISTRIBUTION_START_INTERVAL_MS,
+  distributionReadRetryDelay } from './lib/distribution-capture-policy.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const LOCAL = resolve(ROOT, '.local')
 export const RANK_DISTRIBUTION_CAPTURE_DIRECTORY = resolve(LOCAL, 'rank-distribution')
 const PUBLIC_DIRECTORY = resolve(ROOT, 'public/data/rank-distribution')
 const TIMEOUT_MS = { estimate: 110 * 60_000, strict: 15 * 60_000 } as const
-const SESSION_REFRESH_MS = 20 * 60_000
 const HELP = `Bucklerのランク分布をこのPCで1回取得
 
 node scripts/collect-rank-distribution.ts --collect
@@ -341,7 +343,7 @@ export async function runRankDistributionCollection(
     checkCancelled(signal)
   }
   const readPageAttempts = async (page: number, url: string): Promise<RankBoundaryPage> => {
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt < DISTRIBUTION_MAX_READ_ATTEMPTS; attempt++) {
         checkCancelled(signal)
         if (requestCount >= options.maxRequests) fail('request-limit')
         if (attempt === 1) report.retryCount++
@@ -359,10 +361,10 @@ export async function runRankDistributionCollection(
         } catch (error) {
           if (error instanceof RankDistributionDomError) report.readFailureCode = error.code
           checkCancelled(signal)
-          if (attempt === 0 && error instanceof RankDistributionDomError
-            && ['timeout', 'read-failed', 'authentication-unconfirmed', 'server-error'].includes(error.code)) {
+          const retryDelay = error instanceof RankDistributionDomError ? distributionReadRetryDelay(error.code) : null
+          if (attempt === 0 && retryDelay !== null) {
             if (requestCount >= options.maxRequests) fail('request-limit')
-            await wait(error.code === 'server-error' ? 5000 : 500, signal)
+            await wait(retryDelay, signal)
             checkCancelled(signal)
             continue
           }
@@ -375,7 +377,7 @@ export async function runRankDistributionCollection(
     if (accuracy !== 'estimate' || browserStartedAt === null) return
     const current = elapsed()
     if (current < browserStartedAt) fail('configuration-invalid')
-    if (current - browserStartedAt < SESSION_REFRESH_MS) return
+    if (current - browserStartedAt < DISTRIBUTION_SESSION_REFRESH_MS) return
     checkCancelled(signal)
     if (requestCount >= options.maxRequests) fail('request-limit')
     const previousDiagnostics = safeDiagnostics(transport)
@@ -388,6 +390,9 @@ export async function runRankDistributionCollection(
     retiredReadableWithoutSignInReadCount = integer(retiredReadCount) ? retiredReadCount : 0
     transport = undefined
     closing = undefined
+    checkCancelled(signal)
+    // A replacement reader starts with no navigation clock; preserve the interval across browsers.
+    await wait(DISTRIBUTION_START_INTERVAL_MS, signal)
     checkCancelled(signal)
     await launch()
     const fresh = await readPageAttempts(1, rankBoundaryPageUrl(RANK_BOUNDARY_SOURCE_URL, 1))
@@ -623,16 +628,11 @@ async function loadFixedSession(): Promise<StorageState> {
 
 async function launchFixedEdge(state: StorageState, signal: AbortSignal, accuracy: RankDistributionCaptureAccuracy = 'estimate'): Promise<RankDistributionCaptureTransport> {
   disableRankDistributionDiagnostics(process.env)
-  const { chromium } = await import('playwright')
-  const browser = await chromium.launch({ channel: 'msedge', headless: false, timeout: 30_000, env: { ...process.env } })
-  try {
-    checkCancelled(signal)
-    const context = await browser.newContext({ locale: 'ja-JP', acceptDownloads: false, storageState: state })
-    const page = await context.newPage()
-    const reader = createRankDistributionPageReader(page, { signal, minIntervalMs: accuracy === 'estimate' ? 5000 : 500,
-      totalCountPolicy: accuracy === 'estimate' ? 'record' : 'stable', allowReadablePagesAfterSignIn: accuracy === 'estimate' })
-    return { ...reader, close: async () => { await browser.close() } }
-  } catch (error) { await browser.close().catch(() => {}); throw error }
+  const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+  return launchDistributionEdge<Omit<RankDistributionCaptureTransport, 'close'>>({ storageState: state, signal, env,
+    createReader: page => createRankDistributionPageReader(page, { signal,
+      minIntervalMs: accuracy === 'estimate' ? DISTRIBUTION_START_INTERVAL_MS : 500,
+      totalCountPolicy: accuracy === 'estimate' ? 'record' : 'stable', allowReadablePagesAfterSignIn: accuracy === 'estimate' }) })
 }
 
 export async function main(args = process.argv.slice(2)): Promise<void> {

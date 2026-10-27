@@ -9,10 +9,13 @@ import { disableRankDistributionDiagnostics } from './collect-rank-distribution.
 import { rankDistributionCloudBrowserEnvironment } from './collect-rank-distribution-cloud.ts'
 import { importMrDistributionData } from './import-mr-distribution-data.ts'
 import { BUCKLER_SESSION_CAPTURE_PATH, createBucklerSessionStore, validateBucklerSessionState } from './lib/buckler-session-store.ts'
-import { collectMrDistribution, MrDistributionCollectionError } from './lib/mr-distribution-collector.ts'
+import { collectMrDistribution, MrDistributionCollectionError, mrDistributionPageUrl } from './lib/mr-distribution-collector.ts'
 import type { MrDistributionPage } from './lib/mr-distribution-collector.ts'
 import { createMrDistributionPageReader, MrDistributionDomError } from './lib/mr-distribution-dom.ts'
 import type { MrDistributionDomErrorCode, MrDistributionHumanVerificationDiagnostics, MrDistributionPageReaderDiagnostics } from './lib/mr-distribution-dom.ts'
+import { launchDistributionEdge } from './lib/distribution-browser.ts'
+import { DISTRIBUTION_MAX_READ_ATTEMPTS, DISTRIBUTION_SESSION_REFRESH_MS, DISTRIBUTION_START_INTERVAL_MS,
+  distributionReadRetryDelay } from './lib/distribution-capture-policy.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const LOCAL = resolve(ROOT, '.local')
@@ -139,6 +142,8 @@ export interface MrDistributionCaptureReport {
   requestCount: number; successfulReadCount: number; retryCount: number; confirmedBoundaryCount: number
   datasetSaved: boolean; imported: boolean; browserClosed: boolean; initialSignInConfirmed: boolean
   readableWithoutSignInReadCount: number
+  /** Optional only for compatibility with runs recorded before scheduled browser renewal. */
+  sessionRefreshCount?: number
   /** Optional only for compatibility with previously published run records. */
   diagnostics?: MrDistributionCaptureDiagnostics
 }
@@ -151,6 +156,8 @@ export interface MrDistributionCaptureDependencies {
   signal?: AbortSignal
   wait?: (milliseconds: number, signal: AbortSignal) => Promise<void>
   progress?: (confirmedCount: number) => void
+  /** Monotonic browser lifetime, independent of capture timestamps and the overall deadline. */
+  elapsedNow?: () => number
 }
 
 /** Orchestration returns a safe report; only a complete parsed aggregate reaches the writer. */
@@ -159,9 +166,10 @@ export async function runMrDistributionCollection(options: MrDistributionCapture
   const startedAt = now().toISOString()
   const report: MrDistributionCaptureReport = { schemaVersion: 1, status: 'failed', startedAt, endedAt: startedAt, stage: 'authentication', reason: null,
     readFailureCode: null, requestCount: 0, successfulReadCount: 0, retryCount: 0, confirmedBoundaryCount: 0,
-    datasetSaved: false, imported: false, browserClosed: false, initialSignInConfirmed: false, readableWithoutSignInReadCount: 0,
+    datasetSaved: false, imported: false, browserClosed: false, initialSignInConfirmed: false, readableWithoutSignInReadCount: 0, sessionRefreshCount: 0,
     diagnostics: safeCaptureDiagnostics() }
   let transport: MrDistributionCaptureTransport | undefined, state: StorageState | undefined, timedOut = false, requestLimitReached = false
+  let closing: Promise<void> | undefined, browserStartedAt: number | null = null, retiredReadableWithoutSignInReadCount = 0
   const controller = new AbortController()
   const abort = (): void => controller.abort()
   if (deps.signal?.aborted) abort()
@@ -170,6 +178,90 @@ export async function runMrDistributionCollection(options: MrDistributionCapture
   timer.unref()
   const signal = controller.signal
   const wait = deps.wait ?? (async (milliseconds: number, current: AbortSignal) => { await delay(milliseconds, undefined, { signal: current }) })
+  const elapsedNow = deps.elapsedNow ?? (() => performance.now())
+  const elapsed = (): number => {
+    const value = elapsedNow()
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new MrDistributionCollectionError('invalid-time')
+    return value
+  }
+  const readableCount = (value: unknown): number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0
+  const rememberDiagnostics = (): void => {
+    if (!transport) return
+    try {
+      const diagnostics = transport.getDiagnostics()
+      report.diagnostics = safeCaptureDiagnostics(diagnostics)
+      report.initialSignInConfirmed ||= diagnostics.initialSignInConfirmed === true
+      report.readableWithoutSignInReadCount = readableCount(retiredReadableWithoutSignInReadCount + readableCount(diagnostics.readableWithoutSignInReadCount))
+    } catch { /* Safe report retains the last known evidence, never a raw browser error. */ }
+  }
+  const close = (): Promise<void> => {
+    if (!transport) return Promise.resolve()
+    const owned = transport
+    closing ??= Promise.resolve().then(() => owned.close()).then(() => { report.browserClosed = true })
+      .catch(() => { report.browserClosed = false })
+    return closing
+  }
+  const launch = async (): Promise<void> => {
+    transport = await deps.launch(state!, signal)
+    closing = undefined
+    report.browserClosed = false
+    browserStartedAt = elapsed()
+    signal.throwIfAborted()
+  }
+  const readPageAttempts = async (page: number, url: string): Promise<MrDistributionPage> => {
+    for (let attempt = 0; attempt < DISTRIBUTION_MAX_READ_ATTEMPTS; attempt++) {
+      signal.throwIfAborted()
+      if (report.requestCount >= options.maxRequests) { requestLimitReached = true; throw new MrDistributionCollectionError('request-limit') }
+      report.requestCount++
+      try { const value = await transport!.fetchPage(page, url); report.successfulReadCount++; return value }
+      catch (error) {
+        if (error instanceof MrDistributionDomError) report.readFailureCode = error.code
+        const retryDelay = error instanceof MrDistributionDomError ? distributionReadRetryDelay(error.code) : null
+        if (attempt === 0 && retryDelay !== null && report.requestCount < options.maxRequests && !signal.aborted) {
+          report.retryCount++
+          await wait(retryDelay, signal)
+        } else throw error
+      }
+    }
+    throw new MrDistributionCollectionError('page-read-failed')
+  }
+  const refreshIfDue = async (): Promise<void> => {
+    if (browserStartedAt === null) return
+    const current = elapsed()
+    if (current < browserStartedAt) throw new MrDistributionCollectionError('invalid-time')
+    if (current - browserStartedAt < DISTRIBUTION_SESSION_REFRESH_MS) return
+    signal.throwIfAborted()
+    if (report.requestCount >= options.maxRequests) { requestLimitReached = true; throw new MrDistributionCollectionError('request-limit') }
+    const previous = transport!.getDiagnostics()
+    const expectedPageSize = previous.pageSize
+    rememberDiagnostics()
+    await close()
+    // Never open a replacement beside an owned browser that could not close.
+    if (!report.browserClosed) throw new MrDistributionCollectionError('page-read-failed')
+    retiredReadableWithoutSignInReadCount = readableCount(retiredReadableWithoutSignInReadCount + readableCount(previous.readableWithoutSignInReadCount))
+    transport = undefined
+    closing = undefined
+    signal.throwIfAborted()
+    // The next reader has a fresh navigation clock, so keep the start interval across browsers.
+    await wait(DISTRIBUTION_START_INTERVAL_MS, signal)
+    signal.throwIfAborted()
+    await launch()
+    const fresh = await readPageAttempts(1, mrDistributionPageUrl(1))
+    const evidence = transport!.getDiagnostics()
+    const freshUrl = new URL(fresh.sourceUrl)
+    if (!Number.isSafeInteger(expectedPageSize) || expectedPageSize === null || expectedPageSize < 1 || expectedPageSize > 20
+      || fresh.page !== 1 || fresh.pageSize !== expectedPageSize || !Number.isSafeInteger(fresh.totalCount) || fresh.totalCount < 1
+      || fresh.totalPages !== Math.ceil(fresh.totalCount / fresh.pageSize) || !Array.isArray(fresh.entries)
+      || fresh.entries.length !== Math.min(fresh.pageSize, fresh.totalCount)
+      || freshUrl.searchParams.getAll('page').length !== 1 || freshUrl.searchParams.get('page') !== '1'
+      || mrDistributionPageUrl(1, fresh.sourceUrl) !== mrDistributionPageUrl(1)
+      || evidence.initialSignInConfirmed !== true || evidence.displayedConditionsConfirmed !== true || evidence.currentActConfirmed !== true
+      || evidence.pageSize !== fresh.pageSize || evidence.totalCount !== fresh.totalCount || evidence.lastPage !== 1
+      || evidence.successfulReadCount < 1) throw new MrDistributionCollectionError('collection-rejected')
+    signal.throwIfAborted()
+    report.sessionRefreshCount = (report.sessionRefreshCount ?? 0) + 1
+    rememberDiagnostics()
+  }
   try {
     if (options.mode !== 'collect' || !Number.isSafeInteger(options.maxRequests) || options.maxRequests < 2 || options.maxRequests > 600
       || typeof options.import !== 'boolean') throw new Error()
@@ -177,32 +269,19 @@ export async function runMrDistributionCollection(options: MrDistributionCapture
     state = JSON.parse(validateBucklerSessionState(JSON.stringify(await deps.loadSession()))) as StorageState
     signal.throwIfAborted()
     report.stage = 'browser-launch'
-    transport = await deps.launch(state, signal)
-    state = undefined
+    await launch()
     signal.throwIfAborted()
     report.stage = 'collection'
     const dataset = await collectMrDistribution({ maxRequests: options.maxRequests, now, signal,
       onBoundary: count => { report.confirmedBoundaryCount = count; deps.progress?.(count) },
       fetchPage: async (page, url) => {
-        for (let attempt = 0; attempt < 2; attempt++) {
-          signal.throwIfAborted()
-          if (report.requestCount >= options.maxRequests) { requestLimitReached = true; throw new MrDistributionCollectionError('request-limit') }
-          report.requestCount++
-          try { const value = await transport!.fetchPage(page, url); report.successfulReadCount++; return value }
-          catch (error) {
-            if (error instanceof MrDistributionDomError) report.readFailureCode = error.code
-            const retryable = error instanceof MrDistributionDomError && ['timeout', 'read-failed', 'authentication-unconfirmed', 'server-error'].includes(error.code)
-            if (attempt === 0 && retryable && report.requestCount < options.maxRequests && !signal.aborted) {
-              report.retryCount++
-              await wait(error.code === 'server-error' ? 5000 : 500, signal)
-            } else throw error
-          }
-        }
-        throw new Error()
+        await refreshIfDue()
+        // The renewed browser's first-page verification counts as an extra read.
+        return readPageAttempts(page, url)
       },
     })
     signal.throwIfAborted()
-    const evidence = transport.getDiagnostics()
+    const evidence = transport!.getDiagnostics()
     if (!evidence.initialSignInConfirmed || !evidence.displayedConditionsConfirmed || !evidence.currentActConfirmed
       || evidence.successfulReadCount < 1) throw new MrDistributionCollectionError('collection-rejected')
     report.stage = 'dataset-save'
@@ -226,11 +305,8 @@ export async function runMrDistributionCollection(options: MrDistributionCapture
   } finally {
     state = undefined
     if (transport) {
-      try { const diagnostics = transport.getDiagnostics(); report.diagnostics = safeCaptureDiagnostics(diagnostics)
-        report.initialSignInConfirmed = diagnostics.initialSignInConfirmed === true
-        const count = diagnostics.readableWithoutSignInReadCount
-        report.readableWithoutSignInReadCount = Number.isSafeInteger(count) && count >= 0 ? count : 0 } catch { /* Safe report retains defaults. */ }
-      try { await transport.close(); report.browserClosed = true } catch { /* No raw browser error is displayed. */ }
+      rememberDiagnostics()
+      await close()
     }
     clearTimeout(timer)
     deps.signal?.removeEventListener('abort', abort)
@@ -257,14 +333,8 @@ async function loadFixedSession(): Promise<StorageState> {
 
 export async function launchMrDistributionEdge(state: StorageState, signal: AbortSignal,
   environment: Record<string, string | undefined> = process.env): Promise<MrDistributionCaptureTransport> {
-  const { chromium } = await import('playwright')
-  const browser = await chromium.launch({ channel: 'msedge', headless: false, timeout: 30_000, env: rankDistributionCloudBrowserEnvironment(environment) })
-  try {
-    signal.throwIfAborted()
-    const context = await browser.newContext({ locale: 'ja-JP', acceptDownloads: false, storageState: state })
-    const reader = createMrDistributionPageReader(await context.newPage(), { signal, minIntervalMs: 5000, allowReadablePagesAfterSignIn: true })
-    return { ...reader, close: () => browser.close() }
-  } catch (error) { await browser.close().catch(() => {}); throw error }
+  return launchDistributionEdge({ storageState: state, signal, env: rankDistributionCloudBrowserEnvironment(environment),
+    createReader: page => createMrDistributionPageReader(page, { signal, minIntervalMs: DISTRIBUTION_START_INTERVAL_MS, allowReadablePagesAfterSignIn: true }) })
 }
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
