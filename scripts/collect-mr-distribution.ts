@@ -98,6 +98,27 @@ export interface MrDistributionCaptureTransport {
   getDiagnostics(): MrDistributionPageReaderDiagnostics
   close(): Promise<void>
 }
+export interface MrDistributionCaptureDiagnostics {
+  lastAttemptedPage: number | null
+  lastSuccessfulPage: number | null
+  lastHttpStatus: number | null
+  lastAuthenticationEvidence: MrDistributionPageReaderDiagnostics['lastAuthenticationEvidence']
+  lastLoginRequiredHeading: boolean | null
+  lastRankingReadable: boolean | null
+}
+/** Like LP capture diagnostics, retain only fixed scalar evidence, never transport text or rows. */
+function safeCaptureDiagnostics(input?: MrDistributionPageReaderDiagnostics): MrDistributionCaptureDiagnostics {
+  const page = (value: unknown): number | null => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 ? value : null
+  const status = input?.lastHttpStatus
+  const authentication = input?.lastAuthenticationEvidence
+  return {
+    lastAttemptedPage: page(input?.lastAttemptedPage), lastSuccessfulPage: page(input?.lastPage),
+    lastHttpStatus: typeof status === 'number' && Number.isSafeInteger(status) && status >= 100 && status <= 599 ? status : null,
+    lastAuthenticationEvidence: ['logout-control', 'login-control', 'conflicting-controls', 'no-control'].includes(authentication as string) ? authentication! : null,
+    lastLoginRequiredHeading: typeof input?.lastLoginRequiredHeading === 'boolean' ? input.lastLoginRequiredHeading : null,
+    lastRankingReadable: typeof input?.lastRankingReadable === 'boolean' ? input.lastRankingReadable : null,
+  }
+}
 export interface MrDistributionCaptureReport {
   schemaVersion: 1; status: 'succeeded' | 'failed'; startedAt: string; endedAt: string
   stage: 'authentication' | 'browser-launch' | 'collection' | 'dataset-save' | 'import' | 'complete'
@@ -106,6 +127,8 @@ export interface MrDistributionCaptureReport {
   requestCount: number; successfulReadCount: number; retryCount: number; confirmedBoundaryCount: number
   datasetSaved: boolean; imported: boolean; browserClosed: boolean; initialSignInConfirmed: boolean
   readableWithoutSignInReadCount: number
+  /** Optional only for compatibility with previously published run records. */
+  diagnostics?: MrDistributionCaptureDiagnostics
 }
 export interface MrDistributionCaptureDependencies {
   loadSession: () => Promise<StorageState>
@@ -124,7 +147,8 @@ export async function runMrDistributionCollection(options: MrDistributionCapture
   const startedAt = now().toISOString()
   const report: MrDistributionCaptureReport = { schemaVersion: 1, status: 'failed', startedAt, endedAt: startedAt, stage: 'authentication', reason: null,
     readFailureCode: null, requestCount: 0, successfulReadCount: 0, retryCount: 0, confirmedBoundaryCount: 0,
-    datasetSaved: false, imported: false, browserClosed: false, initialSignInConfirmed: false, readableWithoutSignInReadCount: 0 }
+    datasetSaved: false, imported: false, browserClosed: false, initialSignInConfirmed: false, readableWithoutSignInReadCount: 0,
+    diagnostics: safeCaptureDiagnostics() }
   let transport: MrDistributionCaptureTransport | undefined, state: StorageState | undefined, timedOut = false, requestLimitReached = false
   const controller = new AbortController()
   const abort = (): void => controller.abort()
@@ -190,7 +214,8 @@ export async function runMrDistributionCollection(options: MrDistributionCapture
   } finally {
     state = undefined
     if (transport) {
-      try { const diagnostics = transport.getDiagnostics(); report.initialSignInConfirmed = diagnostics.initialSignInConfirmed === true
+      try { const diagnostics = transport.getDiagnostics(); report.diagnostics = safeCaptureDiagnostics(diagnostics)
+        report.initialSignInConfirmed = diagnostics.initialSignInConfirmed === true
         const count = diagnostics.readableWithoutSignInReadCount
         report.readableWithoutSignInReadCount = Number.isSafeInteger(count) && count >= 0 ? count : 0 } catch { /* Safe report retains defaults. */ }
       try { await transport.close(); report.browserClosed = true } catch { /* No raw browser error is displayed. */ }

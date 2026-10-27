@@ -11,7 +11,7 @@ import type { MrDistributionDomErrorCode, MrDistributionPageReaderDiagnostics } 
 const SECRET = 'synthetic-private-mr-cookie'
 const START = Date.parse('2026-10-16T08:00:00.000Z')
 const options = { mode: 'collect' as const, maxRequests: 600, import: false }
-function fixture(config: { failureCode?: MrDistributionDomErrorCode; failures?: number; initialConfirmed?: boolean } = {}) {
+function fixture(config: { failureCode?: MrDistributionDomErrorCode; failures?: number; failureAt?: number; httpStatus?: number; initialConfirmed?: boolean } = {}) {
   let clock = 0, closed = 0, imports = 0, failed = 0
   const requests: Array<{ page: number; url: string }> = [], waits: number[] = [], datasets: MrDistributionDataset[] = []
   const diagnostics: MrDistributionPageReaderDiagnostics = { requestCount: 0, successfulReadCount: 0, pageSize: 20, totalCount: 104,
@@ -26,8 +26,20 @@ function fixture(config: { failureCode?: MrDistributionDomErrorCode; failures?: 
       assert.equal(state.cookies[0].value, SECRET)
       return { fetchPage: async (page, sourceUrl) => {
         requests.push({ page, url: sourceUrl }); diagnostics.requestCount++
-        if (config.failureCode && failed++ < (config.failures ?? 1)) throw new MrDistributionDomError(config.failureCode)
+        diagnostics.lastAttemptedPage = page
+        diagnostics.lastHttpStatus = null
+        diagnostics.lastAuthenticationEvidence = null
+        diagnostics.lastLoginRequiredHeading = null
+        diagnostics.lastRankingReadable = null
+        if (config.failureCode && diagnostics.requestCount >= (config.failureAt ?? 1) && failed++ < (config.failures ?? 1)) {
+          diagnostics.lastHttpStatus = config.httpStatus ?? null
+          throw new MrDistributionDomError(config.failureCode)
+        }
         const from = (page - 1) * 20
+        diagnostics.lastHttpStatus = 200
+        diagnostics.lastAuthenticationEvidence = 'logout-control'
+        diagnostics.lastLoginRequiredHeading = false
+        diagnostics.lastRankingReadable = true
         diagnostics.successfulReadCount++
         diagnostics.lastPage = page
         return { sourceUrl, page, pageSize: 20, totalCount: 104, totalPages: 6,
@@ -103,6 +115,66 @@ test('initial authentication evidence, request bounds and aborts prevent incompl
   const aborted = fixture(); aborted.deps.signal = AbortSignal.abort()
   assert.equal((await runMrDistributionCollection(options, aborted.deps)).reason, 'cancelled')
   assert.equal(aborted.requests.length, 0)
+})
+
+test('HTTP 404 retains the failed page and last successful page without attributing earlier DOM evidence to the failure', async () => {
+  const setup = fixture({ failureCode: 'http-error', failureAt: 3, httpStatus: 404 })
+  const report = await runMrDistributionCollection(options, setup.deps)
+  assert.equal(report.status, 'failed')
+  assert.equal(report.readFailureCode, 'http-error')
+  assert.equal(report.requestCount, 3)
+  assert.equal(report.successfulReadCount, 2)
+  assert.equal(report.retryCount, 0)
+  assert.deepEqual(report.diagnostics, { lastAttemptedPage: setup.requests[2].page,
+    lastSuccessfulPage: setup.requests[1].page, lastHttpStatus: 404, lastAuthenticationEvidence: null,
+    lastLoginRequiredHeading: null, lastRankingReadable: null })
+  assert.equal(report.initialSignInConfirmed, true)
+  assert.equal(report.browserClosed, true)
+  assert.equal(setup.datasets.length, 0)
+  assert.deepEqual(setup.waits, [])
+  assert.doesNotMatch(JSON.stringify(report), /synthetic-private-mr-cookie|rawCookie|accountKey|https?:/)
+})
+
+test('capture diagnostics retain only validated scalar evidence, not arbitrary transport metadata', async () => {
+  for (const value of [SECRET, '503', -1, 0, 99, 600, 200.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity,
+    null, undefined, 200, 503, 16000]) {
+    const setup = fixture()
+    const launch = setup.deps.launch
+    setup.deps.launch = async (...args) => {
+      const transport = await launch(...args)
+      return { ...transport, getDiagnostics: () => ({ ...transport.getDiagnostics(), lastAttemptedPage: value,
+        lastPage: value, lastHttpStatus: value, lastAuthenticationEvidence: SECRET,
+        lastLoginRequiredHeading: SECRET, lastRankingReadable: { raw: SECRET }, url: SECRET, html: SECRET,
+        cookies: [SECRET] } as unknown as MrDistributionPageReaderDiagnostics) }
+    }
+    const report = await runMrDistributionCollection(options, setup.deps)
+    const safeInteger = typeof value === 'number' && Number.isSafeInteger(value)
+    assert.equal(report.status, 'succeeded')
+    assert.deepEqual(report.diagnostics, {
+      lastAttemptedPage: safeInteger && value >= 1 ? value : null,
+      lastSuccessfulPage: safeInteger && value >= 1 ? value : null,
+      lastHttpStatus: safeInteger && value >= 100 && value <= 599 ? value : null,
+      lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null,
+    })
+    assert.doesNotMatch(JSON.stringify(report), /synthetic-private-mr-cookie|rawCookie|cookies|html|accountKey/)
+  }
+})
+
+test('a diagnostic reader failure preserves the collection failure and closes the browser without private error text', async () => {
+  const setup = fixture({ failureCode: 'http-error', httpStatus: 404 })
+  const launch = setup.deps.launch
+  setup.deps.launch = async (...args) => {
+    const transport = await launch(...args)
+    return { ...transport, getDiagnostics: () => { throw new Error(SECRET) } }
+  }
+  const report = await runMrDistributionCollection(options, setup.deps)
+  assert.equal(report.status, 'failed')
+  assert.equal(report.readFailureCode, 'http-error')
+  assert.equal(report.browserClosed, true)
+  assert.equal(setup.closed(), 1)
+  assert.deepEqual(report.diagnostics, { lastAttemptedPage: null, lastSuccessfulPage: null, lastHttpStatus: null,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null })
+  assert.equal(JSON.stringify(report).includes(SECRET), false)
 })
 
 test('authentication, save and import errors are fixed classifications without private text', async () => {

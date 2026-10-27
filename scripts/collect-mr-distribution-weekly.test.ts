@@ -170,6 +170,48 @@ test('run parser rejects private fields, invalid times, unsupported classificati
   for (const input of invalid) assert.throws(() => parseMrWeeklyRunReport(input), (error: unknown) => error instanceof MrWeeklyError && !error.message.includes(PRIVATE))
 })
 
+test('legacy and diagnostic captures round-trip without inventing evidence or limiting binary-search page numbers', () => {
+  const legacy = report(false)
+  const parsedLegacy = parseMrWeeklyRunReport(legacy)
+  assert.deepEqual(parsedLegacy, legacy)
+  assert.equal(Object.hasOwn(parsedLegacy.capture!, 'diagnostics'), false)
+  const empty = { lastAttemptedPage: null, lastSuccessfulPage: null, lastHttpStatus: null,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null }
+  for (const diagnostics of [empty,
+    { ...empty, lastAttemptedPage: 3602, lastSuccessfulPage: 15721, lastHttpStatus: 404 },
+    ...(['logout-control', 'login-control', 'conflicting-controls', 'no-control'] as const).map(lastAuthenticationEvidence => ({
+      lastAttemptedPage: 15721, lastSuccessfulPage: 3602, lastHttpStatus: 200,
+      lastAuthenticationEvidence, lastLoginRequiredHeading: false, lastRankingReadable: true,
+    }))]) {
+    const input = { ...legacy, capture: { ...capture(false), diagnostics } }
+    assert.deepEqual(parseMrWeeklyRunReport(input), input)
+  }
+  // A recovered transient failure remains in readFailureCode while final request evidence is HTTP 200.
+  const recovered = { ...report(), capture: { ...capture(), readFailureCode: 'server-error', retryCount: 1,
+    diagnostics: { ...empty, lastAttemptedPage: 1, lastSuccessfulPage: 1, lastHttpStatus: 200 } } }
+  assert.deepEqual(parseMrWeeklyRunReport(recovered), recovered)
+})
+
+test('diagnostic capture parsing rejects missing fields, unknown keys and untrusted scalar evidence', () => {
+  const diagnostics = { lastAttemptedPage: 3602, lastSuccessfulPage: 15721, lastHttpStatus: 404,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null }
+  const missing = { ...diagnostics } as Record<string, unknown>
+  delete missing.lastHttpStatus
+  const invalid: unknown[] = [null, [], {}, missing, { ...diagnostics, cookies: PRIVATE }, { ...diagnostics, url: PRIVATE },
+    { ...diagnostics, html: PRIVATE }, { ...diagnostics, lastAuthenticationEvidence: PRIVATE },
+    { ...diagnostics, lastLoginRequiredHeading: 'false' }, { ...diagnostics, lastRankingReadable: 1 }]
+  for (const key of ['lastAttemptedPage', 'lastSuccessfulPage'] as const) {
+    for (const value of [0, -1, 0.5, '3602', PRIVATE, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      invalid.push({ ...diagnostics, [key]: value })
+    }
+  }
+  for (const value of [99, 600, 200.5, '404', PRIVATE, NaN, Infinity]) invalid.push({ ...diagnostics, lastHttpStatus: value })
+  for (const value of invalid) {
+    assert.throws(() => parseMrWeeklyRunReport({ ...report(false), capture: { ...capture(false), diagnostics: value } }),
+      (error: unknown) => error instanceof MrWeeklyError && !error.message.includes(PRIVATE))
+  }
+})
+
 test('output writer validates complete or failed snapshots before promotion and refuses overwrite', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'mr-weekly-output-test-'))
   try {

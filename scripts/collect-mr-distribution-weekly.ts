@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { MR_DISTRIBUTION_SOURCE, parseMrDistributionDataset, parseMrDistributionManifest } from '../src/lib/mrDistribution.ts'
 import type { MrDistributionDataset } from '../src/types/mrDistribution.ts'
 import { launchMrDistributionEdge, parseMrDistributionCaptureArguments, runMrDistributionCollection } from './collect-mr-distribution.ts'
-import type { MrDistributionCaptureDependencies, MrDistributionCaptureReport } from './collect-mr-distribution.ts'
+import type { MrDistributionCaptureDependencies, MrDistributionCaptureDiagnostics, MrDistributionCaptureReport } from './collect-mr-distribution.ts'
 import { disableRankDistributionDiagnostics } from './collect-rank-distribution.ts'
 import { markRankDistributionArtifactReady, rankDistributionCloudBrowserEnvironment } from './collect-rank-distribution-cloud.ts'
 import { BUCKLER_WEEKLY_SESSION_SECRET, parseBucklerWeeklySession } from './lib/buckler-weekly-session.ts'
@@ -62,10 +62,28 @@ function datasetId(value: unknown): string {
   return value
 }
 
+function parseCaptureDiagnostics(value: unknown): MrDistributionCaptureDiagnostics {
+  const item = record(value, ['lastAttemptedPage', 'lastSuccessfulPage', 'lastHttpStatus', 'lastAuthenticationEvidence',
+    'lastLoginRequiredHeading', 'lastRankingReadable'])
+  const page = (value: unknown): number | null => {
+    if (value === null) return null
+    const result = count(value, Number.MAX_SAFE_INTEGER)
+    if (result < 1) reject()
+    return result
+  }
+  const status = item.lastHttpStatus === null ? null : count(item.lastHttpStatus, 599)
+  if (status !== null && status < 100) reject()
+  return { lastAttemptedPage: page(item.lastAttemptedPage), lastSuccessfulPage: page(item.lastSuccessfulPage), lastHttpStatus: status,
+    lastAuthenticationEvidence: oneOf(item.lastAuthenticationEvidence, [null, 'logout-control', 'login-control', 'conflicting-controls', 'no-control']),
+    lastLoginRequiredHeading: item.lastLoginRequiredHeading === null ? null : bool(item.lastLoginRequiredHeading),
+    lastRankingReadable: item.lastRankingReadable === null ? null : bool(item.lastRankingReadable) }
+}
+
 function parseCapture(value: unknown): MrDistributionCaptureReport {
+  const hasDiagnostics = value !== null && typeof value === 'object' && Object.hasOwn(value, 'diagnostics')
   const item = record(value, ['schemaVersion', 'status', 'startedAt', 'endedAt', 'stage', 'reason', 'readFailureCode',
     'requestCount', 'successfulReadCount', 'retryCount', 'confirmedBoundaryCount', 'datasetSaved', 'imported', 'browserClosed',
-    'initialSignInConfirmed', 'readableWithoutSignInReadCount'])
+    'initialSignInConfirmed', 'readableWithoutSignInReadCount', ...(hasDiagnostics ? ['diagnostics'] : [])])
   if (item.schemaVersion !== 1) reject()
   const result: MrDistributionCaptureReport = {
     schemaVersion: 1, status: oneOf(item.status, ['succeeded', 'failed']), startedAt: time(item.startedAt), endedAt: time(item.endedAt),
@@ -76,6 +94,7 @@ function parseCapture(value: unknown): MrDistributionCaptureReport {
     requestCount: count(item.requestCount), successfulReadCount: count(item.successfulReadCount), retryCount: count(item.retryCount),
     confirmedBoundaryCount: count(item.confirmedBoundaryCount, 25), datasetSaved: bool(item.datasetSaved), imported: bool(item.imported),
     browserClosed: bool(item.browserClosed), initialSignInConfirmed: bool(item.initialSignInConfirmed), readableWithoutSignInReadCount: count(item.readableWithoutSignInReadCount),
+    ...(hasDiagnostics ? { diagnostics: parseCaptureDiagnostics(item.diagnostics) } : {}),
   }
   if (Date.parse(result.startedAt) > Date.parse(result.endedAt) || result.successfulReadCount > result.requestCount
     || result.retryCount > result.requestCount || result.readableWithoutSignInReadCount > result.successfulReadCount || result.imported) reject()

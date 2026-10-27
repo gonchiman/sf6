@@ -89,6 +89,28 @@ test('new MR captures append to immutable history and an identical rerun makes n
   for (const [name, content] of Object.entries(beforeRetry)) if (name !== 'public/index.json') assert.equal(after[name], content)
 })
 
+test('diagnostic captures publish alongside unchanged legacy runs and remain identical on replay', async t => {
+  const f = await setup(t)
+  await publishMrWeekly(f.options)
+  const before = await tree(f.historyDirectory)
+  const diagnostics = { lastAttemptedPage: 3602, lastSuccessfulPage: 3603, lastHttpStatus: 404,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null }
+  const failed = fixture('28', false, '43')
+  const diagnosticFailure = { ...failed, run: { ...failed.run, capture: {
+    ...failed.run.capture, readFailureCode: 'http-error', diagnostics,
+  } } }
+  const failureInput = resolve(f.root, 'incoming-diagnostics')
+  await incoming(failureInput, diagnosticFailure)
+  const options = { ...f.options, inputDirectory: failureInput }
+  assert.deepEqual(await publishMrWeekly(options), { datasets: 2, entries: 52, runs: 2 })
+  const after = await tree(f.historyDirectory)
+  for (const [name, content] of Object.entries(before)) if (name !== 'public/index.json') assert.equal(after[name], content)
+  assert.equal(Object.hasOwn(JSON.parse(after[`runs/${f.value.run.id}.json`]).capture, 'diagnostics'), false)
+  assert.deepEqual(JSON.parse(after[`runs/${failed.run.id}.json`]).capture.diagnostics, diagnostics)
+  await publishMrWeekly(options)
+  assert.deepEqual(await tree(f.historyDirectory), after)
+})
+
 test('a failed collection retains complete captures and records failure without exposing arbitrary input text', async t => {
   const f = await setup(t)
   await publishMrWeekly(f.options)
