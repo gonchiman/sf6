@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { japaneseCharacterNames } from '../lib/characterNames'
 import { loadCharacterManifest } from '../lib/characters'
 import { timestampLabel } from '../lib/dateTime'
 import {
   createLegendCharacterRows, findPreviousLegendAnalysisDescriptor, legendAnalysisCanCompare,
-  loadLegendAnalysisDataset, loadLegendAnalysisManifest,
 } from '../lib/legendAnalysis'
-import type { LegendAnalysisDataset, LegendAnalysisManifest } from '../types/legendAnalysis'
+import { legendAnalysisFeed, type LegendAnalysisPublication } from '../lib/legendAnalysisFeed'
+import { selectRefreshedLegendId, shouldAcceptLegendPublication, startLegendAnalysisRefresh } from '../lib/legendAnalysisRefresh'
+import type { LegendAnalysisDataset } from '../types/legendAnalysis'
 import { DataLoadState } from './DataLoadState'
 import { LegendAnalysisFilters } from './LegendAnalysisFilters'
 import { LegendCharacterTable } from './LegendCharacterTable'
@@ -16,7 +17,7 @@ import { StatisticsPanel } from './StatisticsPanel'
 import '../win-rates.css'
 import '../legend-analysis.css'
 
-type Bootstrap = { status: 'loading' | 'error' } | { status: 'ready'; manifest: LegendAnalysisManifest }
+type Bootstrap = { status: 'loading' | 'error' } | { status: 'ready'; publication: LegendAnalysisPublication }
 type DatasetState = { key: string; version: number } & (
   { status: 'loading' | 'error' } | { status: 'ready'; dataset: LegendAnalysisDataset }
 )
@@ -25,7 +26,11 @@ const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 
 export function LegendAnalysisPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap>({ status: 'loading' })
   const [manifestVersion, setManifestVersion] = useState(0)
+  const [refreshError, setRefreshError] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const publicationRef = useRef<LegendAnalysisPublication | null>(null)
+  const selectedIdRef = useRef(selectedId)
+  selectedIdRef.current = selectedId
   const [loaded, setLoaded] = useState<DatasetState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
   const [previousLoaded, setPreviousLoaded] = useState<DatasetState | null>(null)
@@ -36,14 +41,43 @@ export function LegendAnalysisPage() {
 
   useEffect(() => {
     let current = true
-    setBootstrap({ status: 'loading' })
-    void loadLegendAnalysisManifest().then(manifest => {
-      if (!current) return
-      const latest = [...manifest.datasets].sort((a, b) => Date.parse(b.captureEndedAt) - Date.parse(a.captureEndedAt))[0]
-      setSelectedId(previous => manifest.datasets.some(item => item.id === previous) ? previous : latest?.id ?? null)
-      setBootstrap({ status: 'ready', manifest })
-    }).catch(() => { if (current) setBootstrap({ status: 'error' }) })
-    return () => { current = false }
+    let pending = false
+    if (!publicationRef.current) setBootstrap({ status: 'loading' })
+    const refresh = async () => {
+      if (pending) return
+      pending = true
+      try {
+        const next = await legendAnalysisFeed.loadPublication()
+        if (!current) return
+        const previous = publicationRef.current
+        if (previous && !shouldAcceptLegendPublication(previous, next)) {
+          setRefreshError(true)
+          return
+        }
+        // A selection may change while a new source is being checked. Validate that
+        // selection too; otherwise leave the usable publication for the next refresh.
+        for (let attempt = 0; ; attempt++) {
+          const nextId = selectRefreshedLegendId(previous?.manifest ?? null, next.manifest, selectedIdRef.current)
+          const nextDescriptor = next.manifest.datasets.find(item => item.id === nextId)
+          if (nextDescriptor) await legendAnalysisFeed.loadDataset(next, nextDescriptor)
+          if (!current) return
+          if (nextId === selectRefreshedLegendId(previous?.manifest ?? null, next.manifest, selectedIdRef.current)) break
+          if (attempt === 2) return
+        }
+        setRefreshError(false)
+        if (previous && JSON.stringify(previous) === JSON.stringify(next)) return
+        publicationRef.current = next
+        setSelectedId(id => selectRefreshedLegendId(previous?.manifest ?? null, next.manifest, id))
+        setBootstrap({ status: 'ready', publication: next })
+      } catch {
+        if (!current) return
+        if (publicationRef.current) setRefreshError(true)
+        else setBootstrap({ status: 'error' })
+      } finally { pending = false }
+    }
+    void refresh()
+    const stopRefresh = startLegendAnalysisRefresh(() => { void refresh() })
+    return () => { current = false; stopRefresh() }
   }, [manifestVersion])
 
   useEffect(() => {
@@ -55,36 +89,37 @@ export function LegendAnalysisPage() {
     return () => { current = false }
   }, [namesVersion])
 
-  const manifest = bootstrap.status === 'ready' ? bootstrap.manifest : null
+  const publication = bootstrap.status === 'ready' ? bootstrap.publication : null
+  const manifest = publication?.manifest ?? null
   const descriptors = useMemo(() => manifest ? [...manifest.datasets]
     .sort((a, b) => Date.parse(b.captureEndedAt) - Date.parse(a.captureEndedAt)) : [], [manifest])
   const descriptor = descriptors.find(item => item.id === selectedId) ?? null
   const previousDescriptor = useMemo(() => manifest && descriptor
     ? findPreviousLegendAnalysisDescriptor(manifest, descriptor) : null, [manifest, descriptor])
-  const requestKey = manifest && descriptor ? JSON.stringify([manifest.generatedAt, descriptor]) : null
+  const requestKey = publication && descriptor ? JSON.stringify([publication.baseUrl, manifest!.generatedAt, descriptor]) : null
   const previousKey = manifest && previousDescriptor ? JSON.stringify([requestKey, previousDescriptor]) : null
 
   useEffect(() => {
-    if (!manifest || !descriptor || !requestKey) return
+    if (!publication || !descriptor || !requestKey) return
     let current = true
     const key = requestKey
     setLoaded({ key, version: datasetVersion, status: 'loading' })
-    void loadLegendAnalysisDataset(descriptor, manifest.generatedAt).then(dataset => {
+    void legendAnalysisFeed.loadDataset(publication, descriptor).then(dataset => {
       if (current) setLoaded({ key, version: datasetVersion, status: 'ready', dataset })
     }).catch(() => { if (current) setLoaded({ key, version: datasetVersion, status: 'error' }) })
     return () => { current = false }
-  }, [manifest, descriptor, requestKey, datasetVersion])
+  }, [publication, descriptor, requestKey, datasetVersion])
 
   useEffect(() => {
-    if (!manifest || !previousDescriptor || !previousKey) return
+    if (!publication || !previousDescriptor || !previousKey) return
     let current = true
     const key = previousKey
     setPreviousLoaded({ key, version: previousVersion, status: 'loading' })
-    void loadLegendAnalysisDataset(previousDescriptor, manifest.generatedAt).then(dataset => {
+    void legendAnalysisFeed.loadDataset(publication, previousDescriptor).then(dataset => {
       if (current) setPreviousLoaded({ key, version: previousVersion, status: 'ready', dataset })
     }).catch(() => { if (current) setPreviousLoaded({ key, version: previousVersion, status: 'error' }) })
     return () => { current = false }
-  }, [manifest, previousDescriptor, previousKey, previousVersion])
+  }, [publication, previousDescriptor, previousKey, previousVersion])
 
   // A changed selection or retry must never display the previous request's numbers.
   const current = loaded?.key === requestKey && loaded.version === datasetVersion ? loaded : null
@@ -108,6 +143,10 @@ export function LegendAnalysisPage() {
 
   return <section className="legend-analysis-page" aria-label="レジェンド帯分析">
     <p className="legend-analysis-scope">掲載エントリーのキャラ構成とMR分布 · アカウント × キャラ単位</p>
+    {(refreshError || publication?.source === 'bundled') && <div className="legend-analysis-message" role="status">
+      <div>{publication?.source === 'bundled' ? '最新データを確認できません。同梱データを表示しています。' : '更新を確認できません。前回読み込んだデータを表示しています。'}</div>
+      <button className="win-rates-button" type="button" onClick={() => setManifestVersion(value => value + 1)}>更新を再確認</button>
+    </div>}
     <StatisticsPanel title="条件選択" headerContent={<span className="monthly-statistics-panel-summary">日時はJST</span>}>
       <LegendAnalysisFilters descriptors={descriptors} actId={descriptor?.actId ?? null} selectedId={selectedId}
         actLabel={dataset?.act.label}

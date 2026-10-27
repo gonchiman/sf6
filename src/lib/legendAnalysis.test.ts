@@ -3,8 +3,8 @@ import { test } from 'node:test'
 import type { LegendAnalysisDataset, LegendAnalysisDescriptor, LegendAnalysisManifest } from '../types/legendAnalysis.ts'
 import {
   createLegendCharacterRows, findPreviousLegendAnalysisDescriptor, legendAnalysisCanCompare,
-  LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS, loadLegendAnalysisDataset,
-  loadLegendAnalysisManifest, parseLegendAnalysisDataset, parseLegendAnalysisDescriptor,
+  LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS,
+  parseLegendAnalysisDataset, parseLegendAnalysisDescriptor,
   parseLegendAnalysisManifest, summarizeLegendMr,
 } from './legendAnalysis.ts'
 
@@ -208,33 +208,4 @@ test('comparisons use each capture denominator and percentage-point differences,
     assert.equal(legendAnalysisCanCompare(current, prior), false)
     assert.ok(createLegendCharacterRows(current, prior).every(row => row.previousCount === null && row.percentagePointDelta === null))
   }
-})
-
-test('loaders deduplicate requests, validate descriptors, and allow retry after network or mismatched publication failures', async () => {
-  const original = globalThis.fetch
-  const requests: string[] = []
-  let failManifest = true, mismatchDataset = true
-  const input = dataset()
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    requests.push(String(url))
-    if (String(url).endsWith('index.json')) {
-      if (failManifest) { failManifest = false; return { ok: false } as Response }
-      return { ok: true, json: async () => manifest() } as Response
-    }
-    if (mismatchDataset) { mismatchDataset = false; return { ok: true, json: async () => ({ ...input, id: 'wrong-id' }) } as Response }
-    return { ok: true, json: async () => input } as Response
-  }) as typeof fetch
-  try {
-    await assert.rejects(loadLegendAnalysisManifest(), /読み込めません/)
-    const [a, b] = await Promise.all([loadLegendAnalysisManifest(), loadLegendAnalysisManifest()])
-    assert.equal(a, b)
-    assert.equal(requests.filter(url => url.endsWith('index.json')).length, 2)
-    await assert.rejects(loadLegendAnalysisDataset(descriptor()), /一致しません/)
-    const [c, d] = await Promise.all([loadLegendAnalysisDataset(descriptor()), loadLegendAnalysisDataset(descriptor())])
-    assert.equal(c, d)
-    assert.equal(requests.filter(url => !url.endsWith('index.json')).length, 2)
-    await loadLegendAnalysisDataset(descriptor(), '2026-10-20T00:00:00.000Z')
-    assert.equal(requests.length, 5)
-    assert.ok(requests[4].includes('published=2026-10-20T00%3A00%3A00.000Z'))
-  } finally { globalThis.fetch = original }
 })
