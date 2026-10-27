@@ -116,6 +116,7 @@ function fixture(ageSeconds = 3600) {
 test('weekly CLI permits a bounded collection only and never accepts arbitrary paths or auth modes', () => {
   assert.deepEqual(parseRankDistributionWeeklyArguments(['--collect']), { mode: 'collect', maxRequests: 600 })
   assert.deepEqual(parseRankDistributionWeeklyArguments(['--collect', '--max-requests', '2']), { mode: 'collect', maxRequests: 2 })
+  assert.deepEqual(parseRankDistributionWeeklyArguments(['--collect', '--max-requests', '1000']), { mode: 'collect', maxRequests: 1000 })
   assert.deepEqual(parseRankDistributionWeeklyArguments(['--help']), { mode: 'help' })
   for (const args of [[], ['--resume'], ['--collect', '--strict'], ['--collect', '--path', SECRET],
     ['--collect', '--max-requests', '02'], ['--collect', '--max-requests', '1001'], ['--collect', '--max-requests', '1']]) {
@@ -147,7 +148,7 @@ test('secrets are consumed before arguments or the exact pinned main workflow id
 
 test('manual collection checks all boundaries, reuses hints in memory and stages a safe run only after history completes', async () => {
   const setup = fixture()
-  const result = await runRankDistributionWeeklyCollection(['--collect', '--max-requests', '450'], setup.deps)
+  const result = await runRankDistributionWeeklyCollection(['--collect', '--max-requests', '1000'], setup.deps)
   assert.equal(result.succeeded, true)
   assert.equal(result.artifactReady, true)
   assert.equal(result.run.event, 'manual')
@@ -155,7 +156,7 @@ test('manual collection checks all boundaries, reuses hints in memory and stages
   assert.equal(result.run.sessionAgeSeconds, 3600)
   assert.equal(result.run.reuseAfterSevenDays, 'pending')
   assert.equal(result.run.capture?.confirmedBoundaryCount, 35)
-  assert.deepEqual(setup.cloudCalls[0].args, ['--saved-session', '--max-requests', '450', '--resume'])
+  assert.deepEqual(setup.cloudCalls[0].args, ['--saved-session', '--max-requests', '1000', '--resume'])
   assert.equal(setup.cloudCalls[0].deps?.checkpointStore, setup.deps.checkpointStore)
   assert.equal(setup.saved.length, 1)
   assert.deepEqual(setup.saved[0].previous, setup.previous)

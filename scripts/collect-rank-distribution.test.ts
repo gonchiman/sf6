@@ -248,7 +248,7 @@ test('collection defaults to a complete estimate while explicit strict mode rema
   const report = await runRankDistributionCollection({ mode: 'collect', maxRequests: 600 }, input.deps)
   assert.equal(report.status, 'succeeded')
   assert.equal(report.accuracy, 'estimate')
-  assert.equal(report.timeLimitMinutes, 60)
+  assert.equal(report.timeLimitMinutes, 110)
   assert.equal(report.confirmedBoundaryCount, 35)
   assert.deepEqual(input.launchAccuracies, ['estimate'])
   assert.equal(input.saved[0].method, 'boundary-search-estimate')

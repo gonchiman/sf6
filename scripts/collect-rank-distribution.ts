@@ -22,7 +22,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const LOCAL = resolve(ROOT, '.local')
 export const RANK_DISTRIBUTION_CAPTURE_DIRECTORY = resolve(LOCAL, 'rank-distribution')
 const PUBLIC_DIRECTORY = resolve(ROOT, 'public/data/rank-distribution')
-const TIMEOUT_MS = { estimate: 60 * 60_000, strict: 15 * 60_000 } as const
+const TIMEOUT_MS = { estimate: 110 * 60_000, strict: 15 * 60_000 } as const
 const SESSION_REFRESH_MS = 20 * 60_000
 const HELP = `Bucklerのランク分布をこのPCで1回取得
 
@@ -45,7 +45,7 @@ HTTP 5xxの一時エラーは5秒後に1回再読します。概数取得の通�
 概数取得では20分ごとに取得用Edgeを閉じ、同じ保存済み状態を新しいEdgeへ読み込み直します。
 新しいEdgeの先頭ページでログイン状態と条件を確認できた場合だけ、同じ集計を続けます。
 レポートのreadFailureCodeは最後に失敗した試行のコードで、再読による回復後も保持します。
-結果: .local/rank-distribution/。中止: Ctrl+C。時間上限: 概数60分、厳密15分。`
+結果: .local/rank-distribution/。中止: Ctrl+C。時間上限: 概数110分、厳密15分。`
 
 export type RankDistributionCaptureAccuracy = 'estimate' | 'strict'
 export interface RankDistributionCaptureOptions { mode: 'collect'; maxRequests: number; accuracy?: RankDistributionCaptureAccuracy; resume?: boolean }
