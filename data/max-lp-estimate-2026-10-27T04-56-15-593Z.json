@@ -1,0 +1,415 @@
+{
+  "schemaVersion": 1,
+  "id": "max-lp-estimate-2026-10-27T04-56-15-593Z",
+  "captureStartedAt": "2026-10-27T04:56:15.593Z",
+  "captureEndedAt": "2026-10-27T05:53:38.092Z",
+  "generatedAt": "2026-10-27T05:53:38.092Z",
+  "source": {
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/league",
+    "title": "Buckler LPランキング",
+    "population": "総合・最大LP条件で掲載されたファイターアカウント",
+    "metric": "取得期間内に観測したLPランク別の掲載アカウント数の概数",
+    "unit": "fighter-account",
+    "notes": [
+      "同じ人の別プラットフォームのアカウントを統合した実人数や、直近の活動人口ではない。"
+    ]
+  },
+  "conditions": {
+    "league": "all",
+    "character": "max-lp",
+    "region": "all",
+    "platform": "all",
+    "users": "buckler-user-status-1"
+  },
+  "method": "boundary-search-estimate",
+  "totalCount": 3096869,
+  "entries": [
+    {
+      "rankId": 1,
+      "count": 74199
+    },
+    {
+      "rankId": 2,
+      "count": 29384
+    },
+    {
+      "rankId": 3,
+      "count": 31876
+    },
+    {
+      "rankId": 4,
+      "count": 25944
+    },
+    {
+      "rankId": 5,
+      "count": 25512
+    },
+    {
+      "rankId": 6,
+      "count": 127072
+    },
+    {
+      "rankId": 7,
+      "count": 66427
+    },
+    {
+      "rankId": 8,
+      "count": 69233
+    },
+    {
+      "rankId": 9,
+      "count": 63330
+    },
+    {
+      "rankId": 10,
+      "count": 38041
+    },
+    {
+      "rankId": 11,
+      "count": 98486
+    },
+    {
+      "rankId": 12,
+      "count": 63521
+    },
+    {
+      "rankId": 13,
+      "count": 70093
+    },
+    {
+      "rankId": 14,
+      "count": 60931
+    },
+    {
+      "rankId": 15,
+      "count": 32995
+    },
+    {
+      "rankId": 16,
+      "count": 147541
+    },
+    {
+      "rankId": 17,
+      "count": 89597
+    },
+    {
+      "rankId": 18,
+      "count": 90444
+    },
+    {
+      "rankId": 19,
+      "count": 73323
+    },
+    {
+      "rankId": 20,
+      "count": 40536
+    },
+    {
+      "rankId": 21,
+      "count": 111255
+    },
+    {
+      "rankId": 22,
+      "count": 65185
+    },
+    {
+      "rankId": 23,
+      "count": 63400
+    },
+    {
+      "rankId": 24,
+      "count": 60507
+    },
+    {
+      "rankId": 25,
+      "count": 74608
+    },
+    {
+      "rankId": 26,
+      "count": 197187
+    },
+    {
+      "rankId": 27,
+      "count": 102916
+    },
+    {
+      "rankId": 28,
+      "count": 79623
+    },
+    {
+      "rankId": 29,
+      "count": 65482
+    },
+    {
+      "rankId": 30,
+      "count": 64680
+    },
+    {
+      "rankId": 31,
+      "count": 103191
+    },
+    {
+      "rankId": 32,
+      "count": 80562
+    },
+    {
+      "rankId": 33,
+      "count": 69306
+    },
+    {
+      "rankId": 34,
+      "count": 55702
+    },
+    {
+      "rankId": 35,
+      "count": 33263
+    },
+    {
+      "rankId": 36,
+      "count": 551517
+    }
+  ],
+  "validation": {
+    "status": "estimated",
+    "coverage": "all-rank-boundaries",
+    "checks": [
+      "conditions-confirmed",
+      "pagination-confirmed",
+      "final-page-confirmed",
+      "ordering-confirmed",
+      "rank-mapping-confirmed",
+      "max-lp-account-unit-confirmed",
+      "changes-recorded",
+      "boundaries-rechecked",
+      "unranked-tail-confirmed"
+    ],
+    "notes": [
+      "公式ランクID・表示名対応の確認: 現行のリーグ選択肢の1〜36の表示名と、各掲載行で読み込まれた公式ランク画像のIDを独立に確認した。LPからランクIDや閾値を逆算していない。 出典: https://www.streetfighter.com/6/buckler/ja-jp/ranking/league?character_filter=2&character_id=luke&home_category_id=0&home_filter=1&home_id=0&league_rank=0&page=1&platform=1&user_status=1",
+      "最大LPのアカウント単位の確認: 公式の総合・最大LP条件で、プロフィールへのリンクを持つ掲載行を確認した。既存出典の定義に従い最大LPのファイターアカウントを単位とする。未観測の全件の個別一意性や実人数を証明しない。user_status=1は固定URLの一致を確認する。独立した画面の選択表示との対応は未確認なので、全ユーザーを意味するとは断定しない。 出典: https://www.streetfighter.com/6/buckler/ja-jp/ranking/league?character_filter=2&character_id=luke&home_category_id=0&home_filter=1&home_id=0&league_rank=0&page=1&platform=1&user_status=1",
+      "未ランク・不明区分と末尾の確認: 表示範囲と総件数が整合する最終ページの全行について、読み込まれた公式ランク画像が既知のID1〜36であることを確認した。未ランク・不明画像をROOKIEまたは0件に補完していない。 出典: https://www.streetfighter.com/6/buckler/ja-jp/ranking/league?character_filter=2&character_id=luke&home_category_id=0&home_filter=1&home_id=0&league_rank=0&page=154840&platform=1&user_status=1",
+      "全35境界の前後を新規読取で確認した。読取回数: 675。",
+      "各境界を異なる時刻に観測した取得期間内の概数であり、単一時点の正確な人口分布ではない。",
+      "保存済みの途中記録は探索候補の位置としてのみ使い、今回の全35境界の件数と日時は新しい読取で確認した。",
+      "割合の分母は取得終了時に最終ページで観測した総件数。総件数の変化から誤差上限や信頼区間は算出していない。",
+      "captureStartedAtとobservationの開始総件数・総件数範囲は、先頭・末尾の事前確認を含む取得期間全体の観測を表す。各境界の件数・総件数・日時は、境界探索時の新しい読取の記録である。終了総件数は境界探索の最終確認値を使う。"
+    ]
+  },
+  "observation": {
+    "totalAtStart": 3096800,
+    "totalAtEnd": 3096869,
+    "minTotal": 3096800,
+    "maxTotal": 3096869,
+    "boundaries": [
+      {
+        "rankId": 2,
+        "countAtOrAbove": 3022670,
+        "totalCount": 3096802,
+        "observedAt": "2026-10-27T04:58:09.299Z"
+      },
+      {
+        "rankId": 3,
+        "countAtOrAbove": 2993286,
+        "totalCount": 3096804,
+        "observedAt": "2026-10-27T04:59:58.104Z"
+      },
+      {
+        "rankId": 4,
+        "countAtOrAbove": 2961410,
+        "totalCount": 3096807,
+        "observedAt": "2026-10-27T05:01:53.774Z"
+      },
+      {
+        "rankId": 5,
+        "countAtOrAbove": 2935466,
+        "totalCount": 3096808,
+        "observedAt": "2026-10-27T05:03:28.588Z"
+      },
+      {
+        "rankId": 6,
+        "countAtOrAbove": 2909954,
+        "totalCount": 3096810,
+        "observedAt": "2026-10-27T05:05:20.834Z"
+      },
+      {
+        "rankId": 7,
+        "countAtOrAbove": 2782882,
+        "totalCount": 3096812,
+        "observedAt": "2026-10-27T05:07:11.412Z"
+      },
+      {
+        "rankId": 8,
+        "countAtOrAbove": 2716455,
+        "totalCount": 3096813,
+        "observedAt": "2026-10-27T05:09:08.117Z"
+      },
+      {
+        "rankId": 9,
+        "countAtOrAbove": 2647222,
+        "totalCount": 3096815,
+        "observedAt": "2026-10-27T05:10:47.974Z"
+      },
+      {
+        "rankId": 10,
+        "countAtOrAbove": 2583892,
+        "totalCount": 3096821,
+        "observedAt": "2026-10-27T05:12:29.664Z"
+      },
+      {
+        "rankId": 11,
+        "countAtOrAbove": 2545851,
+        "totalCount": 3096823,
+        "observedAt": "2026-10-27T05:14:09.720Z"
+      },
+      {
+        "rankId": 12,
+        "countAtOrAbove": 2447365,
+        "totalCount": 3096823,
+        "observedAt": "2026-10-27T05:15:51.752Z"
+      },
+      {
+        "rankId": 13,
+        "countAtOrAbove": 2383844,
+        "totalCount": 3096829,
+        "observedAt": "2026-10-27T05:17:36.577Z"
+      },
+      {
+        "rankId": 14,
+        "countAtOrAbove": 2313751,
+        "totalCount": 3096830,
+        "observedAt": "2026-10-27T05:19:06.147Z"
+      },
+      {
+        "rankId": 15,
+        "countAtOrAbove": 2252820,
+        "totalCount": 3096831,
+        "observedAt": "2026-10-27T05:20:51.817Z"
+      },
+      {
+        "rankId": 16,
+        "countAtOrAbove": 2219825,
+        "totalCount": 3096832,
+        "observedAt": "2026-10-27T05:22:26.895Z"
+      },
+      {
+        "rankId": 17,
+        "countAtOrAbove": 2072284,
+        "totalCount": 3096836,
+        "observedAt": "2026-10-27T05:24:01.480Z"
+      },
+      {
+        "rankId": 18,
+        "countAtOrAbove": 1982687,
+        "totalCount": 3096837,
+        "observedAt": "2026-10-27T05:25:41.875Z"
+      },
+      {
+        "rankId": 19,
+        "countAtOrAbove": 1892243,
+        "totalCount": 3096840,
+        "observedAt": "2026-10-27T05:27:18.032Z"
+      },
+      {
+        "rankId": 20,
+        "countAtOrAbove": 1818920,
+        "totalCount": 3096843,
+        "observedAt": "2026-10-27T05:29:02.607Z"
+      },
+      {
+        "rankId": 21,
+        "countAtOrAbove": 1778384,
+        "totalCount": 3096846,
+        "observedAt": "2026-10-27T05:30:25.344Z"
+      },
+      {
+        "rankId": 22,
+        "countAtOrAbove": 1667129,
+        "totalCount": 3096846,
+        "observedAt": "2026-10-27T05:32:04.932Z"
+      },
+      {
+        "rankId": 23,
+        "countAtOrAbove": 1601944,
+        "totalCount": 3096847,
+        "observedAt": "2026-10-27T05:33:30.642Z"
+      },
+      {
+        "rankId": 24,
+        "countAtOrAbove": 1538544,
+        "totalCount": 3096847,
+        "observedAt": "2026-10-27T05:34:45.512Z"
+      },
+      {
+        "rankId": 25,
+        "countAtOrAbove": 1478037,
+        "totalCount": 3096849,
+        "observedAt": "2026-10-27T05:36:15.652Z"
+      },
+      {
+        "rankId": 26,
+        "countAtOrAbove": 1403429,
+        "totalCount": 3096852,
+        "observedAt": "2026-10-27T05:37:52.695Z"
+      },
+      {
+        "rankId": 27,
+        "countAtOrAbove": 1206242,
+        "totalCount": 3096852,
+        "observedAt": "2026-10-27T05:39:21.841Z"
+      },
+      {
+        "rankId": 28,
+        "countAtOrAbove": 1103326,
+        "totalCount": 3096856,
+        "observedAt": "2026-10-27T05:40:52.128Z"
+      },
+      {
+        "rankId": 29,
+        "countAtOrAbove": 1023703,
+        "totalCount": 3096858,
+        "observedAt": "2026-10-27T05:42:11.686Z"
+      },
+      {
+        "rankId": 30,
+        "countAtOrAbove": 958221,
+        "totalCount": 3096863,
+        "observedAt": "2026-10-27T05:43:55.214Z"
+      },
+      {
+        "rankId": 31,
+        "countAtOrAbove": 893541,
+        "totalCount": 3096864,
+        "observedAt": "2026-10-27T05:45:42.084Z"
+      },
+      {
+        "rankId": 32,
+        "countAtOrAbove": 790350,
+        "totalCount": 3096865,
+        "observedAt": "2026-10-27T05:47:16.650Z"
+      },
+      {
+        "rankId": 33,
+        "countAtOrAbove": 709788,
+        "totalCount": 3096868,
+        "observedAt": "2026-10-27T05:48:56.007Z"
+      },
+      {
+        "rankId": 34,
+        "countAtOrAbove": 640482,
+        "totalCount": 3096867,
+        "observedAt": "2026-10-27T05:50:20.690Z"
+      },
+      {
+        "rankId": 35,
+        "countAtOrAbove": 584780,
+        "totalCount": 3096869,
+        "observedAt": "2026-10-27T05:51:56.286Z"
+      },
+      {
+        "rankId": 36,
+        "countAtOrAbove": 551517,
+        "totalCount": 3096869,
+        "observedAt": "2026-10-27T05:53:28.114Z"
+      }
+    ]
+  }
+}
