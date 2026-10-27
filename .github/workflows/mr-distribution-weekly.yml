@@ -2,7 +2,7 @@ name: Collect weekly MR distribution
 
 on:
   schedule:
-    - cron: '0 12 * * 5' # Friday 21:00 Asia/Tokyo; enabled after the manual verification
+    - cron: '0 12 * * 5' # Friday 21:00 Asia/Tokyo; controlled by MR_DISTRIBUTION_WEEKLY_ENABLED
   workflow_dispatch:
 
 permissions:

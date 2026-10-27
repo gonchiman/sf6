@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { parseMrDistributionDataset, parseMrDistributionManifest } from '../src/lib/mrDistribution.ts'
 import type { MrDistributionDataset, MrDistributionManifest } from '../src/types/mrDistribution.ts'
-import { isAllowedMrWeeklyExecution, parseMrWeeklyRunReport } from './collect-mr-distribution-weekly.ts'
+import { isAllowedMrWeeklyExecution, mrWeeklyFailureMessage, parseMrWeeklyRunReport } from './collect-mr-distribution-weekly.ts'
 import type { MrWeeklyRunReport } from './collect-mr-distribution-weekly.ts'
 import { importMrDistributionData } from './import-mr-distribution-data.ts'
 import { mrDistributionPathWithin, validateMrDistributionDirectory } from './validate-mr-distribution-data.ts'
@@ -167,7 +167,7 @@ export async function publishMrWeekly(options: PublishMrWeeklyOptions = {}): Pro
     const staged = await readPublic(publicStage)
     const manifest = parseMrDistributionManifest({ ...staged.manifest, generatedAt,
       ...(incoming.run.status === 'failed' ? { availability: { status: 'collection-failed', checkedAt: incoming.run.endedAt,
-        message: 'MR分布の取得を完了できませんでした。前回の正常データを保持しています。' } } : {}) })
+        message: mrWeeklyFailureMessage(incoming.run, staged.datasets.length > 0) } } : {}) })
     if (incoming.run.status === 'succeeded') delete manifest.availability
     await writeFile(resolve(publicStage, 'index.json'), `${JSON.stringify(manifest, null, 2)}\n`)
     await mkdir(resolve(stage, 'runs'))

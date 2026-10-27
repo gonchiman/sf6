@@ -93,7 +93,7 @@ test('diagnostic captures publish alongside unchanged legacy runs and remain ide
   const f = await setup(t)
   await publishMrWeekly(f.options)
   const before = await tree(f.historyDirectory)
-  const diagnostics = { lastAttemptedPage: 3602, lastSuccessfulPage: 3603, lastHttpStatus: 404,
+  const diagnostics = { lastAttemptedPage: 3602, lastSuccessfulPage: 3603, lastHttpStatus: 405,
     lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null }
   const failed = fixture('28', false, '43')
   const diagnosticFailure = { ...failed, run: { ...failed.run, capture: {
@@ -107,16 +107,24 @@ test('diagnostic captures publish alongside unchanged legacy runs and remain ide
   for (const [name, content] of Object.entries(before)) if (name !== 'public/index.json') assert.equal(after[name], content)
   assert.equal(Object.hasOwn(JSON.parse(after[`runs/${f.value.run.id}.json`]).capture, 'diagnostics'), false)
   assert.deepEqual(JSON.parse(after[`runs/${failed.run.id}.json`]).capture.diagnostics, diagnostics)
+  assert.equal(JSON.parse(after['public/index.json']).availability.message,
+    'MR分布の取得を完了できませんでした。前回の正常データを保持しています。')
   await publishMrWeekly(options)
   assert.deepEqual(await tree(f.historyDirectory), after)
 })
 
-test('a failed collection retains complete captures and records failure without exposing arbitrary input text', async t => {
+test('a confirmed CAPTCHA retains complete captures, ignores incoming text and clears its status after recovery', async t => {
   const f = await setup(t)
   await publishMrWeekly(f.options)
   const before = await tree(f.historyDirectory)
+  const previousDataset = await readFile(resolve(f.historyDirectory, 'public', `${f.value.dataset.id}.json`))
   const failureInput = resolve(f.root, 'incoming-failure')
-  const failed = fixture('28', false, '43')
+  const base = fixture('28', false, '43')
+  const failed = { ...base, run: { ...base.run, capture: { ...base.run.capture, diagnostics: {
+    lastAttemptedPage: 11, lastSuccessfulPage: 13, lastHttpStatus: 405,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null,
+    humanVerification: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: null },
+  } } } }
   failed.manifest.availability!.message = 'untrusted private exception details'
   await incoming(failureInput, failed)
   assert.deepEqual(await publishMrWeekly({ ...f.options, inputDirectory: failureInput }), { datasets: 2, entries: 52, runs: 2 })
@@ -125,12 +133,16 @@ test('a failed collection retains complete captures and records failure without 
   const manifest = JSON.parse(after['public/index.json'])
   assert.equal(manifest.availability.status, 'collection-failed')
   assert.equal(manifest.availability.checkedAt, failed.run.endedAt)
+  assert.equal(manifest.availability.message,
+    '取得元でCAPTCHAによる人間確認が必要なため、MR分布の取得を停止しました。前回の正常データを保持しています。')
+  assert.deepEqual(await readFile(resolve(f.historyDirectory, 'public', `${f.value.dataset.id}.json`)), previousDataset)
   assert.doesNotMatch(after['public/index.json'], /untrusted private/)
   const recoveredInput = resolve(f.root, 'incoming-recovered')
   await incoming(recoveredInput, fixture('29', true, '44'))
   await publishMrWeekly({ ...f.options, inputDirectory: recoveredInput })
   const recovered = JSON.parse(await readFile(resolve(f.historyDirectory, 'public/index.json'), 'utf8'))
   assert.equal(recovered.availability, undefined)
+  assert.deepEqual(await readFile(resolve(f.historyDirectory, 'public', `${f.value.dataset.id}.json`)), previousDataset)
 })
 
 test('first failed attempt publishes the bundled history rather than zeroing the distribution', async t => {

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { parseMrDistributionDataset, parseMrDistributionManifest } from '../src/lib/mrDistribution.ts'
 import type { MrDistributionCaptureReport } from './collect-mr-distribution.ts'
-import { isAllowedMrWeeklyExecution, MrWeeklyError, parseMrWeeklyRunReport, runMrWeekly, writeMrWeeklyOutput } from './collect-mr-distribution-weekly.ts'
+import { isAllowedMrWeeklyExecution, mrWeeklyFailureMessage, MrWeeklyError, parseMrWeeklyRunReport, runMrWeekly, writeMrWeeklyOutput } from './collect-mr-distribution-weekly.ts'
 import type { MrWeeklyDependencies, MrWeeklyRunReport } from './collect-mr-distribution-weekly.ts'
 import { validateMrDistributionDirectory } from './validate-mr-distribution-data.ts'
 
@@ -258,6 +258,31 @@ test('challenge report parsing rejects raw headers, missing evidence and unverif
   }
 })
 
+test('public failure messages distinguish confirmed CAPTCHA, human verification, authentication and unclassified HTTP 405', () => {
+  const failure = report(false)
+  const diagnostics = { lastAttemptedPage: 11, lastSuccessfulPage: 13, lastHttpStatus: 405,
+    lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null }
+  const legacy405 = { ...failure, capture: { ...capture(false), readFailureCode: 'http-error' as const, diagnostics } }
+  assert.equal(mrWeeklyFailureMessage(legacy405), 'MR分布の取得を完了できませんでした。')
+  assert.equal(mrWeeklyFailureMessage({ ...failure, failureReason: 'authentication-unavailable', capture: null }),
+    '保存済みの認証状態を確認できませんでした。')
+  assert.equal(mrWeeklyFailureMessage(failure), '取得元の人間確認が必要なため、MR分布の取得を停止しました。')
+  const captcha = { ...legacy405, capture: { ...legacy405.capture, diagnostics: { ...diagnostics,
+    humanVerification: { wafHeaderChecked: true, wafAction: 'captcha' as const, domDetected: null } } } }
+  assert.equal(mrWeeklyFailureMessage(captcha, true),
+    '取得元でCAPTCHAによる人間確認が必要なため、MR分布の取得を停止しました。前回の正常データを保持しています。')
+  for (const humanVerification of [
+    { wafHeaderChecked: true, wafAction: null, domDetected: true },
+    { wafHeaderChecked: true, wafAction: 'challenge' as const, domDetected: null },
+  ]) {
+    assert.equal(mrWeeklyFailureMessage({ ...legacy405, capture: { ...legacy405.capture,
+      diagnostics: { ...diagnostics, humanVerification } } }), '取得元の人間確認が必要なため、MR分布の取得を停止しました。')
+  }
+  assert.equal(mrWeeklyFailureMessage({ ...captcha, failureReason: 'output-unavailable' }), 'MR分布の取得を完了できませんでした。')
+  assert.throws(() => mrWeeklyFailureMessage({ ...failure, message: PRIVATE } as MrWeeklyRunReport))
+  assert.throws(() => mrWeeklyFailureMessage(report()))
+})
+
 test('output writer validates complete or failed snapshots before promotion and refuses overwrite', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'mr-weekly-output-test-'))
   try {
@@ -274,6 +299,7 @@ test('output writer validates complete or failed snapshots before promotion and 
     assert.equal(manifest.datasets.length, 0)
     assert.equal(manifest.availability?.status, 'collection-failed')
     assert.equal(manifest.availability?.checkedAt, report(false).endedAt)
+    assert.equal(manifest.availability?.message, '取得元の人間確認が必要なため、MR分布の取得を停止しました。')
     assert.deepEqual(await validateMrDistributionDirectory(resolve(failed, 'public')), { datasets: 0, entries: 0 })
     await assert.rejects(writeMrWeeklyOutput({ run: report(), dataset: undefined }, resolve(directory, 'missing')))
     await assert.rejects(writeMrWeeklyOutput({ run: report(false), dataset }, resolve(directory, 'partial')))

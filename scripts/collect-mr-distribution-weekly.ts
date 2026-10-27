@@ -128,6 +128,24 @@ export function parseMrWeeklyRunReport(value: unknown): MrWeeklyRunReport {
   return result
 }
 
+/** Public status uses validated classifications only; HTTP 405 alone is not CAPTCHA evidence. */
+export function mrWeeklyFailureMessage(input: MrWeeklyRunReport, hasPreviousData = false): string {
+  const run = parseMrWeeklyRunReport(input)
+  if (run.status !== 'failed') reject()
+  let message = 'MR分布の取得を完了できませんでした。'
+  if (run.failureReason === 'authentication-unavailable') message = '保存済みの認証状態を確認できませんでした。'
+  else if (run.failureReason === 'collection-failed' && run.capture?.status === 'failed') {
+    const evidence = run.capture.diagnostics?.humanVerification
+    if (evidence?.wafHeaderChecked && evidence.wafAction === 'captcha') {
+      message = '取得元でCAPTCHAによる人間確認が必要なため、MR分布の取得を停止しました。'
+    } else if (run.capture.readFailureCode === 'human-verification' || evidence?.domDetected === true
+      || evidence?.wafHeaderChecked && evidence.wafAction === 'challenge') {
+      message = '取得元の人間確認が必要なため、MR分布の取得を停止しました。'
+    }
+  }
+  return `${message}${hasPreviousData ? '前回の正常データを保持しています。' : ''}`
+}
+
 export function isAllowedMrWeeklyExecution(env: Environment): boolean {
   return env.GITHUB_ACTIONS === 'true' && env.RUNNER_ENVIRONMENT === 'github-hosted' && env.RUNNER_OS === 'Windows'
     && env.GITHUB_REPOSITORY === 'gonchiman/sf6' && env.GITHUB_REF === 'refs/heads/main'
@@ -154,7 +172,7 @@ export async function writeMrWeeklyOutput(input: { run: MrWeeklyRunReport; datas
   const manifest = parseMrDistributionManifest({ schemaVersion: 1, generatedAt: run.endedAt, source: { ...MR_DISTRIBUTION_SOURCE },
     datasets: dataset ? [{ id: dataset.id, path: `${dataset.id}.json`, captureStartedAt: dataset.captureStartedAt, captureEndedAt: dataset.captureEndedAt, totalCount: dataset.totalCount }] : [],
     ...(!dataset ? { availability: { status: 'collection-failed', checkedAt: run.endedAt,
-      message: run.failureReason === 'authentication-unavailable' ? '保存済みの認証状態を確認できませんでした。' : 'MR分布の取得を完了できませんでした。' } } : {}) })
+      message: mrWeeklyFailureMessage(run) } } : {}) })
   const destination = resolve(output), parent = dirname(destination)
   if (parent === destination) throw new MrWeeklyError('output')
   await checkParents(parent)
