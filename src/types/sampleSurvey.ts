@@ -33,9 +33,37 @@ export interface SampleSurveyStratumResult {
   min: number | null
   max: number | null
 }
+export interface SampleSurveyStratumObservation {
+  id: string
+  status: 'pending' | 'collecting' | 'checked' | 'review-required'
+  startedAt: string | null
+  finishedAt: string | null
+  totalCountBefore: number | null
+  totalCountAfter: number | null
+  startBefore: number | null
+  endBefore: number | null
+  startAfter: number | null
+  endAfter: number | null
+  boundaryChanged: boolean
+}
+export interface SampleSurveyChange {
+  kind: 'total-count' | 'boundary-start' | 'boundary-end' | 'page-size' | 'row-order' | 'range-order'
+    | 'row-outside-stratum' | 'duplicate' | 'page-unavailable'
+  target: SampleSurveyTarget
+  stratumId: string | null
+  at: string
+  before: number | null
+  after: number | null
+}
+export interface SampleSurveyObservation {
+  method: 'rank-position-interval-v1'
+  strata: SampleSurveyStratumObservation[]
+  changes: SampleSurveyChange[]
+  omittedChanges: number
+}
 /** Public aggregate only. No account IDs, profile links or individual observations. */
 export interface SampleSurveyRun {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   id: string
   planId: string
   config: SampleSurveyConfig
@@ -52,6 +80,7 @@ export interface SampleSurveyRun {
   frameChanged: boolean
   stopReason: SampleSurveyError | null
   resumeAllowed: boolean
+  observation?: SampleSurveyObservation
 }
 export interface SampleSurveyServiceStatus {
   available: boolean

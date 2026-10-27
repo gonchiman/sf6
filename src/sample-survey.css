@@ -7,6 +7,10 @@
 .sample-survey-scroll { max-height: 520px; }
 .sample-survey-table { min-width: 600px; }
 .sample-survey-table th:first-child { min-width: 125px; }
+.sample-survey-table-observed { min-width: 880px; }
+.sample-survey-row-period { display: block; margin-top: 4px; font-size: 11px; font-weight: normal; color: var(--text-soft); }
+.sample-survey-table td.sample-survey-quality { text-align: left; white-space: nowrap; }
+.sample-survey-change-status { margin: 0 0 12px; color: var(--text-soft); font-size: 12px; }
 .sample-survey-empty { margin: 0; padding: 20px 0; color: var(--text-muted); font-size: 14px; }
 .sample-survey-result-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-top: 12px; color: var(--text-muted); font-size: 12px; }
 @media (max-width: 420px) {

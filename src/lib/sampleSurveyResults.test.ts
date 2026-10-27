@@ -21,6 +21,17 @@ function run(day = '20'): SampleSurveyRun {
       succeeded: 3, missing: 0, duplicates: 0, mean: 25000, min: 24900, max: 25100 }],
     frameChanged: false, stopReason: null, resumeAllowed: false }
 }
+function intervalRun(day = '20'): SampleSurveyRun {
+  const value = run(day)
+  value.schemaVersion = 2; value.frameChanged = true; value.uniqueAccountCount = 1
+  Object.assign(value.strata[0], { succeeded: 1, missing: 1, duplicates: 1, min: 25000, max: 25000 })
+  value.observation = { method: 'rank-position-interval-v1', omittedChanges: 0,
+    strata: [{ id: 'lp-MASTER', status: 'review-required', startedAt: value.startedAt, finishedAt: value.finishedAt,
+      totalCountBefore: 3, totalCountAfter: 4, startBefore: 0, endBefore: 3, startAfter: 0, endAfter: 4, boundaryChanged: true }],
+    changes: [{ kind: 'total-count', target: 'lp', stratumId: 'lp-MASTER', at: value.finishedAt!, before: 3, after: 4 },
+      { kind: 'boundary-end', target: 'lp', stratumId: 'lp-MASTER', at: value.finishedAt!, before: 3, after: 4 }] }
+  return value
+}
 function descriptor(value = run()): SampleSurveyResultsDescriptor {
   return { id: value.id, path: `runs/${value.id}.json`, captureStartedAt: value.startedAt, captureEndedAt: value.finishedAt! }
 }
@@ -50,6 +61,31 @@ test('completed public runs retain frame changes, missing counts and observed ze
   const privateStratum = { ...run(), strata: [{ ...run().strata[0], accountIds: ['private-account'] }] }
   assert.throws(() => parseSampleSurveyResultsRun(privateStratum))
   assert.throws(() => parseSampleSurveyResultsRun(run(), descriptor(run('19'))))
+})
+
+test('interval quality metadata survives parsing and unknown or unfinished evidence is rejected', () => {
+  const value = intervalRun()
+  assert.deepEqual(parseSampleSurveyResultsRun(value, descriptor(value)), value)
+  assert.throws(() => parseSampleSurveyResultsRun({ ...value, observation: { ...value.observation, accountIds: ['private'] } }))
+  assert.throws(() => parseSampleSurveyResultsRun({ ...value, observation: { ...value.observation,
+    changes: [{ ...value.observation!.changes[0], accountId: 'private' }] } }))
+  const unfinished = structuredClone(value); unfinished.observation!.strata[0].status = 'collecting'
+  assert.throws(() => parseSampleSurveyResultsRun(unfinished))
+  assert.throws(() => parseSampleSurveyResultsRun(value, descriptor(run('19'))))
+})
+
+test('mixed legacy and interval history loads each schema with its own quality information', async () => {
+  const latest = intervalRun(), legacy = run('19'), calls: string[] = []
+  const source = feed(async input => {
+    const url = String(input); calls.push(url)
+    return json(url.endsWith('index.json') ? manifest([latest, legacy]) : url.includes(legacy.id) ? legacy : latest)
+  })
+  const publication = await source.loadPublication()
+  const current = await source.loadDataset(publication, descriptor(latest))
+  assert.deepEqual(current, latest); assert.equal(current.observation!.strata[0].status, 'review-required')
+  assert.equal(calls.length, 2)
+  assert.deepEqual(await source.loadDataset(publication, descriptor(legacy)), legacy)
+  assert.equal(calls.length, 3)
 })
 
 test('manifest accepts only a bounded exact source and fixed relative run filenames', () => {

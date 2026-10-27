@@ -1,4 +1,4 @@
-import type { SampleSurveyConfig, SampleSurveyError, SampleSurveyPlan, SampleSurveyRank, SampleSurveyRun, SampleSurveyServiceStatus, SampleSurveyStratumResult } from '../types/sampleSurvey.ts'
+import type { SampleSurveyChange, SampleSurveyConfig, SampleSurveyError, SampleSurveyObservation, SampleSurveyPlan, SampleSurveyRank, SampleSurveyRun, SampleSurveyServiceStatus, SampleSurveyStratumObservation, SampleSurveyStratumResult } from '../types/sampleSurvey.ts'
 
 export const SAMPLE_SURVEY_RANKS: readonly SampleSurveyRank[] = ['ROOKIE', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER']
 export const SAMPLE_SURVEY_MR_BANDS = [
@@ -10,6 +10,7 @@ export const SAMPLE_SURVEY_MR_BANDS = [
   { id: 'mr-2000-plus', label: '2000以上', min: 2000, max: null },
 ] as const
 export const SAMPLE_SURVEY_INTERVAL_MS = 10_000
+export const SAMPLE_SURVEY_MAX_CHANGES = 64
 export const DEFAULT_SAMPLE_SURVEY_CONFIG: SampleSurveyConfig = {
   ranks: [...SAMPLE_SURVEY_RANKS], rankSampleSize: 200, includeMr: true, mrSampleSize: 100, maxDurationMinutes: 120,
 }
@@ -89,10 +90,62 @@ function parseStratum(value: unknown, definition: ReturnType<typeof sampleSurvey
   }
   return { ...definition, population, selected, processed, succeeded, missing, duplicates, mean, min, max }
 }
+const changeKinds: readonly SampleSurveyChange['kind'][] = [
+  'total-count', 'boundary-start', 'boundary-end', 'page-size', 'row-order', 'range-order',
+  'row-outside-stratum', 'duplicate', 'page-unavailable',
+]
+function nullableInteger(value: unknown): number | null { return value === null ? null : integer(value) }
+function nullableTime(value: unknown): string | null { return value === null ? null : time(value) }
+function parseObservation(value: unknown, rows: SampleSurveyStratumResult[], startedAt: string, updatedAt: string): SampleSurveyObservation {
+  const item = record(value, ['method', 'strata', 'changes', 'omittedChanges'])
+  if (item.method !== 'rank-position-interval-v1' || !Array.isArray(item.strata) || item.strata.length !== rows.length
+    || !Array.isArray(item.changes) || item.changes.length > SAMPLE_SURVEY_MAX_CHANGES) fail()
+  const withinPeriod = (at: string | null) => at === null || at >= startedAt && at <= updatedAt
+  const strata = item.strata.map((value, index): SampleSurveyStratumObservation => {
+    const row = rows[index], input = record(value, ['id', 'status', 'startedAt', 'finishedAt', 'totalCountBefore', 'totalCountAfter',
+      'startBefore', 'endBefore', 'startAfter', 'endAfter', 'boundaryChanged'])
+    if (input.id !== row.id) fail()
+    const status = oneOf(input.status, ['pending', 'collecting', 'checked', 'review-required'] as const)
+    const observation: SampleSurveyStratumObservation = { id: row.id, status, startedAt: nullableTime(input.startedAt),
+      finishedAt: nullableTime(input.finishedAt), totalCountBefore: nullableInteger(input.totalCountBefore), totalCountAfter: nullableInteger(input.totalCountAfter),
+      startBefore: nullableInteger(input.startBefore), endBefore: nullableInteger(input.endBefore), startAfter: nullableInteger(input.startAfter),
+      endAfter: nullableInteger(input.endAfter), boundaryChanged: boolean(input.boundaryChanged) }
+    const { startBefore, endBefore, startAfter, endAfter } = observation
+    if (!withinPeriod(observation.startedAt) || !withinPeriod(observation.finishedAt)
+      || observation.finishedAt !== null && (observation.startedAt === null || observation.finishedAt < observation.startedAt)
+      || startBefore !== null && endBefore !== null && startBefore > endBefore
+      || startAfter !== null && endAfter !== null && startAfter > endAfter) fail()
+    if (status === 'pending') {
+      if ([observation.startedAt, observation.finishedAt, observation.totalCountBefore, observation.totalCountAfter,
+        startBefore, endBefore, startAfter, endAfter].some(value => value !== null) || observation.boundaryChanged
+        || row.population !== null || row.selected !== 0) fail()
+    } else if (observation.startedAt === null) fail()
+    if (status === 'collecting' && observation.finishedAt !== null) fail()
+    if (status === 'checked' || status === 'review-required') {
+      if (observation.finishedAt === null) fail()
+    }
+    if (row.population !== null && startBefore !== null && endBefore !== null && row.population !== endBefore - startBefore) fail()
+    if ((startBefore !== null && startAfter !== null && startBefore !== startAfter
+      || endBefore !== null && endAfter !== null && endBefore !== endAfter) && !observation.boundaryChanged) fail()
+    if (status === 'checked' && ([observation.totalCountBefore, observation.totalCountAfter, startBefore, endBefore, startAfter, endAfter].some(value => value === null)
+      || endBefore! > observation.totalCountBefore! || endAfter! > observation.totalCountAfter!
+      || observation.boundaryChanged || startBefore !== startAfter || endBefore !== endAfter || row.population === null
+      || row.selected !== Math.min(row.requested, row.population) || row.processed !== row.selected || row.missing !== 0 || row.duplicates !== 0)) fail()
+    return observation
+  })
+  const changes = item.changes.map((value): SampleSurveyChange => {
+    const input = record(value, ['kind', 'target', 'stratumId', 'at', 'before', 'after'])
+    const kind = oneOf(input.kind, changeKinds), target = oneOf(input.target, ['lp', 'mr'] as const), at = time(input.at)
+    const stratumId = input.stratumId === null ? null : id(input.stratumId)
+    if (!withinPeriod(at) || !rows.some(row => row.target === target && (stratumId === null || row.id === stratumId))) fail()
+    return { kind, target, stratumId, at, before: nullableInteger(input.before), after: nullableInteger(input.after) }
+  })
+  return { method: 'rank-position-interval-v1', strata, changes, omittedChanges: integer(item.omittedChanges) }
+}
 export function parseSampleSurveyRun(value: unknown): SampleSurveyRun {
   const item = record(value, ['schemaVersion', 'id', 'planId', 'config', 'state', 'phase', 'startedAt', 'updatedAt', 'finishedAt',
-    'elapsedMs', 'attempts', 'successfulPages', 'uniqueAccountCount', 'strata', 'frameChanged', 'stopReason', 'resumeAllowed'])
-  if (item.schemaVersion !== 1) fail()
+    'elapsedMs', 'attempts', 'successfulPages', 'uniqueAccountCount', 'strata', 'frameChanged', 'stopReason', 'resumeAllowed'], ['observation'])
+  if (item.schemaVersion !== 1 && item.schemaVersion !== 2 || (item.schemaVersion === 2) !== Object.hasOwn(item, 'observation')) fail()
   const config = parseSampleSurveyConfig(item.config), definitions = sampleSurveyResultDefinitions(config)
   if (!Array.isArray(item.strata) || item.strata.length !== definitions.length) fail()
   const strata = item.strata.map((stratum, index) => parseStratum(stratum, definitions[index]))
@@ -102,17 +155,23 @@ export function parseSampleSurveyRun(value: unknown): SampleSurveyRun {
   const active = state === 'preparing' || state === 'running'
   const stopReason = item.stopReason === null ? null : oneOf(item.stopReason, Object.keys(errors) as SampleSurveyError[])
   const resumeAllowed = boolean(item.resumeAllowed)
+  const frameChanged = boolean(item.frameChanged)
+  const observation = item.schemaVersion === 2 ? parseObservation(item.observation, strata, startedAt, updatedAt) : undefined
   if (Date.parse(updatedAt) < Date.parse(startedAt) || finishedAt && (Date.parse(finishedAt) < Date.parse(startedAt) || Date.parse(finishedAt) > Date.parse(updatedAt))) fail()
   if (active !== (finishedAt === null) || (active || state === 'complete') && stopReason !== null) fail()
   if (resumeAllowed && (active || state === 'complete' || !['cancelled', 'limit-reached', 'interrupted'].includes(stopReason ?? ''))) fail()
-  if (phase !== 'boundaries' && strata.some(row => row.population === null || row.selected !== Math.min(row.requested, row.population))) fail()
+  if (item.schemaVersion === 1 && phase !== 'boundaries' && strata.some(row => row.population === null || row.selected !== Math.min(row.requested, row.population))) fail()
   if (resumeAllowed && strata.some(row => row.target === 'mr' && row.processed > 0)) fail()
-  if (state === 'complete' && (phase !== 'complete' || strata.some(row => row.population === null || row.processed !== row.selected))) fail()
+  if (observation && (observation.strata.some(row => row.boundaryChanged) || strata.some(row => row.missing > 0 || row.duplicates > 0)) && !frameChanged) fail()
+  if (state === 'complete' && (phase !== 'complete' || strata.some(row => row.processed !== row.selected
+    || row.population !== null && row.selected !== Math.min(row.requested, row.population))
+    || (observation ? observation.strata.some(row => !['checked', 'review-required'].includes(row.status)
+      || row.finishedAt === null || row.finishedAt > finishedAt!) : strata.some(row => row.population === null)))) fail()
   const attempts = integer(item.attempts)
-  return { schemaVersion: 1, id: id(item.id), planId: id(item.planId), config, state, phase, startedAt, updatedAt, finishedAt,
+  return { schemaVersion: item.schemaVersion, id: id(item.id), planId: id(item.planId), config, state, phase, startedAt, updatedAt, finishedAt,
     elapsedMs: integer(item.elapsedMs), attempts, successfulPages: integer(item.successfulPages, 0, attempts),
     uniqueAccountCount: integer(item.uniqueAccountCount, 0, strata.reduce((total, row) => total + row.succeeded, 0)),
-    strata, frameChanged: boolean(item.frameChanged), stopReason, resumeAllowed }
+    strata, frameChanged, stopReason, resumeAllowed, ...(observation ? { observation } : {}) }
 }
 export function parseSampleSurveyStatus(value: unknown): SampleSurveyServiceStatus {
   const item = record(value, ['available', 'sessionAvailable', 'token', 'plans', 'runs', 'activeRunId'], ['error'])

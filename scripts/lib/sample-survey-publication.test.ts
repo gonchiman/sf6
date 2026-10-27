@@ -15,6 +15,22 @@ function result(id = 'run-1', minute = 0): SampleSurveyRun {
     strata: [{ id: 'lp-MASTER', label: 'MASTER', target: 'lp', requested: 10, population: 20, selected: 10, processed: 10,
       succeeded: 10, missing: 0, duplicates: 0, mean: 30000, min: 30000, max: 30000 }] }
 }
+function intervalResult(id = 'interval-run', review = false): SampleSurveyRun {
+  const value = result(id, 1), observedAt = value.startedAt
+  value.schemaVersion = 2
+  value.observation = { method: 'rank-position-interval-v1', omittedChanges: 0,
+    strata: [{ id: 'lp-MASTER', status: review ? 'review-required' : 'checked', startedAt: observedAt, finishedAt: observedAt,
+      totalCountBefore: 20, totalCountAfter: 21, startBefore: 0, endBefore: 20, startAfter: 0, endAfter: 20, boundaryChanged: false }],
+    changes: [{ kind: 'total-count', target: 'lp', stratumId: 'lp-MASTER', at: observedAt, before: 20, after: 21 }] }
+  if (review) {
+    value.frameChanged = true; value.uniqueAccountCount = 8
+    Object.assign(value.strata[0], { succeeded: 8, missing: 1, duplicates: 1 })
+    value.observation.changes.push(
+      { kind: 'row-outside-stratum', target: 'lp', stratumId: 'lp-MASTER', at: observedAt, before: 0, after: 1 },
+      { kind: 'duplicate', target: 'lp', stratumId: 'lp-MASTER', at: observedAt, before: 0, after: 1 })
+  }
+  return value
+}
 async function temporary(t: Parameters<Parameters<typeof test>[1]>[0]) {
   const root = await mkdtemp(join(tmpdir(), 'sample-survey-publication-'))
   t.after(() => rm(root, { recursive: true, force: true }))
@@ -43,6 +59,54 @@ test('invalid, partial, changed and private augmented reports cannot modify exis
   const duplicate = result('duplicate'); duplicate.strata[0].duplicates = 1; duplicate.strata[0].succeeded = 9; duplicate.uniqueAccountCount = 9
   for (const value of [partial, changed, missing, duplicate, { ...result(), accountId: 'private-id' }, { ...result(), id: '../escape' }]) {
     assert.throws(() => publishableSampleSurveyRun(value))
+    await assert.rejects(writeSampleSurveyResults([value], output, generatedAt))
+    assert.equal(await readFile(join(output, 'index.json'), 'utf8'), before)
+  }
+})
+
+test('completed interval observations preserve quality evidence alongside immutable legacy history', async t => {
+  const root = await temporary(t), input = join(root, 'input'), output = join(root, 'history')
+  await writeSampleSurveyResults([result()], output, generatedAt)
+  const oldBytes = await readFile(join(output, 'runs/run-1.json'), 'utf8')
+  const reviewed = intervalResult('reviewed', true)
+  assert.deepEqual(publishableSampleSurveyRun(reviewed), reviewed)
+  await writeSampleSurveyResults([reviewed], input, generatedAt)
+  assert.deepEqual(await publishSampleSurveyResults(input, output, generatedAt), { datasets: 2 })
+  assert.equal(await readFile(join(output, 'runs/run-1.json'), 'utf8'), oldBytes)
+  assert.deepEqual(JSON.parse(await readFile(join(output, 'runs/reviewed.json'), 'utf8')), reviewed)
+  const manifest = JSON.parse(await readFile(join(output, 'index.json'), 'utf8'))
+  assert.equal(manifest.datasets[0].id, 'reviewed')
+  const changed = structuredClone(reviewed); changed.observation!.omittedChanges = 1
+  await assert.rejects(writeSampleSurveyResults([changed], output, generatedAt))
+  assert.deepEqual(await validateSampleSurveyResultsDirectory(output), { datasets: 2 })
+})
+
+test('an unestablished interval frame is not published as zero, but a checked empty frame is', () => {
+  const unknown = intervalResult('unknown'), observed = unknown.observation!.strata[0]
+  unknown.uniqueAccountCount = 0; unknown.frameChanged = true
+  Object.assign(unknown.strata[0], { population: null, selected: 0, processed: 0, succeeded: 0, mean: null, min: null, max: null })
+  Object.assign(observed, { status: 'review-required', totalCountBefore: null, totalCountAfter: null,
+    startBefore: null, endBefore: null, startAfter: null, endAfter: null })
+  unknown.observation!.changes = []
+  assert.throws(() => publishableSampleSurveyRun(unknown))
+  const empty = intervalResult('empty-v2')
+  empty.uniqueAccountCount = 0
+  Object.assign(empty.strata[0], { population: 0, selected: 0, processed: 0, succeeded: 0, mean: null, min: null, max: null })
+  Object.assign(empty.observation!.strata[0], { totalCountBefore: 0, totalCountAfter: 0, startBefore: 0, endBefore: 0, startAfter: 0, endAfter: 0 })
+  empty.observation!.changes = []
+  assert.deepEqual(publishableSampleSurveyRun(empty), empty)
+})
+
+test('unfinished and augmented interval evidence cannot change published history', async t => {
+  const root = await temporary(t), output = join(root, 'history')
+  await writeSampleSurveyResults([result()], output, generatedAt)
+  const before = await readFile(join(output, 'index.json'), 'utf8')
+  const stopped = intervalResult('stopped')
+  Object.assign(stopped, { state: 'stopped', phase: 'sampling', stopReason: 'limit-reached' })
+  const pending = intervalResult('pending'); pending.observation!.strata[0].status = 'pending'
+  const privateValue = intervalResult('private')
+  const injected = { ...privateValue, observation: { ...privateValue.observation, accountIds: ['private-id'] } }
+  for (const value of [stopped, pending, injected]) {
     await assert.rejects(writeSampleSurveyResults([value], output, generatedAt))
     assert.equal(await readFile(join(output, 'index.json'), 'utf8'), before)
   }

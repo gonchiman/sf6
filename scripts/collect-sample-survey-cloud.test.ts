@@ -17,8 +17,25 @@ function environment(): Record<string, string | undefined> {
 }
 function completed(plan: SampleSurveyPlan) {
   const checkpoint = createSampleSurveyCheckpoint(plan, now.getTime())
-  Object.assign(checkpoint.report, { state: 'complete', phase: 'complete', finishedAt: now.toISOString(), attempts: 3, successfulPages: 3, uniqueAccountCount: 10 })
+  Object.assign(checkpoint.report, { schemaVersion: 1, state: 'complete', phase: 'complete', finishedAt: now.toISOString(), attempts: 3, successfulPages: 3, uniqueAccountCount: 10 })
+  delete checkpoint.report.observation
   Object.assign(checkpoint.report.strata[0], { population: 20, selected: 10, processed: 10, succeeded: 10, mean: 30000, min: 30000, max: 30000 })
+  return checkpoint
+}
+function intervalCompleted(plan: SampleSurveyPlan, review = false) {
+  const checkpoint = completed(plan), report = checkpoint.report
+  report.schemaVersion = 2
+  report.observation = { method: 'rank-position-interval-v1', omittedChanges: 0,
+    strata: [{ id: 'lp-MASTER', status: review ? 'review-required' : 'checked', startedAt: now.toISOString(), finishedAt: now.toISOString(),
+      totalCountBefore: 20, totalCountAfter: 21, startBefore: 0, endBefore: 20, startAfter: 0, endAfter: 20, boundaryChanged: false }],
+    changes: [{ kind: 'total-count', target: 'lp', stratumId: 'lp-MASTER', at: now.toISOString(), before: 20, after: 21 }] }
+  if (review) {
+    report.frameChanged = true; report.uniqueAccountCount = 8
+    Object.assign(report.strata[0], { succeeded: 8, missing: 1, duplicates: 1 })
+    report.observation.changes.push(
+      { kind: 'row-outside-stratum', target: 'lp', stratumId: 'lp-MASTER', at: now.toISOString(), before: 0, after: 1 },
+      { kind: 'duplicate', target: 'lp', stratumId: 'lp-MASTER', at: now.toISOString(), before: 0, after: 1 })
+  }
   return checkpoint
 }
 test('cloud entry is restricted to hosted Windows manual main workflow and consumes the secret before guards', async () => {
@@ -62,7 +79,7 @@ test('real synthetic collection uses the existing serial runner, closes reader a
   const text = JSON.stringify({ result, written, logs })
   for (const secret of [PRIVATE, 'accountId', 'cookies', 'slots', 'private-github-token', ...rows.map(row => row.accountId)]) assert.equal(text.includes(secret), false)
 })
-test('partial, frame-changed, missing and duplicate results fail without writing or authorizing uploads', async () => {
+test('legacy partial, frame-changed, missing and duplicate results fail without writing or authorizing uploads', async () => {
   for (const failure of ['partial', 'changed', 'missing', 'duplicates']) {
     let closed = false, writes = 0
     const result = await runSampleSurveyCloud({ env: environment(), now: () => now,
@@ -77,6 +94,44 @@ test('partial, frame-changed, missing and duplicate results fail without writing
         return value
       }, write: async () => { writes++; throw new Error('must not write') }, artifactReady: async () => { throw new Error('must not upload') }, logReport: () => {} })
     assert.equal(result.succeeded, false); assert.equal(writes, 0); assert.equal(closed, true)
+  }
+})
+
+test('completed interval quality evidence reaches the artifact unchanged without private state', async () => {
+  for (const review of [false, true]) {
+    let closed = false, marked = false
+    const written: unknown[] = [], logs: unknown[] = []
+    const result = await runSampleSurveyCloud({ env: environment(), now: () => now,
+      createReader: async () => ({ readPage: async () => { throw new Error('unused') }, close: async () => { closed = true } }),
+      collect: async plan => intervalCompleted(plan, review),
+      write: async runs => { assert.equal(closed, true); written.push(...runs); return { datasets: 1 } },
+      validate: async () => ({ datasets: 1 }), artifactReady: async () => { marked = true }, logReport: report => logs.push(report) })
+    assert.equal(result.succeeded, true); assert.equal(marked, true)
+    assert.deepEqual(written, [result.report]); assert.deepEqual(logs, written)
+    assert.equal(result.report.observation!.strata[0].status, review ? 'review-required' : 'checked')
+    assert.equal(result.report.strata[0].succeeded, review ? 8 : 10)
+    assert.equal(result.report.observation!.changes[0].kind, 'total-count')
+    for (const secret of [PRIVATE, 'accountId', 'cookies', 'slots', 'private-github-token']) assert.equal(JSON.stringify(written).includes(secret), false)
+  }
+})
+
+test('unestablished frames and incomplete interval collections never authorize public artifacts', async () => {
+  for (const kind of ['unestablished', 'stopped', 'authentication-error']) {
+    let writes = 0, marked = false
+    const result = await runSampleSurveyCloud({ env: environment(), now: () => now,
+      createReader: async () => ({ readPage: async () => { throw new Error('unused') }, close: async () => {} }),
+      collect: async plan => {
+        const value = intervalCompleted(plan, true), report = value.report
+        if (kind === 'unestablished') {
+          report.uniqueAccountCount = 0
+          Object.assign(report.strata[0], { population: null, selected: 0, processed: 0, succeeded: 0, missing: 0, duplicates: 0, mean: null, min: null, max: null })
+          Object.assign(report.observation!.strata[0], { totalCountBefore: null, totalCountAfter: null, startBefore: null, endBefore: null, startAfter: null, endAfter: null })
+          report.observation!.changes = []
+        } else Object.assign(report, { state: kind === 'stopped' ? 'stopped' : 'error', phase: 'sampling', stopReason: kind === 'stopped' ? 'limit-reached' : 'login-required' })
+        return value
+      }, write: async () => { writes++; return { datasets: 1 } }, validate: async () => ({ datasets: 1 }),
+      artifactReady: async () => { marked = true }, logReport: () => {} })
+    assert.equal(result.succeeded, false); assert.equal(writes, 0); assert.equal(marked, false)
   }
 })
 test('invalid session and raw failures produce fixed errors and never mark artifact-ready', async () => {

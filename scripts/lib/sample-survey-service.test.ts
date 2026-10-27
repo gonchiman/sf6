@@ -214,6 +214,8 @@ function stoppedSelection(): SampleSurveyCheckpoint {
   Object.assign(value.report, { state: 'stopped', phase: 'sampling', finishedAt: new Date(epoch).toISOString(),
     attempts: 1, successfulPages: 1, uniqueAccountCount: 1, stopReason: 'cancelled', resumeAllowed: true })
   Object.assign(value.report.strata[0], { population: 20, selected: 10, processed: 1, succeeded: 1, mean: 25000, min: 25000, max: 25000 })
+  Object.assign(value.report.observation!.strata[0], { status: 'collecting', startedAt: new Date(epoch).toISOString(),
+    totalCountBefore: 20, startBefore: 0, endBefore: 20 })
   return parseSampleSurveyCheckpoint(value)
 }
 
@@ -236,7 +238,9 @@ test('resume reaches the actual runner with a stopped checkpoint, preserves sele
   assert.deepEqual(result.slots.map(slot => slot.id), previous.slots.map(slot => slot.id))
   assert.deepEqual(result.slots[0], previous.slots[0])
   assert.equal(result.report.uniqueAccountCount, 10)
-  assert.equal(result.report.attempts, 4) // Includes fresh confirmation of the saved boundary.
+  assert.ok(result.report.attempts > previous.report.attempts)
+  assert.equal(result.report.observation!.strata[0].status, 'checked')
+  assert.equal(result.report.observation!.strata[0].boundaryChanged, false)
   const status = (await invoke(service, 'status')).value
   assert.equal(status.runs[0].state, 'complete'); assert.equal(status.activeRunId, null)
   assert.doesNotMatch(JSON.stringify(status), /accountId|100000|observedAt|rowIndex/)

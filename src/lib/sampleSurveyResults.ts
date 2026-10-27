@@ -45,7 +45,7 @@ export function parseSampleSurveyResultsManifest(value: unknown): SampleSurveyRe
   return { schemaVersion: 1, generatedAt, source: { ...SAMPLE_SURVEY_RESULTS_SOURCE }, datasets }
 }
 
-/** Only completed public aggregates are accepted; quality flags and missing counts stay intact. */
+/** Completed v1/v2 public aggregates only; interval evidence and missing counts stay intact. */
 export function parseSampleSurveyResultsRun(value: unknown, expected?: SampleSurveyResultsDescriptor): SampleSurveyRun {
   const run = parseSampleSurveyRun(value)
   if (run.state !== 'complete' || run.finishedAt === null || run.stopReason !== null || run.resumeAllowed) invalid()

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
-import { parseSampleSurveyPlan, parseSampleSurveyRun, SAMPLE_SURVEY_INTERVAL_MS, SAMPLE_SURVEY_MR_BANDS, SAMPLE_SURVEY_RANKS } from '../../src/lib/sampleSurvey.ts'
-import type { SampleSurveyConfig, SampleSurveyError, SampleSurveyPlan, SampleSurveyRun, SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
+import { parseSampleSurveyPlan, parseSampleSurveyRun, SAMPLE_SURVEY_INTERVAL_MS, SAMPLE_SURVEY_MAX_CHANGES, SAMPLE_SURVEY_MR_BANDS, SAMPLE_SURVEY_RANKS } from '../../src/lib/sampleSurvey.ts'
+import type { SampleSurveyChange, SampleSurveyConfig, SampleSurveyError, SampleSurveyPlan, SampleSurveyRun, SampleSurveyStratumObservation, SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
 import { SampleSurveyReadError } from './sample-survey-reader.ts'
 import type { SampleSurveyPage, SampleSurveyReader } from './sample-survey-reader.ts'
 
@@ -24,16 +24,16 @@ export interface SampleSurveySlot {
   id: string; target: SampleSurveyTarget; stratumId: string; position: number; page: number; rowIndex: number
   status: 'pending' | 'collected' | 'missing' | 'duplicate'
   accountId: string | null; value: number | null; rankId: number | null; observedAt: string | null
-  reason: 'stratum-changed' | 'duplicate' | null
+  reason: 'stratum-changed' | 'duplicate' | 'page-unavailable' | null
 }
 /** Private checkpoint. Only its `report` may cross the local service boundary. */
 export interface SampleSurveyCheckpoint {
-  schemaVersion: 1; plan: SampleSurveyPlan; report: SampleSurveyRun; frames: SampleSurveyFrame[]; slots: SampleSurveySlot[]
+  schemaVersion: 1 | 2; plan: SampleSurveyPlan; report: SampleSurveyRun; frames: SampleSurveyFrame[]; slots: SampleSurveySlot[]
 }
 
 /** A concrete Act identity is not yet available, so observed MR rows cannot cross a restart. */
 export function canResumeSampleSurvey(checkpoint: SampleSurveyCheckpoint): boolean {
-  return ['stopped', 'error'].includes(checkpoint.report.state)
+  return checkpoint.schemaVersion === 2 && checkpoint.report.schemaVersion === 2 && ['stopped', 'error'].includes(checkpoint.report.state)
     && ['cancelled', 'limit-reached', 'interrupted'].includes(checkpoint.report.stopReason ?? '')
     && !checkpoint.slots.some(slot => slot.target === 'mr' && slot.status !== 'pending')
 }
@@ -53,21 +53,22 @@ function object(value: unknown): Record<string, unknown> {
 /** Validates and reconstructs stored state instead of trusting JSON from disk. */
 export function parseSampleSurveyCheckpoint(value: unknown): SampleSurveyCheckpoint {
   const data = object(value), plan = parseSampleSurveyPlan(data.plan), report = parseSampleSurveyRun(data.report)
-  if (data.schemaVersion !== 1 || report.planId !== plan.id || JSON.stringify(report.config) !== JSON.stringify(plan.config)
-    || !Array.isArray(data.frames) || data.frames.length > 2 || !Array.isArray(data.slots) || data.slots.length > 14_000) fail()
+  if ((data.schemaVersion !== 1 && data.schemaVersion !== 2) || report.schemaVersion !== data.schemaVersion
+    || report.planId !== plan.id || JSON.stringify(report.config) !== JSON.stringify(plan.config)
+    || !Array.isArray(data.frames) || data.frames.length > (data.schemaVersion === 1 ? 2 : 14) || !Array.isArray(data.slots) || data.slots.length > 14_000) fail()
   const definitions = sampleSurveyStratumDefinitions(plan.config)
   const frameTargets = new Set<string>(), knownRanges = new Set<string>()
   const frames: SampleSurveyFrame[] = data.frames.map(raw => {
     const frame = object(raw)
-    if ((frame.target !== 'lp' && frame.target !== 'mr') || frameTargets.has(frame.target) || !integer(frame.totalCount)
+    if ((frame.target !== 'lp' && frame.target !== 'mr') || data.schemaVersion === 1 && frameTargets.has(frame.target) || !integer(frame.totalCount)
       || !integer(frame.pageSize, 1, 20) || !integer(frame.totalPages) || frame.totalPages !== Math.ceil(frame.totalCount / frame.pageSize)
       || !utc(frame.checkedAt) || !Array.isArray(frame.ranges)) fail()
     frameTargets.add(frame.target)
     const expected = definitions.filter(definition => definition.target === frame.target)
-    if (frame.ranges.length !== expected.length) fail()
+    if (frame.ranges.length !== (data.schemaVersion === 1 ? expected.length : 1)) fail()
     const ranges = frame.ranges.map((rawRange, index) => {
       const range = object(rawRange)
-      if (range.stratumId !== expected[index].id || knownRanges.has(String(range.stratumId))
+      if (!(data.schemaVersion === 1 ? range.stratumId === expected[index].id : expected.some(item => item.id === range.stratumId)) || knownRanges.has(String(range.stratumId))
         || !integer(range.start, 0, frame.totalCount as number) || !integer(range.end, range.start, frame.totalCount as number)) fail()
       knownRanges.add(String(range.stratumId))
       return { stratumId: range.stratumId as string, start: range.start as number, end: range.end as number }
@@ -76,30 +77,45 @@ export function parseSampleSurveyCheckpoint(value: unknown): SampleSurveyCheckpo
     return { target: frame.target as SampleSurveyTarget, totalCount: frame.totalCount as number, pageSize: frame.pageSize as number,
       totalPages: frame.totalPages as number, checkedAt: frame.checkedAt as string, ranges }
   })
-  const seenPositions = new Set<string>(), seenSlotIds = new Set<string>()
+  const seenPositions = new Set<string>(), seenSlotIds = new Set<string>(), seenCollected = new Set<string>()
   const slots: SampleSurveySlot[] = data.slots.map(raw => {
     const slot = object(raw), definition = definitions.find(item => item.id === slot.stratumId)
-    const frame = frames.find(item => item.target === slot.target), range = frame?.ranges.find(item => item.stratumId === slot.stratumId)
+    const frame = frames.find(item => item.target === slot.target && item.ranges.some(range => range.stratumId === slot.stratumId)), range = frame?.ranges.find(item => item.stratumId === slot.stratumId)
     if (!definition || !frame || !range || slot.target !== definition.target || !integer(slot.position, range.start, range.end - 1)
       || slot.id !== `${slot.stratumId}:${slot.position}` || seenSlotIds.has(String(slot.id))
-      || seenPositions.has(`${slot.target}:${slot.position}`) || slot.page !== Math.floor(slot.position / frame.pageSize) + 1
+      || seenPositions.has(`${data.schemaVersion === 1 ? slot.target : slot.stratumId}:${slot.position}`) || slot.page !== Math.floor(slot.position / frame.pageSize) + 1
       || slot.rowIndex !== slot.position % frame.pageSize || !['pending', 'collected', 'missing', 'duplicate'].includes(String(slot.status))) fail()
-    seenPositions.add(`${slot.target}:${slot.position}`); seenSlotIds.add(String(slot.id))
+    seenPositions.add(`${data.schemaVersion === 1 ? slot.target : slot.stratumId}:${slot.position}`); seenSlotIds.add(String(slot.id))
     if (slot.status === 'pending') {
       if ([slot.accountId, slot.value, slot.rankId, slot.observedAt, slot.reason].some(item => item !== null)) fail()
+    } else if (slot.status === 'missing' && slot.reason === 'page-unavailable' && data.schemaVersion === 2) {
+      if (slot.accountId !== null || slot.value !== null || slot.rankId !== null || !utc(slot.observedAt)) fail()
     } else if (typeof slot.accountId !== 'string' || !/^\d{1,32}$/.test(slot.accountId) || !integer(slot.value)
       || !utc(slot.observedAt) || (slot.target === 'lp' ? !integer(slot.rankId, 1, 36) : slot.rankId !== null)
       || slot.reason !== (slot.status === 'missing' ? 'stratum-changed' : slot.status === 'duplicate' ? 'duplicate' : null)) fail()
+    if (slot.status === 'collected') {
+      const identity = `${slot.target}:${slot.accountId}`
+      if (seenCollected.has(identity)) fail()
+      seenCollected.add(identity)
+    }
     return { id: slot.id as string, target: slot.target as SampleSurveyTarget, stratumId: slot.stratumId as string,
       position: slot.position as number, page: slot.page as number, rowIndex: slot.rowIndex as number, status: slot.status as SampleSurveySlot['status'],
       accountId: slot.accountId as string | null, value: slot.value as number | null, rankId: slot.rankId as number | null,
       observedAt: slot.observedAt as string | null, reason: slot.reason as SampleSurveySlot['reason'] }
   })
-  const checkpoint = { schemaVersion: 1 as const, plan, report, frames, slots }
+  const checkpoint: SampleSurveyCheckpoint = { schemaVersion: data.schemaVersion, plan, report, frames, slots }
   const recomputed = aggregate(checkpoint)
-  if (slots.length || report.phase !== 'boundaries') {
+  if (data.schemaVersion === 1 && (slots.length || report.phase !== 'boundaries')) {
     if (definitions.some(definition => !knownRanges.has(definition.id))
       || recomputed.strata.some(stratum => stratum.selected !== Math.min(stratum.requested, stratum.population ?? 0))) fail()
+  }
+  if (data.schemaVersion === 2) {
+    for (const row of recomputed.strata) {
+      const observed = report.observation!.strata.find(item => item.id === row.id)!
+      const frame = frames.find(item => item.ranges[0].stratumId === row.id), range = frame?.ranges[0]
+      if (range && (row.selected !== Math.min(row.requested, row.population!) || observed.startBefore !== range.start || observed.endBefore !== range.end
+        || observed.totalCountBefore !== frame!.totalCount) || !range && row.selected !== 0) fail()
+    }
   }
   if (JSON.stringify(report.strata) !== JSON.stringify(recomputed.strata) || report.uniqueAccountCount !== recomputed.uniqueAccountCount) fail()
   return checkpoint
@@ -108,7 +124,7 @@ export function parseSampleSurveyCheckpoint(value: unknown): SampleSurveyCheckpo
 function aggregate(checkpoint: SampleSurveyCheckpoint): Pick<SampleSurveyRun, 'strata' | 'uniqueAccountCount'> {
   const allIds = new Set<string>()
   const strata = sampleSurveyStratumDefinitions(checkpoint.plan.config).map(definition => {
-    const range = checkpoint.frames.find(frame => frame.target === definition.target)?.ranges.find(item => item.stratumId === definition.id)
+    const range = checkpoint.frames.find(frame => frame.target === definition.target && frame.ranges.some(item => item.stratumId === definition.id))?.ranges.find(item => item.stratumId === definition.id)
     const slots = checkpoint.slots.filter(slot => slot.stratumId === definition.id)
     const good = slots.filter(slot => slot.status === 'collected')
     for (const slot of good) allIds.add(slot.accountId!)
@@ -152,7 +168,7 @@ function shuffled<T>(values: T[], seed: string): T[] {
   return output
 }
 
-function validatePage(page: SampleSurveyPage, target: SampleSurveyTarget, requested: number): SampleSurveyPage {
+function validatePage(page: SampleSurveyPage, target: SampleSurveyTarget, requested: number, onRowOrder: (before: number, after: number) => void): SampleSurveyPage {
   if (!page || page.target !== target || page.page !== requested || !integer(page.totalCount, 0, 0xffffffff)
     || !integer(page.pageSize, 1, 20) || !integer(page.totalPages) || page.totalPages !== Math.ceil(page.totalCount / page.pageSize)
     || requested < 1 || requested > Math.max(1, page.totalPages) || !utc(page.observedAt) || !Array.isArray(page.entries)
@@ -163,27 +179,14 @@ function validatePage(page: SampleSurveyPage, target: SampleSurveyTarget, reques
     if (!entry || typeof entry.accountId !== 'string' || !/^\d{1,32}$/.test(entry.accountId) || ids.has(entry.accountId)
       || !integer(entry.value) || (target === 'lp' ? !integer(entry.rankId, 1, 36) : entry.rankId !== null)) throw new SampleSurveyReadError('read-failed')
     const metric = target === 'lp' ? entry.rankId! : entry.value
-    if (metric > previous) throw new SampleSurveyReadError('frame-changed')
+    if (metric > previous) { onRowOrder(previous, metric); throw new SampleSurveyReadError('frame-changed') }
     previous = metric; ids.add(entry.accountId)
   }
   return page
 }
 
-/** Check every saved cut whose immediate left or right row is visible on this page. */
-function assertVisibleBoundaries(page: SampleSurveyPage, frame: SampleSurveyFrame, definitions: SampleSurveyStratumDefinition[]): void {
-  const pageStart = (page.page - 1) * page.pageSize
-  for (const range of frame.ranges) {
-    const definition = definitions.find(item => item.id === range.stratumId)!
-    for (const [position, threshold] of [[range.start, definition.maximum], [range.end, definition.minimum]] as const) {
-      if (threshold === null) continue
-      for (const index of [position - 1, position]) {
-        if (index < 0 || index >= frame.totalCount || index < pageStart || index >= pageStart + page.entries.length) continue
-        const row = page.entries[index - pageStart], metric = page.target === 'lp' ? row.rankId! : row.value
-        if (index < position ? metric < threshold : metric >= threshold) throw new SampleSurveyReadError('frame-changed')
-      }
-    }
-  }
-}
+/** Recoverable evidence about one stratum, never an authentication/format/network failure. */
+class BoundaryDrift extends Error {}
 export interface SampleSurveyRunnerOptions {
   reader: SampleSurveyReader
   signal: AbortSignal
@@ -195,10 +198,14 @@ export interface SampleSurveyRunnerOptions {
 
 export function createSampleSurveyCheckpoint(value: SampleSurveyPlan, time = Date.now()): SampleSurveyCheckpoint {
   const plan = parseSampleSurveyPlan(value), timestamp = new Date(time).toISOString()
-  const checkpoint: SampleSurveyCheckpoint = { schemaVersion: 1, plan, frames: [], slots: [], report: {
-    schemaVersion: 1, id: randomUUID(), planId: plan.id, config: plan.config, state: 'preparing', phase: 'boundaries',
+  const checkpoint: SampleSurveyCheckpoint = { schemaVersion: 2, plan, frames: [], slots: [], report: {
+    schemaVersion: 2, id: randomUUID(), planId: plan.id, config: plan.config, state: 'preparing', phase: 'boundaries',
     startedAt: timestamp, updatedAt: timestamp, finishedAt: null, elapsedMs: 0, attempts: 0, successfulPages: 0,
     uniqueAccountCount: 0, strata: [], frameChanged: false, stopReason: null, resumeAllowed: false,
+    observation: { method: 'rank-position-interval-v1', strata: sampleSurveyStratumDefinitions(plan.config).map(definition => ({
+      id: definition.id, status: 'pending', startedAt: null, finishedAt: null, totalCountBefore: null, totalCountAfter: null,
+      startBefore: null, endBefore: null, startAfter: null, endAfter: null, boundaryChanged: false,
+    })), changes: [], omittedChanges: 0 },
   } }
   Object.assign(checkpoint.report, aggregate(checkpoint))
   return parseSampleSurveyCheckpoint(checkpoint)
@@ -216,20 +223,23 @@ export function markSampleSurveyInterrupted(value: SampleSurveyCheckpoint, time 
 export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSurveyRunnerOptions): Promise<SampleSurveyCheckpoint> {
   const plan = parseSampleSurveyPlan(value), now = options.now ?? Date.now
   const start = now(), base = options.checkpoint ? parseSampleSurveyCheckpoint(options.checkpoint) : null
-  if (base && (JSON.stringify(base.plan) !== JSON.stringify(plan) || !(base.report.resumeAllowed && canResumeSampleSurvey(base))
+  if (base && (base.schemaVersion !== 2 || JSON.stringify(base.plan) !== JSON.stringify(plan) || !(base.report.resumeAllowed && canResumeSampleSurvey(base))
     && !(base.report.state === 'preparing' && base.report.attempts === 0 && !base.frames.length && !base.slots.length))) fail()
   const checkpoint: SampleSurveyCheckpoint = base ?? createSampleSurveyCheckpoint(plan, start)
   const previousElapsed = checkpoint.report.elapsedMs, initialAttempts = checkpoint.report.attempts
   const timeoutMs = plan.config.maxDurationMinutes * 60_000, maxReads = Math.floor(timeoutMs / SAMPLE_SURVEY_INTERVAL_MS) + 1
-  let lastStart: number | null = null
+  let lastStart: number | null = null, current: SampleSurveyStratumDefinition | null = null
   const wait = options.wait ?? (async (milliseconds: number) => { await delay(milliseconds, undefined, { signal: options.signal }) })
-  const pages = new Map<string, SampleSurveyPage>()
-  const definitions = sampleSurveyStratumDefinitions(plan.config)
-  const report = checkpoint.report
+  const definitions = sampleSurveyStratumDefinitions(plan.config), report = checkpoint.report, observation = report.observation!
+  const latest = new Map<SampleSurveyTarget, { total: number; pageSize: number }>()
   report.state = 'preparing'; report.phase = 'boundaries'; report.stopReason = null; report.finishedAt = null; report.resumeAllowed = false
   const check = () => {
     if (options.signal.aborted) throw new SampleSurveyReadError(options.signal.reason instanceof SampleSurveyReadError ? options.signal.reason.code : 'cancelled')
     if (now() - start >= timeoutMs) throw new SampleSurveyReadError('limit-reached')
+  }
+  function change(kind: SampleSurveyChange['kind'], before: number | null, after: number | null): void {
+    observation.changes.push({ kind, target: current!.target, stratumId: current!.id, at: new Date(now()).toISOString(), before, after })
+    if (observation.changes.length > SAMPLE_SURVEY_MAX_CHANGES) { observation.changes.shift(); observation.omittedChanges++ }
   }
   async function publish() {
     report.elapsedMs = previousElapsed + Math.max(0, now() - start)
@@ -238,10 +248,8 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
     try { await options.onUpdate?.(parseSampleSurveyCheckpoint(checkpoint)) }
     catch { throw new SampleSurveyReadError('storage-error') }
   }
-  async function read(target: SampleSurveyTarget, page: number, cached = true): Promise<SampleSurveyPage> {
+  async function read(target: SampleSurveyTarget, page: number): Promise<SampleSurveyPage> {
     check()
-    const key = `${target}:${page}`
-    if (cached && pages.has(key)) return pages.get(key)!
     if (report.attempts - initialAttempts >= maxReads) throw new SampleSurveyReadError('limit-reached')
     if (lastStart !== null) {
       const remaining = Math.max(0, SAMPLE_SURVEY_INTERVAL_MS - (now() - lastStart))
@@ -250,92 +258,182 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
     }
     report.attempts++; lastStart = now()
     await publish()
-    const pageValue = validatePage(await options.reader.readPage(target, page), target, page)
+    const raw = await options.reader.readPage(target, page)
+    const known = latest.get(target)
+    if (known && integer(raw?.pageSize, 1, 20) && known.pageSize !== raw.pageSize) {
+      change('page-size', known.pageSize, raw.pageSize)
+      throw new SampleSurveyReadError('frame-changed')
+    }
+    const pageValue = validatePage(raw, target, page, (before, after) => change('row-order', before, after))
     check()
-    const known = pages.get(`${target}:1`)
-    if (known && (known.totalCount !== pageValue.totalCount || known.pageSize !== pageValue.pageSize)) throw new SampleSurveyReadError('frame-changed')
-    report.successfulPages++; pages.set(key, pageValue)
+    if (known && known.total !== pageValue.totalCount) change('total-count', known.total, pageValue.totalCount)
+    latest.set(target, { total: pageValue.totalCount, pageSize: pageValue.pageSize })
+    report.successfulPages++
     await publish()
     return pageValue
   }
+  function drift(kind: SampleSurveyChange['kind'], before: number | null, after: number | null): never {
+    change(kind, before, after)
+    throw new BoundaryDrift()
+  }
+  async function discover(definition: SampleSurveyStratumDefinition): Promise<SampleSurveyFrame> {
+    const first = await read(definition.target, 1), cache = new Map<number, SampleSurveyPage>([[1, first]])
+    async function cached(page: number): Promise<SampleSurveyPage> {
+      if (cache.has(page)) return cache.get(page)!
+      // The upper search bound was observed earlier. A shrinking tail is a stratum change, not a new request for an invalid page.
+      if (page > Math.max(1, Math.ceil(latest.get(definition.target)!.total / first.pageSize))) drift('page-unavailable', page, null)
+      const value = await read(definition.target, page); cache.set(page, value); return value
+    }
+    async function firstLess(threshold: number | null): Promise<number> {
+      if (threshold === null || definition.target === 'lp' && threshold > 36) return 0
+      if (threshold <= (definition.target === 'lp' ? 1 : 0)) return latest.get(definition.target)!.total
+      let low = 0, high = first.totalCount
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2), page = await cached(Math.floor(middle / first.pageSize) + 1)
+        const entry = page.entries[middle % first.pageSize]
+        if (!entry) drift('page-unavailable', middle, null)
+        const metric = definition.target === 'lp' ? entry.rankId! : entry.value
+        if (metric >= threshold) low = middle + 1
+        else high = middle
+      }
+      return low
+    }
+    const rangeStart = await firstLess(definition.maximum), rangeEnd = await firstLess(definition.minimum)
+    if (rangeStart > rangeEnd) drift('range-order', rangeStart, rangeEnd)
+    const totalCount = latest.get(definition.target)!.total
+    if (rangeEnd > totalCount) drift('boundary-end', rangeEnd, totalCount)
+    return { target: definition.target, totalCount, pageSize: first.pageSize, totalPages: Math.ceil(totalCount / first.pageSize),
+      checkedAt: new Date(now()).toISOString(), ranges: [{ stratumId: definition.id, start: rangeStart, end: rangeEnd }] }
+  }
+  async function confirm(frame: SampleSurveyFrame, definition: SampleSurveyStratumDefinition): Promise<void> {
+    const first = await read(definition.target, 1), fresh = new Map<number, SampleSurveyPage>([[1, first]])
+    const range = frame.ranges[0]
+    for (const [cut, threshold, kind] of [[range.start, definition.maximum, 'boundary-start'], [range.end, definition.minimum, 'boundary-end']] as const) {
+      if (threshold === null || definition.target === 'lp' && threshold > 36) { if (cut !== 0) drift(kind, cut, 0); continue }
+      if (threshold <= (definition.target === 'lp' ? 1 : 0)) {
+        if (cut !== latest.get(definition.target)!.total) drift(kind, cut, latest.get(definition.target)!.total)
+        continue
+      }
+      if (cut > latest.get(definition.target)!.total) drift(kind, cut, latest.get(definition.target)!.total)
+      for (const position of [cut - 1, cut]) {
+        if (position < 0 || position >= latest.get(definition.target)!.total) continue
+        const pageNumber = Math.floor(position / frame.pageSize) + 1
+        const page = fresh.get(pageNumber) ?? await read(definition.target, pageNumber)
+        fresh.set(pageNumber, page)
+        const entry = page.entries[position % frame.pageSize]
+        if (!entry) drift(kind, cut, null)
+        const metric = definition.target === 'lp' ? entry.rankId! : entry.value
+        if (position < cut ? metric < threshold : metric >= threshold) drift(kind, cut, null)
+      }
+      // A newly growing tail can invalidate a previously terminal cut.
+      if (cut > latest.get(definition.target)!.total) drift(kind, cut, latest.get(definition.target)!.total)
+    }
+    frame.checkedAt = new Date(now()).toISOString()
+  }
+  function before(observed: SampleSurveyStratumObservation, frame: SampleSurveyFrame): void {
+    Object.assign(observed, { totalCountBefore: frame.totalCount, startBefore: frame.ranges[0].start, endBefore: frame.ranges[0].end })
+  }
+  function after(observed: SampleSurveyStratumObservation, frame: SampleSurveyFrame): void {
+    Object.assign(observed, { totalCountAfter: frame.totalCount, startAfter: frame.ranges[0].start, endAfter: frame.ranges[0].end })
+    if (observed.startBefore !== null && observed.startBefore !== observed.startAfter) {
+      change('boundary-start', observed.startBefore, observed.startAfter); observed.boundaryChanged = true
+    }
+    if (observed.endBefore !== null && observed.endBefore !== observed.endAfter) {
+      change('boundary-end', observed.endBefore, observed.endAfter); observed.boundaryChanged = true
+    }
+    if (observed.boundaryChanged) report.frameChanged = true
+  }
+  function review(observed: SampleSurveyStratumObservation): void {
+    observed.boundaryChanged = true; observed.status = 'review-required'; observed.finishedAt = new Date(now()).toISOString(); report.frameChanged = true
+  }
   try {
     await publish()
-    for (const target of ['lp', 'mr'] as const) {
-      const targetDefinitions = definitions.filter(definition => definition.target === target)
-      if (!targetDefinitions.length) continue
-      const first = await read(target, 1, false)
-      const existing = checkpoint.frames.find(frame => frame.target === target)
-      if (existing && (existing.totalCount !== first.totalCount || existing.pageSize !== first.pageSize)) throw new SampleSurveyReadError('frame-changed')
-      const thresholds = new Map<number, number>()
-      async function firstLess(threshold: number | null): Promise<number> {
-        if (threshold === null || target === 'lp' && threshold > 36) return 0
-        if (threshold <= (target === 'lp' ? 1 : 0)) return first.totalCount
-        if (thresholds.has(threshold)) return thresholds.get(threshold)!
-        let low = 0, high = first.totalCount
-        while (low < high) {
-          const middle = Math.floor((low + high) / 2)
-          const page = await read(target, Math.floor(middle / first.pageSize) + 1)
-          const entry = page.entries[middle % first.pageSize]
-          const metric = target === 'lp' ? entry.rankId! : entry.value
-          if (metric >= threshold) low = middle + 1
-          else high = middle
-        }
-        thresholds.set(threshold, low)
-        return low
+    for (const definition of definitions) {
+      current = definition
+      const observed = observation.strata.find(item => item.id === definition.id)!
+      if (observed.status === 'checked' || observed.status === 'review-required') continue
+      observed.status = 'collecting'; observed.startedAt ??= new Date(now()).toISOString()
+      report.phase = 'boundaries'; report.state = 'preparing'
+      const saved = checkpoint.frames.find(frame => frame.ranges.some(range => range.stratumId === definition.id))
+      if (saved && !latest.has(definition.target)) latest.set(definition.target, { total: saved.totalCount, pageSize: saved.pageSize })
+      let frame: SampleSurveyFrame
+      try {
+        frame = await discover(definition)
+        if (!saved) before(observed, frame)
+        await confirm(frame, definition)
+      } catch (error) {
+        if (!(error instanceof BoundaryDrift)) throw error
+        if (saved) throw new SampleSurveyReadError('frame-changed')
+        observed.totalCountAfter = latest.get(definition.target)?.total ?? null
+        review(observed); await publish(); continue
       }
-      const ranges: SampleSurveyFrame['ranges'] = []
-      for (const definition of targetDefinitions) {
-        const rangeStart = await firstLess(definition.maximum), rangeEnd = await firstLess(definition.minimum)
-        if (rangeStart > rangeEnd) throw new SampleSurveyReadError('frame-changed')
-        ranges.push({ stratumId: definition.id, start: rangeStart, end: rangeEnd })
-      }
-      if (existing && JSON.stringify(existing.ranges) !== JSON.stringify(ranges)) throw new SampleSurveyReadError('frame-changed')
-      const confirmedFrame: SampleSurveyFrame = { target, totalCount: first.totalCount, pageSize: first.pageSize, totalPages: first.totalPages,
-        checkedAt: new Date(now()).toISOString(), ranges }
-      const edgePages = new Set<number>()
-      for (const range of ranges) for (const cut of [range.start, range.end]) {
-        for (const position of [cut - 1, cut]) if (position >= 0 && position < first.totalCount) edgePages.add(Math.floor(position / first.pageSize) + 1)
-      }
-      // Search-cache observations can be stale. Read each adjacent page afresh before accepting the frame.
-      for (const page of edgePages) assertVisibleBoundaries(await read(target, page, false), confirmedFrame, definitions)
-      confirmedFrame.checkedAt = new Date(now()).toISOString()
-      if (!existing) checkpoint.frames.push(confirmedFrame)
-      await publish()
-    }
-    if (!checkpoint.slots.length) {
-      for (const frame of checkpoint.frames) for (const range of frame.ranges) {
-        const definition = definitions.find(item => item.id === range.stratumId)!
-        const positions = sampleSurveyPositions(range.start, range.end, Math.min(definition.requested, range.end - range.start), `${plan.seed}:${range.stratumId}`)
-        for (const position of positions) checkpoint.slots.push({ id: `${range.stratumId}:${position}`, target: frame.target, stratumId: range.stratumId,
+      if (saved) {
+        after(observed, frame)
+        if (saved.pageSize !== frame.pageSize) { change('page-size', saved.pageSize, frame.pageSize); throw new SampleSurveyReadError('frame-changed') }
+        if (saved.ranges[0].start !== frame.ranges[0].start || saved.ranges[0].end !== frame.ranges[0].end) throw new SampleSurveyReadError('frame-changed')
+        frame = saved
+        // This was only a resume pre-check, not the required post-collection observation.
+        observed.totalCountAfter = null; observed.startAfter = null; observed.endAfter = null
+      } else {
+        checkpoint.frames.push(frame)
+        const range = frame.ranges[0]
+        const positions = sampleSurveyPositions(range.start, range.end, Math.min(definition.requested, range.end - range.start), `${plan.seed}:${definition.id}`)
+        for (const position of positions) checkpoint.slots.push({ id: `${definition.id}:${position}`, target: definition.target, stratumId: definition.id,
           position, page: Math.floor(position / frame.pageSize) + 1, rowIndex: position % frame.pageSize,
           status: 'pending', accountId: null, value: null, rankId: null, observedAt: null, reason: null })
       }
-    }
-    report.phase = 'sampling'; report.state = 'running'
-    await publish()
-    const groups = new Map<string, SampleSurveySlot[]>()
-    for (const slot of checkpoint.slots) {
-      const key = `${slot.target}:${slot.page}`
-      groups.set(key, [...(groups.get(key) ?? []), slot])
-    }
-    const seen = new Set(checkpoint.slots.filter(slot => slot.status === 'collected').map(slot => `${slot.target}:${slot.accountId}`))
-    for (const allSlots of shuffled([...groups.values()], `${plan.seed}:page-order`)) {
-      const group = allSlots.filter(slot => slot.status === 'pending')
-      if (!group.length) continue
-      check()
-      const page = await read(group[0].target, group[0].page, false)
-      assertVisibleBoundaries(page, checkpoint.frames.find(frame => frame.target === page.target)!, definitions)
-      for (const slot of group) {
-        const entry = page.entries[slot.rowIndex]
-        const definition = definitions.find(item => item.id === slot.stratumId)!
-        const metric = slot.target === 'lp' ? entry.rankId! : entry.value
-        Object.assign(slot, { accountId: entry.accountId, value: entry.value, rankId: entry.rankId, observedAt: page.observedAt })
-        if (metric < definition.minimum || definition.maximum !== null && metric >= definition.maximum) {
-          slot.status = 'missing'; slot.reason = 'stratum-changed'; report.frameChanged = true
-        } else if (seen.has(`${slot.target}:${entry.accountId}`)) {
-          slot.status = 'duplicate'; slot.reason = 'duplicate'; report.frameChanged = true
-        } else { slot.status = 'collected'; seen.add(`${slot.target}:${entry.accountId}`) }
+      report.phase = 'sampling'; report.state = 'running'
+      await publish()
+      const groups = new Map<number, SampleSurveySlot[]>()
+      for (const slot of checkpoint.slots.filter(slot => slot.stratumId === definition.id && slot.status === 'pending')) {
+        groups.set(slot.page, [...(groups.get(slot.page) ?? []), slot])
       }
+      const seen = new Set(checkpoint.slots.filter(slot => slot.status === 'collected').map(slot => `${slot.target}:${slot.accountId}`))
+      for (const slots of shuffled([...groups.values()], `${plan.seed}:${definition.id}:page-order`)) {
+        check()
+        // A prior page may already have established that these fixed slots no longer exist.
+        // Keep them missing instead of asking for an invalid page or drawing replacements.
+        if (slots[0].page > Math.ceil(latest.get(definition.target)!.total / frame.pageSize)) {
+          for (const slot of slots) {
+            Object.assign(slot, { status: 'missing', reason: 'page-unavailable', observedAt: new Date(now()).toISOString() })
+            change('page-unavailable', slot.position, null)
+          }
+          report.frameChanged = true
+          await publish(); continue
+        }
+        const page = await read(definition.target, slots[0].page)
+        for (const slot of slots) {
+          const entry = page.entries[slot.rowIndex]
+          if (!entry) {
+            Object.assign(slot, { status: 'missing', reason: 'page-unavailable', observedAt: page.observedAt })
+            change('page-unavailable', slot.position, null); report.frameChanged = true; continue
+          }
+          const metric = slot.target === 'lp' ? entry.rankId! : entry.value
+          Object.assign(slot, { accountId: entry.accountId, value: entry.value, rankId: entry.rankId, observedAt: page.observedAt })
+          if (metric < definition.minimum || definition.maximum !== null && metric >= definition.maximum) {
+            slot.status = 'missing'; slot.reason = 'stratum-changed'; report.frameChanged = true
+            change('row-outside-stratum', definition.minimum, metric)
+          } else if (seen.has(`${slot.target}:${entry.accountId}`)) {
+            slot.status = 'duplicate'; slot.reason = 'duplicate'; report.frameChanged = true
+            change('duplicate', 0, 1)
+          } else { slot.status = 'collected'; seen.add(`${slot.target}:${entry.accountId}`) }
+        }
+        await publish()
+      }
+      // Re-discover from fresh pages. Equal cuts are an observation, never proof of no intervening movement.
+      try {
+        const endFrame = await discover(definition)
+        after(observed, endFrame)
+        await confirm(endFrame, definition)
+        observed.totalCountAfter = latest.get(definition.target)!.total
+      } catch (error) {
+        if (!(error instanceof BoundaryDrift)) throw error
+        observed.totalCountAfter = latest.get(definition.target)?.total ?? null
+        observed.boundaryChanged = true; report.frameChanged = true
+      }
+      const quality = checkpoint.slots.some(slot => slot.stratumId === definition.id && (slot.status === 'missing' || slot.status === 'duplicate'))
+      observed.status = observed.boundaryChanged || quality ? 'review-required' : 'checked'
+      observed.finishedAt = new Date(now()).toISOString()
       await publish()
     }
     report.state = 'complete'; report.phase = 'complete'; report.finishedAt = new Date(now()).toISOString()

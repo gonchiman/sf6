@@ -11,10 +11,13 @@ const fail = (): never => { throw new Error('標本調査の集計履歴を安�
 function descriptor(run: SampleSurveyRun) {
   return { id: run.id, path: `runs/${run.id}.json`, captureStartedAt: run.startedAt, captureEndedAt: run.finishedAt }
 }
-/** Incomplete, changed or partially missing samples must never replace a successful history. */
+/** Publish only completed collection procedures, retaining v2 interval-quality evidence. */
 export function publishableSampleSurveyRun(value: unknown): SampleSurveyRun {
   const run = parseSampleSurveyResultsRun(value)
-  if (run.frameChanged || run.strata.some(row => row.missing !== 0 || row.duplicates !== 0)) fail()
+  // Legacy runs cannot explain which strata changed, so keep their original publication rule.
+  if (run.schemaVersion === 1 && (run.frameChanged || run.strata.some(row => row.missing !== 0 || row.duplicates !== 0))) fail()
+  // A failed attempt to establish every sampling frame is not an observed zero result.
+  if (run.schemaVersion === 2 && run.strata.every(row => row.population === null)) fail()
   return run
 }
 async function boundedJson(path: string): Promise<unknown> {

@@ -96,7 +96,7 @@ export async function runSampleSurveyCloud(dependencies: {
 export async function main(args = process.argv.slice(2)): Promise<void> {
   if (args.length === 1 && args[0] === '--help') {
     delete process.env[BUCKLER_WEEKLY_SESSION_SECRET]
-    console.log('標本調査の手動Actions取得。--collect で実行。認証と個別データはメモリ内、公開するのは正常完了した集計JSONのみ。')
+    console.log('標本調査の手動Actions取得。--collect で実行。認証と個別データはメモリ内、取得手順が完了した集計JSONを品質状態とともに公開します。')
     return
   }
   if (args.length !== 1 || args[0] !== '--collect') {
@@ -107,7 +107,10 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   process.once('SIGINT', stop); process.once('SIGTERM', stop)
   try {
     const result = await runSampleSurveyCloud({ signal: controller.signal })
-    console.log(result.succeeded ? '標本調査の集計を完了しました。' : '正常完了条件を満たさないため公開しません。以前の正常データを保持します。')
+    const reviewRequired = result.report.schemaVersion === 2 && result.report.observation!.strata.some(row => row.status === 'review-required')
+    console.log(result.succeeded
+      ? reviewRequired ? '標本調査の取得処理が完了しました。要確認の層を含む観測期間中の集計を公開します。' : '標本調査の取得処理と集計が完了しました。'
+      : '公開条件を満たさないため公開しません。以前の公開データを保持します。')
     if (!result.succeeded) process.exitCode = 1
   } finally { process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop) }
 }
