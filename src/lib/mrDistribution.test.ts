@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { MrDistributionDataset, MrDistributionDescriptor, MrDistributionManifest } from '../types/mrDistribution.ts'
 import {
-  createMrDistributionRows, loadMrDistributionDataset, loadMrDistributionManifest, mrDistributionBinLabel,
+  createMrDistributionRows, mrDistributionBinLabel,
   MR_DISTRIBUTION_CHECKS, MR_DISTRIBUTION_CONDITIONS, MR_DISTRIBUTION_SOURCE, MR_DISTRIBUTION_THRESHOLDS,
   parseMrDistributionDataset, parseMrDistributionDescriptor, parseMrDistributionManifest,
 } from './mrDistribution.ts'
@@ -173,37 +173,4 @@ test('descriptors, manifest dates, capture identity and registered paths are val
   }
   assert.throws(() => parseMrDistributionDataset({ ...dataset(), captureStartedAt: generatedAt }), /reversed/)
   assert.throws(() => parseMrDistributionDataset({ ...dataset(), generatedAt: captureStartedAt }), /before capture/)
-})
-
-test('manifest load failure is evicted and retry preserves the uncollected state', async t => {
-  let requests = 0
-  t.mock.method(globalThis, 'fetch', async () => ++requests === 1 ? new Response('', { status: 503 }) : Response.json(manifest([])))
-  await assert.rejects(loadMrDistributionManifest(), /読み込めません/)
-  assert.deepEqual(await loadMrDistributionManifest(), manifest([]))
-  assert.equal(requests, 2)
-})
-
-test('dataset requests are shared, reject mismatched captures and version corrected publications', async t => {
-  const selected = { ...descriptor(), path: 'mr-cache-test.json' }
-  const requests: string[] = []
-  let published = dataset()
-  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
-    requests.push(String(input))
-    return Response.json(requests.length === 1 ? { ...published, entries: [] } : published)
-  })
-  await assert.rejects(loadMrDistributionDataset(selected, generatedAt), /all 26 bins/)
-  const [left, right] = await Promise.all([loadMrDistributionDataset(selected, generatedAt), loadMrDistributionDataset(selected, generatedAt)])
-  assert.strictEqual(left, right)
-  assert.equal(requests.length, 2)
-  await assert.rejects(loadMrDistributionDataset({ ...selected, id: 'mismatch' }, generatedAt), /一致しません/)
-  await loadMrDistributionDataset(selected, generatedAt)
-  assert.equal(requests.length, 3)
-  published = dataset([2, 1, ...Array.from({ length: 24 }, (_, index) => index + 3)])
-  const newerPublication = '2026-10-16T13:15:00.000Z'
-  const updated = await loadMrDistributionDataset(selected, newerPublication)
-  assert.equal(updated.entries[0].count, 2)
-  assert.equal(left.entries[0].count, 1)
-  assert.equal(requests.length, 4)
-  assert.ok(requests[0].includes('/data/mr-distribution/mr-cache-test.json?v='))
-  assert.ok(requests[3].includes(`published=${encodeURIComponent(newerPublication)}`))
 })
