@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "run-40451154872-1",
+  "startedAt": "2026-10-27T04:42:25.731Z",
+  "endedAt": "2026-10-27T04:54:54.921Z",
+  "event": "manual",
+  "status": "failed",
+  "failureReason": "collection-failed",
+  "datasetId": null,
+  "capture": {
+    "schemaVersion": 1,
+    "status": "failed",
+    "startedAt": "2026-10-27T04:42:25.734Z",
+    "endedAt": "2026-10-27T04:54:54.921Z",
+    "stage": "collection",
+    "reason": "collection-failed",
+    "readFailureCode": "http-error",
+    "requestCount": 148,
+    "successfulReadCount": 147,
+    "retryCount": 0,
+    "confirmedBoundaryCount": 20,
+    "datasetSaved": false,
+    "imported": false,
+    "browserClosed": true,
+    "initialSignInConfirmed": true,
+    "readableWithoutSignInReadCount": 1
+  }
+}
