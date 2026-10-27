@@ -11,6 +11,7 @@ export type AppRoute =
   | { page: 'legend-analysis' }
   | { page: 'new-account-observation' }
   | { page: 'parallel-fetch-test' }
+  | { page: 'sample-survey' }
   | { page: 'characters'; characterId: string | null }
   | { page: 'character-releases' }
   | { page: 'character-traits' }
@@ -27,6 +28,9 @@ export function balanceAdjustmentDetailHash(adjustmentId: string, scope: string 
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#sample-survey' || hash === '#sample-survey/') {
+    return { page: 'sample-survey' }
+  }
   if (hash === '#parallel-fetch-test' || hash === '#parallel-fetch-test/') {
     return { page: 'parallel-fetch-test' }
   }

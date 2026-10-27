@@ -78,6 +78,8 @@ Bucklerで公開されたStreet Fighter 6の対戦勝率を確認するアプリ
 
 ## 開発
 
+「標本調査」は `#sample-survey` から開く結果閲覧専用ページ。取得日・LPランク／MR帯・統計量を切り替えて、公開済みの集計結果を読む。取得は GitHub Actions の手動ワークフローで管理する。設定・公開条件・現在の検証状況は [標本調査](docs/sample-survey/README.md) を参照。
+
 「並列取得テスト」は `#parallel-fetch-test` から開く。実行先をローカルまたはGitHub Actionsから選び、所要時間と失敗を比較する。Actionsは直列確認・並列1/2比較の固定条件で実行し、終了後の結果を同じ表に取り込む。公開版はActionsへのリンクと結果JSONの読込・比較に対応する。操作・上限・指標の定義は [並列取得テスト](docs/parallel-fetch/README.md) を参照。
 
 Node.js 24とnpmを使用する。

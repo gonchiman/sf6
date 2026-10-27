@@ -1,0 +1,14 @@
+.sample-survey-page { display: grid; gap: 16px; min-width: 0; }
+.sample-survey-filters { margin: 0; }
+.sample-survey-filters > label:first-child { flex: 1 1 270px; }
+.sample-survey-filters > label:last-child { flex: 0 1 160px; }
+.sample-survey-capture { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-bottom: 14px; color: var(--text-soft); font-size: 12px; }
+.sample-survey-message { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border); background: var(--surface-soft); color: var(--text-soft); font-size: 12px; overflow-wrap: anywhere; }
+.sample-survey-scroll { max-height: 520px; }
+.sample-survey-table { min-width: 600px; }
+.sample-survey-table th:first-child { min-width: 125px; }
+.sample-survey-empty { margin: 0; padding: 20px 0; color: var(--text-muted); font-size: 14px; }
+.sample-survey-result-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-top: 12px; color: var(--text-muted); font-size: 12px; }
+@media (max-width: 420px) {
+  .sample-survey-filters > label:first-child, .sample-survey-filters > label:last-child { flex-basis: 100%; }
+}

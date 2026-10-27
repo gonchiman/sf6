@@ -2,6 +2,12 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { balanceAdjustmentDetailHash, characterHash, parseHashRoute } from './routes.ts'
 
+test('標本調査の直接URLを区別する', () => {
+  assert.deepEqual(parseHashRoute('#sample-survey'), { page: 'sample-survey' })
+  assert.deepEqual(parseHashRoute('#sample-survey/'), { page: 'sample-survey' })
+  assert.deepEqual(parseHashRoute('#sample-survey/unknown'), { page: 'win-rates' })
+})
+
 test('並列取得テストの直接URLを区別する', () => {
   assert.deepEqual(parseHashRoute('#parallel-fetch-test'), { page: 'parallel-fetch-test' })
   assert.deepEqual(parseHashRoute('#parallel-fetch-test/'), { page: 'parallel-fetch-test' })

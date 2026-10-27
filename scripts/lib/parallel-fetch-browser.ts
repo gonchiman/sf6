@@ -14,6 +14,8 @@ import { createRankDistributionPageReader, RankDistributionDomError } from './ra
 import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
 import type { ParallelFetchNavigationGate, ParallelFetchReader } from './parallel-fetch-runner.ts'
 import { createParallelFetchDiagnosticRecorder } from './parallel-fetch-diagnostics.ts'
+import type { RankBoundaryPage } from './rank-distribution-boundaries.ts'
+import type { MrDistributionPage } from './mr-distribution-collector.ts'
 
 type StorageState = Exclude<NonNullable<BrowserContextOptions['storageState']>, string>
 export interface ParallelFetchBrowserSession {
@@ -27,6 +29,13 @@ export interface ParallelFetchBrowserDependencies {
   createMrReader?: typeof createMrDistributionPageReader
   now?(): number
   wait?(milliseconds: number, signal: AbortSignal): Promise<void>
+  /** Private in-process capture for approved account sampling. Never part of reports or diagnostics. */
+  onValidatedPage?(input: {
+    target: ParallelFetchTarget
+    snapshot: RankBoundaryPage | MrDistributionPage
+    page: Pick<Page, 'evaluate' | 'url'>
+    identitySalt: string
+  }): Promise<void>
 }
 
 /** Only visible challenge controls/headings are inspected; no page text leaves the browser. */
@@ -65,10 +74,10 @@ async function loadFixedSession(): Promise<StorageState> {
   } catch { throw new ParallelFetchReadError('session-unavailable') }
 }
 
-async function launchFixedBrowser(): Promise<Browser> {
+async function launchFixedBrowser(headless = false): Promise<Browser> {
   disableRankDistributionDiagnostics(process.env)
   const { chromium } = await import('playwright')
-  return chromium.launch({ channel: 'msedge', headless: false, timeout: 30000,
+  return chromium.launch({ channel: 'msedge', headless, timeout: 30000,
     env: rankDistributionCloudBrowserEnvironment(process.env) })
 }
 
@@ -84,7 +93,7 @@ function safeReadCode(error: unknown): ParallelFetchErrorCode {
 }
 
 /** One browser/context per user-started run; each worker owns one independent Page. */
-export async function createParallelFetchBrowserSession(options: { intervalMs: ParallelFetchInterval; signal: AbortSignal },
+export async function createParallelFetchBrowserSession(options: { intervalMs: ParallelFetchInterval; signal: AbortSignal; headless?: boolean },
   dependencies: ParallelFetchBrowserDependencies = {}): Promise<ParallelFetchBrowserSession> {
   if (!isParallelFetchInterval(options.intervalMs)) throw new ParallelFetchReadError('invalid-request')
   const check = (): void => { if (options.signal.aborted) throw new ParallelFetchReadError('cancelled') }
@@ -95,7 +104,7 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
   } catch { throw new ParallelFetchReadError(options.signal.aborted ? 'cancelled' : 'session-unavailable') }
   check()
   let browser: Browser
-  try { browser = await (dependencies.launch ?? launchFixedBrowser)() }
+  try { browser = await (dependencies.launch ?? (() => launchFixedBrowser(options.headless)))() }
   catch { throw new ParallelFetchReadError(options.signal.aborted ? 'cancelled' : 'browser-unavailable') }
   let context: BrowserContext
   try {
@@ -135,6 +144,7 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
       pages.add(page)
       let pageClosed = false
       let challenge = false, wafStopped = false, httpStatus: number | null = null, domObserved = false
+      let identitySalt: string | null = null
       let rejectProtection: ((error: Error) => void) | null = null
       const recorder = createParallelFetchDiagnosticRecorder(page, now, () => {
         challenge = true; wafStopped = true
@@ -183,6 +193,8 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
         },
         async evaluate(fn: unknown, argument?: unknown) {
           await inspectChallenge()
+          if (dependencies.onValidatedPage && argument && typeof argument === 'object' && 'salt' in argument
+            && typeof argument.salt === 'string' && /^[a-f0-9]{64}$/.test(argument.salt)) identitySalt = argument.salt
           const value = await page.evaluate(fn as (value: unknown) => unknown, argument)
           domObserved = true
           return value
@@ -218,12 +230,20 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
           if (wafStopped) throw new ParallelFetchReadError('human-verification')
           if (typeof navigateWithPacing !== 'function' || navigationGate) throw new ParallelFetchReadError('invalid-request')
           navigationGate = navigateWithPacing
-          challenge = false; httpStatus = null; domObserved = false
+          challenge = false; httpStatus = null; domObserved = false; identitySalt = null
           const protection = new Promise<never>((_, reject) => { rejectProtection = reject })
           try {
-            const value = await Promise.race([protection, Promise.resolve().then(async () => lp
-              ? await lp.fetchPage(pageNumber, rankBoundaryPageUrl(RANK_BOUNDARY_SOURCE_URL, pageNumber))
-              : await mr!.fetchPage(pageNumber, mrDistributionPageUrl(pageNumber)))])
+            const value = await Promise.race([protection, Promise.resolve().then(async () => {
+              const snapshot = lp
+                ? await lp.fetchPage(pageNumber, rankBoundaryPageUrl(RANK_BOUNDARY_SOURCE_URL, pageNumber))
+                : await mr!.fetchPage(pageNumber, mrDistributionPageUrl(pageNumber))
+              if (dependencies.onValidatedPage) {
+                if (!identitySalt) throw new ParallelFetchReadError('read-failed')
+                await dependencies.onValidatedPage({ target, snapshot, page: guarded, identitySalt })
+              }
+              if (wafStopped || challenge) throw new ParallelFetchReadError('human-verification')
+              return snapshot
+            })])
             if (closed || pageClosed || signal.aborted || options.signal.aborted) throw new ParallelFetchReadError('cancelled')
             // Rows/IDs/salts/URLs are deliberately discarded at this boundary.
             const diagnostics = recorder.snapshot(readDiagnostics(pageNumber), true)
