@@ -218,9 +218,10 @@ async function loadFixedSession(): Promise<StorageState> {
   return JSON.parse(state) as StorageState
 }
 
-async function launchFixedEdge(state: StorageState, signal: AbortSignal): Promise<MrDistributionCaptureTransport> {
+export async function launchMrDistributionEdge(state: StorageState, signal: AbortSignal,
+  environment: Record<string, string | undefined> = process.env): Promise<MrDistributionCaptureTransport> {
   const { chromium } = await import('playwright')
-  const browser = await chromium.launch({ channel: 'msedge', headless: false, timeout: 30_000, env: rankDistributionCloudBrowserEnvironment(process.env) })
+  const browser = await chromium.launch({ channel: 'msedge', headless: false, timeout: 30_000, env: rankDistributionCloudBrowserEnvironment(environment) })
   try {
     signal.throwIfAborted()
     const context = await browser.newContext({ locale: 'ja-JP', acceptDownloads: false, storageState: state })
@@ -237,7 +238,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   const interrupt = (): void => { controller.abort() }
   process.once('SIGINT', interrupt)
   try {
-    const report = await runMrDistributionCollection(options, { loadSession: loadFixedSession, launch: launchFixedEdge,
+    const report = await runMrDistributionCollection(options, { loadSession: loadFixedSession, launch: launchMrDistributionEdge,
       saveDataset: createMrDistributionPrivateWriter(), importDataset: path => importMrDistributionData(path, PUBLIC_DIRECTORY), signal: controller.signal,
       progress: confirmedBoundaryCount => { console.log(JSON.stringify({ confirmedBoundaryCount, requiredBoundaryCount: 25 })) } })
     console.log(JSON.stringify(report))

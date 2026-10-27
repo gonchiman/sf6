@@ -140,7 +140,7 @@ LPランク分布は、公開ブランチ`codex/rank-distribution-history`の`da
 - ページが読むのは公開済みの集計JSONだけ。Bucklerへの新規取得、認証情報の読込、部分取得の公開は行わない。
 - ローカル開発画面とGitHub Pagesで共通。GitHub Pagesでは、この変更をmainへ反映して一度デプロイした後は、集計履歴の追加だけで表示を更新できる。GitHubのキャッシュや通信状況により反映が遅れる場合がある。
 
-レジェンド帯分析の読み込み・更新処理を`publishedDataFeed`、`publishedDataRefresh`と共通Hookへ分離して再利用する。MR帯には対応する定期取得・公開履歴がないため、従来どおり同梱データを表示する。
+レジェンド帯分析の読み込み・更新処理を`publishedDataFeed`、`publishedDataRefresh`と共通Hookへ分離して再利用する。MR帯も同じ仕組みで専用の公開履歴を読む。MRの取得条件・単発検証・週次実行の有効化は[MR分布の仕様](mr-distribution.md#クラウド取得とページへの自動反映)を参照。
 
 ## JSONの取り込み・検証
 

@@ -101,7 +101,26 @@ npm run validate:mr-distribution
 npm run test:mr-distribution
 ```
 
-ローカルの単発取得と保存・取り込みを実装する。MRのクラウド取得や週次自動起動は含めず、既存LP分布の週次workflowと保存済み認証の運用は変更しない。取得手順の実装と、実データの取得成功・定期実行の成功は別に記録する。
+ローカルの単発取得に加え、GitHub Actionsの単発・週次取得と公開集計の自動反映に対応する。取得手順の実装、単発の実データ取得成功、週次の定期起動成功は別に記録する。
+
+## クラウド取得とページへの自動反映
+
+`.github/workflows/mr-distribution-weekly.yml`をmainから手動実行する。週次は金曜21:00 JSTの予定で、リポジトリ変数`MR_DISTRIBUTION_WEEKLY_ENABLED`が`true`のときだけ収集する。単発検証が完了するまでは同変数を未設定または`false`にしておく。GitHub Actions側の都合で実際の起動時刻は遅れることがある。
+
+- 認証は既存の`BUCKLER_WEEKLY_SESSION`を再利用し、新しい認証情報は保存しない。受け取った環境変数を削除してから検証し、ブラウザーへメモリ内で渡す。LP週次・Legend日次の取得条件やSecretは変更しない。
+- `collect-mr-distribution-weekly.ts`は既存のMR取得処理を使う。直列・開始間隔5秒以上・最大600読取・30分を維持する。ログイン要求、CAPTCHA、条件の不一致、上限超過では停止し、部分的な境界値を完成分布として保存しない。
+- 取得ジョブは書込権限を持たず、検証済み集計と固定項目の実行記録だけをartifactへ渡す。認証情報・個別行・HTML・スクリーンショットは出力しない。
+- 保存ジョブが全26区分・25境界・出典・取得期間・合計と実行記録を再検証し、`codex/mr-distribution-history`の`public/`と`runs/`へ保存する。初回は既存の同梱データを引き継ぐ。取得失敗時には過去の正常な集計を保持し、失敗した実行の記録と取得状態を追加する。
+- ページは同ブランチの`public/index.json`と集計JSONを読み込む。LP・Legendと共通の`publishedDataFeed`と`usePublishedData`により、表示時・表示中の5分ごと・タブへ戻ったときに再確認する。最新日を表示中なら新しい取得分へ移り、過去の日付やグラフの設定は維持する。
+- 初回にクラウド履歴を読めなければ同梱データを表示し、更新中に通信が失敗した場合は表示中の正常値を保つ。一覧と本体は同じ配信元で検証し、不完全な履歴や取得日が後退する更新へは切り替えない。
+
+手動実行はGitHub Actionsの「Collect weekly MR distribution」から行う。収集から履歴保存まで成功したことと、ページの取得日・総数が保存した集計と一致することを確認する。週次を止める場合は`MR_DISTRIBUTION_WEEKLY_ENABLED`を`false`にする。共有の認証Secretを削除するとLP・Legendにも影響するため、MRだけを停止する操作として削除しない。
+
+| 内容 | 実装 |
+| --- | --- |
+| クラウド取得・実行記録 | `scripts/collect-mr-distribution-weekly.ts` |
+| 集計履歴の保存 | `scripts/publish-mr-distribution-weekly.ts` |
+| ページの自動読込 | `src/lib/mrDistributionFeed.ts`、`src/components/MrDistributionPanel.tsx` |
 
 ## 初回取得の確認記録
 
