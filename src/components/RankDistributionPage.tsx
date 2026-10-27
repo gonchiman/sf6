@@ -1,9 +1,11 @@
 import { useEffect, useId, useMemo, useState } from 'react'
-import { createRankDistributionRows, loadRankDistributionDataset, loadRankDistributionManifest, RANK_DISTRIBUTION_GROUPS } from '../lib/rankDistribution'
+import { createRankDistributionRows, RANK_DISTRIBUTION_GROUPS } from '../lib/rankDistribution'
+import { rankDistributionFeed } from '../lib/rankDistributionFeed'
+import { usePublishedData } from '../lib/usePublishedData'
 import { timestampLabel } from '../lib/dateTime'
 import { leagueLabel } from '../lib/winRateConditions'
 import type { RankDistributionChartMetric } from '../lib/rankDistributionChart'
-import type { RankDistributionDataset, RankDistributionManifest } from '../types/rankDistribution'
+import type { RankDistributionDataset } from '../types/rankDistribution'
 import { DataLoadState } from './DataLoadState'
 import { RankDistributionTable } from './RankDistributionTable'
 import { RankDistributionChart } from './RankDistributionChart'
@@ -12,11 +14,6 @@ import { MrDistributionPanel } from './MrDistributionPanel'
 import { DistributionCapturePeriod as CapturePeriod } from './DistributionCapturePeriod'
 import '../win-rates.css'
 import '../rank-distribution.css'
-
-type BootstrapState =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'ready'; manifest: RankDistributionManifest }
 
 type DatasetState =
   | { key: string; status: 'loading' }
@@ -42,42 +39,28 @@ export function RankDistributionPage() {
 }
 
 function LpDistributionPanel() {
-  const [bootstrap, setBootstrap] = useState<BootstrapState>({ status: 'loading' })
-  const [bootstrapVersion, setBootstrapVersion] = useState(0)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const { status, publication, selectedId, setSelectedId, refreshError, retry } = usePublishedData(rankDistributionFeed)
   const [group, setGroup] = useState('ALL')
   const [chartMetric, setChartMetric] = useState<RankDistributionChartMetric>('percent')
   const [datasetState, setDatasetState] = useState<DatasetState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
 
-  useEffect(() => {
-    let current = true
-    setBootstrap({ status: 'loading' })
-    void loadRankDistributionManifest().then(manifest => {
-      if (!current) return
-      const latest = [...manifest.datasets].sort((left, right) => Date.parse(right.captureEndedAt) - Date.parse(left.captureEndedAt))[0]
-      setSelectedId(previous => manifest.datasets.some(descriptor => descriptor.id === previous) ? previous : latest?.id ?? null)
-      setBootstrap({ status: 'ready', manifest })
-    }).catch(() => { if (current) setBootstrap({ status: 'error' }) })
-    return () => { current = false }
-  }, [bootstrapVersion])
-
-  const manifest = bootstrap.status === 'ready' ? bootstrap.manifest : null
+  const manifest = publication?.manifest ?? null
   const descriptors = useMemo(() => manifest ? [...manifest.datasets]
     .sort((left, right) => Date.parse(right.captureEndedAt) - Date.parse(left.captureEndedAt)) : [], [manifest])
   const descriptor = descriptors.find(item => item.id === selectedId) ?? null
-  const requestKey = manifest && descriptor ? JSON.stringify([manifest.generatedAt, descriptor]) : null
+  const requestKey = publication && descriptor ? JSON.stringify([publication.baseUrl, publication.manifest.generatedAt, descriptor]) : null
 
   useEffect(() => {
-    if (!manifest || !descriptor || !requestKey) return
+    if (!publication || !descriptor || !requestKey) return
     let current = true
     const key = requestKey
     setDatasetState({ key, status: 'loading' })
-    void loadRankDistributionDataset(descriptor, manifest.generatedAt).then(dataset => {
+    void rankDistributionFeed.loadDataset(publication, descriptor).then(dataset => {
       if (current) setDatasetState({ key, status: 'ready', dataset })
     }).catch(() => { if (current) setDatasetState({ key, status: 'error' }) })
     return () => { current = false }
-  }, [manifest, descriptor, requestKey, datasetVersion])
+  }, [publication, descriptor, requestKey, datasetVersion])
 
   // A new capture must never show the previous capture's counts while loading.
   const currentState = datasetState?.key === requestKey ? datasetState : null
@@ -88,9 +71,9 @@ function LpDistributionPanel() {
   const chartLabel = group === 'ALL' ? 'ランク帯ごとのグラフ' : `${leagueLabel(group)}の★別グラフ`
   const tableLabel = group === 'ALL' ? 'ランク帯ごとの数値' : `${leagueLabel(group)}の★別数値`
 
-  if (bootstrap.status === 'loading') return <DataLoadState loading message="ランク分布の取得日を読み込み中…" />
-  if (bootstrap.status === 'error' || !manifest) return <DataLoadState message="ランク分布の取得日を読み込めませんでした。"
-    onRetry={() => setBootstrapVersion(version => version + 1)} />
+  if (status === 'loading') return <DataLoadState loading message="ランク分布の取得日を読み込み中…" />
+  if (status === 'error' || !manifest) return <DataLoadState message="ランク分布の取得日を読み込めませんでした。"
+    onRetry={retry} />
 
   const availability = manifest.availability
   const emptyLabel = availability?.status === 'collection-failed' ? '取得失敗'
@@ -98,6 +81,10 @@ function LpDistributionPanel() {
 
   return <section className="rank-distribution-page" aria-label="LPランク分布">
     <p className="rank-distribution-scope">最大LPの総合一覧 · 全地域 · 全プラットフォーム</p>
+    {(refreshError || publication?.source === 'bundled') && <div className="rank-distribution-state" role="status">
+      <div>{publication?.source === 'bundled' ? '最新データを確認できません。同梱データを表示しています。' : '更新を確認できません。前回読み込んだデータを表示しています。'}</div>
+      <button className="win-rates-button" type="button" onClick={retry}>更新を再確認</button>
+    </div>}
     <StatisticsPanel title="条件選択">
       <div className="win-rates-filters rank-distribution-filters">
         <label><span>取得日</span><select aria-label="取得日" value={selectedId ?? ''} disabled={descriptors.length < 2}

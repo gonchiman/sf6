@@ -248,44 +248,6 @@ export function parseRankDistributionDataset(value: unknown, expected?: RankDist
   return dataset
 }
 
-const manifestRequests = new Map<string, Promise<RankDistributionManifest>>()
-const datasetRequests = new Map<string, Promise<RankDistributionDataset>>()
-
-function dataUrl(path: string): string {
-  const base = import.meta.env?.BASE_URL ?? '/'
-  return `${base.endsWith('/') ? base : `${base}/`}data/rank-distribution/${path}`
-}
-
-function loadJson<T>(url: string, parse: (value: unknown) => T, cache: Map<string, Promise<T>>): Promise<T> {
-  const existing = cache.get(url)
-  if (existing) return existing
-  const request = Promise.resolve().then(() => fetch(url)).then(async (response) => {
-    if (!response.ok) throw new Error('ランク分布データを読み込めませんでした。もう一度お試しください。')
-    return parse(await response.json())
-  }).catch((cause) => {
-    if (cache.get(url) === request) cache.delete(url)
-    throw cause
-  })
-  cache.set(url, request)
-  return request
-}
-
-export function loadRankDistributionManifest(): Promise<RankDistributionManifest> {
-  return loadJson(dataUrl('index.json'), parseRankDistributionManifest, manifestRequests)
-}
-
-export function loadRankDistributionDataset(descriptor: RankDistributionDescriptor, publicationVersion?: string): Promise<RankDistributionDataset> {
-  const expected = parseRankDistributionDescriptor(descriptor)
-  const publication = publicationVersion === undefined ? ''
-    : `&published=${encodeURIComponent(timestamp(publicationVersion, 'publicationVersion'))}`
-  const url = `${dataUrl(expected.path)}?v=${encodeURIComponent(expected.captureEndedAt)}${publication}`
-  const request = loadJson(url, parseRankDistributionDataset, datasetRequests)
-  return request.then((dataset) => { assertMatches(dataset, expected); return dataset }).catch((cause) => {
-    if (datasetRequests.get(url) === request) datasetRequests.delete(url)
-    throw cause
-  })
-}
-
 export function rankDistributionRankLabel(rankId: number): string {
   if (!Number.isInteger(rankId) || rankId < 1 || rankId > 36) invalid('rankId: unknown rank')
   if (rankId === 36) return leagueLabel('MASTER')

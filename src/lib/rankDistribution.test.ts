@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { RankDistributionDataset, RankDistributionDescriptor, RankDistributionManifest } from '../types/rankDistribution.ts'
 import {
-  createRankDistributionRows, loadRankDistributionDataset, loadRankDistributionManifest,
+  createRankDistributionRows,
   parseRankDistributionDataset, parseRankDistributionDescriptor, parseRankDistributionManifest,
   rankDistributionRankLabel, RANK_DISTRIBUTION_CONDITIONS, RANK_DISTRIBUTION_SOURCE,
   RANK_DISTRIBUTION_ESTIMATE_CHECKS, RANK_DISTRIBUTION_VALIDATION_CHECKS,
@@ -286,42 +286,4 @@ test('a zero-count estimate retains observed boundaries without producing invali
   }
   assert.deepEqual(parseRankDistributionDataset(input), input)
   assert.ok(createRankDistributionRows(input).every((row) => row.count === 0 && row.percent === null && row.cumulativePercent === null))
-})
-
-test('manifest HTTP failures are evicted so retry loads the actual empty manifest', async (t) => {
-  let requests = 0
-  t.mock.method(globalThis, 'fetch', async () => {
-    requests += 1
-    return requests === 1 ? new Response('', { status: 503 }) : Response.json(manifest([]))
-  })
-  await assert.rejects(loadRankDistributionManifest(), /読み込めません/)
-  assert.deepEqual(await loadRankDistributionManifest(), manifest([]))
-  assert.equal(requests, 2)
-})
-
-test('dataset loader shares requests, validates descriptors, evicts invalid data and versions corrected publications', async (t) => {
-  const selected = descriptor({ path: 'cache-test.json' })
-  const requests: string[] = []
-  let published = dataset()
-  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
-    requests.push(String(input))
-    return Response.json(requests.length === 1 ? { ...published, entries: [] } : published)
-  })
-  await assert.rejects(loadRankDistributionDataset(selected, generatedAt), /all 36 ranks/)
-  const [left, right] = await Promise.all([loadRankDistributionDataset(selected, generatedAt), loadRankDistributionDataset(selected, generatedAt)])
-  assert.strictEqual(left, right)
-  assert.equal(requests.length, 2)
-  await assert.rejects(loadRankDistributionDataset({ ...selected, id: 'mismatched' }, generatedAt), /一致しません/)
-  await loadRankDistributionDataset(selected, generatedAt)
-  assert.equal(requests.length, 3)
-  published = dataset()
-  published.entries[0].count += 1
-  published.entries[1].count -= 1
-  const newerPublication = '2026-10-13T01:20:00.000Z'
-  const updated = await loadRankDistributionDataset(selected, newerPublication)
-  assert.equal(updated.entries[0].count, 2)
-  assert.equal(left.entries[0].count, 1)
-  assert.equal(requests.length, 4)
-  assert.ok(requests[0].includes('/data/rank-distribution/cache-test.json?v='))
-  assert.ok(requests[3].includes(`published=${encodeURIComponent(newerPublication)}`))
 })
