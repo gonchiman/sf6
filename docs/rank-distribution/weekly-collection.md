@@ -1,12 +1,16 @@
 # ランク分布の週次取得
 
-更新日: 2026-10-28。定期起動と7日後の認証再利用は確認済み。10月23日の定期取得は600回の上限で停止したため、週次取得を最大1,000回、取得プログラムを110分、取得jobを120分に調整した。LP・MR共通のCAPTCHA検出・記録も週次workflowへ反映し、変更後の実取得結果は別に確認する。
+更新日: 2026-10-28。定期起動と7日後の認証再利用は確認済み。10月23日の定期取得は600回の上限で停止したため、週次取得を最大1,000回、取得プログラムを110分、取得jobを120分に調整した。LP・MR共通のCAPTCHA検出・記録も週次workflowへ反映し、10月28日のLP単発実行で取得・保存と新しい診断項目の公開履歴への保存を確認した。
 
 ## 現在の設定と確認状況
 
 [週次workflow](https://github.com/gonchiman/sf6/actions/workflows/rank-distribution-weekly.yml)を標準ブランチ`main`で有効化し、公開集計用の専用ブランチ`codex/rank-distribution-history`を作成した。取得・保存処理はレビュー済みコミット`239dc70dcbe7a2892461a5dca97387e98fa989c2`に固定している。
 
 週次workflowは`--collect --max-requests 1000`を明示する。5秒の取得開始間隔と直列取得を維持し、回数の上限だけを600回から1,000回へ増やす。内部の概数取得時間は60分から110分、Actionsの取得jobは75分から120分へ延長し、出力・artifact保存の余裕を設ける。別jobの履歴保存上限は10分のまま。CLIで回数を省略した場合は従来の600回、厳密方式の時間上限は15分を維持する。共有の概数取得処理を使うローカル実行も110分になるが、単発クラウド検証workflowの時間上限は今回変更しない。
+
+[10月28日の単発確認](https://github.com/gonchiman/sf6/actions/runs/40631542709)は取得・保存とも成功した。取得期間は13:22:43〜14:03:48 JST（約41分5秒）で、489回中489回成功、全35境界を確認、再読0回、定時ブラウザー再起動2回。既存の保存認証を再利用し、`initialSignInConfirmed: true`、`reuseAfterSevenDays: confirmed`を確認した。[公開run記録](https://raw.githubusercontent.com/gonchiman/sf6/codex/rank-distribution-history/runs/run-40631542709-1.json)には最終HTTP 200と`humanVerification: { wafHeaderChecked: true, wafAction: null, domDetected: false }`が保存され、今回の実行ではCAPTCHAによる停止はなかった。この診断値は最後に観測した応答・画面の状態を表す。
+
+[公開一覧](https://raw.githubusercontent.com/gonchiman/sf6/codex/rank-distribution-history/data/index.json)と全4件の集計を現行parserで検証した。新しい`max-lp-estimate-2026-10-28T04-22-43-337Z`は36区分・合計3,098,623件の概数で、10月15日・16日・27日の過去3件も保持され、失敗表示の`availability`は付いていない。ページが参照する公開データへの保存まで確認した結果であり、今回の手動実行を新たな定期起動の確認としては扱わない。
 
 [10月23日の定期実行](https://github.com/gonchiman/sf6/actions/runs/39828328376)は600回中599回の読み取りに成功したが、35境界中28境界を確認した段階で`request-limit`となった。新しい分布は未保存で、正常履歴とcheckpoint・失敗記録を保持した。`initialSignInConfirmed: true`と`reuseAfterSevenDays: confirmed`を確認しており、回数上限による停止と認証の再利用は分けて扱う。
 

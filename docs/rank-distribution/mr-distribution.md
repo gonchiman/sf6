@@ -246,3 +246,13 @@ LPで使っているEdge起動・ページ移動・再試行方針を共通部�
 再試行0回、`sessionRefreshCount: 0`、ブラウザー終了済み。20分の定時再起動に達する前に停止したため、その再起動の実サイトでの効果は今回も確認していない。起動・navigation・再試行方針の共通化だけでは、この1回のCAPTCHA停止は解消しなかった。MR自体が取得不可能なこと、特定の取得回数や経過時間で必ず止まることを示す結果ではない。CAPTCHA後の追加アクセス・再実行は行っていない。
 
 履歴保存ジョブは成功し、不完全な新規分布は保存していない。公開一覧は10月16日分314,404件を保持し、CAPTCHA停止の確認日時を22:03 JSTへ更新した。ローカル画面も再読込後に22:03 JSTの停止理由と314,404件を表示することを確認した。週次設定・認証Secret・取得上限は今回変更していない。
+
+### LP・MRの検出・記録共通化後の単発成功（2026年10月28日）
+
+LPの週次workflowを共通化済みの検証コミット`239dc70`へ固定し直し、[LP単発実行](https://github.com/gonchiman/sf6/actions/runs/40631542709)を先に行った。取得・履歴保存の終了後、ほかの取得が動いていないことを確認して、`03c4976`から[MR単発実行 #5](https://github.com/gonchiman/sf6/actions/runs/40635973744)を1回だけ実行した。MRの取得コードは共通化時と同じで、開始間隔・認証Secret・上限・CAPTCHA検出後の停止方針は変更していない。
+
+MRの[公開実行記録](https://github.com/gonchiman/sf6/blob/codex/mr-distribution-history/runs/run-40635973744-1.json)は`status: succeeded`。取得本体は14:06:14〜14:20:14 JSTの約14分、166回試行・165回正常読取、全25境界を確認した。一時的な`server-error`から同一ページの1回再読で復帰しており、記録の`readFailureCode: server-error`は回復済みのエラーで、最終的な停止理由ではない。`retryCount: 1`、`sessionRefreshCount: 0`、初回認証確認済み、取得用ブラウザー終了済み。
+
+最終応答はHTTP 200で、LP・MRとも`humanVerification`に`wafHeaderChecked: true`・`wafAction: null`・`domDetected: false`が残った。今回の両実行はCAPTCHAを検出せず完了した。この診断は最後に観測した応答・画面の状態であり、過去のCAPTCHA停止を取り消したり、今後の発生がなくなったと保証したりするものではない。
+
+MRの取得job・履歴保存jobはいずれも成功した。[公開一覧](https://github.com/gonchiman/sf6/blob/codex/mr-distribution-history/public/index.json)へ`max-mr-estimate-2026-10-28T05-06-18-071Z`を追加し、26区間・合計324,535件の新しい概数を保存した。公開run・一覧・新旧両集計は現行parserの検証を通過した。10月16日分314,404件は保持し、以前のCAPTCHA停止の`availability`は解除された。元の失敗run記録は履歴に残る。LPも全35境界・489回すべての読み取りに成功し、3,098,623件を保存した。LPの詳細は[週次取得の確認記録](weekly-collection.md#現在の設定と確認状況)を参照。
