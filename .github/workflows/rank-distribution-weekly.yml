@@ -1,8 +1,8 @@
-name: Collect weekly rank distribution
+name: Collect daily rank distribution
 
 on:
   schedule:
-    - cron: '30 13 * * 4' # Thursday 22:30 Asia/Tokyo
+    - cron: '30 10 * * *' # Daily 19:30 Asia/Tokyo; MR follows successful LP collection and publication
   workflow_dispatch:
 
 permissions:
@@ -107,3 +107,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Unable to commit aggregate history' }
           git push origin HEAD:refs/heads/codex/rank-distribution-history
           if ($LASTEXITCODE -ne 0) { throw 'Unable to save aggregate history' }
+
+  collect-mr:
+    needs: [collect, save-history]
+    if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && github.event_name == 'schedule' && needs.collect.result == 'success' && needs.save-history.result == 'success' && vars.MR_DISTRIBUTION_WEEKLY_ENABLED == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/mr-distribution-weekly.yml
+    secrets:
+      BUCKLER_WEEKLY_SESSION: ${{ secrets.BUCKLER_WEEKLY_SESSION }}

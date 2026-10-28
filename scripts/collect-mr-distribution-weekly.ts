@@ -19,7 +19,7 @@ export class MrWeeklyError extends Error {
   readonly code: 'arguments' | 'runner' | 'report' | 'output'
   constructor(code: MrWeeklyError['code']) {
     super({ arguments: '--collect [--max-requests 2〜600] または --help を指定してください。',
-      runner: '固定mainのMR週次workflowによるGitHub hosted Windows実行が必要です。',
+      runner: '固定mainのLP日次workflowまたはMR手動workflowによるGitHub hosted Windows実行が必要です。',
       report: 'MR取得の実行記録を検証できません。', output: 'MR取得の集計出力を確認できません。' }[code])
     this.name = 'MrWeeklyError'; this.code = code
   }
@@ -147,10 +147,13 @@ export function mrWeeklyFailureMessage(input: MrWeeklyRunReport, hasPreviousData
 }
 
 export function isAllowedMrWeeklyExecution(env: Environment): boolean {
+  const allowedTrigger = (env.GITHUB_WORKFLOW_REF === 'gonchiman/sf6/.github/workflows/mr-distribution-weekly.yml@refs/heads/main'
+    && env.GITHUB_EVENT_NAME === 'workflow_dispatch')
+    || (env.GITHUB_WORKFLOW_REF === 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main'
+      && env.GITHUB_EVENT_NAME === 'schedule')
   return env.GITHUB_ACTIONS === 'true' && env.RUNNER_ENVIRONMENT === 'github-hosted' && env.RUNNER_OS === 'Windows'
     && env.GITHUB_REPOSITORY === 'gonchiman/sf6' && env.GITHUB_REF === 'refs/heads/main'
-    && env.GITHUB_WORKFLOW_REF === 'gonchiman/sf6/.github/workflows/mr-distribution-weekly.yml@refs/heads/main'
-    && ['schedule', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME ?? '')
+    && allowedTrigger
     && /^[1-9]\d{0,24}$/.test(env.GITHUB_RUN_ID ?? '') && /^[1-9]\d{0,5}$/.test(env.GITHUB_RUN_ATTEMPT ?? '')
 }
 
@@ -257,7 +260,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   if (args.length === 1 && args[0] === '--help') {
     delete process.env[BUCKLER_WEEKLY_SESSION_SECRET]
     disableRankDistributionDiagnostics(process.env)
-    console.log('MR帯の週次取得。固定mainのGitHub hosted Windows専用。--collect [--max-requests 2〜600] で保存認証をメモリ内で使い、完成集計と安全な実行記録を保存します。')
+    console.log('MR帯の日次・手動取得。固定mainのGitHub hosted Windows専用。--collect [--max-requests 2〜600] で保存認証をメモリ内で使い、完成集計と安全な実行記録を保存します。')
     return
   }
   const controller = new AbortController(), interrupt = (): void => controller.abort()

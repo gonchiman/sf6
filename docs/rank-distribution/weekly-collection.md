@@ -1,12 +1,14 @@
-# ランク分布の週次取得
+# ランク分布の日次取得
 
 更新日: 2026-10-28。定期起動と7日後の認証再利用は確認済み。10月23日の定期取得は600回の上限で停止したため、週次取得を最大1,000回、取得プログラムを110分、取得jobを120分に調整した。LP・MR共通のCAPTCHA検出・記録も週次workflowへ反映し、10月28日のLP単発実行で取得・保存と新しい診断項目の公開履歴への保存を確認した。
 
 ## 現在の設定と確認状況
 
-[週次workflow](https://github.com/gonchiman/sf6/actions/workflows/rank-distribution-weekly.yml)を標準ブランチ`main`で有効化し、公開集計用の専用ブランチ`codex/rank-distribution-history`を作成した。取得・保存処理はレビュー済みコミット`239dc70dcbe7a2892461a5dca97387e98fa989c2`に固定している。
+2026年10月28日に週次から毎日19:30 JSTへ変更した。定期実行ではLPの取得・履歴保存が両方成功した後にMRを取得する。日次起動とLP→MRの連続取得の実績は、変更後の定期runで確認する。既存のworkflowファイル名、CLI、Secret・変数、artifact名に含まれる`weekly`は互換性のため維持する。
 
-週次workflowは`--collect --max-requests 1000`を明示する。5秒の取得開始間隔と直列取得を維持し、回数の上限だけを600回から1,000回へ増やす。内部の概数取得時間は60分から110分、Actionsの取得jobは75分から120分へ延長し、出力・artifact保存の余裕を設ける。別jobの履歴保存上限は10分のまま。CLIで回数を省略した場合は従来の600回、厳密方式の時間上限は15分を維持する。共有の概数取得処理を使うローカル実行も110分になるが、単発クラウド検証workflowの時間上限は今回変更しない。
+[日次workflow](https://github.com/gonchiman/sf6/actions/workflows/rank-distribution-weekly.yml)を標準ブランチ`main`で有効化し、公開集計用の専用ブランチ`codex/rank-distribution-history`を作成した。取得・保存処理はレビュー済みコミット`239dc70dcbe7a2892461a5dca97387e98fa989c2`に固定している。
+
+日次workflowは`--collect --max-requests 1000`を明示する。5秒の取得開始間隔と直列取得を維持し、回数の上限だけを600回から1,000回へ増やす。内部の概数取得時間は60分から110分、Actionsの取得jobは75分から120分へ延長し、出力・artifact保存の余裕を設ける。別jobの履歴保存上限は10分のまま。CLIで回数を省略した場合は従来の600回、厳密方式の時間上限は15分を維持する。共有の概数取得処理を使うローカル実行も110分になるが、単発クラウド検証workflowの時間上限は今回変更しない。
 
 [10月28日の単発確認](https://github.com/gonchiman/sf6/actions/runs/40631542709)は取得・保存とも成功した。取得期間は13:22:43〜14:03:48 JST（約41分5秒）で、489回中489回成功、全35境界を確認、再読0回、定時ブラウザー再起動2回。既存の保存認証を再利用し、`initialSignInConfirmed: true`、`reuseAfterSevenDays: confirmed`を確認した。[公開run記録](https://raw.githubusercontent.com/gonchiman/sf6/codex/rank-distribution-history/runs/run-40631542709-1.json)には最終HTTP 200と`humanVerification: { wafHeaderChecked: true, wafAction: null, domDetected: false }`が保存され、今回の実行ではCAPTCHAによる停止はなかった。この診断値は最後に観測した応答・画面の状態を表す。
 
@@ -26,11 +28,13 @@
 
 ## 実行と保存
 
-`.github/workflows/rank-distribution-weekly.yml`をリポジトリの標準ブランチへ登録済みで、毎週木曜22:30 JST（UTC 13:30）にGitHub hosted WindowsとEdgeで取得する設定になっている。PCとローカルアプリの起動は不要。`workflow_dispatch`による動作確認も同じ処理を使う。GitHub側の混雑などで予定時刻から遅れる場合がある。
+LPからMRへの呼出しは`workflow_call`を使い、定期実行・LP取得成功・LP保存成功・`MR_DISTRIBUTION_WEEKLY_ENABLED=true`をすべて満たした場合だけ実行する。LPが失敗して失敗記録の保存だけ成功した場合もMRは見送る。手動LPはMRを連動させず、手動MRは独立して起動できる。手動取得や別workflowの同時実行を一括で防ぐ仕組みではない。Legendの予定時刻22:45 JSTと開始時刻を離すが、混雑による遅延時の重複までは保証しない。
+
+`.github/workflows/rank-distribution-weekly.yml`をリポジトリの標準ブランチへ登録済みで、毎日19:30 JST（UTC 10:30）にGitHub hosted WindowsとEdgeで取得する設定になっている。PCとローカルアプリの起動は不要。`workflow_dispatch`による動作確認も同じ処理を使う。GitHub側の混雑などで予定時刻から遅れる場合がある。
 
 定期workflowは標準ブランチの固定ファイルに限り、取得・保存処理はレビューしたコミットSHAに固定する。PRや任意ブランチからの取得は許可しない。取得jobはリポジトリの読み取りだけ、保存jobだけがデータ専用ブランチへ書き込める。認証Secretは取得ステップだけへ渡す。
 
-取得・保存コードを変更した場合は、必要なテストと型検査を通したコードを先に`main`へコミットし、その検証済みコミットSHAへ`rank-distribution-weekly.yml`の取得job・保存jobの2か所の`ref`を揃えて更新する。`main`のコード変更だけでは週次実行に反映されない。今回の固定SHAは、内部110分制限と[LP・MR共通の人間確認検出・記録](collection.md#lp・mr共通の人間確認検出と記録)を含む。取得前の合成テストでも検出・停止・履歴への保存を確認する。
+取得・保存コードを変更した場合は、必要なテストと型検査を通したコードを先に`main`へコミットし、その検証済みコミットSHAへ`rank-distribution-weekly.yml`の取得job・保存jobの2か所の`ref`を揃えて更新する。`main`のコード変更だけではLPの定期実行に反映されない。今回の固定SHAは、内部110分制限と[LP・MR共通の人間確認検出・記録](collection.md#lp・mr共通の人間確認検出と記録)を含む。取得前の合成テストでも検出・停止・履歴への保存を確認する。
 
 取得条件と概数の意味は[取得仕様](README.md)と[取得処理](collection.md)を引き継ぐ。過去のcheckpointは探索候補にだけ使い、全35境界を今回の実行で新しく確認できた場合に36区分の集計を追加する。対象はランキング掲載ファイターアカウントで、実人数やアクティブ人口とは扱わない。
 
@@ -66,11 +70,11 @@ node scripts/send-buckler-cloud-session.ts --cleanup-weekly
 
 ## 結果の確認とローカルへの取り込み
 
-GitHub Actionsの`Collect weekly rank distribution`から実行結果を確認する。成功時も取得期間中の概数として扱う。定期実行の成功と、データ専用ブランチへの保存成功を両方確認する。
+GitHub Actionsの`Collect daily rank distribution`から実行結果を確認する。成功時も取得期間中の概数として扱う。定期実行の成功と、データ専用ブランチへの保存成功を両方確認する。
 
 LPランク分布ページは起動時・表示中の5分ごと・タブ復帰時に専用ブランチの`data/`を確認し、検証した集計を自動表示する。詳細は[ページへの自動反映](README.md#ページへの自動反映)を参照。通信失敗時の同梱データも更新したい場合は、`data/`をダウンロードし、既存の`data:import-rank-distribution`で取り込む。手動取り込みの詳細は[取得処理](collection.md)を参照。
 
-停止する場合はGitHub Actionsで週次workflowを無効にし、上の`--cleanup-weekly`で認証Secretを削除する。既に保存した集計履歴は残る。
+LPと後続MRの定期取得を停止する場合はGitHub ActionsでLPの日次workflowを無効にする。MRだけを停止する場合は`MR_DISTRIBUTION_WEEKLY_ENABLED=false`にする。共有Secretの削除はLegendにも影響するため、認証を使う取得をすべて停止する場合か認証更新時に限り、上の`--cleanup-weekly`を使う。既に保存した集計履歴は残る。
 
 ## GitHubの定期実行の制約
 

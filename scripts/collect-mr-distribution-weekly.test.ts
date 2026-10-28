@@ -52,6 +52,12 @@ function setup(succeeded = true) {
 test('MR cloud policy accepts only fixed main hosted Windows executions and consumes the Secret before every guard', async () => {
   for (const patch of [{ GITHUB_ACTIONS: 'false' }, { RUNNER_ENVIRONMENT: 'self-hosted' }, { RUNNER_OS: 'Linux' },
     { GITHUB_REPOSITORY: 'someone/else' }, { GITHUB_REF: 'refs/heads/feature' }, { GITHUB_EVENT_NAME: 'pull_request' },
+    { GITHUB_EVENT_NAME: 'schedule' }, { GITHUB_EVENT_NAME: 'workflow_call' },
+    { GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main' },
+    { GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/feature', GITHUB_EVENT_NAME: 'schedule' },
+    { GITHUB_WORKFLOW_REF: 'someone/else/.github/workflows/rank-distribution-weekly.yml@refs/heads/main', GITHUB_EVENT_NAME: 'schedule' },
+    ...['pull_request', 'workflow_call'].map(GITHUB_EVENT_NAME => ({
+      GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main', GITHUB_EVENT_NAME })),
     { GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/legend-analysis-daily.yml@refs/heads/main' }, { GITHUB_RUN_ID: '../secret' }, { GITHUB_RUN_ATTEMPT: '0' }]) {
     const fixture = setup(); Object.assign(fixture.env, patch)
     assert.equal(isAllowedMrWeeklyExecution(fixture.env), false)
@@ -60,7 +66,8 @@ test('MR cloud policy accepts only fixed main hosted Windows executions and cons
     assert.deepEqual(fixture.calls, [])
   }
   assert.equal(isAllowedMrWeeklyExecution(environment()), true)
-  assert.equal(isAllowedMrWeeklyExecution({ ...environment(), GITHUB_EVENT_NAME: 'schedule' }), true)
+  assert.equal(isAllowedMrWeeklyExecution({ ...environment(), GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main' }), true)
 })
 
 test('MR cloud arguments remain bounded and never permit arbitrary import/output or saved-session paths', async () => {
@@ -83,6 +90,21 @@ test('complete cloud collection stages one validated aggregate and marks artifac
   assert.deepEqual(result.run, report())
   assert.deepEqual(fixture.calls, ['collect', 'output', 'artifact'])
   assert.equal(fixture.written[0].dataset?.id, dataset.id)
+  assert.doesNotMatch(JSON.stringify([result, fixture.written]), /synthetic-mr-weekly-private-session|cookies|storageState|not-for-browser/)
+})
+
+test('LP daily caller stages a successful MR aggregate and preserves the scheduled event and shared run identity', async () => {
+  const fixture = setup()
+  Object.assign(fixture.env, { GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main',
+    GITHUB_EVENT_NAME: 'schedule' })
+  const result = await runMrWeekly(['--collect'], fixture.deps)
+  assert.equal(result.succeeded, true)
+  assert.equal(result.artifactReady, true)
+  assert.deepEqual(result.run, { ...report(), event: 'schedule' })
+  assert.deepEqual(fixture.calls, ['collect', 'output', 'artifact'])
+  assert.equal(fixture.written[0].run.event, 'schedule')
+  assert.equal(fixture.written[0].dataset?.id, dataset.id)
+  assert.equal(fixture.env.BUCKLER_WEEKLY_SESSION, undefined)
   assert.doesNotMatch(JSON.stringify([result, fixture.written]), /synthetic-mr-weekly-private-session|cookies|storageState|not-for-browser/)
 })
 

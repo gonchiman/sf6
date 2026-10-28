@@ -101,20 +101,22 @@ npm run validate:mr-distribution
 npm run test:mr-distribution
 ```
 
-ローカルの単発取得に加え、GitHub Actionsの単発・週次取得と公開集計の自動反映に対応する。取得手順の実装、単発の実データ取得成功、週次の定期起動成功は別に記録する。
+ローカルの単発取得に加え、GitHub Actionsの単発・日次取得と公開集計の自動反映に対応する。取得手順の実装、単発の実データ取得成功、日次の定期起動成功は別に記録する。
 
 ## クラウド取得とページへの自動反映
 
-`.github/workflows/mr-distribution-weekly.yml`をmainから手動実行する。週次は金曜21:00 JSTの予定で、リポジトリ変数`MR_DISTRIBUTION_WEEKLY_ENABLED`が`true`のときだけ収集する。週次の起動設定と、新しい分布の取得成功は別に扱う。CAPTCHAなどで停止した週には前回の正常な分布を保持する。GitHub Actions側の都合で実際の起動時刻は遅れることがある。
+2026年10月28日から、毎日19:30 JSTに始まるLP定期取得の取得job・履歴保存jobが両方成功した後、`.github/workflows/mr-distribution-weekly.yml`を再利用してMRを取得する。リポジトリ変数`MR_DISTRIBUTION_WEEKLY_ENABLED`が`true`のときだけ後続MRを起動する。MR独自の金曜scheduleは廃止し、mainからの手動実行は残す。日次の起動設定と、新しい分布の取得成功は別に扱う。CAPTCHAなどで停止した日は前回の正常な分布を保持する。GitHub Actions側の都合で実際の起動時刻は遅れることがある。
 
-- 認証は既存の`BUCKLER_WEEKLY_SESSION`を再利用し、新しい認証情報は保存しない。受け取った環境変数を削除してから検証し、ブラウザーへメモリ内で渡す。LP週次・Legend日次の取得条件やSecretは変更しない。
+再利用時の実行元はLP workflowのmain・`schedule`、手動時はMR workflowのmain・`workflow_dispatch`に限定する。呼出し側から渡すSecretは`BUCKLER_WEEKLY_SESSION`だけ。LPとMRのconcurrency groupは分け、LPの終了待ちで子MRが行き詰まらない構成にする。日次MRの結果は親LPと同じActions run内に並び、artifact・保存ブランチはLPと分離する。既存の`weekly`を含むファイル名や変数名は維持する。
+
+- 認証は既存の`BUCKLER_WEEKLY_SESSION`を再利用し、新しい認証情報は保存しない。受け取った環境変数を削除してから検証し、ブラウザーへメモリ内で渡す。LP・Legendの取得条件やSecretは変更しない。
 - `collect-mr-distribution-weekly.ts`は既存のMR取得処理を使う。直列・開始間隔5秒以上・最大600読取・30分を維持する。ログイン要求、CAPTCHA、条件の不一致、上限超過では停止し、部分的な境界値を完成分布として保存しない。
 - 取得ジョブは書込権限を持たず、検証済み集計と固定項目の実行記録だけをartifactへ渡す。認証情報・個別行・HTML・スクリーンショットは出力しない。
 - 保存ジョブが全26区分・25境界・出典・取得期間・合計と実行記録を再検証し、`codex/mr-distribution-history`の`public/`と`runs/`へ保存する。初回は既存の同梱データを引き継ぐ。取得失敗時には過去の正常な集計を保持し、失敗した実行の記録と取得状態を追加する。
 - ページは同ブランチの`public/index.json`と集計JSONを読み込む。LP・Legendと共通の`publishedDataFeed`と`usePublishedData`により、表示時・表示中の5分ごと・タブへ戻ったときに再確認する。最新日を表示中なら新しい取得分へ移り、過去の日付やグラフの設定は維持する。
 - 初回にクラウド履歴を読めなければ同梱データを表示し、更新中に通信が失敗した場合は表示中の正常値を保つ。一覧と本体は同じ配信元で検証し、不完全な履歴や取得日が後退する更新へは切り替えない。
 
-手動実行はGitHub Actionsの「Collect weekly MR distribution」から行う。収集から履歴保存まで成功したことと、ページの取得日・総数が保存した集計と一致することを確認する。週次を止める場合は`MR_DISTRIBUTION_WEEKLY_ENABLED`を`false`にする。共有の認証Secretを削除するとLP・Legendにも影響するため、MRだけを停止する操作として削除しない。
+手動実行はGitHub Actionsの「Collect daily MR distribution」から行う。収集から履歴保存まで成功したことと、ページの取得日・総数が保存した集計と一致することを確認する。LPからの定期呼出しを止める場合は`MR_DISTRIBUTION_WEEKLY_ENABLED`を`false`にする。共有の認証Secretを削除するとLP・Legendにも影響するため、MRだけを停止する操作として削除しない。
 
 公開する失敗理由は、検証済み実行記録の固定分類から生成する。CAPTCHAの識別情報を確認できた場合はCAPTCHA要求、画面などによる人間確認の検出は人間確認要求、保存済み認証を利用できない場合は認証の問題として区別する。HTTP 405だけの古い記録をCAPTCHAに読み替えず、自由文・生ヘッダー・例外メッセージを公開表示へ流用しない。
 
@@ -255,4 +257,4 @@ MRの[公開実行記録](https://github.com/gonchiman/sf6/blob/codex/mr-distrib
 
 最終応答はHTTP 200で、LP・MRとも`humanVerification`に`wafHeaderChecked: true`・`wafAction: null`・`domDetected: false`が残った。今回の両実行はCAPTCHAを検出せず完了した。この診断は最後に観測した応答・画面の状態であり、過去のCAPTCHA停止を取り消したり、今後の発生がなくなったと保証したりするものではない。
 
-MRの取得job・履歴保存jobはいずれも成功した。[公開一覧](https://github.com/gonchiman/sf6/blob/codex/mr-distribution-history/public/index.json)へ`max-mr-estimate-2026-10-28T05-06-18-071Z`を追加し、26区間・合計324,535件の新しい概数を保存した。公開run・一覧・新旧両集計は現行parserの検証を通過した。10月16日分314,404件は保持し、以前のCAPTCHA停止の`availability`は解除された。元の失敗run記録は履歴に残る。LPも全35境界・489回すべての読み取りに成功し、3,098,623件を保存した。LPの詳細は[週次取得の確認記録](weekly-collection.md#現在の設定と確認状況)を参照。
+MRの取得job・履歴保存jobはいずれも成功した。[公開一覧](https://github.com/gonchiman/sf6/blob/codex/mr-distribution-history/public/index.json)へ`max-mr-estimate-2026-10-28T05-06-18-071Z`を追加し、26区間・合計324,535件の新しい概数を保存した。公開run・一覧・新旧両集計は現行parserの検証を通過した。10月16日分314,404件は保持し、以前のCAPTCHA停止の`availability`は解除された。元の失敗run記録は履歴に残る。LPも全35境界・489回すべての読み取りに成功し、3,098,623件を保存した。LPの詳細は[定期取得の確認記録](weekly-collection.md#現在の設定と確認状況)を参照。

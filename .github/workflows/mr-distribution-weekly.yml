@@ -1,8 +1,10 @@
-name: Collect weekly MR distribution
+name: Collect daily MR distribution
 
 on:
-  schedule:
-    - cron: '0 12 * * 5' # Friday 21:00 Asia/Tokyo; controlled by MR_DISTRIBUTION_WEEKLY_ENABLED
+  workflow_call:
+    secrets:
+      BUCKLER_WEEKLY_SESSION:
+        required: true
   workflow_dispatch:
 
 permissions:

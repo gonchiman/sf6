@@ -76,6 +76,19 @@ test('first MR publication seeds the bundled capture and preserves the Git check
   assert.deepEqual(JSON.parse(await readFile(resolve(f.historyDirectory, 'public', `${original.id}.json`), 'utf8')), original)
 })
 
+test('LP daily caller publishes an MR scheduled record with its shared run identity', async t => {
+  const value = fixture()
+  value.run.event = 'schedule'
+  const f = await setup(t, value)
+  await main([], { env: { ...env, GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main' },
+    publish: options => publishMrWeekly({ ...f.options, ...options }), log: () => {} })
+  const saved = JSON.parse(await readFile(resolve(f.historyDirectory, 'runs', `${value.run.id}.json`), 'utf8'))
+  assert.deepEqual(saved, value.run)
+  const manifest = parseMrDistributionManifest(JSON.parse(await readFile(resolve(f.historyDirectory, 'public/index.json'), 'utf8')))
+  assert.deepEqual(manifest.datasets.map(item => item.id), [value.dataset.id, original.id])
+})
+
 test('new MR captures append to immutable history and an identical rerun makes no changes', async t => {
   const f = await setup(t)
   await publishMrWeekly(f.options)
@@ -218,6 +231,16 @@ test('publisher entry point requires fixed workflow and passes the current run i
   const calls: unknown[] = []
   await main([], { env, publish: async options => { calls.push(options); return { datasets: 1, entries: 26, runs: 1 } }, log: () => {} })
   assert.deepEqual(calls, [{ expectedRunId: 'run-42-1' }])
-  await assert.rejects(main([], { env: { ...env, GITHUB_REF: 'refs/heads/untrusted' }, publish: async () => { throw new Error('must not run') } }))
+  for (const patch of [{ GITHUB_REF: 'refs/heads/untrusted' }, { GITHUB_EVENT_NAME: 'schedule' }, { GITHUB_EVENT_NAME: 'pull_request' },
+    { GITHUB_EVENT_NAME: 'workflow_call' },
+    { GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main' },
+    { GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/feature', GITHUB_EVENT_NAME: 'schedule' },
+    { GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/legend-analysis-daily.yml@refs/heads/main', GITHUB_EVENT_NAME: 'schedule' },
+    ...['pull_request', 'workflow_call'].map(GITHUB_EVENT_NAME => ({
+      GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/rank-distribution-weekly.yml@refs/heads/main', GITHUB_EVENT_NAME })),
+  ]) {
+    await assert.rejects(main([], { env: { ...env, ...patch }, publish: async () => { calls.push('rejected caller'); throw new Error('must not run') } }))
+  }
+  assert.deepEqual(calls, [{ expectedRunId: 'run-42-1' }])
   await assert.rejects(main(['input'], { env }))
 })
