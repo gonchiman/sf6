@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 2,
+  "id": "aa1cf0f1-255c-4c1c-b7c9-4061a6e62d83",
+  "planId": "7883db92-7d64-49b9-a9fd-5ddecbfa096f",
+  "config": {
+    "ranks": [
+      "MASTER"
+    ],
+    "rankSampleSize": 10,
+    "includeMr": false,
+    "mrSampleSize": 10,
+    "maxDurationMinutes": 10
+  },
+  "state": "complete",
+  "phase": "complete",
+  "startedAt": "2026-10-28T04:15:52.988Z",
+  "updatedAt": "2026-10-28T04:21:27.033Z",
+  "finishedAt": "2026-10-28T04:21:27.033Z",
+  "elapsedMs": 334045,
+  "attempts": 34,
+  "successfulPages": 34,
+  "uniqueAccountCount": 10,
+  "strata": [
+    {
+      "id": "lp-MASTER",
+      "label": "MASTER",
+      "target": "lp",
+      "requested": 10,
+      "population": 551848,
+      "selected": 10,
+      "processed": 10,
+      "succeeded": 10,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 108830.9,
+      "min": 25059,
+      "max": 356561
+    }
+  ],
+  "frameChanged": false,
+  "stopReason": null,
+  "resumeAllowed": false,
+  "observation": {
+    "method": "rank-position-interval-v1",
+    "strata": [
+      {
+        "id": "lp-MASTER",
+        "status": "checked",
+        "startedAt": "2026-10-28T04:15:52.991Z",
+        "finishedAt": "2026-10-28T04:21:27.033Z",
+        "totalCountBefore": 3098574,
+        "totalCountAfter": 3098576,
+        "startBefore": 0,
+        "endBefore": 551848,
+        "startAfter": 0,
+        "endAfter": 551848,
+        "boundaryChanged": false
+      }
+    ],
+    "changes": [
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-28T04:16:17.104Z",
+        "before": 3098569,
+        "after": 3098571
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-28T04:17:58.431Z",
+        "before": 3098571,
+        "after": 3098572
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-28T04:18:16.586Z",
+        "before": 3098572,
+        "after": 3098573
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-28T04:18:47.437Z",
+        "before": 3098573,
+        "after": 3098574
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-28T04:19:06.975Z",
+        "before": 3098574,
+        "after": 3098575
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-28T04:19:17.385Z",
+        "before": 3098575,
+        "after": 3098576
+      }
+    ],
+    "omittedChanges": 0
+  }
+}
