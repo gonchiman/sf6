@@ -25,7 +25,7 @@ jobs:
       - name: Checkout reviewed collector
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 6348855777c2c809ffab1ae02822b0944e9dc9cd
+          ref: 239dc70dcbe7a2892461a5dca97387e98fa989c2
           persist-credentials: false
       - name: Read previous safe aggregate and checkpoint
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,7 +40,7 @@ jobs:
       - name: Install dependencies without project scripts
         run: npm ci --ignore-scripts
       - name: Test weekly collection with synthetic state
-        run: node --test scripts/lib/buckler-weekly-session.test.ts scripts/lib/rank-distribution-weekly-history.test.ts scripts/collect-rank-distribution-weekly.test.ts scripts/collect-rank-distribution-cloud.test.ts
+        run: node --test scripts/lib/buckler-weekly-session.test.ts scripts/lib/distribution-human-verification.test.ts scripts/lib/rank-distribution-dom.test.ts scripts/lib/rank-distribution-weekly-history.test.ts scripts/collect-rank-distribution.test.ts scripts/collect-rank-distribution-weekly.test.ts scripts/collect-rank-distribution-cloud.test.ts scripts/publish-rank-distribution-weekly.test.ts
       - name: Collect fresh boundaries and check saved session reuse
         id: collect
         env:
@@ -71,7 +71,7 @@ jobs:
       - name: Checkout reviewed publisher
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 6348855777c2c809ffab1ae02822b0944e9dc9cd
+          ref: 239dc70dcbe7a2892461a5dca97387e98fa989c2
           persist-credentials: false
       - name: Checkout data branch for aggregate history only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
