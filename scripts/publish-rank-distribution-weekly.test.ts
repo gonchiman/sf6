@@ -102,6 +102,67 @@ test('a failed week appends its safe run and checkpoint while preserving old ver
   assert.deepEqual(await loadWeeklyHistory(target, NOW), expected)
 })
 
+test('published CAPTCHA diagnostics preserve normal data and old run bytes, and a later success clears the failure status', async t => {
+  const root = await fixture(t)
+  const empty = await loadWeeklyHistory(join(root, 'absent'), NOW)
+  const previous = await output(root, 'old', empty, OLD)
+  const target = join(root, 'history')
+  await publishRankDistributionWeekly({ inputDirectory: join(root, 'old'), historyDirectory: target, now: NOW })
+  const oldDataText = await readFile(join(target, 'data', `${dataset(OLD).id}.json`), 'utf8')
+  const oldRunText = await readFile(join(target, 'runs/run-99-1.json'), 'utf8')
+  const humanVerification = { wafHeaderChecked: true, wafAction: 'captcha' as const, domDetected: null }
+  const failed = report(START, true)
+  failed.capture = { ...failed.capture!, reason: 'captcha', readFailureCode: 'human-verification',
+    lastHttpStatus: 405, humanVerification }
+  await writeWeeklyHistoryOutput({ previous, run: failed, directory: join(root, 'failed'), now: NOW })
+  await publishRankDistributionWeekly({ inputDirectory: join(root, 'failed'), historyDirectory: target, now: NOW })
+  const failedHistory = await loadWeeklyHistory(target, NOW)
+  assert.equal(failedHistory.datasets.length, 1)
+  assert.equal(failedHistory.manifest.availability?.status, 'collection-failed')
+  assert.equal(failedHistory.manifest.availability?.message, 'BucklerからCAPTCHAを要求されたため、ランク分布の取得を停止しました。')
+  assert.equal(failedHistory.runs.find(run => run.id === 'run-100-1')?.capture?.reason, 'captcha')
+  assert.deepEqual(failedHistory.runs.find(run => run.id === 'run-100-1')?.capture?.humanVerification, humanVerification)
+  assert.equal(await readFile(join(target, 'data', `${dataset(OLD).id}.json`), 'utf8'), oldDataText)
+  assert.equal(await readFile(join(target, 'runs/run-99-1.json'), 'utf8'), oldRunText)
+  assert.equal(Object.hasOwn(failedHistory.runs.find(run => run.id === 'run-99-1')!.capture!, 'humanVerification'), false)
+
+  const recoveredAt = '2026-10-23T12:00:00.000Z'
+  await writeWeeklyHistoryOutput({ previous: failedHistory, run: { ...report(recoveredAt), id: 'run-101-1' },
+    dataset: dataset(recoveredAt), directory: join(root, 'recovered'), now: NOW })
+  await publishRankDistributionWeekly({ inputDirectory: join(root, 'recovered'), historyDirectory: target, now: NOW })
+  const recovered = await loadWeeklyHistory(target, NOW)
+  assert.equal(recovered.datasets.length, 2)
+  assert.equal(recovered.manifest.availability, undefined)
+  assert.deepEqual(recovered.runs.find(run => run.id === 'run-100-1')?.capture?.humanVerification, humanVerification)
+})
+
+test('malformed nested protection diagnostics reject an artifact without altering published history', async t => {
+  const root = await fixture(t)
+  const empty = await loadWeeklyHistory(join(root, 'absent'), NOW)
+  const previous = await output(root, 'old', empty, OLD)
+  const target = join(root, 'history')
+  await publishRankDistributionWeekly({ inputDirectory: join(root, 'old'), historyDirectory: target, now: NOW })
+  const before = await readFile(join(target, 'data/index.json'), 'utf8')
+  const invalid = [
+    { wafHeaderChecked: true, wafAction: 'captcha', domDetected: null, cookie: 'synthetic-private-captcha' },
+    { wafHeaderChecked: false, wafAction: 'captcha', domDetected: null },
+    { wafHeaderChecked: true, wafAction: 'synthetic-private-captcha', domDetected: false },
+    { wafHeaderChecked: true, wafAction: null, domDetected: 'synthetic-private-captcha' },
+    null,
+  ]
+  for (const [index, humanVerification] of invalid.entries()) {
+    const incoming = join(root, `invalid-${index}`)
+    await output(root, `invalid-${index}`, previous, START, true)
+    const run = report(START, true)
+    await writeFile(join(incoming, 'runs/run-100-1.json'), JSON.stringify({ ...run, capture: {
+      ...run.capture!, reason: 'captcha', readFailureCode: 'human-verification', humanVerification,
+    } }))
+    await assert.rejects(publishRankDistributionWeekly({ inputDirectory: incoming, historyDirectory: target, now: NOW }), error =>
+      error instanceof RankDistributionWeeklyPublishError && error.code === 'input' && !error.message.includes('synthetic-private-captcha'))
+    assert.equal(await readFile(join(target, 'data/index.json'), 'utf8'), before)
+  }
+})
+
 test('history loss and mutation of an old dataset are rejected before any checkout write', async t => {
   const root = await fixture(t)
   const empty = await loadWeeklyHistory(join(root, 'absent'), NOW)

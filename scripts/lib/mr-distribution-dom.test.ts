@@ -6,6 +6,7 @@ import { createMrDistributionPageReader, MrDistributionDomError, observeMrDistri
 import type { MrDistributionDomObservation, MrDistributionPageReaderOptions } from './mr-distribution-dom.ts'
 import { mrDistributionPageUrl } from './mr-distribution-collector.ts'
 import type { DistributionPageObservationSnapshot } from './distribution-page-observation.ts'
+import { observeDistributionHumanVerification } from './distribution-human-verification.ts'
 
 type Node = {
   innerText: string; textContent: string; parentElement: Node | null; value: string; selectedOptions: Node[]
@@ -88,38 +89,44 @@ test('visible human-verification headings or the observed AWS begin button are h
   const setup = dom(t)
   for (const heading of ['ユーザーが人間であることを確認する', 'Human Verification', 'Verify you are human']) {
     setup.nodes['h1,h2'] = [node(heading)]
-    const value = await observeMrDistributionDom({ salt: 'capture' })
-    assert.equal(value.humanVerificationRequired, true)
-    assert.equal(value.entries, null)
+    assert.equal(observeDistributionHumanVerification(), true)
   }
   setup.nodes['h1,h2'] = []
   const button = node('開始')
   setup.nodes['#amzn-captcha-verify-button'] = [button]
-  assert.equal((await observeMrDistributionDom({ salt: 'capture' })).humanVerificationRequired, true)
+  assert.equal(observeDistributionHumanVerification(), true)
   button.style.display = 'none'
-  assert.equal((await observeMrDistributionDom({ salt: 'capture' })).humanVerificationRequired, false)
+  assert.equal(observeDistributionHumanVerification(), false)
 })
 
-function observation(page = 1, total = 43): MrDistributionDomObservation {
+// The fixture models the separate common DOM guard alongside each ranking sample.
+type SyntheticObservation = MrDistributionDomObservation & { humanVerificationRequired?: boolean }
+function observation(page = 1, total = 43): SyntheticObservation {
   const from = (page - 1) * 20 + 1, to = Math.min(page * 20, total)
   return { maintenance: false, humanVerificationRequired: false, loginRequiredHeading: false, signedIn: true, authenticationEvidence: 'logout-control',
     conditionsMatch: true, currentActMatch: true, selectedPage: page, range: { from, to, total },
     entries: Array.from({ length: to - from + 1 }, (_, i) => ({ masterRating: 1600 - from - i, accountKey: (from + i).toString(16).padStart(64, '0') })) }
 }
 function browser(configuration: {
-  observe?: (page: number, count: number, readOnly?: boolean) => MrDistributionDomObservation
+  observe?: (page: number, count: number, readOnly?: boolean) => SyntheticObservation
   status?: number; redirect?: (url: string) => string
   headers?: (requestCount: number) => Record<string, string>
+  humanVerification?: (checks: number) => boolean
   options?: MrDistributionPageReaderOptions
 } = {}) {
   let clock = 0, evaluations = 0, currentUrl = '', pageNumber = 1
+  let guardChecks = 0
+  let latest: SyntheticObservation | null = null
   const requests: string[] = [], waits: number[] = []
   const fake = {
-    goto: async (url: string) => { requests.push(url); pageNumber = Number(new URL(url).searchParams.get('page')); currentUrl = configuration.redirect?.(url) ?? url
+    goto: async (url: string) => { requests.push(url); latest = null; pageNumber = Number(new URL(url).searchParams.get('page')); currentUrl = configuration.redirect?.(url) ?? url
       return { status: () => configuration.status ?? 200, url: () => currentUrl, headers: () => configuration.headers?.(requests.length) ?? {} } },
     url: () => currentUrl,
-    evaluate: async (_fn: unknown, input?: { readOnly?: boolean }) => {
-      evaluations++; return configuration.observe?.(pageNumber, evaluations, input?.readOnly) ?? observation(pageNumber)
+    evaluate: async (fn: unknown, input?: { readOnly?: boolean }) => {
+      if (fn === observeDistributionHumanVerification) return configuration.humanVerification?.(++guardChecks) ?? latest?.humanVerificationRequired === true
+      assert.equal(fn, observeMrDistributionDom)
+      evaluations++; latest = configuration.observe?.(pageNumber, evaluations, input?.readOnly) ?? observation(pageNumber)
+      return latest
     },
   } as unknown as Page
   const reader = createMrDistributionPageReader(fake, { now: () => clock,
@@ -367,6 +374,37 @@ test('rendered human verification and an ordinary readable page remain separate 
   assert.equal(rendered.requests.length, 1)
 })
 
+test('MR common DOM guard stops before ranking parsing and rechecks a challenge appearing during parsing', async () => {
+  for (const phase of ['before', 'after']) {
+    const setup = browser({ humanVerification: checks => checks >= (phase === 'before' ? 1 : 2), observe: page => {
+      if (phase === 'before') assert.fail('a visible challenge must stop before ranking parsing can fail')
+      return observation(page)
+    } })
+    await assert.rejects(setup.reader.fetchPage(1), errorCode('human-verification'))
+    assert.deepEqual(setup.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: true })
+    assert.equal(setup.reader.getDiagnostics().successfulReadCount, 0)
+    assert.equal(setup.evaluations(), phase === 'before' ? 0 : 1)
+    assert.equal(setup.requests.length, 1)
+  }
+})
+
+test('passive MR protection checks surround ranking observation and preserve the stopped attempt diagnostics', async () => {
+  for (const phase of ['before', 'after']) {
+    let armed = false, checks = 0
+    const setup = browser({ humanVerification: () => armed && ++checks >= (phase === 'before' ? 1 : 2), observe: page => {
+      if (armed && phase === 'before') assert.fail('passive protection must stop before ranking parsing')
+      return observation(page)
+    } })
+    await setup.reader.fetchPage(1)
+    const before = setup.reader.getDiagnostics(), evaluations = setup.evaluations()
+    armed = true
+    await assert.rejects(setup.reader.observeCurrentPage(1), errorCode('human-verification'))
+    assert.deepEqual(setup.reader.getDiagnostics(), before)
+    assert.equal(setup.evaluations(), evaluations + (phase === 'before' ? 0 : 1))
+    assert.equal(setup.requests.length, 1)
+  }
+})
+
 test('a rendered challenge stops after one observation before URL or hydration retries, independently of login and maintenance', async () => {
   const setup = browser({ observe: page => ({ ...observation(page), humanVerificationRequired: true,
     signedIn: null, authenticationEvidence: 'no-control', conditionsMatch: null, currentActMatch: null, entries: null }),
@@ -420,8 +458,8 @@ test('passive MR samples after stop ignore the collection abort and preserve the
   recovered = true
   const evaluate = setup.fake.evaluate.bind(setup.fake)
   t.mock.method(setup.fake, 'evaluate', (async (fn: unknown, input: unknown) => {
-    assert.equal(fn, observeMrDistributionDom)
-    assert.equal((input as { readOnly?: boolean }).readOnly, true)
+    assert.ok(fn === observeMrDistributionDom || fn === observeDistributionHumanVerification)
+    if (fn === observeMrDistributionDom) assert.equal((input as { readOnly?: boolean }).readOnly, true)
     return evaluate(fn as never, input as never)
   }) as typeof setup.fake.evaluate)
   assert.deepEqual(await setup.reader.observeCurrentPage(3), {

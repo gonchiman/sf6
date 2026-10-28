@@ -452,3 +452,58 @@ test('cloud summary keeps only a nonnegative safe-integer readable-page count', 
     assert.ok(!JSON.stringify(result).includes(SECRET))
   }
 })
+
+test('cloud staging retains CAPTCHA evidence from a stopped LP capture without publishing rows or retrying', async () => {
+  const setup = fixture()
+  const launch = setup.dependencies.launch!
+  let attempts = 0
+  const humanVerification = { wafHeaderChecked: true, wafAction: 'captcha' as const, domDetected: null }
+  setup.dependencies.launch = async options => {
+    const transport = await launch(options)
+    return { ...transport, fetchPage: async (page, url) => {
+      if (++attempts === 3) throw new RankDistributionDomError('human-verification')
+      return transport.fetchPage(page, url)
+    }, getDiagnostics: () => ({ ...transport.getDiagnostics(), ...(attempts >= 3 ? {
+      humanVerification: { ...humanVerification, headers: { cookie: SECRET }, html: SECRET }, lastHttpStatus: 405,
+    } : {}) }) }
+  }
+  const result = await runRankDistributionCloudCollection(['--saved-session'], setup.dependencies)
+  assert.equal(result.succeeded, false)
+  assert.equal(result.artifactReady, true)
+  assert.equal(result.report.capture.reason, 'captcha')
+  assert.equal(result.report.capture.readFailureCode, 'human-verification')
+  assert.equal(result.report.capture.requestCount, 3)
+  assert.equal(result.report.capture.successfulReadCount, 2)
+  assert.equal(result.report.capture.retryCount, 0)
+  assert.equal(result.report.capture.sessionRefreshCount, 0)
+  assert.deepEqual(result.report.capture.humanVerification, humanVerification)
+  assert.deepEqual(JSON.parse(setup.outputs.get(RANK_DISTRIBUTION_CLOUD_REPORT_PATH)!).capture.humanVerification, humanVerification)
+  assert.equal(result.report.datasetStaged, false)
+  assert.equal(setup.imports.length, 0)
+  assert.equal([...setup.privateWrites.keys()].some(path => path.includes('max-lp-estimate-')), false)
+  assert.equal(setup.launches.length, 1)
+  assert.equal(setup.closes(), 1)
+  assert.doesNotMatch(JSON.stringify([result, [...setup.outputs], [...setup.privateWrites]]), /synthetic-private-cookie-value|headers|html|accountKey/)
+})
+
+test('cloud summary keeps old 405 records unchanged and normalizes only explicitly present verification evidence', () => {
+  const legacy = summarizeRankDistributionCloudCapture({ status: 'failed', reason: 'read-failed', readFailureCode: 'http-error', lastHttpStatus: 405 })
+  assert.equal(Object.hasOwn(legacy, 'humanVerification'), false)
+  assert.equal(legacy.reason, 'read-failed')
+  assert.equal(legacy.readFailureCode, 'http-error')
+  for (const { input, expected } of [
+    { input: { wafHeaderChecked: true, wafAction: 'challenge', domDetected: null, headers: SECRET },
+      expected: { wafHeaderChecked: true, wafAction: 'challenge', domDetected: null } },
+    { input: { wafHeaderChecked: false, wafAction: 'captcha', domDetected: true },
+      expected: { wafHeaderChecked: false, wafAction: null, domDetected: true } },
+    { input: { wafHeaderChecked: 'true', wafAction: SECRET, domDetected: SECRET },
+      expected: { wafHeaderChecked: false, wafAction: null, domDetected: null } },
+    { input: null, expected: { wafHeaderChecked: false, wafAction: null, domDetected: null } },
+  ]) {
+    const result = summarizeRankDistributionCloudCapture({ reason: 'human-verification', readFailureCode: 'human-verification', humanVerification: input })
+    assert.equal(result.reason, 'human-verification')
+    assert.equal(result.readFailureCode, 'human-verification')
+    assert.deepEqual(result.humanVerification, expected)
+    assert.doesNotMatch(JSON.stringify(result), /synthetic-private-cookie-value|headers|cookie|html/)
+  }
+})

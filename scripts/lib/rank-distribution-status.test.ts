@@ -64,7 +64,7 @@ test('a pending capture with no previous data stays empty, rather than inventing
 
 test('each supported reason produces fixed public text', async t => {
   const paths = await fixture(t, false)
-  const reasons: RankDistributionAvailabilityReason[] = ['source-changed', 'unknown-rank', 'evidence-unconfirmed', 'authentication-required', 'authentication-unconfirmed', 'access-denied', 'maintenance', 'read-failed', 'publication-failed', 'configuration-invalid', 'checkpoint-unavailable', 'cancelled', 'request-limit', 'observation-changed']
+  const reasons: RankDistributionAvailabilityReason[] = ['source-changed', 'unknown-rank', 'evidence-unconfirmed', 'authentication-required', 'authentication-unconfirmed', 'access-denied', 'captcha', 'human-verification', 'maintenance', 'read-failed', 'publication-failed', 'configuration-invalid', 'checkpoint-unavailable', 'cancelled', 'request-limit', 'observation-changed']
   const messages = new Set<string>()
   for (const reason of reasons) {
     const result = await recordRankDistributionAvailability({ status: 'collection-failed', reason, checkedAt, directory: paths.directory })

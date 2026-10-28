@@ -9,6 +9,8 @@ import { summarizeRankDistributionCloudCapture } from '../collect-rank-distribut
 import type { RankDistributionCloudCaptureSummary } from '../collect-rank-distribution-cloud.ts'
 import { mergeRankDistributionCheckpoints, parseRankDistributionCheckpoint } from './rank-distribution-checkpoint.ts'
 import type { RankDistributionCheckpoint } from './rank-distribution-checkpoint.ts'
+import { distributionHumanVerificationKind, parseDistributionHumanVerification } from './distribution-human-verification.ts'
+import { rankDistributionAvailabilityMessage } from './rank-distribution-status.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 export const RANK_DISTRIBUTION_WEEKLY_PREVIOUS_DIRECTORY = resolve(ROOT, '.local/rank-distribution-weekly/previous')
@@ -100,6 +102,9 @@ export function parseRankDistributionWeeklyRunReport(value: unknown, now: () => 
     if (input.reuseAfterSevenDays !== reuse || input.initialSignInConfirmed && sessionCapturedAt === null) fail('invalid-report')
     let capture: RankDistributionCloudCaptureSummary | null = null
     if (input.capture !== null) {
+      if (typeof input.capture === 'object' && Object.hasOwn(input.capture, 'humanVerification')) {
+        parseDistributionHumanVerification((input.capture as Record<string, unknown>).humanVerification)
+      }
       capture = summarizeRankDistributionCloudCapture(input.capture)
       if (!same(input.capture, capture) || capture.successfulReadCount > capture.requestCount
         || !capture.startedAt || !capture.endedAt || Date.parse(capture.startedAt) < Date.parse(startedAt)
@@ -280,10 +285,14 @@ export async function writeWeeklyHistoryOutput(options: WriteWeeklyHistoryOutput
     if (existingRun && !same(existingRun, run)) fail('conflict')
     const runs = existingRun ? previous.runs : [...previous.runs, run].sort((a, b) => a.id.localeCompare(b.id))
     const checkpoint = options.checkpoint ? mergeRankDistributionCheckpoints(previous.checkpoint, options.checkpoint) : previous.checkpoint
+    const protectionKind = run.status === 'failed'
+      ? distributionHumanVerificationKind(run.capture?.humanVerification, run.capture?.readFailureCode) : null
     const manifest = parseRankDistributionManifest({ schemaVersion: 1, generatedAt: currentTime(now),
       source: datasets.length ? { url: datasets[0].source.url, title: datasets[0].source.title } : previous.manifest.source,
       datasets: datasets.map(item => ({ id: item.id, path: `${item.id}.json`,
-        captureStartedAt: item.captureStartedAt, captureEndedAt: item.captureEndedAt, totalCount: item.totalCount })) })
+        captureStartedAt: item.captureStartedAt, captureEndedAt: item.captureEndedAt, totalCount: item.totalCount })),
+      ...(protectionKind ? { availability: { status: 'collection-failed', checkedAt: run.endedAt,
+        message: rankDistributionAvailabilityMessage(protectionKind) } } : {}) })
     const next = checkedHistory({ manifest, datasets, checkpoint, runs }, now)
     const output = resolve(options.directory ?? RANK_DISTRIBUTION_WEEKLY_OUTPUT_DIRECTORY)
     await directory(dirname(output))

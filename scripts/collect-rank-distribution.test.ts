@@ -3,7 +3,8 @@ import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import type { RankDistributionDataset } from '../src/types/rankDistribution.ts'
 import { parseRankDistributionDataset } from '../src/lib/rankDistribution.ts'
-import { createRankDistributionPageReader, RankDistributionDomError } from './lib/rank-distribution-dom.ts'
+import { createRankDistributionPageReader, observeRankDistributionDom, RankDistributionDomError } from './lib/rank-distribution-dom.ts'
+import { observeDistributionHumanVerification } from './lib/distribution-human-verification.ts'
 import type { RankBoundaryPage } from './lib/rank-distribution-boundaries.ts'
 import type { RankDistributionPageReaderDiagnostics } from './lib/rank-distribution-dom.ts'
 import { RANK_BOUNDARY_SOURCE_URL } from './lib/rank-distribution-boundaries.ts'
@@ -445,7 +446,9 @@ function incompleteDisplayFixture(failedNavigations: readonly number[], appearan
       return { status: () => 200 }
     },
     url: () => currentUrl,
-    async evaluate() {
+    async evaluate(observer: unknown) {
+      if (observer === observeDistributionHumanVerification) return false
+      assert.equal(observer, observeRankDistributionDom)
       const from = (pageNumber - 1) * 20 + 1
       const to = Math.min(pageNumber * 20, input.values.length)
       const failed = failedNavigations.includes(attemptedPages.length)
@@ -587,6 +590,85 @@ test('HTTP 404 is recorded safely and never treated as a transient server failur
   assert.equal(report.retryCount, 0)
   assert.deepEqual(input.waits, [])
   assert.equal(input.calls.publish, 0)
+})
+
+test('LP CAPTCHA and challenge evidence stops capture without retry, replacement or partial publication', async () => {
+  for (const humanVerification of [
+    { wafHeaderChecked: true, wafAction: 'captcha' as const, domDetected: null },
+    { wafHeaderChecked: true, wafAction: 'challenge' as const, domDetected: null },
+    { wafHeaderChecked: true, wafAction: null, domDetected: true },
+  ]) {
+    const input = fixture()
+    let attempts = 0
+    let elapsed = 0
+    input.deps.elapsedNow = () => elapsed
+    input.transport.fetchPage = async (page, url) => {
+      if (++attempts === 3) {
+        // A protection response must not be converted into a scheduled browser replacement.
+        elapsed = 20 * 60_000
+        input.diagnostics.lastAttemptedPage = page
+        input.diagnostics.lastHttpStatus = humanVerification.domDetected ? 200 : humanVerification.wafAction === 'captcha' ? 405 : 202
+        input.diagnostics.humanVerification = humanVerification
+        throw new RankDistributionDomError('human-verification')
+      }
+      return input.fetchPage(page, url)
+    }
+    const report = await runRankDistributionCollection(estimateOptions, input.deps)
+    assert.equal(report.status, 'failed')
+    const expectedReason = humanVerification.wafAction === 'captcha' ? 'captcha' : 'human-verification'
+    assert.equal(report.reason, expectedReason)
+    assert.equal(report.readFailureCode, 'human-verification')
+    assert.equal(report.requestCount, 3)
+    assert.equal(report.successfulReadCount, 2)
+    assert.equal(report.retryCount, 0)
+    assert.equal(report.sessionRefreshCount, 0)
+    assert.equal(input.calls.launch, 1)
+    assert.equal(input.calls.close, 1)
+    assert.equal(input.calls.save, 0)
+    assert.equal(input.calls.publish, 0)
+    assert.deepEqual(input.waits, [])
+    assert.deepEqual(report.humanVerification, humanVerification)
+    assert.deepEqual(input.reports[0].humanVerification, humanVerification)
+    assert.equal(input.statuses[0].reason, expectedReason)
+    assert.doesNotMatch(JSON.stringify([report, input.reports]), /private-auth-value|private diagnostic|accountKey/)
+  }
+})
+
+test('an old LP HTTP 405 failure remains unclassified as CAPTCHA when evidence is absent', async () => {
+  const input = fixture()
+  input.transport.fetchPage = async () => {
+    input.diagnostics.lastHttpStatus = 405
+    throw new RankDistributionDomError('http-error')
+  }
+  const report = await runRankDistributionCollection(estimateOptions, input.deps)
+  assert.equal(report.reason, 'read-failed')
+  assert.equal(report.readFailureCode, 'http-error')
+  assert.equal(report.lastHttpStatus, 405)
+  assert.equal(Object.hasOwn(report, 'humanVerification'), false)
+  assert.equal(report.retryCount, 0)
+  assert.equal(input.calls.publish, 0)
+})
+
+test('LP capture preserves only normalized CAPTCHA scalars and leaves legacy diagnostics absent', async () => {
+  const legacy = await runRankDistributionCollection(options, fixture().deps)
+  assert.equal(Object.hasOwn(legacy, 'humanVerification'), false)
+  for (const { input: evidence, expected } of [
+    { input: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: null, headers: { cookie: 'synthetic-private' }, html: 'synthetic-private' },
+      expected: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: null } },
+    { input: { wafHeaderChecked: false, wafAction: 'challenge', domDetected: true },
+      expected: { wafHeaderChecked: false, wafAction: null, domDetected: true } },
+    { input: { wafHeaderChecked: 'true', wafAction: 'synthetic-private', domDetected: 'synthetic-private' },
+      expected: { wafHeaderChecked: false, wafAction: null, domDetected: null } },
+    { input: null, expected: { wafHeaderChecked: false, wafAction: null, domDetected: null } },
+  ]) {
+    const input = fixture()
+    const original = input.transport.getDiagnostics
+    input.transport.getDiagnostics = () => ({ ...original(), humanVerification: evidence } as unknown as ReturnType<typeof original>)
+    const report = await runRankDistributionCollection(options, input.deps)
+    assert.equal(report.status, 'succeeded')
+    assert.deepEqual(report.humanVerification, expected)
+    assert.doesNotMatch(JSON.stringify(report), /synthetic-private|headers|html|cookie/)
+  }
 })
 
 test('HTTP status diagnostics accept only integer status codes and never copy arbitrary metadata', async () => {

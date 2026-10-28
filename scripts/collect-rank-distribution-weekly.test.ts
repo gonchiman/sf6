@@ -275,3 +275,46 @@ test('unknown fields in a cloud capture are scrubbed instead of reaching a weekl
   assert.equal(JSON.stringify([result, setup.saved]).includes(SECRET), false)
   assert.equal('rawProfile' in result.run.capture!, false)
 })
+
+test('weekly collection retains protection evidence and the previous normal dataset after a stopped cloud capture', async () => {
+  for (const humanVerification of [
+    { wafHeaderChecked: true, wafAction: 'captcha' as const, domDetected: null },
+    { wafHeaderChecked: true, wafAction: 'challenge' as const, domDetected: null },
+    { wafHeaderChecked: true, wafAction: null, domDetected: true },
+  ]) {
+    const setup = fixture()
+    setup.failure(2)
+    const reason = humanVerification.wafAction === 'captcha' ? 'captcha' : 'human-verification'
+    setup.replaceSummary({ ...setup.capture, status: 'failed', stage: 'collection', reason,
+      requestCount: 3, successfulReadCount: 2, confirmedBoundaryCount: 0, retryCount: 0, sessionRefreshCount: 0,
+      readFailureCode: 'human-verification', datasetSaved: false, published: false,
+      humanVerification: { ...humanVerification, headers: { cookie: SECRET }, html: SECRET },
+    } as RankDistributionCloudCaptureSummary)
+    const result = await runRankDistributionWeeklyCollection(['--collect'], setup.deps)
+    assert.equal(result.succeeded, false)
+    assert.equal(result.artifactReady, true)
+    assert.equal(result.run.failureReason, 'collection-failed')
+    assert.equal(result.run.datasetId, null)
+    assert.equal(result.run.capture?.reason, reason)
+    assert.equal(result.run.capture?.readFailureCode, 'human-verification')
+    assert.equal(result.run.capture?.retryCount, 0)
+    assert.deepEqual(result.run.capture?.humanVerification, humanVerification)
+    assert.deepEqual(setup.saved[0].run.capture?.humanVerification, humanVerification)
+    assert.equal(setup.saved[0].dataset, undefined)
+    assert.deepEqual(setup.saved[0].previous.datasets, setup.previous.datasets)
+    assert.doesNotMatch(JSON.stringify([result, setup.saved]), /synthetic-weekly-private-cookie|headers|html|storageState|accountKey/)
+  }
+})
+
+test('weekly propagation does not add verification fields or reinterpret old HTTP 405 evidence', async () => {
+  const setup = fixture()
+  setup.failure(2)
+  setup.replaceSummary({ ...setup.capture, status: 'failed', reason: 'read-failed', readFailureCode: 'http-error',
+    datasetSaved: false, published: false, lastHttpStatus: 405 })
+  const result = await runRankDistributionWeeklyCollection(['--collect'], setup.deps)
+  assert.equal(result.run.capture?.reason, 'read-failed')
+  assert.equal(result.run.capture?.readFailureCode, 'http-error')
+  assert.equal(result.run.capture?.lastHttpStatus, 405)
+  assert.equal(Object.hasOwn(result.run.capture!, 'humanVerification'), false)
+  assert.equal(Object.hasOwn(setup.saved[0].run.capture!, 'humanVerification'), false)
+})

@@ -6,9 +6,11 @@ import type { RankBoundaryEntry, RankBoundaryPage } from './rank-distribution-bo
 import { distributionPageObservationSnapshot } from './distribution-page-observation.ts'
 import type { DistributionPageObservationSnapshot } from './distribution-page-observation.ts'
 import { createDistributionNavigation } from './distribution-navigation.ts'
+import { emptyDistributionHumanVerification, observeDistributionHumanVerification, readDistributionHumanVerificationResponse } from './distribution-human-verification.ts'
+import type { DistributionHumanVerificationDiagnostics } from './distribution-human-verification.ts'
 
 export type RankDistributionDomErrorCode = 'invalid-request' | 'concurrent-read' | 'first-page-required'
-  | 'cancelled' | 'http-denied' | 'http-error' | 'server-error' | 'maintenance' | 'login-required'
+  | 'cancelled' | 'http-denied' | 'http-error' | 'server-error' | 'maintenance' | 'login-required' | 'human-verification'
   | 'authentication-unconfirmed' | 'condition-mismatch' | 'page-mismatch' | 'unsupported-rank-icon'
   | 'unsupported-dom' | 'total-count-changed' | 'timeout' | 'read-failed'
 export type RankDistributionAuthenticationEvidence = 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control'
@@ -163,6 +165,7 @@ export interface RankDistributionPageReaderDiagnostics {
   lastRankingReadable?: boolean | null
   /** Fully validated login-control pages accepted after a signed-in first page. */
   readableWithoutSignInReadCount?: number
+  humanVerification?: DistributionHumanVerificationDiagnostics
   minimumObservedTotal?: number | null
   maximumObservedTotal?: number | null
   rankMappingConfirmed: boolean
@@ -227,6 +230,7 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
     lastObservedTotal: null, lastAttemptedPage: null, lastHttpStatus: null,
     lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null,
     readableWithoutSignInReadCount: 0,
+    humanVerification: emptyDistributionHumanVerification(),
     minimumObservedTotal: null, maximumObservedTotal: null,
     rankMappingConfirmed: false, observedRankIds: [], tailRankIds: [],
     leagueLabelsConfirmed: false, displayedConditionsConfirmed: false, userStatusEvidence: 'fixed-url-only',
@@ -236,6 +240,14 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
   function checkCancelled(): void { if (options.signal?.aborted) throw new RankDistributionDomError('cancelled') }
   const navigate = createDistributionNavigation(page, { minIntervalMs: minInterval, now, wait,
     check: checkCancelled, navigateWithPacing: options.navigateWithPacing })
+  const checkHumanVerification = async (record: boolean): Promise<void> => {
+    const detected = await page.evaluate(observeDistributionHumanVerification)
+    if (record) {
+      checkCancelled()
+      diagnostics.humanVerification!.domDetected = typeof detected === 'boolean' ? detected : null
+    }
+    if (detected === true) throw new RankDistributionDomError('human-verification')
+  }
   function confirmedUrl(url: string, pageNumber: number): boolean {
     try {
       return new URL(url).searchParams.getAll('page').length === 1 && new URL(url).searchParams.get('page') === String(pageNumber)
@@ -256,10 +268,13 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
         diagnostics.lastAuthenticationEvidence = null
         diagnostics.lastLoginRequiredHeading = null
         diagnostics.lastRankingReadable = null
+        diagnostics.humanVerification = emptyDistributionHumanVerification()
       })
       checkCancelled()
       const status = response?.status()
       diagnostics.lastHttpStatus = status !== undefined && Number.isSafeInteger(status) && status >= 0 && status <= 599 ? status : null
+      diagnostics.humanVerification = readDistributionHumanVerificationResponse(response)
+      if (diagnostics.humanVerification.wafAction) throw new RankDistributionDomError('human-verification')
       if (status === 401 || status === 403 || status === 429) throw new RankDistributionDomError('http-denied')
       if (status !== undefined && status >= 500 && status <= 599) throw new RankDistributionDomError('server-error')
       if (status !== undefined && status >= 400) throw new RankDistributionDomError('http-error')
@@ -268,8 +283,10 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
       let finalObservation = false
       do {
         checkCancelled()
+        await checkHumanVerification(true)
         latest = await page.evaluate(observeRankDistributionDom, { salt, ...(finalObservation ? { readOnly: true } : {}) })
         checkCancelled()
+        await checkHumanVerification(true)
         const layout = readableLayout(latest, pageNumber, diagnostics.pageSize)
         const snapshot = distributionPageObservationSnapshot(latest.authenticationEvidence, latest.loginRequiredHeading,
           confirmedUrl(page.url(), pageNumber) && layout !== null)
@@ -333,7 +350,9 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
     if (running) throw new RankDistributionDomError('concurrent-read')
     running = true
     try {
+      await checkHumanVerification(false)
       const value = await page.evaluate(observeRankDistributionDom, { salt, readOnly: true })
+      await checkHumanVerification(false)
       return distributionPageObservationSnapshot(value.authenticationEvidence, value.loginRequiredHeading,
         confirmedUrl(page.url(), pageNumber) && readableLayout(value, pageNumber, diagnostics.pageSize) !== null)
     } catch (error) {
@@ -345,6 +364,7 @@ export function createRankDistributionPageReader(page: Page, options: RankDistri
     fetchPage,
     observeCurrentPage,
     getDiagnostics: (): RankDistributionPageReaderDiagnostics => ({ ...diagnostics,
+      humanVerification: { ...diagnostics.humanVerification! },
       observedRankIds: [...diagnostics.observedRankIds], tailRankIds: [...diagnostics.tailRankIds] }),
   }
 }

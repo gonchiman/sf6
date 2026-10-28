@@ -5,8 +5,8 @@ import { mrDistributionPageUrl } from './mr-distribution-collector.ts'
 import type { MrDistributionEntry, MrDistributionPage } from './mr-distribution-collector.ts'
 import { distributionPageObservationSnapshot } from './distribution-page-observation.ts'
 import type { DistributionPageObservationSnapshot } from './distribution-page-observation.ts'
-import { readWafAction } from './waf-action.ts'
-import type { WafAction } from './waf-action.ts'
+import { emptyDistributionHumanVerification, observeDistributionHumanVerification, readDistributionHumanVerificationResponse } from './distribution-human-verification.ts'
+import type { DistributionHumanVerificationDiagnostics } from './distribution-human-verification.ts'
 import { createDistributionNavigation } from './distribution-navigation.ts'
 import { DISTRIBUTION_START_INTERVAL_MS } from './distribution-capture-policy.ts'
 
@@ -24,8 +24,6 @@ export class MrDistributionDomError extends Error {
 export type MrDistributionAuthenticationEvidence = 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control'
 export interface MrDistributionDomObservation {
   maintenance: boolean
-  /** A rendered challenge is a hard stop; it is never retried or operated. */
-  humanVerificationRequired?: boolean
   loginRequiredHeading: boolean
   signedIn: boolean | null
   authenticationEvidence: MrDistributionAuthenticationEvidence
@@ -55,8 +53,6 @@ export async function observeMrDistributionDom(input: { salt: string; readOnly?:
   const text = (element: Element): string => (element as HTMLElement).innerText?.trim() ?? ''
   const headings = [...document.querySelectorAll('h1,h2')].filter(visible)
   const maintenance = headings.some(element => /ただいま、システムメンテナンス中|^Maintenance\b/i.test(text(element)))
-  const humanVerificationRequired = headings.some(element => /^ユーザーが人間であることを確認する$|^Human Verification$|Verify.*human/i.test(text(element)))
-    || [...document.querySelectorAll('#amzn-captcha-verify-button')].some(visible)
   const loginRequiredHeading = headings.some(element => /ログインが必要|ログインしてください|login required|sign in required/i.test(text(element)))
   const controls = [...document.querySelectorAll('a,button')].filter(visible)
     .filter(element => !element.closest('a[href*="/profile/"],ul[class*="ranking_ranking_list"]'))
@@ -81,8 +77,8 @@ export async function observeMrDistributionDom(input: { salt: string; readOnly?:
   const counters = [...new Set([...document.querySelectorAll('p')].filter(visible).map(text).filter(value => /^\d+\s*-\s*\d+\s*\/\s*\d+$/.test(value)))]
   const counter = counters.length === 1 ? /^(\d+)\s*-\s*(\d+)\s*\/\s*(\d+)$/.exec(counters[0]) : null
   const range = counter ? { from: Number(counter[1]), to: Number(counter[2]), total: Number(counter[3]) } : null
-  const base = { maintenance, humanVerificationRequired, loginRequiredHeading, signedIn, authenticationEvidence, conditionsMatch, currentActMatch, selectedPage, range }
-  if (maintenance || humanVerificationRequired || loginRequiredHeading) return { ...base, entries: null }
+  const base = { maintenance, loginRequiredHeading, signedIn, authenticationEvidence, conditionsMatch, currentActMatch, selectedPage, range }
+  if (maintenance || loginRequiredHeading) return { ...base, entries: null }
   const lists = [...document.querySelectorAll('ul[class*="ranking_ranking_list"]:not([class*="ranking__my__list"])')].filter(visible)
   if (lists.length !== 1) return { ...base, entries: null }
   const links = [...lists[0].querySelectorAll('li > a[href*="/profile/"]')].filter(visible)
@@ -103,12 +99,7 @@ export async function observeMrDistributionDom(input: { salt: string; readOnly?:
   return { ...base, entries }
 }
 
-export interface MrDistributionHumanVerificationDiagnostics {
-  wafHeaderChecked: boolean
-  wafAction: WafAction | null
-  domDetected: boolean | null
-}
-const emptyHumanVerification = (): MrDistributionHumanVerificationDiagnostics => ({ wafHeaderChecked: false, wafAction: null, domDetected: null })
+export type MrDistributionHumanVerificationDiagnostics = DistributionHumanVerificationDiagnostics
 
 export interface MrDistributionPageReaderDiagnostics {
   requestCount: number; successfulReadCount: number; pageSize: number | null; totalCount: number | null
@@ -158,11 +149,19 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
   const diagnostics: MrDistributionPageReaderDiagnostics = { requestCount: 0, successfulReadCount: 0, pageSize: null, totalCount: null,
     lastPage: null, lastAttemptedPage: null, lastHttpStatus: null, displayedConditionsConfirmed: false, currentActConfirmed: false,
     initialSignInConfirmed: false, lastAuthenticationEvidence: null, lastLoginRequiredHeading: null, lastRankingReadable: null, readableWithoutSignInReadCount: 0,
-    humanVerification: emptyHumanVerification() }
+    humanVerification: emptyDistributionHumanVerification() }
   let running = false
   const check = (): void => { if (options.signal?.aborted) throw new MrDistributionDomError('cancelled') }
   const navigate = createDistributionNavigation(page, { minIntervalMs: minInterval, now, wait,
     check, navigateWithPacing: options.navigateWithPacing })
+  const checkHumanVerification = async (record: boolean): Promise<void> => {
+    const detected = await page.evaluate(observeDistributionHumanVerification)
+    if (record) {
+      check()
+      diagnostics.humanVerification!.domDetected = typeof detected === 'boolean' ? detected : null
+    }
+    if (detected === true) throw new MrDistributionDomError('human-verification')
+  }
   const urlMatches = (url: string, pageNumber: number): boolean => {
     try { const value = new URL(url); return value.searchParams.getAll('page').length === 1 && value.searchParams.get('page') === String(pageNumber)
       && mrDistributionPageUrl(pageNumber, url) === mrDistributionPageUrl(pageNumber) } catch { return false }
@@ -181,19 +180,12 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
         diagnostics.lastAuthenticationEvidence = null
         diagnostics.lastLoginRequiredHeading = null
         diagnostics.lastRankingReadable = null
-        diagnostics.humanVerification = emptyHumanVerification()
+        diagnostics.humanVerification = emptyDistributionHumanVerification()
       })
       check()
       const status = response?.status()
       diagnostics.lastHttpStatus = typeof status === 'number' && Number.isSafeInteger(status) && status >= 100 && status <= 599 ? status : null
-      try {
-        // Only the current main document from Buckler/CAPCOM can establish this evidence.
-        // Subresource responses and third-party redirects are outside this diagnostic's scope.
-        if (response && ['https://www.streetfighter.com', 'https://cid.capcom.com', 'https://auth.cid.capcom.com'].includes(new URL(response.url()).origin)) {
-          const evidence = readWafAction(response)
-          diagnostics.humanVerification = { wafHeaderChecked: evidence.checked, wafAction: evidence.action, domDetected: null }
-        }
-      } catch { /* Missing response evidence stays explicitly unchecked. */ }
+      diagnostics.humanVerification = readDistributionHumanVerificationResponse(response)
       if (diagnostics.humanVerification?.wafAction) throw new MrDistributionDomError('human-verification')
       if (status === 401 || status === 403 || status === 429) throw new MrDistributionDomError('http-denied')
       if (status !== undefined && status >= 500 && status <= 599) throw new MrDistributionDomError('server-error')
@@ -203,18 +195,18 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
       let finalObservation = false
       do {
         check()
+        await checkHumanVerification(true)
         latest = await page.evaluate(observeMrDistributionDom, { salt, ...(finalObservation ? { readOnly: true } : {}) })
         check()
+        await checkHumanVerification(true)
         const valid = layout(latest, pageNumber, diagnostics.pageSize)
         const snapshot = distributionPageObservationSnapshot(latest.authenticationEvidence, latest.loginRequiredHeading,
           urlMatches(page.url(), pageNumber) && valid !== null)
         diagnostics.lastAuthenticationEvidence = snapshot.authenticationEvidence
         diagnostics.lastLoginRequiredHeading = snapshot.loginRequiredHeading
         diagnostics.lastRankingReadable = snapshot.rankingReadable
-        diagnostics.humanVerification!.domDetected = typeof latest.humanVerificationRequired === 'boolean' ? latest.humanVerificationRequired : null
         try { options.onObservation?.(snapshot) } catch { /* Diagnostics must not affect acceptance or stopping. */ }
         if (latest.maintenance) throw new MrDistributionDomError('maintenance')
-        if (latest.humanVerificationRequired) throw new MrDistributionDomError('human-verification')
         if (!urlMatches(page.url(), pageNumber)) throw new MrDistributionDomError('page-mismatch')
         if (latest.conditionsMatch === false || latest.currentActMatch === false) throw new MrDistributionDomError('condition-mismatch')
         const authenticated = latest.signedIn === true && !latest.loginRequiredHeading
@@ -257,8 +249,9 @@ export function createMrDistributionPageReader(page: Page, options: MrDistributi
     if (running) throw new MrDistributionDomError('concurrent-read')
     running = true
     try {
+      await checkHumanVerification(false)
       const value = await page.evaluate(observeMrDistributionDom, { salt, readOnly: true })
-      if (value.humanVerificationRequired) throw new MrDistributionDomError('human-verification')
+      await checkHumanVerification(false)
       return distributionPageObservationSnapshot(value.authenticationEvidence, value.loginRequiredHeading,
         urlMatches(page.url(), pageNumber) && layout(value, pageNumber, diagnostics.pageSize) !== null)
     } catch (error) {

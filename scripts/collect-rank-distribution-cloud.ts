@@ -16,6 +16,8 @@ import { importRankDistributionData } from './import-rank-distribution-data.ts'
 import { createRankDistributionPageReader } from './lib/rank-distribution-dom.ts'
 import { launchDistributionEdge } from './lib/distribution-browser.ts'
 import { DISTRIBUTION_START_INTERVAL_MS } from './lib/distribution-capture-policy.ts'
+import { normalizeDistributionHumanVerification } from './lib/distribution-human-verification.ts'
+import type { DistributionHumanVerificationDiagnostics } from './lib/distribution-human-verification.ts'
 import {
   createRankDistributionCheckpointStore, parseRankDistributionCheckpoint, RANK_DISTRIBUTION_CHECKPOINT_SIZE_LIMIT,
 } from './lib/rank-distribution-checkpoint.ts'
@@ -151,10 +153,10 @@ async function writeOutput(io: RankDistributionCloudOutputIo, path: string, valu
 
 const stages = ['checkpoint-load', 'checkpoint-save', 'authentication', 'browser-launch', 'preflight', 'collection', 'dataset-save', 'publication', 'complete'] as const
 const reasons = ['source-changed', 'unknown-rank', 'evidence-unconfirmed', 'authentication-required', 'authentication-unconfirmed',
-  'access-denied', 'maintenance', 'read-failed', 'publication-failed', 'configuration-invalid', 'checkpoint-unavailable',
+  'access-denied', 'captcha', 'human-verification', 'maintenance', 'read-failed', 'publication-failed', 'configuration-invalid', 'checkpoint-unavailable',
   'cancelled', 'request-limit', 'observation-changed'] as const
 const readCodes = ['invalid-request', 'concurrent-read', 'first-page-required', 'cancelled', 'http-denied', 'http-error',
-  'server-error', 'maintenance', 'login-required', 'authentication-unconfirmed', 'condition-mismatch', 'page-mismatch',
+  'server-error', 'maintenance', 'login-required', 'authentication-unconfirmed', 'human-verification', 'condition-mismatch', 'page-mismatch',
   'unsupported-rank-icon', 'unsupported-dom', 'total-count-changed', 'timeout', 'read-failed'] as const
 function integer(value: unknown, minimum = 0): value is number { return Number.isSafeInteger(value) && (value as number) >= minimum }
 function timestamp(value: unknown): string | null {
@@ -189,6 +191,8 @@ export interface RankDistributionCloudCaptureSummary {
   lastLoginRequiredHeading: boolean | null
   lastRankingReadable: boolean | null
   readableWithoutSignInReadCount: number
+  /** Preserve absence for historical reports that did not record challenge evidence. */
+  humanVerification?: DistributionHumanVerificationDiagnostics
 }
 
 /** Fixed enums, dates, counts and booleans only; never serialize an arbitrary report. */
@@ -223,6 +227,7 @@ export function summarizeRankDistributionCloudCapture(value: unknown): RankDistr
     if (typeof input[key] === 'boolean') result[key] = input[key]
   }
   if (integer(input.readableWithoutSignInReadCount)) result.readableWithoutSignInReadCount = input.readableWithoutSignInReadCount
+  if (Object.hasOwn(input, 'humanVerification')) result.humanVerification = normalizeDistributionHumanVerification(input.humanVerification)
   return result
 }
 

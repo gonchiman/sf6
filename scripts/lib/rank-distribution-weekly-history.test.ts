@@ -113,6 +113,27 @@ test('a second successful week appends a capture without replacing historical re
   assert.deepEqual(next.datasets.find(item => item.id === previous.datasets[0].id), previous.datasets[0])
 })
 
+test('a later ordinary failure does not retain a stale CAPTCHA status or reinterpret its own HTTP 405', async t => {
+  const root = await fixture(t)
+  const empty = await loadWeeklyHistory(join(root, 'absent'), NOW)
+  const complete = await writeWeeklyHistoryOutput({ previous: empty, run: report(), dataset: dataset(),
+    directory: join(root, 'complete'), now: NOW })
+  const challenged = report({ start: later(START, 240000), id: 'run-101-1', failed: true })
+  challenged.capture = { ...challenged.capture!, reason: 'captcha', readFailureCode: 'human-verification', lastHttpStatus: 405,
+    humanVerification: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: null } }
+  const stopped = await writeWeeklyHistoryOutput({ previous: complete, run: challenged, directory: join(root, 'challenged'), now: NOW })
+  assert.match(stopped.manifest.availability!.message, /CAPTCHA/)
+  const ordinary = report({ start: later(START, 480000), id: 'run-102-1', failed: true })
+  ordinary.capture = { ...ordinary.capture!, readFailureCode: 'http-error', lastHttpStatus: 405 }
+  const next = await writeWeeklyHistoryOutput({ previous: stopped, run: ordinary, directory: join(root, 'ordinary'), now: NOW })
+  assert.equal(next.manifest.availability, undefined)
+  assert.deepEqual(next.datasets, complete.datasets)
+  assert.deepEqual(next.runs.find(run => run.id === challenged.id), challenged)
+  const savedOrdinary = next.runs.find(run => run.id === ordinary.id)!
+  assert.deepEqual(savedOrdinary, ordinary)
+  assert.equal(Object.hasOwn(savedOrdinary.capture!, 'humanVerification'), false)
+})
+
 test('Git metadata is skipped, initial history needs no runs directory, and extra sensitive files are refused', async t => {
   const root = await fixture(t)
   const previous = await loadWeeklyHistory(join(root, 'absent'), NOW)

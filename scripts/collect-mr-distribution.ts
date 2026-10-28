@@ -13,6 +13,7 @@ import { collectMrDistribution, MrDistributionCollectionError, mrDistributionPag
 import type { MrDistributionPage } from './lib/mr-distribution-collector.ts'
 import { createMrDistributionPageReader, MrDistributionDomError } from './lib/mr-distribution-dom.ts'
 import type { MrDistributionDomErrorCode, MrDistributionHumanVerificationDiagnostics, MrDistributionPageReaderDiagnostics } from './lib/mr-distribution-dom.ts'
+import { normalizeDistributionHumanVerification } from './lib/distribution-human-verification.ts'
 import { launchDistributionEdge } from './lib/distribution-browser.ts'
 import { DISTRIBUTION_MAX_READ_ATTEMPTS, DISTRIBUTION_SESSION_REFRESH_MS, DISTRIBUTION_START_INTERVAL_MS,
   distributionReadRetryDelay } from './lib/distribution-capture-policy.ts'
@@ -124,13 +125,7 @@ function safeCaptureDiagnostics(input?: MrDistributionPageReaderDiagnostics): Mr
     lastRankingReadable: typeof input?.lastRankingReadable === 'boolean' ? input.lastRankingReadable : null,
   }
   if (input && Object.hasOwn(input, 'humanVerification')) {
-    const value = input.humanVerification
-    const wafHeaderChecked = value?.wafHeaderChecked === true
-    result.humanVerification = {
-      wafHeaderChecked,
-      wafAction: wafHeaderChecked && (value?.wafAction === 'captcha' || value?.wafAction === 'challenge') ? value.wafAction : null,
-      domDetected: typeof value?.domDetected === 'boolean' ? value.domDetected : null,
-    }
+    result.humanVerification = normalizeDistributionHumanVerification(input.humanVerification)
   }
   return result
 }

@@ -18,6 +18,8 @@ import { recordRankDistributionAvailability } from './lib/rank-distribution-stat
 import type { RankDistributionAvailabilityReason, RecordRankDistributionAvailabilityOptions } from './lib/rank-distribution-status.ts'
 import { BUCKLER_SESSION_CAPTURE_PATH, createBucklerSessionStore, validateBucklerSessionState } from './lib/buckler-session-store.ts'
 import { launchDistributionEdge } from './lib/distribution-browser.ts'
+import { distributionHumanVerificationKind, normalizeDistributionHumanVerification } from './lib/distribution-human-verification.ts'
+import type { DistributionHumanVerificationDiagnostics } from './lib/distribution-human-verification.ts'
 import { DISTRIBUTION_MAX_READ_ATTEMPTS, DISTRIBUTION_SESSION_REFRESH_MS, DISTRIBUTION_START_INTERVAL_MS,
   distributionReadRetryDelay } from './lib/distribution-capture-policy.ts'
 
@@ -120,6 +122,8 @@ export interface RankDistributionCaptureReport {
   lastLoginRequiredHeading: boolean | null
   lastRankingReadable: boolean | null
   readableWithoutSignInReadCount: number
+  /** Absent in legacy captures whose readers did not inspect human-verification evidence. */
+  humanVerification?: DistributionHumanVerificationDiagnostics
   totalMin: number | null
   totalMax: number | null
   totalAtEnd: number | null
@@ -214,6 +218,7 @@ function safeDiagnostics(transport?: RankDistributionCaptureTransport): CaptureD
       if (typeof input[key] === 'boolean') result[key] = input[key]
     }
     if (integer(input.readableWithoutSignInReadCount)) result.readableWithoutSignInReadCount = input.readableWithoutSignInReadCount
+    if (Object.hasOwn(input, 'humanVerification')) result.humanVerification = normalizeDistributionHumanVerification(input.humanVerification)
     for (const key of ['rankMappingConfirmed', 'leagueLabelsConfirmed', 'displayedConditionsConfirmed'] as const) result[key] = input[key] === true
     for (const key of ['observedRankIds', 'tailRankIds'] as const) {
       if (Array.isArray(input[key])) result[key] = [...new Set(input[key].filter(knownRank))].sort((a, b) => a - b)
@@ -222,8 +227,10 @@ function safeDiagnostics(transport?: RankDistributionCaptureTransport): CaptureD
   return result
 }
 
-function domReason(code: RankDistributionDomErrorCode, loginRequiredHeading?: boolean | null): RankDistributionAvailabilityReason {
+function domReason(code: RankDistributionDomErrorCode, loginRequiredHeading?: boolean | null,
+  humanVerification?: DistributionHumanVerificationDiagnostics): RankDistributionAvailabilityReason {
   switch (code) {
+    case 'human-verification': return distributionHumanVerificationKind(humanVerification, code) ?? 'human-verification'
     case 'login-required': return loginRequiredHeading === false ? 'authentication-unconfirmed' : 'authentication-required'
     case 'authentication-unconfirmed': return 'authentication-unconfirmed'
     case 'http-denied': return 'access-denied'
@@ -414,8 +421,9 @@ export async function runRankDistributionCollection(
       // The refresh verification is extra; only this requested page is returned to the collector.
       return await readPageAttempts(page, url)
     } catch (error) {
+      const diagnostics = safeDiagnostics(transport)
       lastReadReason = error instanceof CaptureFailure ? error.reason
-        : error instanceof RankDistributionDomError ? domReason(error.code, safeDiagnostics(transport).lastLoginRequiredHeading) : 'read-failed'
+        : error instanceof RankDistributionDomError ? domReason(error.code, diagnostics.lastLoginRequiredHeading, diagnostics.humanVerification) : 'read-failed'
       throw error
     }
   }
@@ -540,6 +548,7 @@ export async function runRankDistributionCollection(
   for (const key of ['pageSize', 'totalCount', 'lastPage', 'rankMappingConfirmed', 'leagueLabelsConfirmed', 'displayedConditionsConfirmed', 'observedRankIds', 'tailRankIds', 'lastObservedTotal', 'lastAttemptedPage', 'lastHttpStatus', 'lastAuthenticationEvidence', 'lastLoginRequiredHeading', 'lastRankingReadable', 'readableWithoutSignInReadCount'] as const) {
     Object.assign(report, { [key]: diagnostics[key] })
   }
+  if (Object.hasOwn(diagnostics, 'humanVerification')) report.humanVerification = diagnostics.humanVerification
   try { report.endedAt = timestamp(now) } catch { report.endedAt = startedAt }
   if (Date.parse(report.endedAt) < Date.parse(startedAt)) report.endedAt = startedAt
   if (report.status === 'failed') {

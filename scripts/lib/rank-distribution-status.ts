@@ -13,6 +13,8 @@ const messages = {
   'authentication-required': 'Bucklerでログインが必要な表示を確認したため、ランク分布を取得できませんでした。',
   'authentication-unconfirmed': 'Bucklerの画面でログイン状態を確認できなかったため、ランク分布の取得を完了できませんでした。',
   'access-denied': 'Bucklerへのアクセスが拒否されたため、ランク分布を取得できませんでした。',
+  captcha: 'BucklerからCAPTCHAを要求されたため、ランク分布の取得を停止しました。',
+  'human-verification': 'Bucklerの人間確認が必要なため、ランク分布の取得を停止しました。',
   maintenance: 'Bucklerのメンテナンス表示を確認したため、ランク分布を取得できませんでした。',
   'read-failed': '取得ページの読み取りを完了できなかったため、ランク分布を更新していません。',
   'publication-failed': '検証済みの集計結果を保存または取り込みできなかったため、ランク分布を更新していません。',
@@ -24,6 +26,7 @@ const messages = {
 } as const
 
 export type RankDistributionAvailabilityReason = keyof typeof messages
+export function rankDistributionAvailabilityMessage(reason: RankDistributionAvailabilityReason): string { return messages[reason] }
 export interface RecordRankDistributionAvailabilityOptions {
   status: 'collection-failed' | 'verification-pending'
   reason: RankDistributionAvailabilityReason
@@ -60,7 +63,7 @@ export async function recordRankDistributionAvailability(options: RecordRankDist
   // The existing manifest parser also validates calendar dates and timezone-bearing timestamps.
   const status = options.status
   const checkedAt = options.checkedAt
-  const message = messages[options.reason]
+  const message = rankDistributionAvailabilityMessage(options.reason)
   const directory = resolve(options.directory ?? defaultDirectory)
   const parent = dirname(directory)
   if (parent === directory) throw new Error('ランク分布の保存先にルートディレクトリは指定できません。')

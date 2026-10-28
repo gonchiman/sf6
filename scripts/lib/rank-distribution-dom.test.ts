@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { observeDistributionHumanVerification } from './distribution-human-verification.ts'
 import type { TestContext } from 'node:test'
 import type { Page } from 'playwright'
 import { createRankDistributionPageReader, observeRankDistributionDom, RankDistributionDomError } from './rank-distribution-dom.ts'
@@ -214,17 +215,27 @@ function observation(page = 1, total = 43): RankDistributionDomObservation {
   }
 }
 
-function harness(observe: (page: number, evaluation: number, readOnly?: boolean) => RankDistributionDomObservation = page => observation(page), status = 200,
-  options: RankDistributionPageReaderOptions = {}) {
+type SyntheticObservation = RankDistributionDomObservation & { humanVerificationRequired?: boolean }
+function harness(observe: (page: number, evaluation: number, readOnly?: boolean) => SyntheticObservation = page => observation(page), status = 200,
+  options: RankDistributionPageReaderOptions = {}, headers: (request: number) => Record<string, string> = () => ({}),
+  humanVerification?: (checks: number) => boolean) {
   let currentUrl = ''
   let evaluations = 0
   let clock = 0
+  let guardChecks = 0
+  let latest: SyntheticObservation | null = null
   const navigations: string[] = []
   const navigationTimes: number[] = []
   const fakePage = {
-    goto: async (url: string) => { currentUrl = url; navigations.push(url); navigationTimes.push(clock); return { status: () => status } },
+    goto: async (url: string) => { currentUrl = url; latest = null; navigations.push(url); navigationTimes.push(clock)
+      return { status: () => status, url: () => currentUrl, headers: () => headers(navigations.length) } },
     url: () => currentUrl,
-    evaluate: async (_fn: unknown, input?: { readOnly?: boolean }) => observe(Number(new URL(currentUrl).searchParams.get('page')), ++evaluations, input?.readOnly),
+    evaluate: async (fn: unknown, input?: { readOnly?: boolean }) => {
+      if (fn === observeDistributionHumanVerification) return humanVerification?.(++guardChecks) ?? latest?.humanVerificationRequired === true
+      assert.equal(fn, observeRankDistributionDom)
+      latest = observe(Number(new URL(currentUrl).searchParams.get('page')), ++evaluations, input?.readOnly)
+      return latest
+    },
   } as unknown as Page
   const reader = createRankDistributionPageReader(fakePage, { timeoutMs: 1000, now: () => clock, wait: async ms => { clock += ms }, ...options })
   return { reader, fakePage, navigations, navigationTimes, evaluations: () => evaluations, elapsed: () => clock }
@@ -250,6 +261,7 @@ test('reader measures first-page size and confirms deep and final pages from sel
     lastObservedTotal: 43, lastAttemptedPage: 3, lastHttpStatus: 200, minimumObservedTotal: 43, maximumObservedTotal: 43,
     lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true,
     readableWithoutSignInReadCount: 0,
+    humanVerification: { wafHeaderChecked: true, wafAction: null, domDetected: false },
     observedRankIds: [1, 36], tailRankIds: [1], leagueLabelsConfirmed: true, displayedConditionsConfirmed: true,
     userStatusEvidence: 'fixed-url-only',
   })
@@ -616,6 +628,67 @@ test('HTTP 5xx and other HTTP errors stop before reading DOM and retain their nu
   }
 })
 
+test('LP document CAPTCHA or Challenge headers stop before HTTP classification and any DOM read', async () => {
+  for (const [status, action] of [[405, 'captcha'], [202, 'challenge'], [503, 'captcha']] as const) {
+    const setup = harness(undefined, status, {}, () => ({ 'x-amzn-waf-action': action, 'set-cookie': 'private-session' }))
+    await assert.rejects(setup.reader.fetchPage(1, pageUrl(1)), errorCode('human-verification'))
+    const diagnostics = setup.reader.getDiagnostics()
+    assert.equal(diagnostics.lastHttpStatus, status)
+    assert.equal(diagnostics.successfulReadCount, 0)
+    assert.deepEqual(diagnostics.humanVerification, { wafHeaderChecked: true, wafAction: action, domDetected: null })
+    assert.equal(setup.evaluations(), 0)
+    assert.equal(setup.navigations.length, 1)
+    assert.doesNotMatch(JSON.stringify(diagnostics), /private-session|set-cookie|https?:/)
+    diagnostics.humanVerification!.wafAction = null
+    assert.equal(setup.reader.getDiagnostics().humanVerification?.wafAction, action)
+  }
+})
+
+test('LP unknown or unavailable headers retain HTTP classification and later navigations reset protection evidence', async () => {
+  for (const [headers, checked] of [[() => ({}), true], [() => ({ 'x-amzn-waf-action': 'unknown-private-value' }), true],
+    [() => { throw new Error('private-header-error') }, false]] as const) {
+    const setup = harness(undefined, 405, {}, headers)
+    await assert.rejects(setup.reader.fetchPage(1, pageUrl(1)), errorCode('http-error'))
+    assert.deepEqual(setup.reader.getDiagnostics().humanVerification, { wafHeaderChecked: checked, wafAction: null, domDetected: null })
+    assert.equal(setup.evaluations(), 0)
+  }
+  const setup = harness(undefined, 405, {}, attempt => attempt === 1 ? { 'x-amzn-waf-action': 'captcha' } : {})
+  await assert.rejects(setup.reader.fetchPage(1, pageUrl(1)), errorCode('human-verification'))
+  await assert.rejects(setup.reader.fetchPage(1, pageUrl(1)), errorCode('http-error'))
+  assert.deepEqual(setup.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: null })
+})
+
+test('LP common DOM guard stops both before an unsafe ranking read and after a challenge appears during it', async () => {
+  for (const phase of ['before', 'after']) {
+    const setup = harness(page => {
+      if (phase === 'before') assert.fail('a visible challenge must stop before ranking parsing can fail')
+      return observation(page)
+    }, 200, {}, () => ({}), checks => checks >= (phase === 'before' ? 1 : 2))
+    await assert.rejects(setup.reader.fetchPage(1, pageUrl(1)), errorCode('human-verification'))
+    assert.deepEqual(setup.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: true })
+    assert.equal(setup.reader.getDiagnostics().successfulReadCount, 0)
+    assert.equal(setup.evaluations(), phase === 'before' ? 0 : 1)
+    assert.equal(setup.navigations.length, 1)
+  }
+})
+
+test('passive LP checks protection before and after ranking observation without rewriting the stopped attempt', async () => {
+  for (const phase of ['before', 'after']) {
+    let armed = false, checks = 0
+    const setup = harness(page => {
+      if (armed && phase === 'before') assert.fail('passive protection must stop before ranking parsing')
+      return observation(page)
+    }, 200, {}, () => ({}), () => armed && ++checks >= (phase === 'before' ? 1 : 2))
+    await setup.reader.fetchPage(1, pageUrl(1))
+    const before = setup.reader.getDiagnostics(), evaluations = setup.evaluations()
+    armed = true
+    await assert.rejects(setup.reader.observeCurrentPage(1), errorCode('human-verification'))
+    assert.deepEqual(setup.reader.getDiagnostics(), before)
+    assert.equal(setup.evaluations(), evaluations + (phase === 'before' ? 0 : 1))
+    assert.equal(setup.navigations.length, 1)
+  }
+})
+
 test('a navigation timeout after HTTP 200 clears the prior response while retaining the last successful page', async t => {
   const setup = harness()
   await setup.reader.fetchPage(1, pageUrl(1))
@@ -717,8 +790,8 @@ test('post-stop samples bypass the original aborted signal without navigation or
   recovered = true
   const evaluate = setup.fakePage.evaluate.bind(setup.fakePage)
   t.mock.method(setup.fakePage, 'evaluate', (async (fn: unknown, input: unknown) => {
-    assert.equal(fn, observeRankDistributionDom)
-    assert.equal((input as { readOnly?: boolean }).readOnly, true)
+    assert.ok(fn === observeRankDistributionDom || fn === observeDistributionHumanVerification)
+    if (fn === observeRankDistributionDom) assert.equal((input as { readOnly?: boolean }).readOnly, true)
     return evaluate(fn as never, input as never)
   }) as typeof setup.fakePage.evaluate)
   assert.deepEqual(await setup.reader.observeCurrentPage(3), {

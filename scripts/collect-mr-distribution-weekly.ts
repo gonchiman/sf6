@@ -9,6 +9,7 @@ import { disableRankDistributionDiagnostics } from './collect-rank-distribution.
 import { markRankDistributionArtifactReady, rankDistributionCloudBrowserEnvironment } from './collect-rank-distribution-cloud.ts'
 import { BUCKLER_WEEKLY_SESSION_SECRET, parseBucklerWeeklySession } from './lib/buckler-weekly-session.ts'
 import { mrDistributionPathWithin, validateMrDistributionDirectory } from './validate-mr-distribution-data.ts'
+import { distributionHumanVerificationKind, parseDistributionHumanVerification } from './lib/distribution-human-verification.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const MR_WEEKLY_OUTPUT = resolve(ROOT, '.local/mr-distribution-weekly/output')
@@ -79,11 +80,7 @@ function parseCaptureDiagnostics(value: unknown): MrDistributionCaptureDiagnosti
     lastLoginRequiredHeading: item.lastLoginRequiredHeading === null ? null : bool(item.lastLoginRequiredHeading),
     lastRankingReadable: item.lastRankingReadable === null ? null : bool(item.lastRankingReadable) }
   if (hasHumanVerification) {
-    const evidence = record(item.humanVerification, ['wafHeaderChecked', 'wafAction', 'domDetected'])
-    result.humanVerification = { wafHeaderChecked: bool(evidence.wafHeaderChecked),
-      wafAction: oneOf(evidence.wafAction, [null, 'captcha', 'challenge']),
-      domDetected: evidence.domDetected === null ? null : bool(evidence.domDetected) }
-    if (!result.humanVerification.wafHeaderChecked && result.humanVerification.wafAction !== null) reject()
+    try { result.humanVerification = parseDistributionHumanVerification(item.humanVerification) } catch { reject() }
   }
   return result
 }
@@ -139,11 +136,10 @@ export function mrWeeklyFailureMessage(input: MrWeeklyRunReport, hasPreviousData
   let message = 'MR分布の取得を完了できませんでした。'
   if (run.failureReason === 'authentication-unavailable') message = '保存済みの認証状態を確認できませんでした。'
   else if (run.failureReason === 'collection-failed' && run.capture?.status === 'failed') {
-    const evidence = run.capture.diagnostics?.humanVerification
-    if (evidence?.wafHeaderChecked && evidence.wafAction === 'captcha') {
+    const kind = distributionHumanVerificationKind(run.capture.diagnostics?.humanVerification, run.capture.readFailureCode)
+    if (kind === 'captcha') {
       message = '取得元でCAPTCHAによる人間確認が必要なため、MR分布の取得を停止しました。'
-    } else if (run.capture.readFailureCode === 'human-verification' || evidence?.domDetected === true
-      || evidence?.wafHeaderChecked && evidence.wafAction === 'challenge') {
+    } else if (kind === 'human-verification') {
       message = '取得元の人間確認が必要なため、MR分布の取得を停止しました。'
     }
   }
