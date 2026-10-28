@@ -1,11 +1,18 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-27T13:04:13.129Z",
+  "generatedAt": "2026-10-28T05:20:46.679Z",
   "source": {
     "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/master",
     "title": "Buckler MRランキング"
   },
   "datasets": [
+    {
+      "id": "max-mr-estimate-2026-10-28T05-06-18-071Z",
+      "path": "max-mr-estimate-2026-10-28T05-06-18-071Z.json",
+      "captureStartedAt": "2026-10-28T05:06:18.071Z",
+      "captureEndedAt": "2026-10-28T05:20:13.719Z",
+      "totalCount": 324535
+    },
     {
       "id": "max-mr-estimate-2026-10-16T14-06-58-255Z",
       "path": "max-mr-estimate-2026-10-16T14-06-58-255Z.json",
@@ -13,10 +20,5 @@
       "captureEndedAt": "2026-10-16T14:19:19.021Z",
       "totalCount": 314404
     }
-  ],
-  "availability": {
-    "status": "collection-failed",
-    "message": "取得元でCAPTCHAによる人間確認が必要なため、MR分布の取得を停止しました。前回の正常データを保持しています。",
-    "checkedAt": "2026-10-27T13:03:43.987Z"
-  }
+  ]
 }
