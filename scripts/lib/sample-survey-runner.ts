@@ -276,18 +276,56 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
     change(kind, before, after)
     throw new BoundaryDrift()
   }
-  async function discover(definition: SampleSurveyStratumDefinition): Promise<SampleSurveyFrame> {
+  async function discover(definition: SampleSurveyStratumDefinition, hint?: SampleSurveyFrame): Promise<SampleSurveyFrame> {
     const first = await read(definition.target, 1), cache = new Map<number, SampleSurveyPage>([[1, first]])
+    // Reuse only a candidate position. Every page in this discovery and the following
+    // confirmation is read anew; saved rows never establish a current boundary.
+    const hintRange = hint?.target === definition.target && hint.pageSize === first.pageSize
+      ? hint.ranges.find(range => range.stratumId === definition.id) : undefined
     async function cached(page: number): Promise<SampleSurveyPage> {
       if (cache.has(page)) return cache.get(page)!
       // The upper search bound was observed earlier. A shrinking tail is a stratum change, not a new request for an invalid page.
       if (page > Math.max(1, Math.ceil(latest.get(definition.target)!.total / first.pageSize))) drift('page-unavailable', page, null)
       const value = await read(definition.target, page); cache.set(page, value); return value
     }
-    async function firstLess(threshold: number | null): Promise<number> {
+    async function nearby(threshold: number, candidate: number): Promise<number | null> {
+      let lower: number | null = null, upper: number | null = null, step = 1
+      let pageNumber = Math.floor(candidate / first.pageSize) + 1
+      // Adapt the rank-distribution collector's exponential page bracketing.
+      // A distant hint has bounded overhead before the ordinary binary search.
+      for (let probe = 0; probe < 6; probe++) {
+        const lastPage = Math.max(1, Math.ceil(latest.get(definition.target)!.total / first.pageSize))
+        const page = await cached(Math.max(1, Math.min(pageNumber, lastPage)))
+        const offset = (page.page - 1) * first.pageSize
+        const prefix = page.entries.findIndex(entry => (definition.target === 'lp' ? entry.rankId! : entry.value) < threshold)
+        if (prefix > 0) return offset + prefix
+        if (prefix === 0) {
+          upper = page.page
+          if (page.page === 1) return 0
+        } else {
+          lower = page.page
+          if (page.page >= page.totalPages) return page.totalCount
+        }
+        if (lower !== null && upper !== null) {
+          // Conflicting observations guide neither acceptance nor a forced retry.
+          if (lower >= upper) return null
+          if (upper === lower + 1) return (upper - 1) * first.pageSize
+          pageNumber = lower + Math.floor((upper - lower) / 2)
+        } else {
+          pageNumber = prefix === 0 ? page.page - step : page.page + step
+          step *= 2
+        }
+      }
+      return null
+    }
+    async function firstLess(threshold: number | null, candidate?: number): Promise<number> {
       if (threshold === null || definition.target === 'lp' && threshold > 36) return 0
       if (threshold <= (definition.target === 'lp' ? 1 : 0)) return latest.get(definition.target)!.total
-      let low = 0, high = first.totalCount
+      if (candidate !== undefined) {
+        const found = await nearby(threshold, candidate)
+        if (found !== null) return found
+      }
+      let low = 0, high = latest.get(definition.target)!.total
       while (low < high) {
         const middle = Math.floor((low + high) / 2), page = await cached(Math.floor(middle / first.pageSize) + 1)
         const entry = page.entries[middle % first.pageSize]
@@ -298,7 +336,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       }
       return low
     }
-    const rangeStart = await firstLess(definition.maximum), rangeEnd = await firstLess(definition.minimum)
+    const rangeStart = await firstLess(definition.maximum, hintRange?.start), rangeEnd = await firstLess(definition.minimum, hintRange?.end)
     if (rangeStart > rangeEnd) drift('range-order', rangeStart, rangeEnd)
     const totalCount = latest.get(definition.target)!.total
     if (rangeEnd > totalCount) drift('boundary-end', rangeEnd, totalCount)
@@ -358,7 +396,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       if (saved && !latest.has(definition.target)) latest.set(definition.target, { total: saved.totalCount, pageSize: saved.pageSize })
       let frame: SampleSurveyFrame
       try {
-        frame = await discover(definition)
+        frame = await discover(definition, saved)
         if (!saved) before(observed, frame)
         await confirm(frame, definition)
       } catch (error) {
@@ -422,7 +460,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       }
       // Re-discover from fresh pages. Equal cuts are an observation, never proof of no intervening movement.
       try {
-        const endFrame = await discover(definition)
+        const endFrame = await discover(definition, frame)
         after(observed, endFrame)
         await confirm(endFrame, definition)
         observed.totalCountAfter = latest.get(definition.target)!.total

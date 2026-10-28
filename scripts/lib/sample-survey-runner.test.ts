@@ -4,6 +4,7 @@ import { SAMPLE_SURVEY_RANKS } from '../../src/lib/sampleSurvey.ts'
 import type { SampleSurveyPlan, SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
 import { SampleSurveyReadError } from './sample-survey-reader.ts'
 import type { SampleSurveyPage, SampleSurveyReader } from './sample-survey-reader.ts'
+import type { SampleSurveyCheckpoint } from './sample-survey-runner.ts'
 import { canResumeSampleSurvey, createSampleSurveyCheckpoint, markSampleSurveyInterrupted, parseSampleSurveyCheckpoint, runSampleSurvey, sampleSurveyPositions } from './sample-survey-runner.ts'
 
 const startTime = Date.parse('2026-10-27T00:00:00.000Z')
@@ -401,4 +402,152 @@ test('slots beyond a known shrunken tail remain missing without requesting inval
   assert.equal(row.succeeded + row.missing, 100)
   assert.equal(result.report.observation!.strata[0].status, 'review-required')
   assert.ok(result.slots.filter(slot => slot.status === 'missing').every(slot => slot.reason === 'page-unavailable' && slot.accountId === null))
+})
+
+type MasterRead = { page: number; stage: 'before' | 'sampling' | 'after'; at: number }
+function movingMasterFixture(cut = 551_604, total = 3_097_303) {
+  let clock = startTime
+  const calls: MasterRead[] = []
+  const state: { cut: number; total: number; stage: MasterRead['stage']; onRead?: (call: MasterRead) => void } = { cut, total, stage: 'before' }
+  const reader: SampleSurveyReader = { async close() {}, async readPage(target, page) {
+    assert.equal(target, 'lp')
+    assert.ok(page >= 1 && page <= Math.max(1, Math.ceil(state.total / 20)), 'never request a page beyond the observed tail')
+    const call = { page, stage: state.stage, at: clock }
+    calls.push(call); state.onRead?.(call); clock += 100
+    return { target, page, pageSize: 20, totalCount: state.total, totalPages: Math.ceil(state.total / 20), observedAt: new Date(clock).toISOString(),
+      entries: Array.from({ length: Math.min(20, Math.max(0, state.total - (page - 1) * 20)) }, (_, index) => {
+        const position = (page - 1) * 20 + index
+        return { accountId: String(5_000_000 + position), value: position < state.cut ? 30_000 : 20_000, rankId: position < state.cut ? 36 : 31 }
+      }) }
+  } }
+  const onUpdate = (checkpoint: SampleSurveyCheckpoint) => {
+    const row = checkpoint.report.strata[0]
+    if (checkpoint.report.phase === 'boundaries') state.stage = 'before'
+    else if (checkpoint.report.phase === 'sampling') state.stage = row.processed === row.selected ? 'after' : 'sampling'
+  }
+  return { reader, state, calls, onUpdate, now: () => clock, wait: async (milliseconds: number) => { clock += milliseconds } }
+}
+
+test('fresh nearby post-check reduces large-population reads while retaining the same random slots', async t => {
+  const f = movingMasterFixture(), value = plan({ ranks: ['MASTER'], maxDurationMinutes: 10 })
+  const result = await runSampleSurvey(value, { ...f, signal: new AbortController().signal })
+  const before = f.calls.filter(call => call.stage === 'before'), after = f.calls.filter(call => call.stage === 'after')
+  assert.equal(result.report.state, 'complete')
+  assert.equal(result.report.observation!.strata[0].status, 'checked')
+  assert.deepEqual(result.slots.map(slot => slot.position), sampleSurveyPositions(0, 551_604, 10, `${value.seed}:lp-MASTER`))
+  assert.equal(result.report.strata[0].succeeded, 10)
+  assert.ok(after.length < before.length / 2, 'post-check should use nearby evidence instead of another full-range search')
+  assert.ok(after.filter(call => call.page === Math.floor(551_604 / 20) + 1).length >= 2, 'candidate and confirmation must read separate fresh pages')
+  for (let i = 1; i < f.calls.length; i++) assert.ok(f.calls[i].at - f.calls[i - 1].at >= 10_000)
+  t.diagnostic(`Same synthetic MASTER fixture: ${f.calls.length} reads, ${after.length} post-check reads, ${result.report.elapsedMs} ms; previous full-range implementation: 50 reads, 20 post-check reads, 490100 ms.`)
+})
+
+for (const [initial, moved] of [[551_604, 551_605], [551_604, 551_603], [551_600, 551_601], [551_600, 551_599]]) {
+  test(`nearby search finds a moved boundary ${initial} -> ${moved} without changing chosen slots`, async () => {
+    const f = movingMasterFixture(initial), value = plan({ ranks: ['MASTER'] })
+    const expected = sampleSurveyPositions(0, initial, 10, `${value.seed}:lp-MASTER`)
+    const result = await runSampleSurvey(value, { ...f, signal: new AbortController().signal,
+      onUpdate(checkpoint) { f.onUpdate(checkpoint); if (f.state.stage === 'after') f.state.cut = moved } })
+    assert.equal(result.report.state, 'complete')
+    assert.deepEqual(result.slots.map(slot => slot.position), expected)
+    assert.equal(result.report.strata[0].succeeded, 10)
+    const observation = result.report.observation!.strata[0]
+    assert.equal(observation.endBefore, initial); assert.equal(observation.endAfter, moved)
+    assert.equal(observation.status, 'review-required')
+    assert.ok(f.calls.filter(call => call.stage === 'after').length < 10)
+  })
+}
+
+for (const moved of [100_003, 2_500_007]) test(`a distant boundary ${moved} falls back to a bounded full-range search`, async () => {
+  const f = movingMasterFixture(), value = plan({ ranks: ['MASTER'] })
+  const result = await runSampleSurvey(value, { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) { f.onUpdate(checkpoint); if (f.state.stage === 'after') f.state.cut = moved } })
+  assert.equal(result.report.state, 'complete')
+  assert.equal(result.report.observation!.strata[0].endAfter, moved)
+  assert.equal(result.report.observation!.strata[0].status, 'review-required')
+  assert.equal(result.report.strata[0].succeeded, 10)
+  const after = f.calls.filter(call => call.stage === 'after')
+  assert.ok(after.length < 40, 'distant movement must not become a sequential page scan')
+  assert.ok(after.some(call => Math.abs(call.page - Math.floor(551_604 / 20)) > 1000), 'search must escape the old boundary neighborhood')
+})
+
+test('nearby MR post-check searches and verifies both ends of an interior band', async () => {
+  const f = fixture({ rowsPerStratum: 20 }), postCalls: number[] = []
+  let changed = false, post = false
+  const original = f.reader.readPage.bind(f.reader)
+  f.reader.readPage = async (target, page) => { if (post) postCalls.push(page); return original(target, page) }
+  const result = await runSampleSurvey(plan({ ranks: [], includeMr: true }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      const observation = checkpoint.report.observation!.strata.find(row => row.id === 'mr-1400-1599')!
+      const row = checkpoint.report.strata.find(row => row.id === observation.id)!
+      post = observation.status === 'collecting' && row.processed === 10
+      if (post && !changed) { changed = true; f.mr[59].value = 1599; f.mr[79].value = 1399 }
+    } })
+  assert.equal(result.report.state, 'complete')
+  const observation = result.report.observation!.strata.find(row => row.id === 'mr-1400-1599')!
+  assert.deepEqual([observation.startBefore, observation.endBefore, observation.startAfter, observation.endAfter], [60, 80, 59, 79])
+  assert.equal(observation.status, 'review-required')
+  assert.equal(result.report.strata.find(row => row.id === observation.id)!.succeeded, 10)
+  assert.ok(postCalls.length <= 10)
+  assert.ok(postCalls.includes(3) && postCalls.includes(4), 'both new cut pages are read')
+})
+
+test('fresh confirmation still detects movement after the hinted candidate was found', async () => {
+  const f = movingMasterFixture()
+  let postFirstPageReads = 0
+  f.state.onRead = call => {
+    if (call.stage === 'after' && call.page === 1 && ++postFirstPageReads === 2) f.state.cut++
+  }
+  const result = await runSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: new AbortController().signal })
+  assert.equal(result.report.state, 'complete')
+  assert.equal(result.report.observation!.strata[0].status, 'review-required')
+  assert.equal(result.report.observation!.strata[0].boundaryChanged, true)
+  assert.ok(result.report.observation!.changes.some(change => change.kind === 'boundary-end'))
+  assert.equal(result.report.strata[0].succeeded, 10)
+})
+
+test('human verification during nearby search stops without a fallback request', async () => {
+  const f = movingMasterFixture()
+  let blockedAt = 0
+  f.state.onRead = call => {
+    if (call.stage === 'after' && call.page !== 1) { blockedAt = f.calls.length; throw new SampleSurveyReadError('human-verification') }
+  }
+  const result = await runSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: new AbortController().signal })
+  assert.ok(blockedAt > 0)
+  assert.equal(f.calls.length, blockedAt)
+  assert.equal(result.report.stopReason, 'human-verification')
+  assert.equal(result.report.resumeAllowed, false)
+})
+
+test('a hint beyond a shrunken tail is clamped before requesting nearby pages', async () => {
+  const f = movingMasterFixture()
+  const result = await runSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) { f.onUpdate(checkpoint); if (f.state.stage === 'after') { f.state.total = 10; f.state.cut = 5 } } })
+  assert.equal(result.report.state, 'complete')
+  assert.equal(result.report.observation!.strata[0].totalCountAfter, 10)
+  assert.equal(result.report.observation!.strata[0].endAfter, 5)
+  assert.equal(result.report.observation!.strata[0].status, 'review-required')
+  assert.ok(f.calls.filter(call => call.stage === 'after').every(call => call.page === 1))
+})
+
+for (const [cut, total] of [[0, 400], [400, 400], [0, 0]]) test(`hinted post-check accepts exact endpoint ${cut}/${total}`, async () => {
+  const f = movingMasterFixture(cut, total)
+  const result = await runSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: new AbortController().signal })
+  assert.equal(result.report.state, 'complete')
+  assert.equal(result.report.observation!.strata[0].status, 'checked')
+  assert.equal(result.report.observation!.strata[0].endAfter, cut)
+  assert.equal(result.report.strata[0].succeeded, Math.min(cut, 10))
+})
+
+test('saved large-population boundaries accelerate resume without redrawing slots', async () => {
+  const f = movingMasterFixture(), controller = new AbortController(), value = plan({ ranks: ['MASTER'] })
+  const first = await runSampleSurvey(value, { ...f, signal: controller.signal,
+    onUpdate(checkpoint) { f.onUpdate(checkpoint); if (checkpoint.slots.length) controller.abort() } })
+  assert.equal(first.report.stopReason, 'cancelled')
+  const oldCount = f.calls.length
+  const second = await runSampleSurvey(value, { ...f, checkpoint: first, signal: new AbortController().signal })
+  assert.equal(second.report.state, 'complete')
+  assert.deepEqual(second.slots.map(slot => slot.id), first.slots.map(slot => slot.id))
+  assert.equal(second.report.observation!.strata[0].status, 'checked')
+  assert.ok(f.calls.slice(oldCount).filter(call => call.stage === 'before').length < 10)
 })
