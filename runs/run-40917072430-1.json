@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "run-40917072430-1",
+  "startedAt": "2026-10-29T17:45:01.498Z",
+  "endedAt": "2026-10-29T17:56:34.440Z",
+  "event": "schedule",
+  "status": "failed",
+  "failureReason": "collection-failed",
+  "datasetId": null,
+  "capture": {
+    "schemaVersion": 1,
+    "status": "failed",
+    "startedAt": "2026-10-29T17:45:01.501Z",
+    "endedAt": "2026-10-29T17:56:34.439Z",
+    "stage": "collection",
+    "reason": "collection-failed",
+    "readFailureCode": "human-verification",
+    "requestCount": 136,
+    "successfulReadCount": 135,
+    "retryCount": 0,
+    "confirmedBoundaryCount": 19,
+    "datasetSaved": false,
+    "imported": false,
+    "browserClosed": true,
+    "initialSignInConfirmed": true,
+    "readableWithoutSignInReadCount": 0,
+    "diagnostics": {
+      "lastAttemptedPage": 156,
+      "lastSuccessfulPage": 152,
+      "lastHttpStatus": 405,
+      "lastAuthenticationEvidence": null,
+      "lastLoginRequiredHeading": null,
+      "lastRankingReadable": null,
+      "humanVerification": {
+        "wafHeaderChecked": true,
+        "wafAction": "captcha",
+        "domDetected": null
+      }
+    },
+    "sessionRefreshCount": 0
+  }
+}
