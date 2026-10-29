@@ -1,0 +1,779 @@
+{
+  "schemaVersion": 2,
+  "id": "0b87972e-b336-4bf2-ad8f-f6c17f667972",
+  "planId": "5344e4a1-9223-458e-b4ae-d358f4ae3717",
+  "config": {
+    "ranks": [
+      "ROOKIE",
+      "IRON",
+      "BRONZE",
+      "SILVER",
+      "GOLD",
+      "PLATINUM",
+      "DIAMOND",
+      "MASTER"
+    ],
+    "rankSampleSize": 10,
+    "includeMr": false,
+    "mrSampleSize": 10,
+    "maxDurationMinutes": 90
+  },
+  "state": "complete",
+  "phase": "complete",
+  "startedAt": "2026-10-29T04:21:04.694Z",
+  "updatedAt": "2026-10-29T05:25:58.942Z",
+  "finishedAt": "2026-10-29T05:25:58.942Z",
+  "elapsedMs": 3894248,
+  "attempts": 390,
+  "successfulPages": 390,
+  "uniqueAccountCount": 60,
+  "strata": [
+    {
+      "id": "lp-ROOKIE",
+      "label": "ROOKIE",
+      "target": "lp",
+      "requested": 10,
+      "population": 186924,
+      "selected": 10,
+      "processed": 10,
+      "succeeded": 10,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 261.4,
+      "min": 0,
+      "max": 500
+    },
+    {
+      "id": "lp-IRON",
+      "label": "IRON",
+      "target": "lp",
+      "requested": 10,
+      "population": 364376,
+      "selected": 10,
+      "processed": 10,
+      "succeeded": 10,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 1826.3,
+      "min": 1116,
+      "max": 2717
+    },
+    {
+      "id": "lp-BRONZE",
+      "label": "BRONZE",
+      "target": "lp",
+      "requested": 10,
+      "population": null,
+      "selected": 0,
+      "processed": 0,
+      "succeeded": 0,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": null,
+      "min": null,
+      "max": null
+    },
+    {
+      "id": "lp-SILVER",
+      "label": "SILVER",
+      "target": "lp",
+      "requested": 10,
+      "population": 441950,
+      "selected": 10,
+      "processed": 10,
+      "succeeded": 10,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 5992.8,
+      "min": 5151,
+      "max": 7766
+    },
+    {
+      "id": "lp-GOLD",
+      "label": "GOLD",
+      "target": "lp",
+      "requested": 10,
+      "population": null,
+      "selected": 0,
+      "processed": 0,
+      "succeeded": 0,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": null,
+      "min": null,
+      "max": null
+    },
+    {
+      "id": "lp-PLATINUM",
+      "label": "PLATINUM",
+      "target": "lp",
+      "requested": 10,
+      "population": 510470,
+      "selected": 10,
+      "processed": 10,
+      "succeeded": 10,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 14089.7,
+      "min": 13067,
+      "max": 16981
+    },
+    {
+      "id": "lp-DIAMOND",
+      "label": "DIAMOND",
+      "target": "lp",
+      "requested": 10,
+      "population": 342447,
+      "selected": 10,
+      "processed": 10,
+      "succeeded": 10,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 20495.7,
+      "min": 19030,
+      "max": 22571
+    },
+    {
+      "id": "lp-MASTER",
+      "label": "MASTER",
+      "target": "lp",
+      "requested": 10,
+      "population": 552178,
+      "selected": 10,
+      "processed": 10,
+      "succeeded": 10,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 145366.8,
+      "min": 25000,
+      "max": 332210
+    }
+  ],
+  "frameChanged": true,
+  "stopReason": null,
+  "resumeAllowed": false,
+  "observation": {
+    "method": "rank-position-interval-v1",
+    "strata": [
+      {
+        "id": "lp-ROOKIE",
+        "status": "review-required",
+        "startedAt": "2026-10-29T04:21:04.699Z",
+        "finishedAt": "2026-10-29T04:26:39.437Z",
+        "totalCountBefore": 3100252,
+        "totalCountAfter": 3100256,
+        "startBefore": 2913328,
+        "endBefore": 3100252,
+        "startAfter": 2913329,
+        "endAfter": 3100256,
+        "boundaryChanged": true
+      },
+      {
+        "id": "lp-IRON",
+        "status": "review-required",
+        "startedAt": "2026-10-29T04:26:39.437Z",
+        "finishedAt": "2026-10-29T04:35:58.610Z",
+        "totalCountBefore": 3100262,
+        "totalCountAfter": 3100263,
+        "startBefore": 2548962,
+        "endBefore": 2913338,
+        "startAfter": 2548964,
+        "endAfter": 2913339,
+        "boundaryChanged": true
+      },
+      {
+        "id": "lp-BRONZE",
+        "status": "review-required",
+        "startedAt": "2026-10-29T04:35:58.611Z",
+        "finishedAt": "2026-10-29T04:43:59.634Z",
+        "totalCountBefore": 3100270,
+        "totalCountAfter": 3100270,
+        "startBefore": 2222603,
+        "endBefore": 2548971,
+        "startAfter": null,
+        "endAfter": null,
+        "boundaryChanged": true
+      },
+      {
+        "id": "lp-SILVER",
+        "status": "review-required",
+        "startedAt": "2026-10-29T04:43:59.635Z",
+        "finishedAt": "2026-10-29T04:54:08.256Z",
+        "totalCountBefore": 3100277,
+        "totalCountAfter": 3100279,
+        "startBefore": 1780663,
+        "endBefore": 2222613,
+        "startAfter": 1780664,
+        "endAfter": 2222620,
+        "boundaryChanged": true
+      },
+      {
+        "id": "lp-GOLD",
+        "status": "review-required",
+        "startedAt": "2026-10-29T04:54:08.256Z",
+        "finishedAt": "2026-10-29T05:01:58.821Z",
+        "totalCountBefore": 3100285,
+        "totalCountAfter": 3100285,
+        "startBefore": 1405087,
+        "endBefore": 1780670,
+        "startAfter": null,
+        "endAfter": null,
+        "boundaryChanged": true
+      },
+      {
+        "id": "lp-PLATINUM",
+        "status": "review-required",
+        "startedAt": "2026-10-29T05:01:58.822Z",
+        "finishedAt": "2026-10-29T05:11:38.278Z",
+        "totalCountBefore": 3100293,
+        "totalCountAfter": 3100294,
+        "startBefore": 894620,
+        "endBefore": 1405090,
+        "startAfter": 894623,
+        "endAfter": 1405092,
+        "boundaryChanged": true
+      },
+      {
+        "id": "lp-DIAMOND",
+        "status": "review-required",
+        "startedAt": "2026-10-29T05:11:38.278Z",
+        "finishedAt": "2026-10-29T05:20:17.850Z",
+        "totalCountBefore": 3100301,
+        "totalCountAfter": 3100307,
+        "startBefore": 552178,
+        "endBefore": 894625,
+        "startAfter": 552178,
+        "endAfter": 894624,
+        "boundaryChanged": true
+      },
+      {
+        "id": "lp-MASTER",
+        "status": "review-required",
+        "startedAt": "2026-10-29T05:20:17.850Z",
+        "finishedAt": "2026-10-29T05:25:58.942Z",
+        "totalCountBefore": 3100307,
+        "totalCountAfter": 3100310,
+        "startBefore": 0,
+        "endBefore": 552178,
+        "startAfter": 0,
+        "endAfter": 552179,
+        "boundaryChanged": true
+      }
+    ],
+    "changes": [
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-29T04:43:28.870Z",
+        "before": 3100268,
+        "after": 3100269
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-29T04:43:38.970Z",
+        "before": 3100269,
+        "after": 3100270
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-29T04:43:38.970Z",
+        "before": 2222600,
+        "after": 2222603
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-29T04:43:38.970Z",
+        "before": 2548969,
+        "after": 2548971
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-29T04:43:59.634Z",
+        "before": 2222603,
+        "after": null
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:45:10.659Z",
+        "before": 3100270,
+        "after": 3100271
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:45:49.514Z",
+        "before": 3100271,
+        "after": 3100272
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:47:58.190Z",
+        "before": 3100272,
+        "after": 3100273
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:48:48.289Z",
+        "before": 3100273,
+        "after": 3100274
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:49:10.040Z",
+        "before": 3100274,
+        "after": 3100275
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:49:48.394Z",
+        "before": 3100275,
+        "after": 3100276
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:49:57.867Z",
+        "before": 1780658,
+        "after": null
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:50:17.508Z",
+        "before": 3100276,
+        "after": 3100277
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:50:38.371Z",
+        "before": 1780658,
+        "after": 1780663
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:50:38.371Z",
+        "before": 2222612,
+        "after": 2222613
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:51:18.731Z",
+        "before": 3100277,
+        "after": 3100278
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:53:28.565Z",
+        "before": 1780663,
+        "after": 1780664
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:53:28.565Z",
+        "before": 2222613,
+        "after": 2222620
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:54:08.256Z",
+        "before": 3100278,
+        "after": 3100279
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-SILVER",
+        "at": "2026-10-29T04:54:08.256Z",
+        "before": 2222620,
+        "after": null
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T04:54:49.949Z",
+        "before": 3100279,
+        "after": 3100280
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T04:55:09.325Z",
+        "before": 3100280,
+        "after": 3100281
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T04:55:58.980Z",
+        "before": 3100281,
+        "after": 3100282
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T04:57:28.825Z",
+        "before": 3100282,
+        "after": 3100283
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T04:59:17.721Z",
+        "before": 3100283,
+        "after": 3100284
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T04:59:59.152Z",
+        "before": 3100284,
+        "after": 3100285
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T05:00:18.278Z",
+        "before": 1405086,
+        "after": null
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T05:00:49.805Z",
+        "before": 1780668,
+        "after": 1780669
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T05:01:08.273Z",
+        "before": 1405086,
+        "after": null
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T05:01:39.843Z",
+        "before": 1405086,
+        "after": 1405087
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T05:01:39.843Z",
+        "before": 1780669,
+        "after": 1780670
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-29T05:01:58.821Z",
+        "before": 1405087,
+        "after": null
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:02:28.998Z",
+        "before": 3100285,
+        "after": 3100286
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:02:49.377Z",
+        "before": 3100286,
+        "after": 3100287
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:03:29.396Z",
+        "before": 3100287,
+        "after": 3100288
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:04:18.286Z",
+        "before": 3100288,
+        "after": 3100289
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:04:39.301Z",
+        "before": 3100289,
+        "after": 3100290
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:06:18.744Z",
+        "before": 3100290,
+        "after": 3100291
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:07:19.143Z",
+        "before": 3100291,
+        "after": 3100292
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:07:48.692Z",
+        "before": 894618,
+        "after": null
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:07:58.811Z",
+        "before": 3100292,
+        "after": 3100293
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:08:28.706Z",
+        "before": 894618,
+        "after": 894620
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:08:28.706Z",
+        "before": 1405091,
+        "after": 1405090
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:10:48.823Z",
+        "before": 3100293,
+        "after": 3100294
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:11:18.707Z",
+        "before": 894620,
+        "after": 894623
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:11:18.707Z",
+        "before": 1405090,
+        "after": 1405092
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-10-29T05:11:38.278Z",
+        "before": 894623,
+        "after": null
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:11:58.570Z",
+        "before": 3100294,
+        "after": 3100295
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:12:48.884Z",
+        "before": 3100295,
+        "after": 3100296
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:13:39.031Z",
+        "before": 3100296,
+        "after": 3100297
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:14:18.548Z",
+        "before": 3100297,
+        "after": 3100298
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:14:27.403Z",
+        "before": 3100298,
+        "after": 3100299
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:14:38.718Z",
+        "before": 3100299,
+        "after": 3100300
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:16:58.849Z",
+        "before": 3100300,
+        "after": 3100301
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:17:39.242Z",
+        "before": 3100301,
+        "after": 3100302
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:18:29.611Z",
+        "before": 3100302,
+        "after": 3100304
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:19:28.983Z",
+        "before": 3100304,
+        "after": 3100305
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:19:38.449Z",
+        "before": 3100305,
+        "after": 3100306
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:19:48.694Z",
+        "before": 894625,
+        "after": 894624
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-DIAMOND",
+        "at": "2026-10-29T05:20:08.064Z",
+        "before": 3100306,
+        "after": 3100307
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-29T05:24:28.512Z",
+        "before": 3100307,
+        "after": 3100308
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-29T05:25:18.726Z",
+        "before": 3100308,
+        "after": 3100309
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-29T05:25:29.241Z",
+        "before": 3100309,
+        "after": 3100310
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-MASTER",
+        "at": "2026-10-29T05:25:38.682Z",
+        "before": 552178,
+        "after": 552179
+      }
+    ],
+    "omittedChanges": 32
+  }
+}
