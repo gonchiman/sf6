@@ -1,4 +1,5 @@
 import type { SampleSurveyChange, SampleSurveyConfig, SampleSurveyError, SampleSurveyObservation, SampleSurveyPlan, SampleSurveyRank, SampleSurveyRun, SampleSurveyServiceStatus, SampleSurveyStratumObservation, SampleSurveyStratumResult } from '../types/sampleSurvey.ts'
+import { parseSampleSurveyInsights } from './sampleSurveyInsights.ts'
 
 export const SAMPLE_SURVEY_RANKS: readonly SampleSurveyRank[] = ['ROOKIE', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER']
 export const SAMPLE_SURVEY_MR_BANDS = [
@@ -144,7 +145,7 @@ function parseObservation(value: unknown, rows: SampleSurveyStratumResult[], sta
 }
 export function parseSampleSurveyRun(value: unknown): SampleSurveyRun {
   const item = record(value, ['schemaVersion', 'id', 'planId', 'config', 'state', 'phase', 'startedAt', 'updatedAt', 'finishedAt',
-    'elapsedMs', 'attempts', 'successfulPages', 'uniqueAccountCount', 'strata', 'frameChanged', 'stopReason', 'resumeAllowed'], ['observation'])
+    'elapsedMs', 'attempts', 'successfulPages', 'uniqueAccountCount', 'strata', 'frameChanged', 'stopReason', 'resumeAllowed'], ['observation', 'insights'])
   if (item.schemaVersion !== 1 && item.schemaVersion !== 2 || (item.schemaVersion === 2) !== Object.hasOwn(item, 'observation')) fail()
   const config = parseSampleSurveyConfig(item.config), definitions = sampleSurveyResultDefinitions(config)
   if (!Array.isArray(item.strata) || item.strata.length !== definitions.length) fail()
@@ -168,10 +169,12 @@ export function parseSampleSurveyRun(value: unknown): SampleSurveyRun {
     || (observation ? observation.strata.some(row => !['checked', 'review-required'].includes(row.status)
       || row.finishedAt === null || row.finishedAt > finishedAt!) : strata.some(row => row.population === null)))) fail()
   const attempts = integer(item.attempts)
+  if (Object.hasOwn(item, 'insights') && state !== 'complete') fail()
+  const insights = Object.hasOwn(item, 'insights') ? parseSampleSurveyInsights(item.insights, { strata, startedAt, updatedAt: finishedAt! }) : undefined
   return { schemaVersion: item.schemaVersion, id: id(item.id), planId: id(item.planId), config, state, phase, startedAt, updatedAt, finishedAt,
     elapsedMs: integer(item.elapsedMs), attempts, successfulPages: integer(item.successfulPages, 0, attempts),
     uniqueAccountCount: integer(item.uniqueAccountCount, 0, strata.reduce((total, row) => total + row.succeeded, 0)),
-    strata, frameChanged, stopReason, resumeAllowed, ...(observation ? { observation } : {}) }
+    strata, frameChanged, stopReason, resumeAllowed, ...(observation ? { observation } : {}), ...(insights ? { insights } : {}) }
 }
 export function parseSampleSurveyStatus(value: unknown): SampleSurveyServiceStatus {
   const item = record(value, ['available', 'sessionAvailable', 'token', 'plans', 'runs', 'activeRunId'], ['error'])

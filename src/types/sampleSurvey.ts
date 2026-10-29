@@ -1,3 +1,5 @@
+import type { SampleSurveyInsights } from './sampleSurveyInsights.ts'
+
 export type SampleSurveyRank = 'ROOKIE' | 'IRON' | 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM' | 'DIAMOND' | 'MASTER'
 export type SampleSurveyTarget = 'lp' | 'mr'
 export interface SampleSurveyConfig {
@@ -81,6 +83,7 @@ export interface SampleSurveyRun {
   stopReason: SampleSurveyError | null
   resumeAllowed: boolean
   observation?: SampleSurveyObservation
+  insights?: SampleSurveyInsights
 }
 export interface SampleSurveyServiceStatus {
   available: boolean
