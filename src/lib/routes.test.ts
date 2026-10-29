@@ -2,6 +2,28 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { balanceAdjustmentDetailHash, characterHash, parseHashRoute } from './routes.ts'
 
+test('レジェンド帯分析2の直接URLを既存分析と区別する', () => {
+  assert.deepEqual(parseHashRoute('#legend-analysis-2'), { page: 'legend-analysis-2' })
+  assert.deepEqual(parseHashRoute('#legend-analysis-2/'), { page: 'legend-analysis-2' })
+  assert.deepEqual(parseHashRoute('#legend-analysis'), { page: 'legend-analysis' })
+  assert.deepEqual(parseHashRoute('#legend-analysis/'), { page: 'legend-analysis' })
+  assert.deepEqual(parseHashRoute('#legend-analysis-2/unknown'), { page: 'win-rates' })
+  assert.deepEqual(parseHashRoute('#legend-analysis-2-invalid'), { page: 'win-rates' })
+})
+
+test('標本調査の直接URLを区別する', () => {
+  assert.deepEqual(parseHashRoute('#sample-survey'), { page: 'sample-survey' })
+  assert.deepEqual(parseHashRoute('#sample-survey/'), { page: 'sample-survey' })
+  assert.deepEqual(parseHashRoute('#sample-survey/unknown'), { page: 'win-rates' })
+})
+
+test('並列取得テストの直接URLを区別する', () => {
+  assert.deepEqual(parseHashRoute('#parallel-fetch-test'), { page: 'parallel-fetch-test' })
+  assert.deepEqual(parseHashRoute('#parallel-fetch-test/'), { page: 'parallel-fetch-test' })
+  assert.deepEqual(parseHashRoute('#parallel-fetch-test/unknown'), { page: 'win-rates' })
+  assert.deepEqual(parseHashRoute('#parallel-fetch-test-invalid'), { page: 'win-rates' })
+})
+
 test('キャラ実装日一覧の直接URLを既存キャラ情報と区別し、余分なパスを受け入れない', () => {
   assert.deepEqual(parseHashRoute('#character-releases'), { page: 'character-releases' })
   assert.deepEqual(parseHashRoute('#character-releases/'), { page: 'character-releases' })

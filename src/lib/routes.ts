@@ -8,7 +8,11 @@ export type AppRoute =
   | { page: 'win-usage-correlation' }
   | { page: 'control-type-ratio' }
   | { page: 'rank-distribution' }
+  | { page: 'legend-analysis' }
+  | { page: 'legend-analysis-2' }
   | { page: 'new-account-observation' }
+  | { page: 'parallel-fetch-test' }
+  | { page: 'sample-survey' }
   | { page: 'characters'; characterId: string | null }
   | { page: 'character-releases' }
   | { page: 'character-traits' }
@@ -25,6 +29,18 @@ export function balanceAdjustmentDetailHash(adjustmentId: string, scope: string 
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#sample-survey' || hash === '#sample-survey/') {
+    return { page: 'sample-survey' }
+  }
+  if (hash === '#parallel-fetch-test' || hash === '#parallel-fetch-test/') {
+    return { page: 'parallel-fetch-test' }
+  }
+  if (hash === '#legend-analysis' || hash === '#legend-analysis/') {
+    return { page: 'legend-analysis' }
+  }
+  if (hash === '#legend-analysis-2' || hash === '#legend-analysis-2/') {
+    return { page: 'legend-analysis-2' }
+  }
   if (hash === '#character-releases' || hash === '#character-releases/') {
     return { page: 'character-releases' }
   }

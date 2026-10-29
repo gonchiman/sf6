@@ -1,0 +1,147 @@
+name: Probe full rank distribution in cloud
+
+on:
+  workflow_dispatch:
+    inputs:
+      collection:
+        description: '全ランク境界の取得、または専用ブランチで小規模テスト'
+        required: true
+        type: choice
+        options: ['off', 'saved-session', 'parallel-serial', 'parallel-compare']
+        default: 'off'
+      resume:
+        description: '入力または固定storeの探索位置を再利用し、全境界を新しく確認する'
+        required: false
+        type: boolean
+        default: false
+      max_requests:
+        description: '事前確認・再読を含む取得回数上限（2〜1000）'
+        required: true
+        type: string
+        default: '600'
+      checkpoint_json:
+        description: '任意の非secret途中保存JSON（resume=trueの場合だけ使用）'
+        required: false
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      collection:
+        description: '全ランク境界の単発取得には saved-session を明示する'
+        required: false
+        type: string
+        default: 'off'
+      resume:
+        description: '入力または固定storeの探索位置を再利用する'
+        required: false
+        type: boolean
+        default: false
+      max_requests:
+        description: '事前確認・再読を含む取得回数上限（2〜1000）'
+        required: false
+        type: string
+        default: '600'
+      checkpoint_json:
+        description: '非secretの途中保存JSON。全境界は新しく確認する'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      BUCKLER_CLOUD_PROBE_SESSION:
+        description: 'Street Fighterサイトのみの保存状態。認証の送信には別途同意が必要'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rank-distribution-cloud-collection-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  parallel-test:
+    if: github.event_name == 'workflow_dispatch' && (inputs.collection == 'parallel-serial' || inputs.collection == 'parallel-compare') && github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/codex/buckler-cloud-collection-parallel-20261021'
+    runs-on: windows-2025
+    timeout-minutes: 18
+    concurrency:
+      group: rank-distribution-weekly-gonchiman-sf6
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      PARALLEL_TEST_MODE: ${{ inputs.collection == 'parallel-serial' && 'serial' || 'compare' }}
+    steps:
+      - name: Checkout small collection test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install dependencies without project scripts
+        run: npm ci --ignore-scripts
+      - name: Test bounded collection with synthetic state
+        run: node --test src/lib/parallelFetch.test.ts scripts/lib/parallel-fetch-runner.test.ts scripts/lib/parallel-fetch-browser.test.ts scripts/lib/parallel-fetch-service.test.ts scripts/test-parallel-fetch-cloud.test.ts
+      - name: Run small collection test once
+        id: test
+        shell: pwsh
+        env:
+          BUCKLER_WEEKLY_SESSION: ${{ secrets.BUCKLER_WEEKLY_SESSION }}
+        run: |
+          if ($env:PARALLEL_TEST_MODE -notin @('serial', 'compare')) { throw 'Invalid test mode' }
+          node scripts/test-parallel-fetch-cloud.ts "--$env:PARALLEL_TEST_MODE"
+      - name: Upload this run's validated report only
+        if: always() && steps.test.outputs.artifact_ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: parallel-fetch-cloud-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.PARALLEL_TEST_MODE }}
+          path: .local/parallel-fetch/parallel-fetch-cloud-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.PARALLEL_TEST_MODE }}.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+  collect:
+    if: github.event_name == 'workflow_dispatch' && inputs.collection == 'saved-session' && github.repository == 'gonchiman/sf6' && startsWith(github.ref, 'refs/heads/codex/buckler-cloud-collection')
+    runs-on: windows-2025
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout collection probe branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install dependencies without project scripts
+        run: npm ci --ignore-scripts
+      - name: Test cloud wrapper with synthetic state
+        run: node --test scripts/collect-rank-distribution-cloud.test.ts
+      - name: Collect all rank boundaries once
+        id: collect
+        shell: pwsh
+        env:
+          BUCKLER_CLOUD_PROBE_SESSION: ${{ secrets.BUCKLER_CLOUD_PROBE_SESSION }}
+          BUCKLER_CLOUD_RANK_CHECKPOINT: ${{ inputs.checkpoint_json }}
+          RANK_DISTRIBUTION_RESUME: ${{ inputs.resume }}
+          RANK_DISTRIBUTION_MAX_REQUESTS: ${{ inputs.max_requests }}
+        run: |
+          $collectionArguments = @('--saved-session', '--max-requests', $env:RANK_DISTRIBUTION_MAX_REQUESTS)
+          if ($env:RANK_DISTRIBUTION_RESUME -eq 'true') { $collectionArguments += '--resume' }
+          node scripts/collect-rank-distribution-cloud.ts @collectionArguments
+      - name: Upload only safe aggregate, checkpoint and report
+        if: always() && steps.collect.outputs.artifact_ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rank-distribution-cloud-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            rank-distribution-cloud-output/report.json
+            rank-distribution-cloud-output/checkpoint.json
+            rank-distribution-cloud-output/data/index.json
+            rank-distribution-cloud-output/data/max-lp-estimate-*.json
+          if-no-files-found: warn
+          include-hidden-files: false
+          retention-days: 7

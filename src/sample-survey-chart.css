@@ -1,0 +1,22 @@
+.sample-survey-theme-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sample-survey-theme-tabs .win-rates-button[aria-selected='true'] { background: var(--text); color: var(--surface); border-color: var(--text); }
+.sample-survey-bars { --survey-bar-label: 110px; --survey-bar-value: 100px; --survey-bar-gap: 12px; min-width: 0; margin: 0; }
+.sample-survey-bars-title { margin: 0 0 12px; color: var(--text-soft); font-size: 12px; }
+.sample-survey-bars-rows { display: grid; gap: 10px; }
+.sample-survey-bars-row { display: grid; grid-template-columns: var(--survey-bar-label) minmax(0, 1fr) var(--survey-bar-value); gap: var(--survey-bar-gap); align-items: center; min-width: 0; min-height: 22px; }
+.sample-survey-bars-name, .sample-survey-bars-value { color: var(--text); font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+.sample-survey-bars-value { text-align: right; font-variant-numeric: tabular-nums; }
+.sample-survey-bars-track { display: block; height: 17px; min-width: 0; background: var(--surface-soft); }
+.sample-survey-bars-track-missing { background: transparent; }
+.sample-survey-bars-fill { display: block; height: 100%; background: var(--text-muted); }
+.sample-survey-bars-axis { display: grid; grid-template-columns: var(--survey-bar-label) minmax(0, 1fr) var(--survey-bar-value); column-gap: var(--survey-bar-gap); margin-top: 10px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.sample-survey-bars-ticks { grid-column: 2; border-top: 1px solid var(--border); padding-top: 5px; display: flex; justify-content: space-between; gap: 4px; min-width: 0; }
+.sample-survey-bars-ticks > span { overflow-wrap: anywhere; min-width: 0; }
+.sample-survey-bars-ticks > span:nth-child(2) { text-align: center; }
+.sample-survey-bars-ticks > span:last-child { text-align: right; }
+.sample-survey-bars-axis-unit { grid-column: 3; text-align: right; align-self: end; overflow-wrap: anywhere; }
+.sample-survey-bars-empty { margin: 0; padding: 24px 0; color: var(--text-muted); font-size: 14px; }
+@media (max-width: 600px) {
+  .sample-survey-bars { --survey-bar-label: 80px; --survey-bar-value: 77px; --survey-bar-gap: 8px; }
+}
+@media (pointer: coarse) { .sample-survey-theme-tabs .win-rates-button { min-height: 44px; } }

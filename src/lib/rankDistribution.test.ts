@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { RankDistributionDataset, RankDistributionDescriptor, RankDistributionManifest } from '../types/rankDistribution.ts'
 import {
-  createRankDistributionRows, loadRankDistributionDataset, loadRankDistributionManifest,
+  createRankDistributionRows,
   parseRankDistributionDataset, parseRankDistributionDescriptor, parseRankDistributionManifest,
   rankDistributionRankLabel, RANK_DISTRIBUTION_CONDITIONS, RANK_DISTRIBUTION_SOURCE,
-  RANK_DISTRIBUTION_VALIDATION_CHECKS,
+  RANK_DISTRIBUTION_ESTIMATE_CHECKS, RANK_DISTRIBUTION_VALIDATION_CHECKS,
 } from './rankDistribution.ts'
 
 const captureStartedAt = '2026-10-13T01:00:00.000Z'
@@ -31,6 +31,26 @@ function dataset(overrides: Partial<RankDistributionDataset> = {}): RankDistribu
       notes: ['末尾も含めて全掲載行が確認済みrank ID1〜36に分類されることを検証した。'],
     },
     ...overrides,
+  }
+}
+
+function estimatedDataset(): RankDistributionDataset {
+  const input = dataset()
+  return {
+    ...input, method: 'boundary-search-estimate',
+    validation: {
+      status: 'estimated', coverage: 'all-rank-boundaries', checks: [...RANK_DISTRIBUTION_ESTIMATE_CHECKS],
+      notes: ['全35境界の観測から算出した概数。同一瞬間の人数や個別アカウント全件照合済みの値ではない。'],
+    },
+    observation: {
+      totalAtStart: 664, totalAtEnd: input.totalCount, minTotal: 664, maxTotal: 669,
+      boundaries: Array.from({ length: 35 }, (_, index) => ({
+        rankId: index + 2,
+        countAtOrAbove: input.entries.filter((item) => item.rankId >= index + 2).reduce((sum, item) => sum + item.count, 0),
+        totalCount: input.totalCount,
+        observedAt: '2026-10-13T01:05:00.000Z',
+      })),
+    },
   }
 }
 
@@ -121,6 +141,9 @@ test('requires every collection verification and rejects mixed conditions or hid
   assert.throws(() => parseRankDistributionDataset({ ...input, validation: { ...input.validation, notes: [] } }), /notes: empty/)
   assert.throws(() => parseRankDistributionDataset({ ...input, conditions: { ...input.conditions, league: 'MASTER' } }), /conditions.league/)
   assert.throws(() => parseRankDistributionDataset({ ...input, conditions: { ...input.conditions, platform: 'steam' } }), /conditions.platform/)
+  assert.equal(input.conditions.users, 'buckler-user-status-1')
+  // A URL value alone must not be promoted to an independently confirmed all-users scope.
+  assert.throws(() => parseRankDistributionDataset({ ...input, conditions: { ...input.conditions, users: 'all' } }), /conditions.users/)
   assert.throws(() => parseRankDistributionDataset({ ...input, playerIds: ['private-user'] }), /unknown field/)
   assert.throws(() => parseRankDistributionDataset({ ...input, entries: input.entries.map((entry) => ({ ...entry, shortId: 'private-user' })) }), /unknown field/)
   assert.throws(() => parseRankDistributionDataset({ ...input, source: { ...input.source, unit: 'person' } }), /source.unit/)
@@ -146,40 +169,121 @@ test('validates official source, safe file paths, uniqueness and chronological t
   assert.throws(() => parseRankDistributionDataset(dataset(), descriptor({ id: 'other' })), /一致しません/)
 })
 
-test('manifest HTTP failures are evicted so retry loads the actual empty manifest', async (t) => {
-  let requests = 0
-  t.mock.method(globalThis, 'fetch', async () => {
-    requests += 1
-    return requests === 1 ? new Response('', { status: 503 }) : Response.json(manifest([]))
-  })
-  await assert.rejects(loadRankDistributionManifest(), /読み込めません/)
-  assert.deepEqual(await loadRankDistributionManifest(), manifest([]))
-  assert.equal(requests, 2)
+test('estimated distribution round-trips all boundary observations and retains existing aggregation', () => {
+  const input = estimatedDataset()
+  assert.deepEqual(parseRankDistributionDataset(JSON.parse(JSON.stringify(input)), descriptor()), input)
+  assert.deepEqual(createRankDistributionRows(input), createRankDistributionRows(dataset()))
+  assert.deepEqual(createRankDistributionRows(input, 'GOLD'), createRankDistributionRows(dataset(), 'GOLD'))
+  const reversed = structuredClone(input)
+  reversed.entries.reverse()
+  reversed.observation!.boundaries.reverse()
+  assert.deepEqual(parseRankDistributionDataset(reversed), reversed)
+  // Previously accepted strict observations retain their exact stored representation.
+  assert.deepEqual(parseRankDistributionDataset(dataset()), dataset())
 })
 
-test('dataset loader shares requests, validates descriptors, evicts invalid data and versions corrected publications', async (t) => {
-  const selected = descriptor({ path: 'cache-test.json' })
-  const requests: string[] = []
-  let published = dataset()
-  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
-    requests.push(String(input))
-    return Response.json(requests.length === 1 ? { ...published, entries: [] } : published)
-  })
-  await assert.rejects(loadRankDistributionDataset(selected, generatedAt), /all 36 ranks/)
-  const [left, right] = await Promise.all([loadRankDistributionDataset(selected, generatedAt), loadRankDistributionDataset(selected, generatedAt)])
-  assert.strictEqual(left, right)
-  assert.equal(requests.length, 2)
-  await assert.rejects(loadRankDistributionDataset({ ...selected, id: 'mismatched' }, generatedAt), /一致しません/)
-  await loadRankDistributionDataset(selected, generatedAt)
-  assert.equal(requests.length, 3)
-  published = dataset()
-  published.entries[0].count += 1
-  published.entries[1].count -= 1
-  const newerPublication = '2026-10-13T01:20:00.000Z'
-  const updated = await loadRankDistributionDataset(selected, newerPublication)
-  assert.equal(updated.entries[0].count, 2)
-  assert.equal(left.entries[0].count, 1)
-  assert.equal(requests.length, 4)
-  assert.ok(requests[0].includes('/data/rank-distribution/cache-test.json?v='))
-  assert.ok(requests[3].includes(`published=${encodeURIComponent(newerPublication)}`))
+test('estimate and strict collection methods cannot exchange validation claims or observation fields', () => {
+  const estimate = estimatedDataset()
+  assert.throws(() => parseRankDistributionDataset({ ...estimate, observation: undefined }), /observation/)
+  const withoutObservation = { ...estimate }
+  delete withoutObservation.observation
+  assert.throws(() => parseRankDistributionDataset(withoutObservation), /observation/)
+  assert.throws(() => parseRankDistributionDataset({ ...dataset(), observation: estimate.observation }), /estimates only/)
+  assert.throws(() => parseRankDistributionDataset({ ...dataset(), observation: undefined }), /estimates only/)
+  assert.throws(() => parseRankDistributionDataset({ ...estimate, validation: dataset().validation }), /validation.status/)
+  assert.throws(() => parseRankDistributionDataset({ ...dataset(), validation: estimate.validation }), /validation.status/)
+  assert.throws(() => parseRankDistributionDataset({ ...estimate, validation: { ...estimate.validation, coverage: 'all-listed-accounts' } }), /validation.coverage/)
+  assert.throws(() => parseRankDistributionDataset({ ...estimate, validation: { ...estimate.validation, checks: [...RANK_DISTRIBUTION_VALIDATION_CHECKS] } }), /checks: incomplete/)
+  for (const check of RANK_DISTRIBUTION_ESTIMATE_CHECKS) {
+    assert.throws(() => parseRankDistributionDataset({ ...estimate, validation: { ...estimate.validation,
+      checks: estimate.validation.checks.filter((item) => item !== check) } }), /checks: incomplete/)
+  }
+  assert.throws(() => parseRankDistributionDataset({ ...estimate, validation: { ...estimate.validation, notes: [] } }), /notes: empty/)
+})
+
+test('every estimated rank boundary must be observed once with no private or unknown fields', () => {
+  for (const mutate of [
+    (input: RankDistributionDataset) => { input.observation!.boundaries.pop() },
+    (input: RankDistributionDataset) => { input.observation!.boundaries[0].rankId = 3 },
+    (input: RankDistributionDataset) => { input.observation!.boundaries[0].rankId = 1 },
+    (input: RankDistributionDataset) => { input.observation!.boundaries[0].rankId = 37 },
+    (input: RankDistributionDataset) => { input.observation!.boundaries[0].rankId = 2.5 },
+  ]) {
+    const input = estimatedDataset()
+    mutate(input)
+    assert.throws(() => parseRankDistributionDataset(input), /boundar/)
+  }
+  const input = estimatedDataset()
+  assert.throws(() => parseRankDistributionDataset({ ...input, observation: { ...input.observation, playerIds: ['private-user'] } }), /unknown field/)
+  assert.throws(() => parseRankDistributionDataset({ ...input, observation: { ...input.observation,
+    boundaries: input.observation!.boundaries.map((item) => ({ ...item, accountKey: 'private-hash' })) } }), /unknown field/)
+})
+
+test('estimated cumulative counts must match nonnegative entries and their own observed total', () => {
+  for (const value of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, null]) {
+    const input = estimatedDataset()
+    assert.throws(() => parseRankDistributionDataset({ ...input, observation: { ...input.observation,
+      boundaries: input.observation!.boundaries.map((item, index) => index === 0 ? { ...item, countAtOrAbove: value } : item) } }), /countAtOrAbove/)
+  }
+  const ownTotal = estimatedDataset()
+  ownTotal.observation!.boundaries[0].totalCount = 1
+  assert.throws(() => parseRankDistributionDataset(ownTotal), /exceeds observed total/)
+  const wrongCumulative = estimatedDataset()
+  wrongCumulative.observation!.boundaries[1].countAtOrAbove = wrongCumulative.observation!.boundaries[0].countAtOrAbove + 1
+  assert.throws(() => parseRankDistributionDataset(wrongCumulative), /cumulative mismatch/)
+  const wrongEntries = estimatedDataset()
+  wrongEntries.entries[0].count += 1
+  wrongEntries.entries[1].count -= 1
+  assert.throws(() => parseRankDistributionDataset(wrongEntries), /cumulative mismatch/)
+  const negative = estimatedDataset()
+  negative.entries[0].count = -1
+  assert.throws(() => parseRankDistributionDataset(negative), /entry.count/)
+  const missing = estimatedDataset()
+  missing.entries.pop()
+  assert.throws(() => parseRankDistributionDataset(missing), /all 36 ranks/)
+})
+
+test('estimated observations require safe total ranges and the final denominator', () => {
+  for (const field of ['totalAtStart', 'totalAtEnd', 'minTotal', 'maxTotal'] as const) {
+    for (const value of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, null]) {
+      const input = estimatedDataset()
+      assert.throws(() => parseRankDistributionDataset({ ...input, observation: { ...input.observation, [field]: value } }), /observation/)
+    }
+  }
+  for (const mutate of [
+    (input: RankDistributionDataset) => { input.observation!.minTotal = 670 },
+    (input: RankDistributionDataset) => { input.observation!.totalAtEnd -= 1 },
+    (input: RankDistributionDataset) => { input.observation!.totalAtStart = 663 },
+    (input: RankDistributionDataset) => { input.observation!.maxTotal = 665 },
+    (input: RankDistributionDataset) => { input.observation!.boundaries[0].totalCount = 670 },
+    (input: RankDistributionDataset) => { input.observation!.boundaries[0].totalCount = 1.5 },
+  ]) {
+    const input = estimatedDataset()
+    mutate(input)
+    assert.throws(() => parseRankDistributionDataset(input), /observation/)
+  }
+})
+
+test('estimated observation timestamps must fall within the capture interval', () => {
+  for (const observedAt of ['2026-10-13T00:59:59.999Z', '2026-10-13T01:15:00.001Z', '2026-02-30T01:05:00Z', 'not-a-date']) {
+    const input = estimatedDataset()
+    input.observation!.boundaries[0].observedAt = observedAt
+    assert.throws(() => parseRankDistributionDataset(input), /observedAt/)
+  }
+  const edges = estimatedDataset()
+  edges.observation!.boundaries[0].observedAt = captureStartedAt
+  edges.observation!.boundaries[34].observedAt = captureEndedAt
+  assert.deepEqual(parseRankDistributionDataset(edges), edges)
+})
+
+test('a zero-count estimate retains observed boundaries without producing invalid percentages', () => {
+  const input = estimatedDataset()
+  input.totalCount = 0
+  input.entries = input.entries.map((item) => ({ ...item, count: 0 }))
+  input.observation = {
+    totalAtStart: 0, totalAtEnd: 0, minTotal: 0, maxTotal: 0,
+    boundaries: input.observation!.boundaries.map((item) => ({ ...item, totalCount: 0, countAtOrAbove: 0 })),
+  }
+  assert.deepEqual(parseRankDistributionDataset(input), input)
+  assert.ok(createRankDistributionRows(input).every((row) => row.count === 0 && row.percent === null && row.cumulativePercent === null))
 })

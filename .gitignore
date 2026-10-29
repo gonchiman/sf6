@@ -2,9 +2,12 @@ node_modules/
 dist/
 .cache/
 .local/
+/rank-distribution-cloud-output/
+/rank-distribution-weekly-output/
 /.worktrees/
 *.tsbuildinfo
 .env
 .env.*
 !.env.example
 *.log
+/project-rules.sync.lock

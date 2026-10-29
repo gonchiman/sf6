@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { loadCharacterManifest } from '../lib/characters'
 import { filterCharacterReleases, loadCharacterReleaseCatalog } from '../lib/characterReleases'
 import { timestampLabel } from '../lib/dateTime'
 import { characterHash } from '../lib/routes'
 import type { CharacterManifest } from '../types/characters'
 import type { CharacterReleaseCatalog, CharacterReleaseFilters, CharacterReleaseOrder } from '../types/characterReleases'
+import type { CharacterReleaseTimelineDirection } from '../types/characterReleaseTimeline'
+import { CharacterReleaseTimeline } from './CharacterReleaseTimeline'
 import { DataLoadState } from './DataLoadState'
 import { StatisticsPanel } from './StatisticsPanel'
 import '../win-rates.css'
@@ -20,6 +22,8 @@ export function CharacterReleasesPage() {
   const [version, setVersion] = useState(0)
   const [filters, setFilters] = useState<CharacterReleaseFilters>({ characterId: 'all', kind: 'all' })
   const [order, setOrder] = useState<CharacterReleaseOrder>('desc')
+  const [timelineDirection, setTimelineDirection] = useState<CharacterReleaseTimelineDirection>('horizontal')
+  const timelineId = useId()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -67,6 +71,14 @@ export function CharacterReleasesPage() {
           <option value="desc">実装日の新しい順</option><option value="asc">実装日の古い順</option>
         </select></label>
       </div>
+    </StatisticsPanel>
+
+    <StatisticsPanel title="タイムライン" headerContent={<div className="win-rates-view-selector" role="group" aria-label="タイムラインの表示方向">
+      {([['vertical', '縦向き'], ['horizontal', '横向き']] as const).map(([direction, label]) => <button key={direction}
+        type="button" className="win-rates-button" aria-pressed={timelineDirection === direction} aria-controls={timelineId}
+        onClick={() => setTimelineDirection(direction)}>{label}</button>)}
+    </div>}>
+      <CharacterReleaseTimeline id={timelineId} rows={rows} direction={timelineDirection} />
     </StatisticsPanel>
 
     <StatisticsPanel title="テーブル" headerContent={<span className="monthly-statistics-panel-summary" aria-live="polite">

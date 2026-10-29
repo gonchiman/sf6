@@ -1,0 +1,475 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { DEFAULT_PARALLEL_FETCH_CONFIG, parseParallelFetchConcurrencyInput, parseParallelFetchConfig, parseParallelFetchReadDiagnostics, parseParallelFetchReport,
+  isParallelFetchInterval, parseParallelFetchIntervalInput, parallelFetchIntervalScope, parseHistoricalParallelFetchConfig,
+  PARALLEL_FETCH_MAX_CONCURRENCY, PARALLEL_FETCH_MAX_POST_STOP_MS, PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS, PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS,
+  minimumPlannedWaitMs, parallelFetchIntervals, plannedParallelFetchAttempts, summarizeParallelFetch } from './parallelFetch.ts'
+import type { ParallelFetchReadDiagnostics, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
+
+const startedAt = '2026-10-20T00:00:00.000Z', finishedAt = '2026-10-20T00:10:00.000Z'
+function fixture(concurrencies = DEFAULT_PARALLEL_FETCH_CONFIG.concurrencies): ParallelFetchReport {
+  const config = structuredClone(DEFAULT_PARALLEL_FETCH_CONFIG)
+  config.concurrencies = [...concurrencies]
+  const trials: ParallelFetchTrial[] = config.concurrencies.map(concurrency => ({
+    concurrency, repetition: 1, state: 'complete', startedAt, finishedAt, preparationMs: 10000,
+    measurementMs: concurrency === 1 ? 200000 : 100000, totalMs: concurrency === 1 ? 210000 : 110000,
+    completedPages: Array.from({ length: 20 }, (_, index) => index + 1),
+    attempts: [
+      ...Array.from({ length: concurrency }, (_, index) => ({ worker: index + 1, page: 1, phase: 'prepare' as const,
+        startedAt, durationMs: 1000, httpStatus: 200, errorCode: null, totalCount: 2000, totalPages: 100 })),
+      ...Array.from({ length: 20 }, (_, index) => ({ worker: index % concurrency + 1, page: index + 1, phase: 'measure' as const,
+        startedAt, durationMs: 1000, httpStatus: 200, errorCode: null, totalCount: 2000, totalPages: 100 })),
+    ], workers: Array.from({ length: concurrency }, (_, index) => ({ id: index + 1, page: null, state: 'complete' as const,
+      completedPages: Math.ceil((20 - index) / concurrency) })), errorCode: null,
+  }))
+  return { schemaVersion: 1, runId: 'test-run', config, state: 'complete', startedAt, finishedAt, trials, errorCode: null }
+}
+function traceFixture(): ParallelFetchReadDiagnostics {
+  return { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: true, trace: {
+    observations: [
+      { elapsedMs: 0, phase: 'read', authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: null, humanVerification: false },
+      { elapsedMs: 12000, phase: 'after-stop', authenticationEvidence: 'logout-control', loginRequiredHeading: false,
+        rankingReadable: true, humanVerification: false },
+    ],
+    network: [
+      { elapsedMs: 100, phase: 'read', kind: 'http-error', resource: 'xhr', site: 'buckler', status: 429 },
+      { elapsedMs: 12001, phase: 'after-stop', kind: 'request-failed', resource: 'document', site: 'capcom-auth', status: null },
+    ],
+    droppedObservations: 2, droppedNetworkEvents: 3, postStop: { durationMs: 30000, outcome: 'observed' },
+  } }
+}
+test('bounded defaults include each worker preparation in the planned count', () => {
+  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig(DEFAULT_PARALLEL_FETCH_CONFIG)), 43)
+  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, intervalMs: 3000, repetitions: 3 })), 129)
+  assert.throws(() => parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, repetitions: 3, concurrencies: [1, 2, 4] }))
+  for (const patch of [{ intervalMs: -100 }, { startPage: -1 }, { pageCount: 1000 }, { concurrencies: [] },
+    { concurrencies: [1, 1] }, { concurrencies: [2, 1] }, { concurrencies: [1, 4, 2] }, { target: 'https://other.test' }]) {
+    assert.throws(() => parseParallelFetchConfig({ ...DEFAULT_PARALLEL_FETCH_CONFIG, ...patch }))
+  }
+})
+
+test('comma-separated concurrency input normalizes whitespace and order within the worker limit', () => {
+  assert.equal(PARALLEL_FETCH_MAX_CONCURRENCY, 8)
+  assert.deepEqual(parseParallelFetchConcurrencyInput(' 8, 3 , 1 '), [1, 3, 8])
+  assert.deepEqual(parseParallelFetchConcurrencyInput('1'), [1])
+  assert.deepEqual(parseParallelFetchConcurrencyInput('4'), [4])
+  assert.deepEqual(parseParallelFetchConcurrencyInput('8, 3'), [3, 8])
+  assert.deepEqual(parseParallelFetchConcurrencyInput('8,7,6,5,4,3,2,1'), [1, 2, 3, 4, 5, 6, 7, 8])
+})
+
+test('concurrency input rejects missing values, duplicates and nondecimal integers', () => {
+  for (const input of ['', ' ', ',1', '1,', '1,,3', '1, ,3', '1,1', '1,3, 3',
+    '0,1', '1,9', '1,-2', '1,+2', '1,2.0', '1,2.5', '1,2e0', '1,0x2', '1,02', '1,NaN',
+    '1,Infinity', '1 3', '1;3', '1,三', '1,9007199254740992', '1,2,3,4,5,6,7,8,1']) {
+    assert.throws(() => parseParallelFetchConcurrencyInput(input), Error, input)
+  }
+  assert.throws(() => parseParallelFetchConcurrencyInput('1,1'), /重複/)
+  assert.throws(() => parseParallelFetchConcurrencyInput('1,9'), /1〜8/)
+})
+
+test('concurrency input rejects text beyond the 128-character UI limit before parsing', () => {
+  assert.deepEqual(parseParallelFetchConcurrencyInput('1,8'.padEnd(128)), [1, 8])
+  assert.throws(() => parseParallelFetchConcurrencyInput('1,8'.padEnd(129)), /128文字/)
+  assert.throws(() => parseParallelFetchConcurrencyInput('1,'.repeat(10000)), /128文字/)
+})
+
+test('numeric configs accept all eight workers while preserving canonical order and global limits', () => {
+  const all = { ...DEFAULT_PARALLEL_FETCH_CONFIG, concurrencies: [1, 2, 3, 4, 5, 6, 7, 8],
+    intervalMs: 3000, intervalMsList: [3000] }
+  const parsed = parseParallelFetchConfig(all)
+  assert.deepEqual(parsed, all)
+  assert.equal(plannedParallelFetchAttempts(parsed), 196)
+  assert.equal(minimumPlannedWaitMs(parsed), 585000)
+  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...all, concurrencies: [1, 2, 3], repetitions: 3 })), 198)
+  for (const concurrencies of [[1, 0], [1, 9], [1, 3.5], [1, Infinity], [1, NaN], [1, '3'],
+    [1, 8, 3], [1, 3, 3], [1, 2, 3, 4, 5, 6, 7, 8, 8]]) {
+    assert.throws(() => parseParallelFetchConfig({ ...all, concurrencies }))
+  }
+  const sparse = [1, 2, 3]
+  delete sparse[1]
+  assert.throws(() => parseParallelFetchConfig({ ...all, concurrencies: sparse }))
+  assert.throws(() => parseParallelFetchConfig({ ...all, pageCount: 50 }))
+  assert.throws(() => parseParallelFetchConfig({ ...all, repetitions: 3 }))
+  assert.throws(() => parseParallelFetchConfig({ ...all, intervalMs: 5000, intervalMsList: [5000] }))
+})
+
+test('both report versions accept eight conditions and keep trials, workers and attempts bounded', () => {
+  for (const schemaVersion of [1, 2] as const) {
+    const report = fixture([1, 2, 3, 4, 5, 6, 7, 8])
+    if (schemaVersion === 2) {
+      report.schemaVersion = 2
+      report.config.intervalMs = 3000
+      report.config.intervalMsList = [3000]
+      report.trials.forEach(trial => { trial.intervalMs = 3000 })
+    }
+    assert.deepEqual(parseParallelFetchReport(JSON.parse(JSON.stringify(report))), report)
+    assert.equal(report.trials.at(-1)!.workers.length, 8)
+    assert.deepEqual(summarizeParallelFetch(report).map(summary => summary.concurrency), report.config.concurrencies)
+    const tooManyTrials = structuredClone(report)
+    tooManyTrials.trials.push(structuredClone(report.trials.at(-1)!))
+    assert.throws(() => parseParallelFetchReport(tooManyTrials))
+    const tooManyWorkers = structuredClone(report)
+    tooManyWorkers.trials.at(-1)!.workers.push({ id: 9, page: null, state: 'complete', completedPages: 0 })
+    assert.throws(() => parseParallelFetchReport(tooManyWorkers))
+    const retry = { ...report.trials[0].attempts[0], errorCode: 'server-error' as const, httpStatus: 503, totalCount: null, totalPages: null }
+    report.trials[0].attempts.push(...Array.from({ length: 4 }, () => ({ ...retry })))
+    assert.deepEqual(parseParallelFetchReport(report), report)
+    report.trials[0].attempts.push({ ...retry })
+    assert.throws(() => parseParallelFetchReport(report))
+  }
+})
+
+test('a serial-only configuration includes preparation in all three repetitions', () => {
+  const input = { ...DEFAULT_PARALLEL_FETCH_CONFIG, concurrencies: [1], repetitions: 3 }
+  const serial = parseParallelFetchConfig(input)
+  assert.deepEqual(serial, input)
+  assert.equal(plannedParallelFetchAttempts(serial), 63)
+  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig({ ...input, pageCount: 50, intervalMs: 3000 })), 153)
+})
+
+test('targeted four-worker repetitions keep the attempt and duration budgets', () => {
+  const input = { ...DEFAULT_PARALLEL_FETCH_CONFIG, concurrencies: [4], repetitions: 3,
+    intervalMs: 10000, intervalMsList: [10000], intervalScope: 'per-tab' }
+  const selected = parseParallelFetchConfig(input)
+  assert.deepEqual(selected, input)
+  assert.equal(plannedParallelFetchAttempts(selected), 72)
+  assert.equal(minimumPlannedWaitMs(selected), 150000)
+  assert.throws(() => parseParallelFetchConfig({ ...input, concurrencies: [] }))
+  assert.throws(() => parseParallelFetchConfig({ ...input, concurrencies: [4, 4] }))
+  assert.throws(() => parseParallelFetchConfig({ ...input, intervalMs: 60000, intervalMsList: [60000] }))
+  assert.throws(() => parseParallelFetchConfig({ ...input, pageCount: 50, concurrencies: [4, 8] }))
+})
+test('report parser reconstructs allowlisted aggregates only', () => {
+  const report = fixture()
+  const input = { ...report, cookies: ['secret'], config: { ...report.config, token: 'secret' },
+    trials: report.trials.map(trial => ({ ...trial, rawRows: ['secret'], attempts: trial.attempts.map(attempt => ({ ...attempt, url: 'secret' })) })) }
+  assert.deepEqual(parseParallelFetchReport(input), report)
+  assert.equal(JSON.stringify(parseParallelFetchReport(input)).includes('secret'), false)
+})
+
+test('diagnostics remain optional for legacy reports and preserve only fixed observations', () => {
+  const legacy = fixture()
+  assert.deepEqual(parseParallelFetchReport(legacy), legacy)
+  assert.equal('diagnostics' in parseParallelFetchReport(legacy).trials[0].attempts[0], false)
+  const diagnostics = { authenticationEvidence: 'login-control' as const, loginRequiredHeading: false, rankingReadable: true }
+  const report = fixture()
+  report.trials[0].attempts[0].diagnostics = { ...diagnostics, cookie: 'secret', rawRows: ['secret'] } as typeof diagnostics
+  const parsed = parseParallelFetchReport(report)
+  assert.deepEqual(parsed.trials[0].attempts[0].diagnostics, diagnostics)
+  assert.equal(JSON.stringify(parsed).includes('secret'), false)
+  assert.deepEqual(parseParallelFetchReadDiagnostics({ authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: null }),
+    { authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: null })
+})
+
+test('diagnostics reject arbitrary evidence and nonboolean states instead of coercing them', () => {
+  const diagnostics = { authenticationEvidence: 'no-control', loginRequiredHeading: false, rankingReadable: null }
+  for (const bad of [null, [], {},
+    { ...diagnostics, authenticationEvidence: 'private-account-name' },
+    { ...diagnostics, loginRequiredHeading: 'false' },
+    { ...diagnostics, rankingReadable: 1 }]) {
+    assert.throws(() => parseParallelFetchReadDiagnostics(bad))
+    const report = fixture()
+    report.trials[0].attempts[0].diagnostics = bad as never
+    assert.throws(() => parseParallelFetchReport(report))
+  }
+})
+test('legacy and detailed diagnostics round-trip within schema version 1', () => {
+  for (const diagnostics of [undefined,
+    { authenticationEvidence: null, loginRequiredHeading: null, rankingReadable: null }, traceFixture()]) {
+    const report = fixture()
+    if (diagnostics) report.trials[0].attempts[0].diagnostics = diagnostics
+    const parsed = parseParallelFetchReport(JSON.parse(JSON.stringify(report)))
+    assert.deepEqual(parsed, report)
+    assert.deepEqual(parseParallelFetchReport(JSON.parse(JSON.stringify(parsed))), report)
+    assert.equal(parsed.schemaVersion, 1)
+  }
+  const diagnostics = traceFixture()
+  delete diagnostics.trace!.postStop
+  assert.deepEqual(parseParallelFetchReadDiagnostics(diagnostics), diagnostics)
+  assert.equal('postStop' in parseParallelFetchReadDiagnostics(diagnostics).trace!, false)
+})
+test('detailed diagnostics strip secrets and arbitrary strings at every nesting level', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  const secrets = { url: 'secret-url', text: 'secret-text', headers: { Authorization: 'secret-token' }, cookies: ['secret-cookie'],
+    body: 'secret-body', error: 'secret-error', request: { url: 'secret-request-url' } }
+  const contaminated = { ...diagnostics, ...secrets, trace: { ...trace, ...secrets,
+    observations: trace.observations.map(item => ({ ...item, ...secrets })),
+    network: trace.network.map(item => ({ ...item, ...secrets })), postStop: { ...trace.postStop, ...secrets },
+  } }
+  const report = fixture()
+  report.trials[0].attempts[0].diagnostics = contaminated
+  const parsed = parseParallelFetchReport(JSON.parse(JSON.stringify(report)))
+  assert.deepEqual(parsed.trials[0].attempts[0].diagnostics, diagnostics)
+  assert.equal(JSON.stringify(parsed).includes('secret'), false)
+})
+test('WAF action diagnostics round-trip with legacy events and strip all response details', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  trace.network.push(
+    { ...trace.network[0], status: 405, wafAction: null },
+    { ...trace.network[0], status: 405, wafAction: 'captcha' },
+    { ...trace.network[0], kind: 'waf-action', status: 405, wafAction: 'captcha' },
+    { ...trace.network[0], kind: 'waf-action', status: 202, wafAction: 'challenge' },
+    { ...trace.network[0], kind: 'waf-action', status: 100, wafAction: 'challenge' },
+    { ...trace.network[0], kind: 'waf-action', status: 599, wafAction: 'captcha' },
+  )
+  for (const schemaVersion of [1, 3] as const) {
+    const report = fixture()
+    report.schemaVersion = schemaVersion
+    if (schemaVersion === 3) {
+      report.config.intervalScope = 'per-tab'
+      report.trials.forEach(trial => { trial.intervalMs = report.config.intervalMs })
+    }
+    report.trials[0].attempts[0].diagnostics = { ...diagnostics, trace: { ...trace,
+      network: trace.network.map(item => ({ ...item, url: 'secret-url', body: 'secret-body',
+        headers: { 'x-amzn-waf-action': item.wafAction, 'set-cookie': 'secret-cookie' } })),
+    } }
+    const parsed = parseParallelFetchReport(JSON.parse(JSON.stringify(report)))
+    assert.deepEqual(parsed.trials[0].attempts[0].diagnostics, diagnostics)
+    assert.deepEqual(parseParallelFetchReport(JSON.parse(JSON.stringify(parsed))), parsed)
+    assert.equal('wafAction' in parsed.trials[0].attempts[0].diagnostics!.trace!.network[0], false)
+    assert.equal(JSON.stringify(parsed).includes('secret'), false)
+  }
+})
+
+test('WAF action diagnostics reject unknown actions and incompatible event kinds or statuses', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  const wafEvent = { ...trace.network[0], kind: 'waf-action', status: 405, wafAction: 'captcha' }
+  const invalidEvents = [
+    ...[undefined, null, '', 'secret-token', 'CAPTCHA', 'captcha,challenge', false, 1, {}]
+      .map(wafAction => ({ ...wafEvent, wafAction })),
+    { ...trace.network[0], kind: 'waf-action', status: 405 },
+    ...[null, 99, 600, 202.5, '202', NaN, Infinity].map(status => ({ ...wafEvent, status })),
+    ...[undefined, null, 'captcha', 'challenge', 'secret-token']
+      .map(wafAction => ({ ...trace.network[1], wafAction })),
+    ...['secret-token', '', false, {}].map(wafAction => ({ ...trace.network[0], wafAction })),
+    { ...trace.network[0], status: 202, wafAction: 'challenge' },
+  ]
+  for (const event of invalidEvents) {
+    const report = fixture()
+    report.trials[0].attempts[0].diagnostics = { ...diagnostics, trace: { ...trace, network: [event] } } as never
+    assert.throws(() => parseParallelFetchReport(report))
+  }
+})
+
+test('detailed diagnostics bound list lengths, durations, and dropped counts', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  trace.observations = Array.from({ length: PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS }, () => ({ ...trace.observations[0], elapsedMs: 7 * 86400000 }))
+  trace.network = Array.from({ length: PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS }, () => ({ ...trace.network[0], elapsedMs: 7 * 86400000, status: 599 }))
+  trace.postStop = { durationMs: PARALLEL_FETCH_MAX_POST_STOP_MS, outcome: 'observed' }
+  trace.droppedObservations = Number.MAX_SAFE_INTEGER
+  trace.droppedNetworkEvents = 0
+  assert.deepEqual(parseParallelFetchReadDiagnostics(diagnostics), diagnostics)
+  for (const patch of [
+    { observations: [...trace.observations, trace.observations[0]] },
+    { network: [...trace.network, trace.network[0]] },
+    { observations: {} }, { network: null },
+    { droppedObservations: -1 }, { droppedObservations: 0.5 }, { droppedObservations: Number.MAX_SAFE_INTEGER + 1 },
+    { droppedNetworkEvents: NaN }, { droppedNetworkEvents: '0' }, { droppedNetworkEvents: Infinity },
+    { postStop: { durationMs: PARALLEL_FETCH_MAX_POST_STOP_MS + 1, outcome: 'observed' } },
+  ]) assert.throws(() => parseParallelFetchReadDiagnostics({ ...diagnostics, trace: { ...trace, ...patch } }))
+  for (const elapsedMs of [-1, 7 * 86400000 + 1, Infinity, NaN, '1']) {
+    for (const key of ['observations', 'network'] as const) {
+      assert.throws(() => parseParallelFetchReadDiagnostics({ ...diagnostics,
+        trace: { ...trace, [key]: [{ ...trace[key][0], elapsedMs }] } }))
+    }
+  }
+})
+test('detailed diagnostics reject unknown enums, incomplete states, and invalid HTTP status-kind pairs', () => {
+  const diagnostics = traceFixture(), trace = diagnostics.trace!
+  const invalidTraces = [null, [], {},
+    ...[null, {}, { ...trace.observations[0], phase: 'private-url' },
+      { ...trace.observations[0], authenticationEvidence: 'private-user' }, { ...trace.observations[0], loginRequiredHeading: 0 },
+      { ...trace.observations[0], rankingReadable: 'true' }, { ...trace.observations[0], humanVerification: 'false' }]
+      .map(item => ({ ...trace, observations: [item] })),
+    ...[null, {}, { ...trace.network[0], phase: 'navigate' }, { ...trace.network[0], kind: 'response' },
+      { ...trace.network[0], resource: 'private-request-name' }, { ...trace.network[0], site: 'private-hostname' },
+      ...[null, 399, 600, 429.5, '429'].map(status => ({ ...trace.network[0], status })),
+      { ...trace.network[1], status: 503 }].map(item => ({ ...trace, network: [item] })),
+    ...[null, {}, { durationMs: 0, outcome: 'private-error-message' },
+      ...[-1, Infinity, NaN, '0'].map(durationMs => ({ durationMs, outcome: 'observed' }))]
+      .map(postStop => ({ ...trace, postStop })),
+  ]
+  for (const invalidTrace of invalidTraces) {
+    const report = fixture()
+    report.trials[0].attempts[0].diagnostics = { ...diagnostics, trace: invalidTrace } as never
+    assert.throws(() => parseParallelFetchReport(report))
+  }
+})
+test('rejects fabricated complete counts, mismatched ranges, duplicated trials and nonnumeric values', () => {
+  const changes: ((report: ParallelFetchReport) => void)[] = [
+    report => { report.trials[0].completedPages.pop() },
+    report => { report.trials[0].completedPages[0] = 21 },
+    report => { report.trials[0].attempts[1].worker = 4 },
+    report => { report.trials[0].attempts[2].page = 1 },
+    report => { report.trials[0].workers = [] },
+    report => { report.trials[0].workers[0].completedPages = 0 },
+    report => { report.trials[0].attempts.shift() },
+    report => { report.trials[0].attempts[1].httpStatus = 429 },
+    report => { report.trials[0].measurementMs = Infinity },
+    report => { report.trials[0].attempts[1].errorCode = 'secret' as never },
+    report => { report.trials[1] = structuredClone(report.trials[0]) },
+    report => { report.finishedAt = null },
+  ]
+  for (const change of changes) { const report = fixture(); change(report); assert.throws(() => parseParallelFetchReport(report)) }
+})
+test('same completed page set yields measured throughput, speedup and reference scan estimate', () => {
+  const summaries = summarizeParallelFetch(parseParallelFetchReport(fixture()))
+  assert.equal(summaries[0].pagesPerMinute, 6)
+  assert.equal(summaries[1].speedup, 2)
+  assert.ok(Math.abs(summaries[1].estimatedFullScanMs! - 500000) < 0.001)
+  assert.equal(summaries[0].retries, 0)
+})
+
+test('completed conditions without a serial baseline retain throughput but have no speedup', () => {
+  const input = fixture([4, 8])
+  input.schemaVersion = 3
+  input.config.intervalScope = 'per-tab'
+  input.trials.forEach(trial => { trial.intervalMs = input.config.intervalMs })
+  const report = parseParallelFetchReport(input)
+  const summaries = summarizeParallelFetch(report)
+  assert.deepEqual(summaries.map(summary => summary.concurrency), [4, 8])
+  assert.ok(summaries.every(summary => summary.completedTrials === 1 && summary.pagesPerMinute === 12))
+  assert.ok(summaries.every(summary => summary.speedup === null))
+})
+test('partial trials remain visible but do not produce speedup or extrapolation', () => {
+  const report = fixture(), trial = report.trials[1]
+  report.state = trial.state = 'stopped'
+  report.errorCode = trial.errorCode = 'cancelled'
+  trial.completedPages = [1]
+  trial.attempts = trial.attempts.slice(0, 3)
+  trial.workers.forEach(worker => { worker.completedPages = worker.id === 1 ? 1 : 0; worker.state = 'stopped' })
+  const summary = summarizeParallelFetch(parseParallelFetchReport(report))[1]
+  assert.equal(summary.successfulPages, 1)
+  assert.equal(summary.completedTrials, 0)
+  assert.equal(summary.speedup, null)
+  assert.equal(summary.estimatedFullScanMs, null)
+})
+test('retry failures remain in counts without double counting successful pages', () => {
+  const report = fixture(), trial = report.trials[0]
+  trial.attempts.splice(1, 0, { ...trial.attempts[1], errorCode: 'server-error', httpStatus: 503, totalCount: null, totalPages: null })
+  const summary = summarizeParallelFetch(parseParallelFetchReport(report))[0]
+  assert.equal(summary.retries, 1)
+  assert.equal(summary.failedAttempts, 1)
+  assert.equal(summary.failedAttemptRate, 1 / 22)
+  assert.equal(summary.successfulPages, 20)
+})
+
+function intervalFixture(): ParallelFetchReport {
+  const legacy = fixture()
+  return { ...legacy, schemaVersion: 2, config: { ...legacy.config, intervalMsList: [5000, 3000] },
+    trials: [5000, 3000].flatMap(intervalMs => legacy.trials.map(trial => ({ ...structuredClone(trial),
+      intervalMs: intervalMs as 5000 | 3000, measurementMs: trial.measurementMs! * (intervalMs === 3000 ? 0.5 : 1) }))) }
+}
+test('interval selections preserve legacy shape and include preparation and boundary waits across conditions', () => {
+  const legacy = parseParallelFetchConfig(DEFAULT_PARALLEL_FETCH_CONFIG)
+  assert.equal('intervalMsList' in legacy, false)
+  assert.deepEqual(parallelFetchIntervals(legacy), [5000])
+  const config = parseParallelFetchConfig({ ...legacy, intervalMsList: [5000, 3000] })
+  assert.equal(plannedParallelFetchAttempts(config), 86)
+  assert.equal(minimumPlannedWaitMs(config), 42 * 5000 + 43 * 3000)
+  const copied = parallelFetchIntervals(config)
+  copied.pop()
+  assert.deepEqual(config.intervalMsList, [5000, 3000])
+  assert.equal(parseParallelFetchConfig({ ...legacy, intervalMs: 3000, intervalMsList: [3000] }).intervalMs, 3000)
+  for (const patch of [{ intervalMsList: [] }, { intervalMsList: [3000, 5000] }, { intervalMsList: [5000, 5000] },
+    { intervalMsList: [10000, 5000] }, { intervalMsList: [5000, 2001] }, { intervalMsList: null },
+    { intervalMsList: [5000, 3000], repetitions: 3 }]) {
+    assert.throws(() => parseParallelFetchConfig({ ...legacy, ...patch }))
+  }
+  const legacyLong = { ...legacy, intervalMs: 10000, concurrencies: [1], repetitions: 3 }
+  assert.equal(parseHistoricalParallelFetchConfig(legacyLong).intervalMs, 10000, 'historical over-time configs remain importable')
+  assert.throws(() => parseParallelFetchConfig(legacyLong), 'even a single interval obeys the current execution budget')
+  assert.throws(() => parseParallelFetchConfig({ ...legacyLong, intervalMsList: [10000] }), 'new guaranteed over-time configs fail before execution')
+})
+test('version 2 round-trips strict interval membership and ordered trial prefixes without changing version 1 reports', () => {
+  const report = intervalFixture()
+  assert.deepEqual(parseParallelFetchReport(report), report)
+  assert.deepEqual(parseParallelFetchReport(fixture()), fixture())
+  const mutations: ((value: ParallelFetchReport) => void)[] = [
+    value => { value.schemaVersion = 1 }, value => { delete value.config.intervalMsList },
+    value => { delete value.trials[0].intervalMs }, value => { value.trials[0].intervalMs = 10000 },
+    value => { value.trials[1] = structuredClone(value.trials[0]) },
+    value => { [value.trials[0], value.trials[1]] = [value.trials[1], value.trials[0]] },
+    value => { value.trials.pop() },
+  ]
+  for (const mutate of mutations) { const value = structuredClone(report); mutate(value); assert.throws(() => parseParallelFetchReport(value)) }
+  const partial = { ...report, state: 'stopped' as const, errorCode: 'cancelled' as const, trials: report.trials.slice(0, 1) }
+  assert.deepEqual(parseParallelFetchReport(partial), partial)
+})
+test('summaries expose unstarted interval conditions and use a serial baseline from the same interval only', () => {
+  const report = intervalFixture()
+  assert.deepEqual(summarizeParallelFetch(report).map(item => [item.intervalMs, item.concurrency, item.speedup]),
+    [[5000, 1, 1], [5000, 2, 2], [3000, 1, 1], [3000, 2, 2]])
+  report.trials = report.trials.slice(0, 2)
+  const summaries = summarizeParallelFetch(report)
+  assert.deepEqual(summaries.slice(2).map(item => [item.intervalMs, item.completedTrials, item.medianMs, item.speedup, item.failedAttemptRate]),
+    [[3000, 0, null, null, null], [3000, 0, null, null, null]])
+  report.config.repetitions = 3
+  assert.ok(summarizeParallelFetch(report).every(item => item.speedup === null))
+})
+
+test('interval text accepts zero and one decimal place, with numeric ordering and integer milliseconds', () => {
+  assert.deepEqual(parseParallelFetchIntervalInput(' 0, 4.5, 60.0 '), [60000, 4500, 0])
+  assert.deepEqual(parseParallelFetchIntervalInput('0.1,5,0.3'), [5000, 300, 100])
+  assert.deepEqual(parseParallelFetchIntervalInput('5'.padEnd(128)), [5000])
+  for (const value of [0, 100, 4500, 60000]) assert.equal(isParallelFetchInterval(value), true)
+  for (const value of [-100, 1, 250, 60001, 60100, 0.1, NaN, Infinity, '5000', null]) assert.equal(isParallelFetchInterval(value), false)
+})
+
+test('interval text rejects ambiguous, unfinished, excessive and duplicate conditions', () => {
+  for (const value of ['', ' ', '5,', ',5', '5,,3', '5,5.0', '0,0.0', '1,2,3,4', '0.05', '-1', '+5',
+    '1e1', '0x5', '.5', '5.', '05', 'NaN', 'Infinity', '60.1', '5 3', '５', '5'.padEnd(129)]) {
+    assert.throws(() => parseParallelFetchIntervalInput(value), Error, value)
+  }
+})
+
+test('execution budget uses shared starts or each new tab preparation and measured page starts', () => {
+  const global = { ...DEFAULT_PARALLEL_FETCH_CONFIG, intervalScope: 'global' as const }
+  const perTab = { ...global, intervalScope: 'per-tab' as const }
+  assert.equal(minimumPlannedWaitMs(global), 210000)
+  assert.equal(minimumPlannedWaitMs(perTab), 150000)
+  assert.equal(minimumPlannedWaitMs({ ...perTab, intervalMsList: [5000, 3000] }), 240000)
+  assert.equal(minimumPlannedWaitMs({ ...perTab, concurrencies: [1, 3], repetitions: 3 }), 405000)
+  assert.equal(parallelFetchIntervalScope(DEFAULT_PARALLEL_FETCH_CONFIG), 'global')
+  const manyTabs = { ...perTab, concurrencies: [1, 2, 3, 4, 5, 6, 7, 8] }
+  assert.equal(plannedParallelFetchAttempts(parseParallelFetchConfig(manyTabs)), 196)
+  assert.throws(() => parseParallelFetchConfig({ ...manyTabs, intervalScope: 'global' }))
+  assert.equal(parseParallelFetchConfig({ ...manyTabs, intervalMs: 0 }).intervalMs, 0)
+  assert.throws(() => parseParallelFetchConfig({ ...manyTabs, intervalMs: 0, repetitions: 3 }))
+  assert.throws(() => parseParallelFetchConfig({ ...perTab, concurrencies: [1], intervalMs: 30000 }))
+  assert.throws(() => parseParallelFetchConfig({ ...global, intervalScope: 'worker' }))
+  const sparse = [5000, 3000]; delete sparse[1]
+  assert.throws(() => parseParallelFetchConfig({ ...global, intervalMsList: sparse }))
+})
+
+test('v3 saves explicit scope and decimal/zero intervals, retaining strict trial membership and ordering', () => {
+  for (const intervalScope of ['global', 'per-tab'] as const) {
+    const base = fixture()
+    const report: ParallelFetchReport = { ...base, schemaVersion: 3,
+      config: { ...base.config, intervalScope, intervalMs: 4500, intervalMsList: [4500, 0] },
+      trials: [4500, 0].flatMap(intervalMs => base.trials.map(trial => ({ ...structuredClone(trial), intervalMs }))),
+    }
+    assert.deepEqual(parseParallelFetchReport(JSON.parse(JSON.stringify(report))), report)
+    for (const mutate of [
+      (value: ParallelFetchReport) => { delete value.config.intervalScope },
+      (value: ParallelFetchReport) => { delete value.trials[0].intervalMs },
+      (value: ParallelFetchReport) => { value.trials[0].intervalMs = 4400 },
+      (value: ParallelFetchReport) => { [value.trials[0], value.trials[1]] = [value.trials[1], value.trials[0]] },
+      (value: ParallelFetchReport) => { value.schemaVersion = 2 },
+    ]) { const changed = structuredClone(report); mutate(changed); assert.throws(() => parseParallelFetchReport(changed)) }
+    const single = { ...base, schemaVersion: 3 as const, config: { ...base.config, intervalScope, intervalMs: 0 },
+      trials: base.trials.map(trial => ({ ...trial, intervalMs: 0 })) }
+    assert.deepEqual(parseParallelFetchReport(single), single)
+  }
+})
+
+test('legacy reports retain shape and known global meaning without the new execution-time check', () => {
+  const historical = fixture([1, 2, 3, 4, 5, 6, 7, 8])
+  assert.throws(() => parseParallelFetchConfig(historical.config))
+  assert.deepEqual(parseParallelFetchReport(historical), historical)
+  assert.equal(parallelFetchIntervalScope(parseParallelFetchReport(historical).config), 'global')
+  for (const report of [fixture(), intervalFixture()]) {
+    assert.throws(() => parseParallelFetchReport({ ...report, config: { ...report.config, intervalScope: 'per-tab' } }))
+    assert.throws(() => parseParallelFetchReport({ ...report, config: { ...report.config, intervalMs: 4500, intervalMsList: [4500] } }))
+  }
+})
