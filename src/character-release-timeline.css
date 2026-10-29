@@ -1,0 +1,18 @@
+.character-release-timeline { min-width: 0; margin: 0; }
+.character-release-timeline-period { margin-bottom: 8px; color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.character-release-timeline-viewport { width: 100%; min-width: 0; contain: inline-size; }
+.character-release-timeline-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.character-release-timeline-scroll:focus-visible { outline-offset: -2px; }
+.character-release-timeline-svg { display: block; max-width: none; flex: none; }
+.character-release-timeline-svg text { font-size: 12px; font-variant-numeric: tabular-nums; }
+.character-release-timeline-axis { stroke: var(--border-strong); stroke-width: 1; }
+.character-release-timeline-tick { fill: var(--text-muted); }
+.character-release-timeline-axis-title { fill: var(--text-soft); }
+.character-release-timeline-connector { stroke: var(--border); stroke-width: 1; }
+.character-release-timeline-label-background { fill: var(--surface); }
+.character-release-timeline-date { fill: var(--text-muted); }
+.character-release-timeline-name { fill: var(--text); font-weight: 500; }
+.character-release-timeline-point { fill: var(--text-muted); }
+.character-release-timeline-point.is-scheduled { fill: var(--surface); stroke: var(--text-muted); stroke-width: 1.5; }
+.character-release-timeline-undated { margin: 12px 0 0; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.character-release-timeline-help { margin-top: 12px; }
