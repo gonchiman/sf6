@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import type { RankDistributionDataset } from '../../src/types/rankDistribution.ts'
-import { RANK_DISTRIBUTION_CONDITIONS, RANK_DISTRIBUTION_SOURCE, RANK_DISTRIBUTION_VALIDATION_CHECKS } from '../../src/lib/rankDistribution.ts'
+import { parseRankDistributionDataset, RANK_DISTRIBUTION_CONDITIONS, RANK_DISTRIBUTION_ESTIMATE_CHECKS, RANK_DISTRIBUTION_SOURCE, RANK_DISTRIBUTION_VALIDATION_CHECKS } from '../../src/lib/rankDistribution.ts'
 import { importRankDistributionData } from '../import-rank-distribution-data.ts'
 import { rankDistributionPathWithin, validateRankDistributionDirectory } from '../validate-rank-distribution-data.ts'
 
@@ -46,6 +46,30 @@ test('imports only verified complete distributions and preserves genuine zeros',
   const stored = JSON.parse(await readFile(join(paths.output, `${value.id}.json`), 'utf8'))
   assert.equal(stored.entries[0].count, 0)
   assert.equal(stored.entries[35].count, 2)
+})
+
+test('imports an explicitly estimated capture with observations and retains strict capture history', async (t) => {
+  const paths = await fixture(t)
+  const strict = dataset('12')
+  await writeInput(paths.input, [strict])
+  await importRankDistributionData(paths.input, paths.output, generatedAt)
+  const before = await snapshot(paths.output)
+  const value: RankDistributionDataset = {
+    ...dataset(), method: 'boundary-search-estimate',
+    validation: { status: 'estimated', coverage: 'all-rank-boundaries', checks: [...RANK_DISTRIBUTION_ESTIMATE_CHECKS], notes: ['人工テスト。全境界観測による概数。'] },
+    observation: {
+      totalAtStart: 35, totalAtEnd: 36, minTotal: 35, maxTotal: 38,
+      boundaries: Array.from({ length: 35 }, (_, index) => ({
+        rankId: index + 2, countAtOrAbove: 35 - index, totalCount: 36, observedAt: '2026-10-13T07:30:00Z',
+      })),
+    },
+  }
+  await writeInput(paths.input, [value])
+  assert.deepEqual(await importRankDistributionData(paths.input, paths.output, generatedAt), { datasets: 2, entries: 72 })
+  assert.deepEqual(await validateRankDistributionDirectory(paths.output), { datasets: 2, entries: 72 })
+  const after = await snapshot(paths.output)
+  assert.equal(after[`${strict.id}.json`], before[`${strict.id}.json`])
+  assert.deepEqual(parseRankDistributionDataset(JSON.parse(after[`${value.id}.json`])), value)
 })
 
 test('supports an empty failed-collection manifest without inventing a zero snapshot', async (t) => {

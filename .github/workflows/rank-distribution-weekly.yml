@@ -1,0 +1,118 @@
+name: Collect daily rank distribution
+
+on:
+  schedule:
+    - cron: '30 10 * * *' # Daily 19:30 Asia/Tokyo; MR follows successful LP collection and publication
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rank-distribution-weekly-gonchiman-sf6
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: windows-2025
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    outputs:
+      artifact_ready: ${{ steps.collect.outputs.artifact_ready }}
+    steps:
+      - name: Checkout reviewed collector
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 239dc70dcbe7a2892461a5dca97387e98fa989c2
+          persist-credentials: false
+      - name: Read previous safe aggregate and checkpoint
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: codex/rank-distribution-history
+          path: .local/rank-distribution-weekly/previous
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install dependencies without project scripts
+        run: npm ci --ignore-scripts
+      - name: Test weekly collection with synthetic state
+        run: node --test scripts/lib/buckler-weekly-session.test.ts scripts/lib/distribution-human-verification.test.ts scripts/lib/rank-distribution-dom.test.ts scripts/lib/rank-distribution-weekly-history.test.ts scripts/collect-rank-distribution.test.ts scripts/collect-rank-distribution-weekly.test.ts scripts/collect-rank-distribution-cloud.test.ts scripts/publish-rank-distribution-weekly.test.ts
+      - name: Collect fresh boundaries and check saved session reuse
+        id: collect
+        env:
+          BUCKLER_WEEKLY_SESSION: ${{ secrets.BUCKLER_WEEKLY_SESSION }}
+        run: node scripts/collect-rank-distribution-weekly.ts --collect --max-requests 1000
+      - name: Upload validated aggregate history and safe run records
+        if: always() && steps.collect.outputs.artifact_ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rank-distribution-weekly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            rank-distribution-weekly-output/data/index.json
+            rank-distribution-weekly-output/data/max-lp-*.json
+            rank-distribution-weekly-output/checkpoint.json
+            rank-distribution-weekly-output/runs/run-*.json
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 90
+
+  save-history:
+    if: always() && needs.collect.outputs.artifact_ready == 'true' && github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main'
+    needs: collect
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout reviewed publisher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 239dc70dcbe7a2892461a5dca97387e98fa989c2
+          persist-credentials: false
+      - name: Checkout data branch for aggregate history only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: codex/rank-distribution-history
+          path: .local/rank-distribution-weekly/history
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Download this run's safe artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: rank-distribution-weekly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: rank-distribution-weekly-output
+          digest-mismatch: error
+      - name: Validate and copy aggregate history
+        run: node scripts/publish-rank-distribution-weekly.ts
+      - name: Save only aggregate data, checkpoint and run records
+        working-directory: .local/rank-distribution-weekly/history
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git branch --show-current) -ne 'codex/rank-distribution-history') { throw 'Unexpected data branch' }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- data checkpoint.json runs
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to stage aggregate history' }
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          if ($LASTEXITCODE -ne 1) { throw 'Unable to compare aggregate history' }
+          git commit -m 'Save weekly rank distribution'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to commit aggregate history' }
+          git push origin HEAD:refs/heads/codex/rank-distribution-history
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to save aggregate history' }
+
+  collect-mr:
+    needs: [collect, save-history]
+    if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && github.event_name == 'schedule' && needs.collect.result == 'success' && needs.save-history.result == 'success' && vars.MR_DISTRIBUTION_WEEKLY_ENABLED == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/mr-distribution-weekly.yml
+    secrets:
+      BUCKLER_WEEKLY_SESSION: ${{ secrets.BUCKLER_WEEKLY_SESSION }}

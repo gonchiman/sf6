@@ -102,11 +102,5 @@ export function CharacterReleaseTimeline({ id, rows, direction }: Props) {
     {data.undated.length > 0 && <p className="character-release-timeline-undated" role="status">
       実装日未確認：{data.undated.map(row => row.character.name).join('、')}
     </p>}
-    <details className="win-rates-details character-release-timeline-help"><summary>タイムラインの見方</summary>
-      <div className="win-rates-details-content">
-        <p>点の間隔は実装日の差に比例します。日付とキャラ名の配置だけを調整し、点の位置は動かしません。同日実装は状態ごとに1点にまとめ、絞り込み後のキャラ数を表示します。</p>
-        <p>図は表の並び順にかかわらず、縦向きでは上から下、横向きでは左から右へ古い日付から並びます。実装日が1つだけの場合は中央に表示します。配信予定は中抜きの点と「予定」の表記で区別し、実装日未確認のキャラは軸に置かず名前を表示します。</p>
-      </div>
-    </details>
   </figure>
 }

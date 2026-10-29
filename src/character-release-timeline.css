@@ -15,4 +15,3 @@
 .character-release-timeline-point { fill: var(--text-muted); }
 .character-release-timeline-point.is-scheduled { fill: var(--surface); stroke: var(--text-muted); stroke-width: 1.5; }
 .character-release-timeline-undated { margin: 12px 0 0; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
-.character-release-timeline-help { margin-top: 12px; }
