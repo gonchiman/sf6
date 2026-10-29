@@ -67,7 +67,7 @@ jobs:
       - name: Validate bounded inputs without session
         run: node --input-type=module -e "import {parseSampleSurveyCloudConfig} from './scripts/collect-sample-survey-cloud.ts'; parseSampleSurveyCloudConfig(process.env);"
       - name: Test collection and aggregate publication with synthetic data
-        run: node --test scripts/collect-sample-survey-cloud.test.ts scripts/lib/sample-survey-publication.test.ts scripts/lib/sample-survey-runner.test.ts scripts/lib/sample-survey-browser.test.ts
+        run: node --test scripts/collect-sample-survey-cloud.test.ts scripts/lib/sample-survey-publication.test.ts scripts/lib/sample-survey-runner.test.ts scripts/lib/sample-survey-browser.test.ts scripts/lib/sample-survey-diagnostics.test.ts
       - name: Collect serial sample with saved session
         id: collect
         env:

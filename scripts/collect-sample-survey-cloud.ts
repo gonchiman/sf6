@@ -7,6 +7,7 @@ import { disableRankDistributionDiagnostics } from './collect-rank-distribution.
 import { markRankDistributionArtifactReady, rankDistributionCloudBrowserEnvironment } from './collect-rank-distribution-cloud.ts'
 import { BUCKLER_WEEKLY_SESSION_SECRET, parseBucklerWeeklySession } from './lib/buckler-weekly-session.ts'
 import { createSampleSurveyReader } from './lib/sample-survey-browser.ts'
+import { serializeSampleSurveyFailureDiagnostic } from './lib/sample-survey-diagnostics.ts'
 import { SampleSurveyReadError } from './lib/sample-survey-reader.ts'
 import type { SampleSurveyReader } from './lib/sample-survey-reader.ts'
 import { runSampleSurvey } from './lib/sample-survey-runner.ts'
@@ -50,6 +51,7 @@ export async function runSampleSurveyCloud(dependencies: {
   createReader?: typeof createSampleSurveyReader; collect?: typeof runSampleSurvey
   write?: typeof writeSampleSurveyResults; validate?: typeof validateSampleSurveyResultsDirectory
   artifactReady?: (env: Environment) => Promise<void>; logReport?: (report: SampleSurveyRun) => void
+  logFailureDiagnostic?: (line: string) => void | Promise<void>
 } = {}): Promise<{ succeeded: boolean; report: SampleSurveyRun }> {
   const env = dependencies.env ?? process.env
   let raw = env[BUCKLER_WEEKLY_SESSION_SECRET]
@@ -66,11 +68,20 @@ export async function runSampleSurveyCloud(dependencies: {
   const signal = dependencies.signal ? AbortSignal.any([dependencies.signal, controller.signal]) : controller.signal
   const timer = setTimeout(() => controller.abort(new SampleSurveyReadError('limit-reached')), config.maxDurationMinutes * 60_000)
   timer.unref()
+  let failureRecorded = false
+  const onReadFailure = async (diagnostic: unknown): Promise<void> => {
+    if (failureRecorded) return
+    failureRecorded = true
+    try {
+      const line = serializeSampleSurveyFailureDiagnostic(diagnostic)
+      if (line !== null) await (dependencies.logFailureDiagnostic ?? (value => console.log(value)))(line)
+    } catch { /* Logging cannot replace the original collection failure or trigger another read. */ }
+  }
   let reader: SampleSurveyReader | undefined, report: SampleSurveyRun
   try {
     if (signal.aborted) throw new SampleSurveyReadError('cancelled')
     const browserEnvironment = rankDistributionCloudBrowserEnvironment(env)
-    reader = await (dependencies.createReader ?? createSampleSurveyReader)({ signal }, { browser: {
+    reader = await (dependencies.createReader ?? createSampleSurveyReader)({ signal, onReadFailure }, { browser: {
       loadSession: async () => {
         if (!session) throw new SampleSurveyReadError('session-unavailable')
         return session.storageState

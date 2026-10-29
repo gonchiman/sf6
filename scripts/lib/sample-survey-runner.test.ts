@@ -163,7 +163,7 @@ test('checkpoint factory and interruption preserve an immediate public run', () 
   assert.throws(() => parseSampleSurveyCheckpoint(corrupt))
 })
 
-for (const changedRead of [2, 3]) test(`marks a changed stratum for review without redrawing on read ${changedRead}`, async () => {
+for (const changedRead of [2, 3]) test(`refreshes only an unsampled frame and retains change evidence on read ${changedRead}`, async () => {
   let calls = 0, clock = startTime
   const reader: SampleSurveyReader = { async readPage(target, page) {
     calls++
@@ -178,11 +178,11 @@ for (const changedRead of [2, 3]) test(`marks a changed stratum for review witho
   assert.equal(result.report.stopReason, null)
   assert.equal(result.report.frameChanged, true)
   assert.equal(result.report.resumeAllowed, false)
-  assert.equal(result.report.strata[0].succeeded, changedRead === 2 ? 0 : 10)
+  assert.equal(result.report.strata[0].succeeded, 10)
   assert.equal(result.report.observation!.strata[0].status, 'review-required')
-  assert.equal(result.report.strata[0].population, changedRead === 2 ? null : 10)
+  assert.equal(result.report.strata[0].population, changedRead === 2 ? 20 : 10)
   assert.ok(result.report.observation!.changes.some(row => row.kind === 'boundary-end'))
-  assert.ok(calls <= changedRead + 3)
+  assert.equal(calls, changedRead === 2 ? 7 : 5)
 })
 
 test('a deadline abort during a read is retained as limit-reached', async () => {
@@ -550,4 +550,125 @@ test('saved large-population boundaries accelerate resume without redrawing slot
   assert.deepEqual(second.slots.map(slot => slot.id), first.slots.map(slot => slot.id))
   assert.equal(second.report.observation!.strata[0].status, 'checked')
   assert.ok(f.calls.slice(oldCount).filter(call => call.stage === 'before').length < 10)
+})
+
+function shiftingLpFixture() {
+  let clock = startTime
+  const cuts = [547_950, 885_684, 1_391_479, 1_762_048, 2_197_078, 2_518_323, 2_877_184, 3_061_539]
+  const ranks = [36, 31, 26, 21, 16, 11, 6, 1], total = cuts.at(-1)!
+  const calls: { page: number; at: number }[] = [], candidates = new Map<string, string>()
+  const state: { shift: number; onCandidate?: (id: string) => void; onRead?: () => void } = { shift: 0 }
+  const reader: SampleSurveyReader = { async close() {}, async readPage(target, page) {
+    calls.push({ page, at: clock }); state.onRead?.(); clock += 100
+    return { target, page, totalCount: total, totalPages: Math.ceil(total / 20), pageSize: 20, observedAt: new Date(clock).toISOString(),
+      entries: Array.from({ length: Math.min(20, total - (page - 1) * 20) }, (_, index) => {
+        const position = (page - 1) * 20 + index, original = position - state.shift
+        // Move existing tail accounts to the front: every boundary shifts while total stays fixed.
+        const rankId = original < 0 ? 36 : ranks[cuts.findIndex(cut => original < cut)]
+        return { accountId: String(5_000_000 + (original < 0 ? total - state.shift + position : original)), value: rankId * 1000, rankId }
+      }) }
+  } }
+  const onUpdate = (checkpoint: SampleSurveyCheckpoint) => {
+    if (checkpoint.report.phase !== 'boundaries') return
+    const observed = checkpoint.report.observation!.strata.find(row => row.status === 'collecting')
+    if (!observed || observed.startBefore === null || observed.endBefore === null) return
+    const key = `${observed.startBefore}:${observed.endBefore}`
+    if (candidates.get(observed.id) === key) return
+    candidates.set(observed.id, key); state.onCandidate?.(observed.id)
+  }
+  return { reader, state, calls, onUpdate, now: () => clock, wait: async (milliseconds: number) => { clock += milliseconds } }
+}
+
+test('fresh refinement repairs a stale initial start before fixing seeded positions', async () => {
+  const f = shiftingLpFixture(), value = plan({ ranks: ['IRON'] })
+  let moved = false
+  f.state.onCandidate = () => { if (!moved) { moved = true; f.state.shift++ } }
+  const result = await runSampleSurvey(value, { ...f, signal: new AbortController().signal })
+  const observed = result.report.observation!.strata[0], range = result.frames[0].ranges[0]
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.strata[0].succeeded, 10)
+  assert.deepEqual([range.start, range.end], [2_518_324, 2_877_185])
+  assert.deepEqual([observed.startBefore, observed.endBefore, observed.totalCountBefore], [range.start, range.end, result.frames[0].totalCount])
+  assert.equal(observed.status, 'review-required'); assert.equal(observed.boundaryChanged, true)
+  assert.ok(result.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.before === 2_518_323 && row.after === null))
+  assert.ok(result.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.before === 2_518_323 && row.after === 2_518_324))
+  assert.deepEqual(result.slots.map(slot => slot.position), sampleSurveyPositions(range.start, range.end, 10, `${value.seed}:lp-IRON`))
+  assert.ok(f.calls.length < 70, 'refinement uses nearby pages instead of repeating the full population search')
+  for (let i = 1; i < f.calls.length; i++) assert.ok(f.calls[i].at - f.calls[i - 1].at >= 10_000)
+  assert.deepEqual(parseSampleSurveyCheckpoint(result), result)
+})
+
+for (const moving of [false, true]) test(`all eight large LP strata complete with ${moving ? 'one initial shift each' : 'static boundaries'}`, async () => {
+  const f = shiftingLpFixture(), moved = new Set<string>()
+  f.state.onCandidate = id => { if (moving && !moved.has(id)) { moved.add(id); f.state.shift++ } }
+  const result = await runSampleSurvey(plan(), { ...f, signal: new AbortController().signal })
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.uniqueAccountCount, 80)
+  assert.ok(result.report.strata.every(row => row.selected === 10 && row.succeeded === 10 && row.missing === 0 && row.duplicates === 0))
+  assert.ok(result.report.observation!.strata.every(row => row.status === (moving ? 'review-required' : 'checked')))
+  assert.ok(f.calls.length < 500)
+})
+
+test('a continuously moving initial boundary exhausts only two refinements without selecting slots', async () => {
+  const f = shiftingLpFixture()
+  let candidates = 0
+  f.state.onCandidate = () => { candidates++; f.state.shift++ }
+  const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal })
+  assert.equal(result.report.state, 'complete'); assert.equal(candidates, 3)
+  assert.equal(result.slots.length, 0); assert.equal(result.report.strata[0].population, null)
+  assert.equal(result.report.observation!.strata[0].status, 'review-required')
+  assert.equal(result.report.observation!.changes.filter(row => row.kind === 'boundary-start' && row.after === null).length, 3)
+  assert.ok(f.calls.length < 50)
+})
+
+test('drift before any initial candidate exists does not restart a full-range search', async () => {
+  const f = fixture(), original = f.reader.readPage.bind(f.reader)
+  f.reader.readPage = async (target, page) => {
+    if (f.calls.length === 1) f.lp.splice(180)
+    return original(target, page)
+  }
+  const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal })
+  assert.equal(result.report.state, 'complete'); assert.equal(f.calls.length, 2)
+  assert.equal(result.slots.length, 0); assert.equal(result.report.observation!.strata[0].startBefore, null)
+  assert.ok(result.report.observation!.changes.some(row => row.kind === 'page-unavailable'))
+})
+
+for (const code of ['authentication-unconfirmed', 'human-verification', 'http-denied', 'read-failed'] as const) {
+  test(`${code} during initial refinement stops without another read`, async () => {
+    const f = shiftingLpFixture()
+    let moved = false, failNext = false, stoppedAt = 0
+    f.state.onCandidate = () => { if (!moved) { moved = true; f.state.shift++ } }
+    f.state.onRead = () => { if (failNext) { stoppedAt = f.calls.length; throw new SampleSurveyReadError(code) } }
+    const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+      onUpdate(checkpoint) {
+        f.onUpdate(checkpoint)
+        if (checkpoint.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === null)) failNext = true
+      } })
+    assert.ok(stoppedAt > 0); assert.equal(f.calls.length, stoppedAt)
+    assert.equal(result.report.stopReason, code); assert.equal(result.report.resumeAllowed, false)
+    assert.equal(result.slots.length, 0)
+  })
+}
+
+test('initial refinement obeys the existing time and read budget', async () => {
+  const f = shiftingLpFixture()
+  let moved = false
+  f.state.onCandidate = () => { if (!moved) { moved = true; f.state.shift++ } }
+  const result = await runSampleSurvey(plan({ ranks: ['IRON'], maxDurationMinutes: 6 }), { ...f, signal: new AbortController().signal })
+  assert.equal(result.report.stopReason, 'limit-reached'); assert.equal(result.slots.length, 0)
+  assert.ok(result.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === null))
+  assert.ok(f.calls.length <= 37); assert.ok(result.report.elapsedMs < 360_000)
+})
+
+test('a corrected saved frame cannot refine or redraw positions when resume sees another shift', async () => {
+  const f = shiftingLpFixture(), controller = new AbortController(), value = plan({ ranks: ['IRON'] })
+  let moved = false
+  f.state.onCandidate = () => { if (!moved) { moved = true; f.state.shift++ } }
+  const first = await runSampleSurvey(value, { ...f, signal: controller.signal,
+    onUpdate(checkpoint) { f.onUpdate(checkpoint); if (checkpoint.slots.length) controller.abort() } })
+  assert.equal(first.report.stopReason, 'cancelled'); assert.equal(first.slots.length, 10)
+  f.state.shift++
+  const oldCalls = f.calls.length
+  const second = await runSampleSurvey(value, { ...f, checkpoint: first, signal: new AbortController().signal })
+  assert.equal(second.report.stopReason, 'frame-changed')
+  assert.deepEqual(second.slots, first.slots); assert.deepEqual(second.frames, first.frames)
+  assert.ok(f.calls.length - oldCalls <= 8, 'resume performs one fresh check, never initial refinements')
 })
