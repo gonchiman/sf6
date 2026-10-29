@@ -6,6 +6,7 @@ import { SampleSurveyReadError } from './sample-survey-reader.ts'
 import type { SampleSurveyPage, SampleSurveyReader } from './sample-survey-reader.ts'
 
 export { SAMPLE_SURVEY_INTERVAL_MS }
+const INITIAL_BOUNDARY_REFINEMENTS = 2
 export interface SampleSurveyStratumDefinition {
   id: string; label: string; target: SampleSurveyTarget; requested: number; minimum: number; maximum: number | null
 }
@@ -398,7 +399,25 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       try {
         frame = await discover(definition, saved)
         if (!saved) before(observed, frame)
-        await confirm(frame, definition)
+        for (let refinement = 0; ; refinement++) {
+          try {
+            await confirm(frame, definition)
+            break
+          } catch (error) {
+            // Only an established, unsampled candidate may be refreshed. A failed
+            // discovery, saved slots, or any read/authentication error cannot retry.
+            if (!(error instanceof BoundaryDrift) || saved || refinement === INITIAL_BOUNDARY_REFINEMENTS) throw error
+            observed.boundaryChanged = true; report.frameChanged = true
+            const previous = frame.ranges[0]
+            frame = await discover(definition, frame)
+            const refreshed = frame.ranges[0]
+            if (previous.start !== refreshed.start) change('boundary-start', previous.start, refreshed.start)
+            if (previous.end !== refreshed.end) change('boundary-end', previous.end, refreshed.end)
+            // The selected positions and published population must use the same
+            // final frame; earlier candidates remain only in the change evidence.
+            before(observed, frame)
+          }
+        }
       } catch (error) {
         if (!(error instanceof BoundaryDrift)) throw error
         if (saved) throw new SampleSurveyReadError('frame-changed')

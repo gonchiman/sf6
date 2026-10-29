@@ -3,7 +3,7 @@ import test from 'node:test'
 import type { Page } from 'playwright'
 import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
 import { SampleSurveyReadError } from './sample-survey-reader.ts'
-import { createSampleSurveyDiagnostics } from './sample-survey-diagnostics.ts'
+import { createSampleSurveyDiagnostics, serializeSampleSurveyFailureDiagnostic, SAMPLE_SURVEY_DIAGNOSTIC_MAX_BYTES } from './sample-survey-diagnostics.ts'
 
 const secret = 'private-cookie-profile-id-and-url'
 function fakePage(options: { value?: unknown; gotoError?: unknown; evaluateError?: unknown; status?: number } = {}): Page {
@@ -100,4 +100,56 @@ test('malformed fields and arbitrary error-like objects do not enter records', a
   assert.equal(result.innerCode, null); assert.equal(result.httpStatus, null)
   assert.ok(result.events.every(event => event.observation === undefined))
   assert.ok(!JSON.stringify(result).includes(secret))
+})
+
+test('cloud log serialization rebuilds bounded safe fields including the existing network trace', () => {
+  const event = { elapsedMs: 15, stage: 'ranking-evaluate', outcome: 'complete', target: 'lp',
+    observation: { signedIn: false, authenticationEvidence: 'login-control', loginRequiredHeading: false,
+      selectedPage: 123, range: { from: 2441, to: 2460, total: 3100000, url: secret }, entryCount: 20,
+      html: secret, cookies: secret }, url: secret }
+  const input = { schemaVersion: 1, capturedAt: '2026-10-29T03:39:00.180Z', innerCode: 'authentication-unconfirmed',
+    httpStatus: 200, capture: 'not-started', failureKind: 'network', networkCode: 'ERR_CONNECTION_RESET',
+    diagnostics: { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: false, secret,
+      trace: { observations: [{ elapsedMs: 15, phase: 'read', authenticationEvidence: 'login-control', loginRequiredHeading: false,
+        rankingReadable: false, humanVerification: false, accountId: secret }],
+      network: [{ elapsedMs: 5, phase: 'read', kind: 'http-error', resource: 'fetch', site: 'buckler', status: 502, url: secret }],
+      droppedObservations: 0, droppedNetworkEvents: 0, headers: secret } },
+    events: [event], droppedEvents: 0, cookies: secret, accountId: secret, message: secret, toJSON: () => secret }
+  const line = serializeSampleSurveyFailureDiagnostic(input)!
+  assert.ok(line && Buffer.byteLength(line) <= SAMPLE_SURVEY_DIAGNOSTIC_MAX_BYTES)
+  assert.doesNotMatch(line, new RegExp(secret)); assert.doesNotMatch(line, /\n/)
+  const result = JSON.parse(line).sampleSurveyFailureDiagnostic
+  assert.equal(result.innerCode, 'authentication-unconfirmed'); assert.equal(result.httpStatus, 200)
+  assert.equal(result.networkCode, 'ERR_CONNECTION_RESET')
+  assert.equal(result.events[0].observation.entryCount, 20)
+  assert.equal(result.diagnostics.trace.network[0].status, 502)
+  assert.deepEqual(Object.keys(result.diagnostics.trace.network[0]), ['elapsedMs', 'phase', 'kind', 'resource', 'site', 'status'])
+  assert.equal(Object.hasOwn(result, 'cookies'), false)
+})
+
+test('cloud diagnostic output retains at most 32 events and drops malformed or unsupported values', () => {
+  const input = { schemaVersion: 1, capturedAt: '2026-10-29T03:39:00.180Z', innerCode: secret, httpStatus: 999,
+    failureKind: secret, networkCode: secret, capture: secret, diagnostics: { authenticationEvidence: secret }, droppedEvents: 7,
+    events: Array.from({ length: 80 }, (_, elapsedMs) => ({ elapsedMs, stage: 'navigation', outcome: 'complete',
+      target: secret, httpStatus: 200, networkCode: secret, payload: secret.repeat(10000) })) }
+  const line = serializeSampleSurveyFailureDiagnostic(input)!
+  assert.ok(Buffer.byteLength(line) <= SAMPLE_SURVEY_DIAGNOSTIC_MAX_BYTES)
+  assert.ok(!line.includes(secret))
+  const result = JSON.parse(line).sampleSurveyFailureDiagnostic
+  assert.equal(result.events.length, 32); assert.equal(result.events[0].elapsedMs, 48); assert.equal(result.droppedEvents, 55)
+  assert.equal(result.innerCode, null); assert.equal(result.httpStatus, null); assert.equal(result.failureKind, 'other')
+  assert.equal(result.capture, 'not-started'); assert.equal(result.diagnostics, undefined)
+  const badEvents = JSON.parse(serializeSampleSurveyFailureDiagnostic({ ...input, droppedEvents: -1,
+    events: [null, { elapsedMs: -1, stage: 'navigation', outcome: 'complete' }] })!).sampleSurveyFailureDiagnostic
+  assert.equal(badEvents.events.length, 0); assert.equal(badEvents.droppedEvents, 2)
+})
+
+test('broken callback payloads and hostile getters cannot escape through the serializer', () => {
+  for (const value of [null, [], secret, {}, { schemaVersion: 1, capturedAt: secret, events: [] },
+    { schemaVersion: 1, capturedAt: '2026-02-30T00:00:00.000Z', events: [] },
+    { get schemaVersion() { throw new Error(secret) } }]) assert.equal(serializeSampleSurveyFailureDiagnostic(value), null)
+  let reads = 0
+  const line = serializeSampleSurveyFailureDiagnostic({ schemaVersion: 1,
+    get capturedAt() { return reads++ === 0 ? '2026-10-29T03:39:00.180Z' : secret }, events: [] })!
+  assert.equal(reads, 1); assert.ok(line && !line.includes(secret))
 })
