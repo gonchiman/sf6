@@ -9,6 +9,7 @@ export type AppRoute =
   | { page: 'control-type-ratio' }
   | { page: 'rank-distribution' }
   | { page: 'legend-analysis' }
+  | { page: 'legend-analysis-2' }
   | { page: 'new-account-observation' }
   | { page: 'parallel-fetch-test' }
   | { page: 'sample-survey' }
@@ -36,6 +37,9 @@ export function parseHashRoute(hash: string): AppRoute {
   }
   if (hash === '#legend-analysis' || hash === '#legend-analysis/') {
     return { page: 'legend-analysis' }
+  }
+  if (hash === '#legend-analysis-2' || hash === '#legend-analysis-2/') {
+    return { page: 'legend-analysis-2' }
   }
   if (hash === '#character-releases' || hash === '#character-releases/') {
     return { page: 'character-releases' }

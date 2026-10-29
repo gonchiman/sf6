@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { LEGEND_ANALYSIS_SOURCE } from '../../src/lib/legendAnalysis.ts'
 import { collectLegendAnalysisDataset, LegendAnalysisCollectionError } from './legend-analysis-collector.ts'
-import type { CollectLegendAnalysisOptions, LegendAnalysisEntry, LegendAnalysisPage } from './legend-analysis-collector.ts'
+import type { CollectLegendAnalysisOptions, LegendAnalysisAttemptFailure, LegendAnalysisEntry, LegendAnalysisPage } from './legend-analysis-collector.ts'
 import { LEGEND_ANALYSIS_CONDITIONS, legendAnalysisPageUrl } from './legend-analysis-dom.ts'
 
 function fixture(rows?: LegendAnalysisEntry[], pageSize = 2) {
@@ -47,6 +47,48 @@ test('complete capture aggregates account-character entries and rechecks both en
   assert.equal(JSON.stringify(result).includes(data.values[0].accountKey), false)
 })
 
+test('opt-in player projection emits only accepted rows once after the final successful retry', async () => {
+  const data = fixture()
+  data.values.forEach((entry, index) => { entry.playerName = `Synthetic ${index}` })
+  const read = data.options.fetchPage
+  let reads = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (++reads === 4) value.entries[0].playerName = 'Changed during recheck'
+    return value
+  }
+  const callbacks: unknown[] = []
+  data.options.onVerifiedPlayers = rows => { callbacks.push(rows) }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.retryCount, 1)
+  assert.deepEqual(callbacks, [[
+    { playerName: 'Synthetic 0', characterId: 'ryu', rank: 1, masterRating: 2400 },
+    { playerName: 'Synthetic 1', characterId: 'ken', rank: 2, masterRating: 2399 },
+  ]])
+  assert.doesNotMatch(JSON.stringify(callbacks), /accountKey|Synthetic 2|Synthetic 3/)
+  assert.doesNotMatch(JSON.stringify(result), /Synthetic|playerName|accountKey/)
+})
+
+test('opt-in player projection rejects missing names before output and never runs on failed rechecks', async () => {
+  for (const scenario of ['missing', 'changed'] as const) {
+    const data = fixture()
+    data.values.forEach((entry, index) => { entry.playerName = `Synthetic ${index}` })
+    let callbacks = 0
+    data.options.onVerifiedPlayers = () => { callbacks++ }
+    if (scenario === 'missing') delete data.values[0].playerName
+    else {
+      const read = data.options.fetchPage
+      data.options.fetchPage = async (page, url) => {
+        const value = await read(page, url)
+        if (data.requested.length % 4 === 0) value.entries[0].playerName = 'Changed during recheck'
+        return value
+      }
+    }
+    await assert.rejects(collectLegendAnalysisDataset(data.options), LegendAnalysisCollectionError)
+    assert.equal(callbacks, 0)
+  }
+})
+
 test('Legend cutoff follows displayed badges across tied rank and page boundaries, without a 500 cap', async () => {
   const rows = Array.from({ length: 520 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
     rank: index >= 486 && index < 504 ? 487 : index + 1,
@@ -69,6 +111,78 @@ test('same account-character duplicate causes bounded capture retry and failure,
   await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError && error.code === 'duplicate-entry')
   assert.deepEqual(data.requested, [1, 1])
   assert.deepEqual(retries, [1])
+})
+
+test('attempt diagnostics preserve the first validation failure when the following attempt fails in transport', async () => {
+  const data = fixture(), original = data.options.fetchPage
+  const failures: LegendAnalysisAttemptFailure[] = [], retries: number[] = []
+  data.options.onAttemptFailure = failure => { failures.push(failure) }
+  data.options.onRetry = count => { retries.push(count) }
+  let count = 0
+  const transportFailure = new Error('private transport response and session')
+  data.options.fetchPage = async (page, url) => {
+    if (++count === 2) throw transportFailure
+    const value = await original(page, url)
+    value.entries[1].accountKey = value.entries[0].accountKey
+    value.entries[1].characterId = value.entries[0].characterId
+    return value
+  }
+  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error === transportFailure)
+  assert.deepEqual(retries, [1])
+  assert.deepEqual(failures, [{ attempt: 1, phase: 'listing', page: 1, code: 'duplicate-entry',
+    validationCheck: 'duplicate-entry', recheckChangeKinds: null }])
+  assert.doesNotMatch(JSON.stringify(failures), /accountKey|profile|private transport|session/)
+})
+
+test('attempt diagnostics report each failed recheck without changing bounded retries', async () => {
+  const data = fixture(), original = data.options.fetchPage
+  const failures: LegendAnalysisAttemptFailure[] = [], retries: number[] = []
+  data.options.onAttemptFailure = failure => { failures.push(failure) }
+  data.options.onRetry = count => { retries.push(count) }
+  let count = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await original(page, url)
+    if (++count % 3 === 0) value.entries[0].masterRating++
+    return value
+  }
+  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError
+    && error.code === 'source-changed' && error.validationCheck === 'end-recheck')
+  assert.deepEqual(retries, [1])
+  assert.deepEqual(data.requested, [1, 2, 2, 1, 2, 2])
+  assert.deepEqual(failures, [1, 2].map(attempt => ({ attempt, phase: 'end-recheck', page: 2,
+    code: 'source-changed', validationCheck: 'end-recheck', recheckChangeKinds: ['non-legend-entries'] })))
+})
+
+test('successful retry retains failure evidence and a diagnostic callback cannot replace collection errors', async () => {
+  const data = fixture(), original = data.options.fetchPage
+  const failures: LegendAnalysisAttemptFailure[] = []
+  data.options.onAttemptFailure = failure => { failures.push(failure); throw new Error('diagnostic output failed') }
+  let count = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await original(page, url)
+    if (++count === 1) value.entries[1].masterRating = 9999
+    return value
+  }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.retryCount, 1)
+  assert.deepEqual(failures, [{ attempt: 1, phase: 'listing', page: 1, code: 'source-changed',
+    validationCheck: 'mr-order', recheckChangeKinds: null }])
+  assert.equal(result.dataset.totalCount, 2)
+})
+
+test('attempt diagnostics allow only enum fields even on a deliberately malformed collection error', async () => {
+  const data = fixture()
+  const secret = 'synthetic-player-token-url'
+  const malformed = Object.assign(new LegendAnalysisCollectionError('read-failed'), {
+    code: secret, validationCheck: secret, recheckChangeKinds: [secret], playerName: secret, sourceUrl: secret,
+  })
+  const failures: LegendAnalysisAttemptFailure[] = []
+  data.options.fetchPage = async () => { throw malformed }
+  data.options.onAttemptFailure = failure => { failures.push(failure) }
+  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error === malformed)
+  assert.deepEqual(failures, [{ attempt: 1, phase: 'listing', page: 1, code: 'read-failed',
+    validationCheck: 'unclassified', recheckChangeKinds: null }])
+  assert.equal(JSON.stringify(failures).includes(secret), false)
 })
 
 test('fixed checks distinguish first rank, row position, rank order and MR order without changing rejection', async () => {

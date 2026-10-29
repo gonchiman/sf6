@@ -1,14 +1,17 @@
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS, parseLegendAnalysisDataset, summarizeLegendMr } from '../../src/lib/legendAnalysis.ts'
 import type { LegendAnalysisConditions, LegendAnalysisDataset, LegendMembershipRule } from '../../src/types/legendAnalysis.ts'
 
-/** Private transient row. Neither rows nor salted account keys may be persisted. */
+/** Private transient row. Salted account keys are never persisted. */
 export interface LegendAnalysisEntry {
   accountKey: string
   characterId: string
   rank: number
   masterRating: number
   isLegend: boolean
+  /** Opt-in visible label for the separate player list; omitted by aggregate-only readers. */
+  playerName?: string
 }
+export type LegendAnalysisVerifiedPlayer = Pick<LegendAnalysisEntry, 'characterId' | 'rank' | 'masterRating'> & { playerName: string }
 export interface LegendAnalysisPage {
   sourceUrl: string
   page: number
@@ -86,7 +89,11 @@ export interface CollectLegendAnalysisOptions {
   now?: () => Date
   /** Called when a whole-capture retry actually starts, including retries that later fail. */
   onRetry?: (retryCount: number) => void
+  /** Receives fixed diagnostic fields for collection-validation failures, before retry or final throw. */
+  onAttemptFailure?: (failure: LegendAnalysisAttemptFailure) => void
   onProgress?: (progress: LegendAnalysisCollectionProgress) => void
+  /** Opt-in projection after complete validation; never receives account keys or non-Legend rows. */
+  onVerifiedPlayers?: (players: readonly LegendAnalysisVerifiedPlayer[]) => void
 }
 export const LEGEND_ANALYSIS_COLLECTION_PHASES = ['preparation', 'listing', 'act-recheck', 'end-recheck', 'start-recheck', 'complete'] as const
 export type LegendAnalysisCollectionPhase = typeof LEGEND_ANALYSIS_COLLECTION_PHASES[number]
@@ -95,6 +102,12 @@ export interface LegendAnalysisCollectionProgress {
   /** One-based whole-capture attempt, independent of an individual HTTP 5xx retry. */
   attempt: number
   page: number | null
+}
+/** No errors, URLs, identities, names, or observed row values cross this boundary. */
+export interface LegendAnalysisAttemptFailure extends LegendAnalysisCollectionProgress {
+  code: LegendAnalysisCollectionErrorCode
+  validationCheck: LegendAnalysisValidationCheck
+  recheckChangeKinds: LegendAnalysisRecheckChangeKind[] | null
 }
 export interface LegendAnalysisCollectionResult {
   dataset: LegendAnalysisDataset
@@ -114,11 +127,28 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
   if (options.membershipConfirmed !== true) fail('evidence-unconfirmed', 'membership-evidence')
   let requestCount = 0
   let captureAttempt = 0
+  let currentPhase: LegendAnalysisCollectionPhase = 'preparation'
+  let currentPage: number | null = null
   const now = options.now ?? (() => new Date())
   const clock = (): string => { try { return now().toISOString() } catch { return fail('configuration-invalid', 'capture-clock') } }
   const cancelled = (): void => { if (options.signal?.aborted) fail('cancelled', 'cancellation') }
   const progress = (phase: LegendAnalysisCollectionPhase, page: number | null): void => {
+    currentPhase = phase
+    currentPage = page
     options.onProgress?.({ phase, attempt: captureAttempt, page })
+  }
+  const attemptFailed = (error: LegendAnalysisCollectionError): void => {
+    const kinds = error.recheckChangeKinds
+    const failure: LegendAnalysisAttemptFailure = {
+      attempt: captureAttempt, phase: currentPhase,
+      page: integer(currentPage, 1) && currentPage <= 1000000 ? currentPage : null,
+      code: LEGEND_ANALYSIS_COLLECTION_ERROR_CODES.includes(error.code) ? error.code : 'read-failed',
+      validationCheck: LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS.includes(error.validationCheck) ? error.validationCheck : 'unclassified',
+      recheckChangeKinds: Array.isArray(kinds) && kinds.length >= 1 && kinds.length <= LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.length
+        && new Set(kinds).size === kinds.length && kinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind)) ? [...kinds] : null,
+    }
+    // Diagnostics must not change the collection's retry decision or replace its original error.
+    try { options.onAttemptFailure?.(failure) } catch {}
   }
   const read = async (page: number, phase: LegendAnalysisCollectionPhase = 'listing'): Promise<LegendAnalysisPage> => {
     cancelled()
@@ -144,12 +174,16 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
         if (entry && !options.characterIds.includes(entry.characterId)) fail('source-changed', 'character-roster')
         fail('source-changed', 'entry-values')
       }
+      if (options.onVerifiedPlayers && entry.isLegend && (typeof entry.playerName !== 'string'
+        || !entry.playerName.trim() || entry.playerName !== entry.playerName.trim() || entry.playerName.length > 128
+        || /\p{Cc}/u.test(entry.playerName))) fail('evidence-unconfirmed', 'entry-values')
     }
     return value
   }
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     cancelled()
     captureAttempt = attempt + 1
+    currentPhase = 'preparation'; currentPage = null
     if (attempt > 0) options.onRetry?.(attempt)
     const startedAt = clock()
     try {
@@ -210,10 +244,14 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
             'レジェンド掲載の終端と先頭を再確認した。取得時点が異なる全行の同時点性を保証するものではない。',
             'プレイヤー名、識別子、プロフィールリンク、行データ、照合用一時ハッシュは保存していない。'] },
       })
+      options.onVerifiedPlayers?.(accepted.map(({ playerName, characterId, rank, masterRating }) => ({
+        playerName: playerName!, characterId, rank, masterRating,
+      })))
       progress('complete', null)
       return { dataset, requestCount, retryCount: attempt, pagesRead }
     } catch (error) {
       if (options.signal?.aborted) fail('cancelled', 'cancellation')
+      if (error instanceof LegendAnalysisCollectionError) attemptFailed(error)
       if (!(error instanceof LegendAnalysisCollectionError)
         || !['source-changed', 'duplicate-entry'].includes(error.code) || attempt + 1 >= maxAttempts) throw error
     }

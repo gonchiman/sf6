@@ -4,6 +4,7 @@ import type { Page } from 'playwright'
 import { LEGEND_ANALYSIS_SOURCE } from '../../src/lib/legendAnalysis.ts'
 import type { LegendAnalysisConditions } from '../../src/types/legendAnalysis.ts'
 import type { LegendAnalysisEntry, LegendAnalysisPage } from './legend-analysis-collector.ts'
+import { emptyDistributionHumanVerification, observeDistributionHumanVerification, readDistributionHumanVerificationResponse } from './distribution-human-verification.ts'
 
 export const LEGEND_ANALYSIS_CONDITIONS: LegendAnalysisConditions = { region: 'all', platform: 'all', characters: 'all', users: 'source-default' }
 const FILTERS = { character_filter: '1', character_id: 'luke', platform: '1', home_filter: '1', home_category_id: '0', home_id: '0', season_type: '1' } as const
@@ -49,7 +50,7 @@ export interface LegendAnalysisDomObservation {
 }
 
 /** Rendered ranking controls and row assets only; account IDs are hashed with one capture-wide salt. */
-export async function observeLegendAnalysisDom(input: { salt: string; characterIds: string[] }): Promise<LegendAnalysisDomObservation> {
+export async function observeLegendAnalysisDom(input: { salt: string; characterIds: string[]; includePlayers?: boolean }): Promise<LegendAnalysisDomObservation> {
   window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
   const visible = (element: Element): boolean => {
     const rect = element.getBoundingClientRect()
@@ -101,7 +102,7 @@ export async function observeLegendAnalysisDom(input: { salt: string; characterI
   const lists = [...document.querySelectorAll('ul[class*="ranking_ranking_list"]:not([class*="ranking__my__list"])')].filter(visible)
   if (lists.length !== 1) return { ...base, firstPlayUrl: null, entries: null }
   const rows = [...lists[0].querySelectorAll('a[href*="/profile/"]')].filter(visible)
-  const rawEntries: Readonly<{ profilePath: string; characterId: string; rank: number; masterRating: number; isLegend: boolean }>[] = []
+  const rawEntries: Readonly<{ profilePath: string; characterId: string; rank: number; masterRating: number; isLegend: boolean; playerName?: string }>[] = []
   let firstPlayUrl: string | null = null
   // Next.js images may still have a GIF placeholder: its DOM noscript fallback is restricted to official assets.
   const assetPath = (container: Element): string | null => {
@@ -137,13 +138,20 @@ export async function observeLegendAnalysisDom(input: { salt: string; characterI
     const character = assetPath(characters[0])?.match(/^\/6\/buckler\/assets\/images\/material\/character\/character_([a-z0-9]+)_l\.png$/)?.[1]
     const badge = assetPath(badges[0])?.match(/^\/6\/buckler\/assets\/images\/material\/rank\/rank(\d+)_l\.png$/)?.[1]
     if (!character || input.characterIds.length > 0 && !input.characterIds.includes(character) || !badge || !['37', '38', '39', '40', '41', '42'].includes(badge)) return { ...base, firstPlayUrl: null, entries: null }
+    // Confirmed visible ranking fighter label; the adjacent ranking_comment title is not a player name.
+    const nameNodes = input.includePlayers ? [...row.querySelectorAll('p[class*="ranking_fighter__"] span[class*="ranking_name__"]')].filter(visible) : []
+    const playerName = nameNodes.length === 1 ? text(nameNodes[0]) : null
+    if (input.includePlayers && badge === '37' && (!playerName || playerName.length > 128 || /\p{Cc}/u.test(playerName))) {
+      return { ...base, firstPlayUrl: null, entries: null }
+    }
     try {
       const profile = new URL(href, location.origin)
       if (profile.origin !== 'https://www.streetfighter.com' || profile.username || profile.password || profile.search || profile.hash
         || !/^\/6\/buckler\/ja-jp\/profile\/\d+$/.test(profile.pathname)) throw new Error()
       firstPlayUrl ??= `${profile.href}/play`
       rawEntries.push(Object.freeze({ profilePath: profile.pathname, characterId: character,
-        rank: Number(rankText.slice(0, -1)), masterRating: Number(mrText.slice(0, -2)), isLegend: badge === '37' }))
+        rank: Number(rankText.slice(0, -1)), masterRating: Number(mrText.slice(0, -2)), isLegend: badge === '37',
+        ...(input.includePlayers && playerName ? { playerName } : {}) }))
     } catch { return { ...base, firstPlayUrl: null, entries: null } }
   }
   Object.freeze(rawEntries)
@@ -153,7 +161,8 @@ export async function observeLegendAnalysisDom(input: { salt: string; characterI
     for (const raw of rawEntries) {
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${input.salt}:${raw.profilePath}`))
       entries.push({ accountKey: [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join(''),
-        characterId: raw.characterId, rank: raw.rank, masterRating: raw.masterRating, isLegend: raw.isLegend })
+        characterId: raw.characterId, rank: raw.rank, masterRating: raw.masterRating, isLegend: raw.isLegend,
+        ...(raw.playerName === undefined ? {} : { playerName: raw.playerName }) })
     }
   } catch { return { ...base, firstPlayUrl: null, entries: null } }
   return { ...base, firstPlayUrl, entries }
@@ -322,6 +331,7 @@ export async function observeLegendAnalysisRoster(): Promise<{ roster: Array<{ c
 
 export interface LegendAnalysisPageReaderOptions {
   characterIds?: string[]
+  includePlayers?: boolean
   signal?: AbortSignal
   minIntervalMs?: number
   now?: () => number
@@ -347,6 +357,7 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
   let signedInFirstPageConfirmed = false, readableWithoutSignInReadCount = 0
   let lastLoginRequired: boolean | null = null, lastSignedIn: boolean | null = null, lastRankingReadable: boolean | null = null
   let lastHttpStatus: number | null = null
+  let humanVerification = emptyDistributionHumanVerification()
   let lastAttemptedPage: number | null = null, successfulReadCount = 0
   // In-memory identities only: never diagnostic/public values. Invalidate whenever leaving accepted listing state.
   let lastAccepted: { page: number; body: string } | null = null
@@ -357,21 +368,32 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
     if (lastNavigation !== null) await wait(Math.max(0, interval - (now() - lastNavigation)))
     check(); lastNavigation = now(); requestCount++; lastAttemptedPage = requestedPage
     lastLoginRequired = null; lastSignedIn = null; lastRankingReadable = null; lastHttpStatus = null
+    humanVerification = emptyDistributionHumanVerification()
   }
   const challengeVisible = async (): Promise<boolean> => page.evaluate(() => [...document.querySelectorAll('h1,h2')]
     .filter(element => element.getBoundingClientRect().width > 0)
     .some(element => /verify (?:that )?you are human|checking your browser|attention required|access denied|ロボットではない|セキュリティチェック|アクセスが拒否/i.test((element as HTMLElement).innerText ?? '')))
+  const observeHumanVerification = async (): Promise<void> => {
+    try {
+      const detected = await page.evaluate(observeDistributionHumanVerification)
+      humanVerification.domDetected = typeof detected === 'boolean' ? detected : null
+    } catch { humanVerification.domDetected = null /* No raw DOM errors enter diagnostics. */ }
+  }
   const navigate = async (url: string, requestedPage: number | null = null): Promise<void> => {
     for (let attempt = 0; attempt < 2; attempt++) {
       await beginNavigation(requestedPage)
       const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
       const status = response?.status()
       lastHttpStatus = Number.isSafeInteger(status) && status! >= 100 && status! <= 599 ? status! : null
+      humanVerification = readDistributionHumanVerificationResponse(response)
       // A redirect is never treated as a retryable server fault.
       const matches = (actual: string): boolean => requestedPage === null ? actual === url : legendAnalysisPageUrlMatches(actual, requestedPage)
       if (!matches(page.url()) || response && !matches(response.url())) throw new LegendAnalysisDomError('condition-mismatch')
+      if ((status ?? 0) >= 400 || humanVerification.wafAction) await observeHumanVerification()
+      if (humanVerification.wafAction || humanVerification.domDetected === true) throw new LegendAnalysisDomError('http-denied')
       if ([401, 403, 429].includes(status ?? 0)) throw new LegendAnalysisDomError('http-denied')
       if (status !== undefined && status >= 500 && status <= 599) {
+        // Keep the existing broader access-denial stop without labeling every denial as human verification.
         if (await challengeVisible()) throw new LegendAnalysisDomError('http-denied')
         if (attempt === 1) throw new LegendAnalysisDomError('server-error')
         await wait(Math.max(5000, interval)); check(); continue
@@ -385,7 +407,9 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
     const deadline = now() + 10000
     while (true) {
       check()
-      const value = await page.evaluate(observeLegendAnalysisDom, { salt, characterIds })
+      await observeHumanVerification()
+      if (humanVerification.domDetected === true) throw new LegendAnalysisDomError('http-denied')
+      const value = await page.evaluate(observeLegendAnalysisDom, { salt, characterIds, ...(options.includePlayers ? { includePlayers: true } : {}) })
       if (value.accessChallenge === true) throw new LegendAnalysisDomError('http-denied')
       if (value.maintenance) throw new LegendAnalysisDomError('maintenance')
       const range = value.range
@@ -523,6 +547,6 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
       parentParagraph: clickObservation?.parentParagraph === true, pointerEventsNone: clickObservation?.pointerEventsNone === true,
       rosterDiagnostics: ready && rosterDiagnostics ? { ...rosterDiagnostics, items: [] } : rosterDiagnostics,
       lastLoginRequired, lastSignedIn, lastRankingReadable, readableWithoutSignInReadCount, lastHttpStatus,
-      lastAttemptedPage, successfulReadCount }),
+      lastAttemptedPage, successfulReadCount, humanVerification: { ...humanVerification } }),
   }
 }

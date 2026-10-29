@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: '45 13 * * *' # Every day at 22:45 Asia/Tokyo
   workflow_dispatch:
+    inputs:
+      include_players:
+        description: Save the verified Legend player list as well as aggregates
+        type: boolean
+        required: true
+        default: false
+
+env:
+  LEGEND_PLAYERS_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_players) || (github.event_name == 'schedule' && vars.LEGEND_PLAYERS_DAILY_ENABLED == 'true') }}
 
 permissions:
   contents: read
@@ -40,7 +49,7 @@ jobs:
         env:
           BUCKLER_WEEKLY_SESSION: ${{ secrets.BUCKLER_WEEKLY_SESSION }}
         run: node scripts/collect-legend-analysis-daily.ts --collect
-      - name: Upload validated aggregate JSON only
+      - name: Upload validated aggregate and optional player JSON only
         if: always() && steps.collect.outputs.artifact_ready == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -48,6 +57,8 @@ jobs:
           path: |
             .local/legend-analysis-daily/output/public/index.json
             .local/legend-analysis-daily/output/public/legend-*.json
+            .local/legend-analysis-daily/output/public/players/index.json
+            .local/legend-analysis-daily/output/public/players/legend-*.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 90
@@ -88,13 +99,13 @@ jobs:
             git reset --hard FETCH_HEAD
             if ($LASTEXITCODE -ne 0) { throw 'Unable to restore aggregate history' }
           }
-      - name: Download this run's aggregate JSON
+      - name: Download this run's validated JSON
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: legend-analysis-daily-${{ github.run_id }}-${{ github.run_attempt }}
           path: .local/legend-analysis-daily/incoming/public
           digest-mismatch: error
-      - name: Validate and merge immutable aggregate history
+      - name: Validate and merge immutable aggregate and player history
         run: node scripts/publish-legend-analysis-daily.ts
       - name: Save aggregate history
         working-directory: .local/legend-analysis-daily/history

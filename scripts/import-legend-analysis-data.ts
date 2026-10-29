@@ -7,21 +7,29 @@ import type { LegendAnalysisAvailability, LegendAnalysisDataset, LegendAnalysisD
 import { checkLegendAnalysisParents, LEGEND_ANALYSIS_JSON_LIMIT, legendAnalysisFileInfo, legendAnalysisPathWithin, readLegendAnalysisJson } from './lib/legend-analysis-files.ts'
 import { validateLegendAnalysisDirectory } from './validate-legend-analysis-data.ts'
 
-function descriptor(value: LegendAnalysisDataset): LegendAnalysisDescriptor {
+type LegendHistoryDataset = Pick<LegendAnalysisDataset, 'id' | 'act' | 'definitionVersion' | 'membershipRule'
+  | 'conditions' | 'captureStartedAt' | 'captureEndedAt' | 'generatedAt' | 'source' | 'totalCount'>
+
+export interface LegendDataPublicationContract<Dataset extends LegendHistoryDataset> {
+  parseDataset(value: unknown, expected?: LegendAnalysisDescriptor): Dataset
+  validateDirectory(directory: string): Promise<{ datasets: number; entries: number }>
+}
+
+function descriptor(value: LegendHistoryDataset): LegendAnalysisDescriptor {
   return { id: value.id, path: `${value.id}.json`, actId: value.act.id, definitionVersion: value.definitionVersion,
     membershipRule: value.membershipRule, conditions: value.conditions, captureStartedAt: value.captureStartedAt,
     captureEndedAt: value.captureEndedAt, totalCount: value.totalCount }
 }
-async function datasetsAt(input: string): Promise<LegendAnalysisDataset[]> {
+async function datasetsAt<Dataset extends LegendHistoryDataset>(input: string, contract: LegendDataPublicationContract<Dataset>): Promise<Dataset[]> {
   const root = resolve(input)
   await checkLegendAnalysisParents(dirname(root))
   const value = await legendAnalysisFileInfo(root)
   if (!value || value.isSymbolicLink()) throw new Error('レジェンド分析の入力が不正です。')
-  if (value.isFile()) return [parseLegendAnalysisDataset(await readLegendAnalysisJson(root))]
+  if (value.isFile()) return [contract.parseDataset(await readLegendAnalysisJson(root))]
   if (!value.isDirectory()) throw new Error('レジェンド分析の入力が不正です。')
-  await validateLegendAnalysisDirectory(root)
+  await contract.validateDirectory(root)
   const manifest = parseLegendAnalysisManifest(await readLegendAnalysisJson(resolve(root, 'index.json')))
-  return Promise.all(manifest.datasets.map(async item => parseLegendAnalysisDataset(await readLegendAnalysisJson(resolve(root, item.path)), item)))
+  return Promise.all(manifest.datasets.map(async item => contract.parseDataset(await readLegendAnalysisJson(resolve(root, item.path)), item)))
 }
 async function json(path: string, value: unknown): Promise<void> {
   const text = `${JSON.stringify(value, null, 2)}\n`
@@ -47,23 +55,31 @@ function equal(left: unknown, right: unknown): boolean {
   return Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => Object.hasOwn(b, key) && equal(a[key], b[key]))
 }
 
+/** Shared immutable history transaction. Each data family supplies its own strict parser and directory validator. */
+export function createLegendDataPublication<Dataset extends LegendHistoryDataset>(contract: LegendDataPublicationContract<Dataset>) {
+  return {
+    async importData(input: string, output: string, generatedAt = new Date().toISOString()): Promise<{ datasets: number; entries: number }> {
+      const incoming = await datasetsAt(input, contract)
+      if (!incoming.length) throw new Error('取り込む取得完了データがありません。未取得を0件として公開できません。')
+      return mergeLegendAnalysisData(incoming, output, generatedAt, contract)
+    },
+    async publishData(inputDirectory: string, output: string, generatedAt = new Date().toISOString()): Promise<{ datasets: number; entries: number }> {
+      await contract.validateDirectory(inputDirectory)
+      const manifest = parseLegendAnalysisManifest(await readLegendAnalysisJson(resolve(inputDirectory, 'index.json')))
+      const incoming = await datasetsAt(inputDirectory, contract)
+      if (!incoming.length && !manifest.availability) throw new Error('取得完了データまたは明示的な取得状況が必要です。')
+      return mergeLegendAnalysisData(incoming, output, generatedAt, contract, manifest.availability)
+    },
+  }
+}
+
+const aggregatePublication = createLegendDataPublication({ parseDataset: parseLegendAnalysisDataset, validateDirectory: validateLegendAnalysisDirectory })
 /** Strict aggregate-only history merge. A snapshot ID is immutable; failures retain the old directory. */
-export async function importLegendAnalysisData(input: string, output: string, generatedAt = new Date().toISOString()): Promise<{ datasets: number; entries: number }> {
-  const incoming = await datasetsAt(input)
-  if (!incoming.length) throw new Error('取り込む取得完了データがありません。未取得を0件として公開できません。')
-  return mergeLegendAnalysisData(incoming, output, generatedAt)
-}
+export const importLegendAnalysisData = aggregatePublication.importData
+export const publishLegendAnalysisData = aggregatePublication.publishData
 
-/** Daily publisher also accepts a validated failure status, retaining every successful snapshot. */
-export async function publishLegendAnalysisData(inputDirectory: string, output: string, generatedAt = new Date().toISOString()): Promise<{ datasets: number; entries: number }> {
-  await validateLegendAnalysisDirectory(inputDirectory)
-  const manifest = parseLegendAnalysisManifest(await readLegendAnalysisJson(resolve(inputDirectory, 'index.json')))
-  const incoming = await datasetsAt(inputDirectory)
-  if (!incoming.length && !manifest.availability) throw new Error('取得完了データまたは明示的な取得状況が必要です。')
-  return mergeLegendAnalysisData(incoming, output, generatedAt, manifest.availability)
-}
-
-async function mergeLegendAnalysisData(incoming: LegendAnalysisDataset[], output: string, generatedAt: string,
+async function mergeLegendAnalysisData<Dataset extends LegendHistoryDataset>(incoming: Dataset[], output: string, generatedAt: string,
+  contract: LegendDataPublicationContract<Dataset>,
   availability?: LegendAnalysisAvailability): Promise<{ datasets: number; entries: number }> {
   const batch = parseLegendAnalysisManifest({ schemaVersion: 1, generatedAt, source: LEGEND_ANALYSIS_SOURCE, datasets: incoming.map(descriptor), ...(availability ? { availability } : {}) })
   const directory = resolve(output), parent = dirname(directory)
@@ -78,11 +94,11 @@ async function mergeLegendAnalysisData(incoming: LegendAnalysisDataset[], output
     const existingInfo = await legendAnalysisFileInfo(directory)
     const hasOriginal = existingInfo !== null
     let current: LegendAnalysisManifest | null = null
-    let existing: LegendAnalysisDataset[] = []
+    let existing: Dataset[] = []
     if (hasOriginal && (await readdir(directory)).length) {
-      await validateLegendAnalysisDirectory(directory)
+      await contract.validateDirectory(directory)
       current = parseLegendAnalysisManifest(await readLegendAnalysisJson(resolve(directory, 'index.json')))
-      existing = await datasetsAt(directory)
+      existing = await datasetsAt(directory, contract)
       if (current.source.url !== batch.source.url || Date.parse(current.generatedAt) > Date.parse(generatedAt)) throw new Error('既存履歴と出典または生成日時が整合しません。')
     }
     const selected = new Map(existing.map(value => [value.id, value]))
@@ -104,7 +120,7 @@ async function mergeLegendAnalysisData(incoming: LegendAnalysisDataset[], output
       await json(path, dataset)
     }
     await json(resolve(stage, 'index.json'), manifest)
-    const result = await validateLegendAnalysisDirectory(stage)
+    const result = await contract.validateDirectory(stage)
     await checkLegendAnalysisParents(directory)
     if (hasOriginal) { await move(directory, backup); originalMoved = true }
     await move(stage, directory)

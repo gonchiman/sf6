@@ -7,13 +7,18 @@ function fixture() {
   let url = '', clock = 0, actId = 13, status = 200, redirected = false, readyOnAttempt = 1, controlReads = 0, cookieOverlay = false, autoOpen = false
   let signedIn = true, loginRequired = false, authenticationEvidence = 'logout-control'
   let bodyPage: number | null = null, staleReads = 0, duplicateReads = 0, identicalRanks = false, rankingReads = 0, challenge = false
+  let sharedChallenge = false, unavailableChallengeDom = false
+  const headers: Record<string, string> = {}
   const statuses: number[] = []
   const navigations: string[] = [], salts: string[] = [], waits: number[] = [], controls: string[] = []
   const page = {
-    goto: async (value: string) => { url = redirected ? 'https://example.com/unconfirmed' : value; navigations.push(value); const actual = statuses.shift() ?? status; return { status: () => actual, url: () => url } },
+    goto: async (value: string) => { url = redirected ? 'https://example.com/unconfirmed' : value; navigations.push(value); const actual = statuses.shift() ?? status; return { status: () => actual, url: () => url, headers: () => ({ ...headers }) } },
     url: () => url,
     evaluate: async (operation: { name: string }, input?: { salt: string }) => {
-      if (!operation.name) return challenge
+      if (!operation.name || operation.name === 'observeDistributionHumanVerification') {
+        if (unavailableChallengeDom) throw new Error('private-dom-failure-text')
+        return operation.name ? sharedChallenge : challenge
+      }
       if (operation.name === 'observeLegendAnalysisAct') return { id: `act-${actId}`, label: `Act ${actId}` }
       if (operation.name === 'observeLegendAnalysisRoster') return { roster: [{ characterId: 'arjun', name: 'アージュン' }, { characterId: 'ryu', name: 'リュウ' }],
         diagnostics: { h3Count: 1, liCount: 3, randomCount: 1, failedIndex: null, reason: null, items: [] } }
@@ -42,7 +47,9 @@ function fixture() {
     staleBody: (page: number, reads: number) => { bodyPage = page; staleReads = reads }, duplicateBody: (reads: number) => { duplicateReads = reads }, tieAllRows: () => { identicalRanks = true }, readCount: () => rankingReads, showChallenge: () => { challenge = true },
     showLoginControl: () => { signedIn = false; authenticationEvidence = 'login-control' },
     showLoginHeading: () => { signedIn = false; authenticationEvidence = 'login-control'; loginRequired = true },
-    showNoControls: () => { signedIn = false; authenticationEvidence = 'no-control' }, respond: (...values: number[]) => { statuses.push(...values) } }
+    showNoControls: () => { signedIn = false; authenticationEvidence = 'no-control' }, respond: (...values: number[]) => { statuses.push(...values) },
+    setHeaders: (values: Record<string, string>) => { for (const key of Object.keys(headers)) delete headers[key]; Object.assign(headers, values) },
+    showSharedChallenge: () => { sharedChallenge = true }, unavailableChallengeDom: () => { unavailableChallengeDom = true } }
 }
 
 test('reader confirms Act and visible source roster, uses one salt, and spaces navigations by five seconds', async () => {
@@ -57,7 +64,7 @@ test('reader confirms Act and visible source roster, uses one salt, and spaces n
   assert.equal(new Set(data.salts).size, 1)
   assert.equal(data.waits.filter(value => value >= 5000).length > 0, true)
   assert.deepEqual(data.controls, ['select:visible:1', 'select:visible:4', 'span[class*="ranking_search_character_btn"]:visible'])
-  assert.deepEqual(Object.keys(data.reader.getDiagnostics()), ['requestCount', 'lastStep', 'lastErrorCode', 'characterFilter', 'visibleRosterButtonCount', 'clickFailure', 'clickHitKind', 'clickHitTag', 'parentParagraph', 'pointerEventsNone', 'rosterDiagnostics', 'lastLoginRequired', 'lastSignedIn', 'lastRankingReadable', 'readableWithoutSignInReadCount', 'lastHttpStatus', 'lastAttemptedPage', 'successfulReadCount'])
+  assert.deepEqual(Object.keys(data.reader.getDiagnostics()), ['requestCount', 'lastStep', 'lastErrorCode', 'characterFilter', 'visibleRosterButtonCount', 'clickFailure', 'clickHitKind', 'clickHitTag', 'parentParagraph', 'pointerEventsNone', 'rosterDiagnostics', 'lastLoginRequired', 'lastSignedIn', 'lastRankingReadable', 'readableWithoutSignInReadCount', 'lastHttpStatus', 'lastAttemptedPage', 'successfulReadCount', 'humanVerification'])
   assert.equal(data.reader.getDiagnostics().lastAttemptedPage, 1)
   assert.equal(data.reader.getDiagnostics().successfulReadCount, 4)
 })
@@ -160,6 +167,58 @@ test('diagnostics track the requested ranking page and accepted reads separately
   assert.equal(data.reader.getDiagnostics().successfulReadCount, 2)
 })
 
+test('HTTP 405 records fixed WAF and DOM evidence before stopping, without retaining response secrets', async () => {
+  for (const action of ['captcha', 'challenge']) {
+    const data = fixture(); await data.reader.initialize()
+    data.setHeaders({ 'x-amzn-waf-action': action, 'set-cookie': 'private-cookie-value', 'untrusted-header': 'private-header-value' })
+    data.respond(405, 200)
+    const requests = data.reader.getDiagnostics().requestCount
+    await assert.rejects(data.reader.fetchPage(22, legendAnalysisPageUrl(22)), /http-denied/)
+    assert.equal(data.reader.getDiagnostics().requestCount - requests, 1)
+    assert.equal(data.reader.getDiagnostics().lastHttpStatus, 405)
+    assert.deepEqual(data.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: action, domDetected: false })
+    assert.equal(/private-cookie-value|private-header-value|set-cookie|untrusted-header/.test(JSON.stringify(data.reader.getDiagnostics())), false)
+  }
+})
+
+test('client errors distinguish visible human verification, no detected evidence, and unavailable DOM', async () => {
+  for (const status of [401, 403, 404, 405, 429]) {
+    for (const mode of ['visible', 'absent', 'unavailable'] as const) {
+      const data = fixture(); await data.reader.initialize(); data.respond(status, 200)
+      if (mode === 'visible') data.showSharedChallenge()
+      if (mode === 'unavailable') data.unavailableChallengeDom()
+      const requests = data.reader.getDiagnostics().requestCount
+      await assert.rejects(data.reader.fetchPage(22, legendAnalysisPageUrl(22)), error => error instanceof LegendAnalysisDomError
+        && error.code === (mode === 'visible' || [401, 403, 429].includes(status) ? 'http-denied' : 'http-error'))
+      assert.equal(data.reader.getDiagnostics().requestCount - requests, 1)
+      assert.deepEqual(data.reader.getDiagnostics().humanVerification, {
+        wafHeaderChecked: true, wafAction: null, domDetected: mode === 'visible' ? true : mode === 'absent' ? false : null,
+      })
+      assert.equal(JSON.stringify(data.reader.getDiagnostics()).includes('private-dom-failure-text'), false)
+    }
+  }
+})
+
+test('header-confirmed human verification stops once even on success/server statuses and evidence resets per navigation', async () => {
+  for (const status of [200, 503]) {
+    const data = fixture(); await data.reader.initialize(); data.setHeaders({ 'x-amzn-waf-action': 'captcha' }); data.respond(status, 200)
+    data.unavailableChallengeDom()
+    const requests = data.reader.getDiagnostics().requestCount
+    await assert.rejects(data.reader.fetchPage(1, legendAnalysisPageUrl(1)), /http-denied/)
+    assert.equal(data.reader.getDiagnostics().requestCount - requests, 1)
+    assert.deepEqual(data.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: 'captcha', domDetected: null })
+  }
+  const data = fixture(); await data.reader.initialize()
+  assert.deepEqual(data.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: false })
+  const external = data.reader.getDiagnostics().humanVerification; external.domDetected = true
+  assert.equal(data.reader.getDiagnostics().humanVerification.domDetected, false)
+  await data.reader.confirmAct()
+  assert.deepEqual(data.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: null })
+  data.redirect()
+  await assert.rejects(data.reader.fetchPage(2, legendAnalysisPageUrl(2)), /condition-mismatch/)
+  assert.deepEqual(data.reader.getDiagnostics().humanVerification, { wafHeaderChecked: false, wafAction: null, domDetected: null })
+})
+
 test('canonical ranking URLs accept query order alone and reject changed origin, Act, conditions or multiplicities', () => {
   const canonical = legendAnalysisPageUrl(2), url = new URL(canonical)
   url.search = [...url.searchParams.entries()].reverse().map(([key, value]) => `${key}=${value}`).join('&')
@@ -231,6 +290,16 @@ test('goto stops a challenge without retry even when the document reports a serv
   const before = captcha.reader.getDiagnostics().requestCount
   await assert.rejects(captcha.reader.fetchPage(2, legendAnalysisPageUrl(2)), /http-denied/)
   assert.equal(captcha.reader.getDiagnostics().requestCount - before, 1)
+  assert.equal(captcha.reader.getDiagnostics().humanVerification.domDetected, false)
+})
+
+test('a visible human-verification control on a successful HTTP page stops before ranking reads', async () => {
+  const data = fixture(); await data.reader.initialize(); data.showSharedChallenge()
+  const reads = data.readCount(), requests = data.reader.getDiagnostics().requestCount
+  await assert.rejects(data.reader.fetchPage(2, legendAnalysisPageUrl(2)), /http-denied/)
+  assert.equal(data.reader.getDiagnostics().requestCount - requests, 1)
+  assert.equal(data.readCount(), reads)
+  assert.deepEqual(data.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: true })
 })
 
 test('rendered rows accept official noscript assets behind placeholders and hash identities without emitting them', async t => {
@@ -323,15 +392,19 @@ test('ranking observation freezes both rows and header before asynchronous ident
   const makeRow = (profile: string, character: string, rank: number, mr: number) => {
     const attributes = { href: `/6/buckler/ja-jp/profile/${profile}` }
     const rankNode = element(`${rank}位`), mrNode = element(`${mr}MR`)
+    const nameNode = element(`Synthetic ${profile}`)
     const characterImage = asset(`/6/buckler/assets/images/material/character/character_${character}_l.png`)
     const badgeImage = asset('/6/buckler/assets/images/material/rank/rank37_l.png')
     const row = element('private display name', {
       'div[class*="ranking_page_data"]': [element()],
+      'p[class*="ranking_fighter__"] span[class*="ranking_name__"]': [nameNode],
       '[class*="ranking_time"]': [element('', { 'dl dt': [rankNode], 'dl dd': [mrNode] })],
       'div[class*="ranking_character"]': [element('', { img: [characterImage] })],
       'div[class*="ranking_league_rank_icon"] p[class*="ranking_master_rating_icon"]': [element('', { img: [badgeImage] })],
     }, attributes)
-    return { row, replace: (profile: string, character: string, rank: number, mr: number) => {
+    return { row, setName: (name: string) => { nameNode.innerText = name },
+      setLegend: () => { badgeImage.currentSrc = 'https://www.streetfighter.com/6/buckler/assets/images/material/rank/rank37_l.png' },
+      replace: (profile: string, character: string, rank: number, mr: number) => {
       attributes.href = `/6/buckler/ja-jp/profile/${profile}`
       rankNode.innerText = `${rank}位`; mrNode.innerText = `${mr}MR`
       characterImage.currentSrc = `https://www.streetfighter.com/6/buckler/assets/images/material/character/character_${character}_l.png`
@@ -395,4 +468,15 @@ test('ranking observation freezes both rows and header before asynchronous ident
   assert.deepEqual(hashedInputs, expectedInputs)
   const { firstPlayUrl: _privateNavigation, ...safeObservation } = observed
   assert.doesNotMatch(JSON.stringify(safeObservation), /987654321|987654322|777777771|777777772|private display name/)
+  const withNames = await observeLegendAnalysisDom({ salt, characterIds: ['ryu', 'ken', 'dhalsim', 'honda'], includePlayers: true })
+  assert.deepEqual(withNames.entries?.map(row => row.playerName), ['Synthetic 987654321', 'Synthetic 987654322'])
+  assert.equal(withNames.entries?.some(row => row.playerName === 'private display name'), false)
+  // A blank label is rejected only for listed Legend entries; non-Legend rows are never projected.
+  rows[0].replace('987654321', 'ryu', 1, 2430)
+  rows[0].setLegend()
+  rows[0].setName('')
+  const noNameOptIn = await observeLegendAnalysisDom({ salt, characterIds: ['ryu', 'ken', 'dhalsim', 'honda'], includePlayers: true })
+  assert.equal(noNameOptIn.entries, null)
+  const noNameDefault = await observeLegendAnalysisDom({ salt, characterIds: ['ryu', 'ken', 'dhalsim', 'honda'] })
+  assert.ok(noNameDefault.entries)
 })

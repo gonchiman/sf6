@@ -2,10 +2,18 @@ import { readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseLegendAnalysisDataset, parseLegendAnalysisManifest } from '../src/lib/legendAnalysis.ts'
+import type { LegendAnalysisDescriptor } from '../src/types/legendAnalysis.ts'
 import { checkLegendAnalysisParents, legendAnalysisFileInfo, legendAnalysisPathWithin, readLegendAnalysisJson } from './lib/legend-analysis-files.ts'
 
 /** An empty manifest is an explicit uncollected state, never an empty successful capture. */
 export async function validateLegendAnalysisDirectory(directory: string): Promise<{ datasets: number; entries: number }> {
+  return validateLegendDataDirectory(directory, parseLegendAnalysisDataset)
+}
+
+/** Share bounded file/manifest checks while keeping each dataset family's allowlist separate. */
+export async function validateLegendDataDirectory(directory: string, parseDataset: (value: unknown, expected: LegendAnalysisDescriptor) => {
+  source: { url: string }; generatedAt: string; totalCount: number
+}): Promise<{ datasets: number; entries: number }> {
   const root = resolve(directory)
   await checkLegendAnalysisParents(root)
   if (!(await legendAnalysisFileInfo(root))?.isDirectory()) throw new Error('レジェンド分析の保存先がありません。')
@@ -23,7 +31,7 @@ export async function validateLegendAnalysisDirectory(directory: string): Promis
   for (const descriptor of manifest.datasets) {
     const path = resolve(root, descriptor.path)
     if (descriptor.path !== `${descriptor.id}.json` || !legendAnalysisPathWithin(root, path)) throw new Error('レジェンド分析のデータパスが不正です。')
-    const dataset = parseLegendAnalysisDataset(await readLegendAnalysisJson(path), descriptor)
+    const dataset = parseDataset(await readLegendAnalysisJson(path), descriptor)
     if (dataset.source.url !== manifest.source.url || Date.parse(dataset.generatedAt) > Date.parse(manifest.generatedAt)) throw new Error('レジェンド分析の出典または日時が一覧と一致しません。')
     entries += dataset.totalCount
   }

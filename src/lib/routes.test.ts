@@ -2,6 +2,15 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { balanceAdjustmentDetailHash, characterHash, parseHashRoute } from './routes.ts'
 
+test('レジェンド帯分析2の直接URLを既存分析と区別する', () => {
+  assert.deepEqual(parseHashRoute('#legend-analysis-2'), { page: 'legend-analysis-2' })
+  assert.deepEqual(parseHashRoute('#legend-analysis-2/'), { page: 'legend-analysis-2' })
+  assert.deepEqual(parseHashRoute('#legend-analysis'), { page: 'legend-analysis' })
+  assert.deepEqual(parseHashRoute('#legend-analysis/'), { page: 'legend-analysis' })
+  assert.deepEqual(parseHashRoute('#legend-analysis-2/unknown'), { page: 'win-rates' })
+  assert.deepEqual(parseHashRoute('#legend-analysis-2-invalid'), { page: 'win-rates' })
+})
+
 test('標本調査の直接URLを区別する', () => {
   assert.deepEqual(parseHashRoute('#sample-survey'), { page: 'sample-survey' })
   assert.deepEqual(parseHashRoute('#sample-survey/'), { page: 'sample-survey' })

@@ -5,20 +5,28 @@ import type { LegendAnalysisSafeCaptureReport } from './collect-legend-analysis.
 import { disableRankDistributionDiagnostics } from './collect-rank-distribution.ts'
 import { markRankDistributionArtifactReady, rankDistributionCloudBrowserEnvironment } from './collect-rank-distribution-cloud.ts'
 import { parseBucklerWeeklySession, BUCKLER_WEEKLY_SESSION_SECRET } from './lib/buckler-weekly-session.ts'
-import { validateLegendAnalysisDirectory } from './validate-legend-analysis-data.ts'
+import { validateLegendDailyBundle } from './lib/legend-analysis-daily-bundle.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const LEGEND_DAILY_OUTPUT = resolve(ROOT, '.local/legend-analysis-daily/output')
 type Environment = Record<string, string | undefined>
 
 export class LegendDailyError extends Error {
-  readonly code: 'arguments' | 'runner' | 'session' | 'collection' | 'output'
+  readonly code: 'arguments' | 'runner' | 'players-setting' | 'session' | 'collection' | 'output'
   constructor(code: LegendDailyError['code']) {
     super({ arguments: '--collect または --help を指定してください。', runner: '固定mainの日次workflowによるGitHub hosted Windows実行が必要です。',
+      'players-setting': 'プレイヤー一覧の取得設定を確認できません。',
       session: '日次取得用の保存認証を確認できません。', collection: 'レジェンド帯データの取得を完了できませんでした。', output: '日次取得の集計出力を確認できません。' }[code])
     this.name = 'LegendDailyError'
     this.code = code
   }
+}
+
+/** The workflow resolves manual input or the daily opt-in; any other value fails closed. */
+export function legendDailyIncludesPlayers(env: Environment): boolean {
+  if (env.LEGEND_PLAYERS_ENABLED === 'true') return true
+  if (env.LEGEND_PLAYERS_ENABLED === 'false') return false
+  throw new LegendDailyError('players-setting')
 }
 
 export function isAllowedLegendDailyExecution(env: Environment): boolean {
@@ -32,7 +40,7 @@ export async function runLegendDaily(dependencies: {
   env?: Environment
   now?: () => Date
   collect?: typeof runLegendAnalysisCollection
-  validate?: typeof validateLegendAnalysisDirectory
+  validate?: typeof validateLegendDailyBundle
   artifactReady?: (env: Environment) => Promise<void>
   logReport?: (report: LegendAnalysisSafeCaptureReport) => void
 } = {}): Promise<{ succeeded: boolean }> {
@@ -41,19 +49,20 @@ export async function runLegendDaily(dependencies: {
   delete env[BUCKLER_WEEKLY_SESSION_SECRET]
   disableRankDistributionDiagnostics(env)
   if (!isAllowedLegendDailyExecution(env)) throw new LegendDailyError('runner')
+  const includePlayers = legendDailyIncludesPlayers(env)
   let session
   try { session = parseBucklerWeeklySession(raw ?? '', (dependencies.now ?? (() => new Date()))()) }
   catch { throw new LegendDailyError('session') }
   let result
   try {
     result = await (dependencies.collect ?? runLegendAnalysisCollection)({ storageState: session.storageState,
-      outputDirectory: LEGEND_DAILY_OUTPUT, browserEnvironment: rankDistributionCloudBrowserEnvironment(env) })
+      outputDirectory: LEGEND_DAILY_OUTPUT, includePlayers, browserEnvironment: rankDistributionCloudBrowserEnvironment(env) })
   } catch { throw new LegendDailyError('collection') }
   const safeReport = summarizeLegendAnalysisCaptureReport(result.report)
   const logReport = dependencies.logReport ?? (report => console.log(JSON.stringify({ capture: report })))
   logReport(safeReport)
   try {
-    await (dependencies.validate ?? validateLegendAnalysisDirectory)(resolve(LEGEND_DAILY_OUTPUT, 'public'))
+    await (dependencies.validate ?? validateLegendDailyBundle)(resolve(LEGEND_DAILY_OUTPUT, 'public'), includePlayers)
     await (dependencies.artifactReady ?? markRankDistributionArtifactReady)(env)
   } catch { throw new LegendDailyError('output') }
   return { succeeded: result.succeeded }
@@ -61,7 +70,7 @@ export async function runLegendDaily(dependencies: {
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
   if (args.length === 1 && args[0] === '--help') {
-    console.log('レジェンド帯の日次取得。固定mainのGitHub hosted Windows専用。--collect で保存認証をメモリ内だけで再利用し、集計JSONだけを用意します。')
+    console.log('レジェンド帯の日次取得。固定mainのGitHub hosted Windows専用。--collect で保存認証をメモリ内だけで再利用し、集計JSONと、有効化された場合はプレイヤー一覧を用意します。')
     return
   }
   if (args.length !== 1 || args[0] !== '--collect') {

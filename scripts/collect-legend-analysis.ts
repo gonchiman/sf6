@@ -3,16 +3,20 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { BrowserContextOptions } from 'playwright'
 import { LEGEND_ANALYSIS_SOURCE, parseLegendAnalysisDataset, parseLegendAnalysisManifest } from '../src/lib/legendAnalysis.ts'
+import { createLegendPlayersDescriptor, parseLegendPlayersDataset, parseLegendPlayersManifest } from '../src/lib/legendPlayers.ts'
+import type { LegendPlayersDataset } from '../src/types/legendPlayers.ts'
 import { collectLegendAnalysisDataset, LEGEND_ANALYSIS_COLLECTION_ERROR_CODES, LEGEND_ANALYSIS_COLLECTION_PHASES,
   LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS, LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
 import type { LegendAnalysisCollectionErrorCode, LegendAnalysisCollectionPhase, LegendAnalysisPage,
-  LegendAnalysisRecheckChangeKind, LegendAnalysisValidationCheck } from './lib/legend-analysis-collector.ts'
+  LegendAnalysisRecheckChangeKind, LegendAnalysisValidationCheck, LegendAnalysisVerifiedPlayer, LegendAnalysisAttemptFailure } from './lib/legend-analysis-collector.ts'
 import { createLegendAnalysisPageReader, LEGEND_ANALYSIS_CONDITIONS, legendAnalysisPageUrl, LegendAnalysisDomError, sanitizeLegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import type { LegendAnalysisDomErrorCode, LegendAnalysisReaderStep, LegendClickFailure, LegendClickHit, LegendClickObservation, LegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import { checkLegendAnalysisParents, LEGEND_ANALYSIS_JSON_LIMIT, legendAnalysisFileInfo } from './lib/legend-analysis-files.ts'
 import { BUCKLER_SESSION_CAPTURE_PATH, createBucklerSessionStore, validateBucklerSessionState } from './lib/buckler-session-store.ts'
 import { disableRankDistributionDiagnostics } from './collect-rank-distribution.ts'
 import { rankDistributionCloudBrowserEnvironment } from './collect-rank-distribution-cloud.ts'
+import { normalizeDistributionHumanVerification } from './lib/distribution-human-verification.ts'
+import type { DistributionHumanVerificationDiagnostics } from './lib/distribution-human-verification.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const LEGEND_ANALYSIS_LOCAL_OUTPUT = resolve(ROOT, '.local/legend-analysis-daily/captures')
@@ -26,6 +30,7 @@ export interface LegendAnalysisTransport {
     clickFailure?: LegendClickFailure | null; clickHitKind?: LegendClickHit | null; clickHitTag?: LegendClickObservation['hitTag'];
     parentParagraph?: boolean; pointerEventsNone?: boolean; rosterDiagnostics?: LegendRosterDiagnostics | null;
     lastLoginRequired?: boolean | null; lastSignedIn?: boolean | null; lastRankingReadable?: boolean | null; readableWithoutSignInReadCount?: number; lastHttpStatus?: number | null;
+    humanVerification?: DistributionHumanVerificationDiagnostics;
     lastAttemptedPage: number | null; successfulReadCount: number }
   close(): Promise<void>
 }
@@ -64,6 +69,8 @@ export interface LegendAnalysisCaptureReport {
   collectionErrorCode?: LegendAnalysisCollectionErrorCode | null
   validationCheck?: LegendAnalysisValidationCheck | null
   recheckChangeKinds?: LegendAnalysisRecheckChangeKind[] | null
+  attemptFailures?: LegendAnalysisAttemptFailure[]
+  humanVerification?: DistributionHumanVerificationDiagnostics
 }
 export interface LegendAnalysisSafeCaptureReport {
   status: 'succeeded' | 'failed'
@@ -88,8 +95,29 @@ export interface LegendAnalysisSafeCaptureReport {
   collectionErrorCode: LegendAnalysisCollectionErrorCode | null
   validationCheck: LegendAnalysisValidationCheck | null
   recheckChangeKinds: LegendAnalysisRecheckChangeKind[] | null
+  attemptFailures: LegendAnalysisAttemptFailure[]
+  humanVerification: DistributionHumanVerificationDiagnostics
 }
-/** A second scalar-only boundary for stdout; never log an arbitrary collector result. */
+/** Bounded enum/scalar-only history; no error text, player values or URLs can cross this boundary. */
+function safeAttemptFailures(value: unknown): LegendAnalysisAttemptFailure[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 3).flatMap(candidate => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return []
+    const item = candidate as Record<string, unknown>
+    if (!Number.isSafeInteger(item.attempt) || Number(item.attempt) < 1 || Number(item.attempt) > 3
+      || !LEGEND_ANALYSIS_COLLECTION_PHASES.includes(item.phase as LegendAnalysisCollectionPhase)
+      || !LEGEND_ANALYSIS_COLLECTION_ERROR_CODES.includes(item.code as LegendAnalysisCollectionErrorCode)) return []
+    return [{ attempt: item.attempt as number, phase: item.phase as LegendAnalysisCollectionPhase,
+      page: Number.isSafeInteger(item.page) && Number(item.page) >= 1 && Number(item.page) <= 1000000 ? item.page as number : null,
+      code: item.code as LegendAnalysisCollectionErrorCode,
+      validationCheck: LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS.includes(item.validationCheck as LegendAnalysisValidationCheck) ? item.validationCheck as LegendAnalysisValidationCheck : 'unclassified',
+      recheckChangeKinds: Array.isArray(item.recheckChangeKinds) && item.recheckChangeKinds.length >= 1 && item.recheckChangeKinds.length <= 3
+        && new Set(item.recheckChangeKinds).size === item.recheckChangeKinds.length
+        && item.recheckChangeKinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind as LegendAnalysisRecheckChangeKind))
+        ? [...item.recheckChangeKinds] as LegendAnalysisRecheckChangeKind[] : null }]
+  })
+}
+/** A second bounded enum/scalar-only boundary for stdout; never log an arbitrary collector result. */
 export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnalysisSafeCaptureReport {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
   const bounded = (candidate: unknown, min: number, max: number): candidate is number => Number.isSafeInteger(candidate) && (candidate as number) >= min && (candidate as number) <= max
@@ -123,26 +151,29 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     collectionErrorCode: LEGEND_ANALYSIS_COLLECTION_ERROR_CODES.includes(input.collectionErrorCode as LegendAnalysisCollectionErrorCode) ? input.collectionErrorCode as LegendAnalysisCollectionErrorCode : null,
     validationCheck: LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS.includes(input.validationCheck as LegendAnalysisValidationCheck) ? input.validationCheck as LegendAnalysisValidationCheck : null,
     recheckChangeKinds,
+    attemptFailures: safeAttemptFailures(input.attemptFailures),
+    humanVerification: normalizeDistributionHumanVerification(input.humanVerification),
   }
 }
 export interface LegendAnalysisRunOptions {
   storageState: LegendAnalysisStorageState
-  /** Fresh staging root. Only public/index.json and aggregate dataset JSON are written beneath it. */
+  /** Fresh staging root. Player list sidecars are written only when includePlayers is explicitly true. */
   outputDirectory: string
+  includePlayers?: boolean
   browserEnvironment?: Record<string, string>
   signal?: AbortSignal
 }
 export interface LegendAnalysisRunDependencies {
-  launch?: (state: LegendAnalysisStorageState, signal: AbortSignal, env: Record<string, string>) => Promise<LegendAnalysisTransport>
+  launch?: (state: LegendAnalysisStorageState, signal: AbortSignal, env: Record<string, string>, includePlayers?: boolean) => Promise<LegendAnalysisTransport>
   now?: () => Date
 }
-async function launch(state: LegendAnalysisStorageState, signal: AbortSignal, env: Record<string, string>): Promise<LegendAnalysisTransport> {
+async function launch(state: LegendAnalysisStorageState, signal: AbortSignal, env: Record<string, string>, includePlayers = false): Promise<LegendAnalysisTransport> {
   const { chromium } = await import('playwright')
   const browser = await chromium.launch({ channel: 'msedge', headless: false, timeout: 30000, env })
   try {
     signal.throwIfAborted()
     const context = await browser.newContext({ locale: 'ja-JP', acceptDownloads: false, storageState: state })
-    const reader = createLegendAnalysisPageReader(await context.newPage(), { signal, minIntervalMs: 5000 })
+    const reader = createLegendAnalysisPageReader(await context.newPage(), { signal, minIntervalMs: 5000, includePlayers })
     return { ...reader, close: () => browser.close() }
   } catch { await browser.close().catch(() => {}); throw new Error('browser-unavailable') }
 }
@@ -177,7 +208,8 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
   const report: LegendAnalysisCaptureReport = { status: 'failed', reason: null, startedAt, endedAt: startedAt,
     requestCount: 0, retryCount: 0, datasetId: null, browserClosed: false, lastStep: null, domErrorCode: null,
     characterFilter: null, visibleRosterButtonCount: null, lastAttemptedPage: null, successfulReadCount: 0,
-    captureAttempt: null, collectionPhase: 'preparation', collectionErrorCode: null, validationCheck: null, recheckChangeKinds: null }
+    captureAttempt: null, collectionPhase: 'preparation', collectionErrorCode: null, validationCheck: null, recheckChangeKinds: null,
+    attemptFailures: [], humanVerification: normalizeDistributionHumanVerification(null) }
   const deadline = AbortSignal.timeout(15 * 60 * 1000)
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline
   const output = resolve(options.outputDirectory), publicDirectory = resolve(output, 'public')
@@ -187,19 +219,22 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
   await mkdir(publicDirectory, { mode: 0o700 })
   let transport: LegendAnalysisTransport | undefined
   let dataset: ReturnType<typeof parseLegendAnalysisDataset> | null = null
+  const playerCapture: { rows: readonly LegendAnalysisVerifiedPlayer[] | null } = { rows: null }
   try {
     signal.throwIfAborted()
     let state: LegendAnalysisStorageState
     try { state = JSON.parse(validateBucklerSessionState(JSON.stringify(options.storageState))) as LegendAnalysisStorageState }
     catch { report.reason = 'authentication-unavailable'; throw new Error() }
     transport = await (dependencies.launch ?? launch)(state, signal,
-      rankDistributionCloudBrowserEnvironment(options.browserEnvironment ?? process.env))
+      rankDistributionCloudBrowserEnvironment(options.browserEnvironment ?? process.env), options.includePlayers === true)
     const initial = await transport.initialize()
     const collected = await collectLegendAnalysisDataset({ sourceUrl: LEGEND_ANALYSIS_SOURCE.url, pageUrl: legendAnalysisPageUrl,
       fetchPage: (page, url) => transport!.fetchPage(page, url), confirmAct: () => transport!.confirmAct(), act: initial.act,
       conditions: LEGEND_ANALYSIS_CONDITIONS, characterIds: initial.characterIds, characterNames: initial.characterNames,
       membershipRule: 'official-legend-badge', membershipConfirmed: true, signal, now, maxRequests: 120, maxAttempts: 2,
+      ...(options.includePlayers ? { onVerifiedPlayers: (players: readonly LegendAnalysisVerifiedPlayer[]) => { playerCapture.rows = players } } : {}),
       onRetry: count => { if (Number.isSafeInteger(count) && count >= 1 && count <= 2) report.retryCount = count },
+      onAttemptFailure: failure => { report.attemptFailures = safeAttemptFailures([...(report.attemptFailures ?? []), failure]) },
       onProgress: value => {
         if (LEGEND_ANALYSIS_COLLECTION_PHASES.includes(value.phase)) report.collectionPhase = value.phase
         if (Number.isSafeInteger(value.attempt) && value.attempt >= 1 && value.attempt <= 3) report.captureAttempt = value.attempt
@@ -230,6 +265,7 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
         if (typeof diagnostics.parentParagraph === 'boolean') report.parentParagraph = diagnostics.parentParagraph
         if (typeof diagnostics.pointerEventsNone === 'boolean') report.pointerEventsNone = diagnostics.pointerEventsNone
         report.rosterDiagnostics = sanitizeLegendRosterDiagnostics(diagnostics.rosterDiagnostics)
+        report.humanVerification = normalizeDistributionHumanVerification(diagnostics.humanVerification)
         for (const key of ['lastLoginRequired', 'lastSignedIn', 'lastRankingReadable'] as const) if (typeof diagnostics[key] === 'boolean') report[key] = diagnostics[key]
         if (Number.isSafeInteger(diagnostics.readableWithoutSignInReadCount) && diagnostics.readableWithoutSignInReadCount! >= 0 && diagnostics.readableWithoutSignInReadCount! <= 1000) report.readableWithoutSignInReadCount = diagnostics.readableWithoutSignInReadCount!
         if (Number.isSafeInteger(diagnostics.lastHttpStatus) && diagnostics.lastHttpStatus! >= 100 && diagnostics.lastHttpStatus! <= 599) report.lastHttpStatus = diagnostics.lastHttpStatus!
@@ -244,10 +280,28 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
   try {
     if (dataset) {
       const verified = parseLegendAnalysisDataset(dataset)
+      const players: LegendPlayersDataset | null = options.includePlayers ? parseLegendPlayersDataset({
+        schemaVersion: 1, id: verified.id, captureStartedAt: verified.captureStartedAt, captureEndedAt: verified.captureEndedAt,
+        generatedAt: verified.generatedAt, source: { ...verified.source, metric: '掲載エントリーのプレイヤー名・キャラクター・順位・MR',
+          notes: ['公式レジェンド掲載の取得期間内の断面。', '1行はアカウント×キャラクター単位。'] },
+        act: verified.act, definitionVersion: verified.definitionVersion, membershipRule: verified.membershipRule,
+        conditions: verified.conditions, totalCount: verified.totalCount,
+        players: (playerCapture.rows ?? []).map((row, index) => ({ id: `entry-${index + 1}`, ...row })),
+        validation: { ...verified.validation, notes: ['条件・Act・掲載判定・表示範囲・順位・MR順・重複と両端を確認した。',
+          '行IDは取得回内だけで使用する。プロフィールID・リンク・照合用一時ハッシュは保存していない。'] },
+      }) : null
       const manifest = parseLegendAnalysisManifest({ schemaVersion: 1, generatedAt, source: LEGEND_ANALYSIS_SOURCE,
         datasets: [{ id: verified.id, path: `${verified.id}.json`, actId: verified.act.id, definitionVersion: verified.definitionVersion,
           membershipRule: verified.membershipRule, conditions: verified.conditions, captureStartedAt: verified.captureStartedAt,
           captureEndedAt: verified.captureEndedAt, totalCount: verified.totalCount }] })
+      if (players) {
+        const playerDirectory = resolve(publicDirectory, 'players')
+        const playerManifest = parseLegendPlayersManifest({ schemaVersion: 1, generatedAt, source: LEGEND_ANALYSIS_SOURCE,
+          datasets: [createLegendPlayersDescriptor(players)] })
+        await mkdir(playerDirectory, { mode: 0o700 })
+        await writeJson(resolve(playerDirectory, `${players.id}.json`), players)
+        await writeJson(resolve(playerDirectory, 'index.json'), playerManifest)
+      }
       await writeJson(resolve(publicDirectory, `${verified.id}.json`), verified)
       await writeJson(resolve(publicDirectory, 'index.json'), manifest)
       report.status = 'succeeded'; report.reason = null; report.datasetId = verified.id
@@ -257,6 +311,13 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
           checkedAt: generatedAt, message: report.reason === 'source-unconfirmed' ? '取得条件の確認が完了していません。'
             : report.reason === 'access-unavailable' ? '取得元が今回のアクセスを受け付けなかったため、集計を完了できませんでした。取得完了データのみを表示します。'
               : '今回の取得を完了できませんでした。取得完了データのみを表示します。' } }))
+      if (options.includePlayers) {
+        const playerDirectory = resolve(publicDirectory, 'players')
+        await mkdir(playerDirectory, { mode: 0o700 })
+        await writeJson(resolve(playerDirectory, 'index.json'), parseLegendPlayersManifest({ schemaVersion: 1, generatedAt,
+          source: LEGEND_ANALYSIS_SOURCE, datasets: [], availability: { status: report.reason === 'source-unconfirmed' ? 'verification-pending' : 'collection-failed',
+            checkedAt: generatedAt, message: 'プレイヤー一覧の取得を完了できませんでした。' } }))
+      }
     }
   } catch { report.status = 'failed'; report.reason = 'output-unavailable'; report.datasetId = null }
   return { succeeded: report.status === 'succeeded', report }
@@ -281,15 +342,16 @@ export async function loadLegendAnalysisLocalSession(): Promise<LegendAnalysisSt
 }
 export async function main(args = process.argv.slice(2)): Promise<void> {
   if (args.length === 1 && args[0] === '--help') {
-    console.log('node scripts/collect-legend-analysis.ts --saved-session\n保存済み認証をメモリ内で再利用し、公式レジェンド掲載の集計JSONのみを固定ローカル出力へ保存します。')
+    console.log('node scripts/collect-legend-analysis.ts --saved-session [--players]\n保存済み認証をメモリ内で再利用し、公式レジェンド掲載の集計JSONを固定ローカル出力へ保存します。--players は検証済みのプレイヤー一覧も別JSONに保存します。')
     return
   }
-  if (args.length !== 1 || args[0] !== '--saved-session') throw new Error('arguments')
+  if (args[0] !== '--saved-session' || args.length > 2 || args.length === 2 && args[1] !== '--players') throw new Error('arguments')
   const controller = new AbortController(), interrupt = (): void => controller.abort()
   process.once('SIGINT', interrupt)
   try {
     const outputDirectory = resolve(LEGEND_ANALYSIS_LOCAL_OUTPUT, new Date().toISOString().replace(/[:.]/g, '-'))
-    const result = await runLegendAnalysisCollection({ storageState: await loadLegendAnalysisLocalSession(), outputDirectory, signal: controller.signal })
+    const result = await runLegendAnalysisCollection({ storageState: await loadLegendAnalysisLocalSession(), outputDirectory, signal: controller.signal,
+      includePlayers: args.includes('--players') })
     console.log(JSON.stringify(summarizeLegendAnalysisCaptureReport(result.report)))
     console.log(`集計保存先: ${resolve(outputDirectory, 'public')}`)
     if (!result.succeeded) process.exitCode = 2

@@ -49,6 +49,58 @@ test('run persists aggregates only after all checks and successful browser closu
   for (const value of [SECRET, 'accountKey', 'profile/', 'cookies', 'storageState']) assert.equal(all.includes(value), false)
 })
 
+test('explicit player opt-in persists a complete separate projection with capture-local IDs', async t => {
+  const data = await fixture(t), read = data.transport.fetchPage
+  data.transport.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    value.entries.forEach((entry, index) => { entry.playerName = `Synthetic player ${index}` })
+    return value
+  }
+  let includePlayers: boolean | undefined
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, {
+    now, launch: async (_state, _signal, _env, enabled) => { includePlayers = enabled; return data.transport },
+  })
+  assert.equal(result.succeeded, true)
+  assert.equal(includePlayers, true)
+  const playerDirectory = resolve(data.output, 'public/players')
+  const manifest = JSON.parse(await readFile(resolve(playerDirectory, 'index.json'), 'utf8'))
+  const players = JSON.parse(await readFile(resolve(playerDirectory, manifest.datasets[0].path), 'utf8'))
+  assert.deepEqual(players.players, [
+    { id: 'entry-1', playerName: 'Synthetic player 0', characterId: 'ryu', rank: 1, masterRating: 2400 },
+    { id: 'entry-2', playerName: 'Synthetic player 1', characterId: 'ryu', rank: 2, masterRating: 2399 },
+  ])
+  assert.equal(players.totalCount, 2)
+  assert.doesNotMatch(JSON.stringify(players), /accountKey|profile\/|cookies|storageState|synthetic-secret/)
+  assert.doesNotMatch(JSON.stringify(result), /Synthetic player|playerName|accountKey/)
+  assert.doesNotMatch(await readFile(resolve(data.output, 'public', manifest.datasets[0].path), 'utf8'), /Synthetic player|playerName|entry-1/)
+})
+
+test('incomplete player capture writes only failure manifests and no fabricated or partial rows', async t => {
+  const data = await fixture(t)
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+  assert.equal(result.succeeded, false)
+  assert.equal(result.report.reason, 'source-unconfirmed')
+  assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json', 'players'])
+  assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+  const manifest = JSON.parse(await readFile(resolve(data.output, 'public/players/index.json'), 'utf8'))
+  assert.deepEqual(manifest.datasets, [])
+  assert.equal(manifest.availability.status, 'verification-pending')
+})
+
+test('player opt-in cannot publish a completed projection when browser closure fails', async t => {
+  const data = await fixture(t), read = data.transport.fetchPage
+  data.transport.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    value.entries.forEach(entry => { entry.playerName = 'Synthetic player' })
+    return value
+  }
+  data.transport.close = async () => { throw new Error('Synthetic player') }
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+  assert.equal(result.succeeded, false)
+  assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+  assert.doesNotMatch(await readFile(resolve(data.output, 'public/players/index.json'), 'utf8'), /Synthetic player/)
+})
+
 test('raw browser failures produce only a safe failure manifest, with no fabricated zero capture', async t => {
   const data = await fixture(t)
   data.transport.initialize = async () => { throw new Error(`${SECRET} private-page-source`) }
@@ -87,7 +139,7 @@ test('a whole-capture retry followed by HTTP 405 retains its retry count and pub
     return result
   }
   failed.transport.getDiagnostics = () => ({ requestCount: failed.calls.read, lastHttpStatus: 405, lastErrorCode: 'http-error', lastStep: 'ranking-navigation',
-    lastAttemptedPage: 1, successfulReadCount: 2 })
+    lastAttemptedPage: 1, successfulReadCount: 2, humanVerification: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: true } })
   const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: failed.output }, { now, launch: async () => failed.transport })
   assert.equal(result.succeeded, false)
   assert.equal(result.report.retryCount, 1)
@@ -101,6 +153,11 @@ test('a whole-capture retry followed by HTTP 405 retains its retry count and pub
   assert.equal(result.report.collectionErrorCode, null)
   assert.equal(result.report.validationCheck, null)
   assert.equal(result.report.recheckChangeKinds, null)
+  assert.deepEqual(result.report.attemptFailures, [{ attempt: 1, phase: 'end-recheck', page: 1,
+    code: 'source-changed', validationCheck: 'end-recheck', recheckChangeKinds: ['legend-entries'] }])
+  const safe = summarizeLegendAnalysisCaptureReport(result.report)
+  assert.deepEqual(safe.attemptFailures, result.report.attemptFailures)
+  assert.deepEqual(safe.humanVerification, { wafHeaderChecked: true, wafAction: 'captcha', domDetected: true })
   const incoming = resolve(failed.output, 'public')
   const failureManifest = JSON.parse(await readFile(resolve(incoming, 'index.json'), 'utf8'))
   assert.deepEqual(failureManifest.datasets, [])
@@ -177,6 +234,24 @@ test('collector MR-order failure propagates fixed diagnostics through the CLI an
   const safe = summarizeLegendAnalysisCaptureReport(result.report)
   assert.equal(safe.collectionErrorCode, 'source-changed')
   assert.equal(safe.validationCheck, 'mr-order')
+  assert.equal(safe.attemptFailures.length, 2)
+  assert.deepEqual(safe.attemptFailures.map(item => [item.attempt, item.validationCheck]), [[1, 'mr-order'], [2, 'mr-order']])
   assert.equal(JSON.stringify(safe).includes('accountKey'), false)
   assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json'])
+})
+
+test('stdout sanitizes bounded attempt history and distinguishes unobserved challenge evidence', () => {
+  const failure = { attempt: 1, phase: 'listing', page: 19, code: 'duplicate-entry', validationCheck: 'duplicate-entry',
+    recheckChangeKinds: null, message: SECRET, playerName: SECRET, profileUrl: SECRET }
+  const safe = summarizeLegendAnalysisCaptureReport({ attemptFailures: [failure, { ...failure, attempt: SECRET },
+    { ...failure, attempt: 2, page: SECRET, validationCheck: SECRET, recheckChangeKinds: [SECRET] }, failure],
+    humanVerification: { wafHeaderChecked: false, wafAction: 'captcha', domDetected: SECRET, body: SECRET } })
+  assert.deepEqual(safe.attemptFailures, [
+    { attempt: 1, phase: 'listing', page: 19, code: 'duplicate-entry', validationCheck: 'duplicate-entry', recheckChangeKinds: null },
+    { attempt: 2, phase: 'listing', page: null, code: 'duplicate-entry', validationCheck: 'unclassified', recheckChangeKinds: null },
+  ])
+  assert.deepEqual(safe.humanVerification, { wafHeaderChecked: false, wafAction: null, domDetected: null })
+  assert.equal(JSON.stringify(safe).includes(SECRET), false)
+  assert.deepEqual(summarizeLegendAnalysisCaptureReport({ humanVerification: { wafHeaderChecked: true, wafAction: null, domDetected: false } }).humanVerification,
+    { wafHeaderChecked: true, wafAction: null, domDetected: false })
 })
