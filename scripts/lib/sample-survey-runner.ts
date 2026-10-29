@@ -188,6 +188,7 @@ function validatePage(page: SampleSurveyPage, target: SampleSurveyTarget, reques
 
 /** Recoverable evidence about one stratum, never an authentication/format/network failure. */
 class BoundaryDrift extends Error {}
+class BoundaryConfirmationDrift extends BoundaryDrift {}
 export interface SampleSurveyRunnerOptions {
   reader: SampleSurveyReader
   signal: AbortSignal
@@ -277,7 +278,8 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
     change(kind, before, after)
     throw new BoundaryDrift()
   }
-  async function discover(definition: SampleSurveyStratumDefinition, hint?: SampleSurveyFrame): Promise<SampleSurveyFrame> {
+  async function discover(definition: SampleSurveyStratumDefinition, hint?: SampleSurveyFrame,
+    confirmCandidate?: (kind: 'boundary-start' | 'boundary-end', cut: number) => void): Promise<SampleSurveyFrame> {
     const first = await read(definition.target, 1), cache = new Map<number, SampleSurveyPage>([[1, first]])
     // Reuse only a candidate position. Every page in this discovery and the following
     // confirmation is read anew; saved rows never establish a current boundary.
@@ -319,6 +321,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       }
       return null
     }
+    let fullRangeSearch = false
     async function firstLess(threshold: number | null, candidate?: number): Promise<number> {
       if (threshold === null || definition.target === 'lp' && threshold > 36) return 0
       if (threshold <= (definition.target === 'lp' ? 1 : 0)) return latest.get(definition.target)!.total
@@ -326,6 +329,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
         const found = await nearby(threshold, candidate)
         if (found !== null) return found
       }
+      fullRangeSearch = true
       let low = 0, high = latest.get(definition.target)!.total
       while (low < high) {
         const middle = Math.floor((low + high) / 2), page = await cached(Math.floor(middle / first.pageSize) + 1)
@@ -337,36 +341,68 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       }
       return low
     }
-    const rangeStart = await firstLess(definition.maximum, hintRange?.start), rangeEnd = await firstLess(definition.minimum, hintRange?.end)
+    const rangeStart = await firstLess(definition.maximum, hintRange?.start)
+    if (confirmCandidate) {
+      confirmCandidate('boundary-start', rangeStart)
+      await confirmBoundary(definition, rangeStart, definition.maximum, 'boundary-start', first.pageSize)
+      // Even a small stratum may put both cuts on one page. The second search
+      // must not derive its candidate from the first search's cached snapshot.
+      cache.clear()
+    }
+    fullRangeSearch = false
+    const endSearchStartAttempts = report.attempts
+    const rangeEnd = await firstLess(definition.minimum, hintRange?.end)
+    const confirmTogether = fullRangeSearch || report.attempts - endSearchStartAttempts > 1
+    if (confirmCandidate) confirmCandidate('boundary-end', rangeEnd)
     if (rangeStart > rangeEnd) drift('range-order', rangeStart, rangeEnd)
+    // A long second search would age the already-confirmed start. In that case
+    // retain the ordinary fresh check of both cuts within this same attempt.
+    if (confirmCandidate && !confirmTogether) {
+      await confirmBoundary(definition, rangeEnd, definition.minimum, 'boundary-end', first.pageSize)
+    }
     const totalCount = latest.get(definition.target)!.total
     if (rangeEnd > totalCount) drift('boundary-end', rangeEnd, totalCount)
-    return { target: definition.target, totalCount, pageSize: first.pageSize, totalPages: Math.ceil(totalCount / first.pageSize),
+    const frame: SampleSurveyFrame = { target: definition.target, totalCount, pageSize: first.pageSize, totalPages: Math.ceil(totalCount / first.pageSize),
       checkedAt: new Date(now()).toISOString(), ranges: [{ stratumId: definition.id, start: rangeStart, end: rangeEnd }] }
+    if (confirmCandidate && confirmTogether) await confirm(frame, definition)
+    return frame
+  }
+  async function confirmBoundary(definition: SampleSurveyStratumDefinition, cut: number, threshold: number | null,
+    kind: 'boundary-start' | 'boundary-end', pageSize: number, fresh = new Map<number, SampleSurveyPage>()): Promise<void> {
+    const mismatch = (after: number | null): never => {
+      change(kind, cut, after)
+      throw new BoundaryConfirmationDrift()
+    }
+    if (threshold === null || definition.target === 'lp' && threshold > 36) { if (cut !== 0) mismatch(0); return }
+    if (threshold <= (definition.target === 'lp' ? 1 : 0)) {
+      // The terminal cut needs a new total observation; comparing it only with
+      // the same latest.total used by firstLess would always pass.
+      if (!fresh.has(1)) await read(definition.target, 1)
+      if (cut !== latest.get(definition.target)!.total) mismatch(latest.get(definition.target)!.total)
+      return
+    }
+    if (latest.get(definition.target)!.total === 0 && !fresh.has(1)) {
+      fresh.set(1, await read(definition.target, 1))
+    }
+    if (cut > latest.get(definition.target)!.total) mismatch(latest.get(definition.target)!.total)
+    for (const position of [cut - 1, cut]) {
+      if (position < 0 || position >= latest.get(definition.target)!.total) continue
+      const pageNumber = Math.floor(position / pageSize) + 1
+      const page = fresh.get(pageNumber) ?? await read(definition.target, pageNumber)
+      fresh.set(pageNumber, page)
+      const entry = page.entries[position % pageSize]
+      if (!entry) mismatch(null)
+      const metric = definition.target === 'lp' ? entry.rankId! : entry.value
+      if (position < cut ? metric < threshold : metric >= threshold) mismatch(null)
+    }
+    // A newly growing tail can invalidate a previously terminal cut.
+    if (cut > latest.get(definition.target)!.total) mismatch(latest.get(definition.target)!.total)
   }
   async function confirm(frame: SampleSurveyFrame, definition: SampleSurveyStratumDefinition): Promise<void> {
     const first = await read(definition.target, 1), fresh = new Map<number, SampleSurveyPage>([[1, first]])
     const range = frame.ranges[0]
-    for (const [cut, threshold, kind] of [[range.start, definition.maximum, 'boundary-start'], [range.end, definition.minimum, 'boundary-end']] as const) {
-      if (threshold === null || definition.target === 'lp' && threshold > 36) { if (cut !== 0) drift(kind, cut, 0); continue }
-      if (threshold <= (definition.target === 'lp' ? 1 : 0)) {
-        if (cut !== latest.get(definition.target)!.total) drift(kind, cut, latest.get(definition.target)!.total)
-        continue
-      }
-      if (cut > latest.get(definition.target)!.total) drift(kind, cut, latest.get(definition.target)!.total)
-      for (const position of [cut - 1, cut]) {
-        if (position < 0 || position >= latest.get(definition.target)!.total) continue
-        const pageNumber = Math.floor(position / frame.pageSize) + 1
-        const page = fresh.get(pageNumber) ?? await read(definition.target, pageNumber)
-        fresh.set(pageNumber, page)
-        const entry = page.entries[position % frame.pageSize]
-        if (!entry) drift(kind, cut, null)
-        const metric = definition.target === 'lp' ? entry.rankId! : entry.value
-        if (position < cut ? metric < threshold : metric >= threshold) drift(kind, cut, null)
-      }
-      // A newly growing tail can invalidate a previously terminal cut.
-      if (cut > latest.get(definition.target)!.total) drift(kind, cut, latest.get(definition.target)!.total)
-    }
+    await confirmBoundary(definition, range.start, definition.maximum, 'boundary-start', frame.pageSize, fresh)
+    await confirmBoundary(definition, range.end, definition.minimum, 'boundary-end', frame.pageSize, fresh)
     frame.checkedAt = new Date(now()).toISOString()
   }
   function before(observed: SampleSurveyStratumObservation, frame: SampleSurveyFrame): void {
@@ -399,23 +435,27 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       try {
         frame = await discover(definition, saved)
         if (!saved) before(observed, frame)
+        const candidates = { start: frame.ranges[0].start, end: frame.ranges[0].end }
+        const recordCandidate = (kind: 'boundary-start' | 'boundary-end', cut: number) => {
+          const key = kind === 'boundary-start' ? 'start' : 'end'
+          if (candidates[key] !== cut) change(kind, candidates[key], cut)
+          candidates[key] = cut
+        }
         for (let refinement = 0; ; refinement++) {
           try {
-            await confirm(frame, definition)
+            if (refinement === 0) await confirm(frame, definition)
+            else {
+              frame = await discover(definition, frame, recordCandidate)
+              // Publish only a complete, confirmed range. Partial candidates
+              // remain private hints/change evidence and never define slots.
+              before(observed, frame)
+            }
             break
           } catch (error) {
             // Only an established, unsampled candidate may be refreshed. A failed
             // discovery, saved slots, or any read/authentication error cannot retry.
-            if (!(error instanceof BoundaryDrift) || saved || refinement === INITIAL_BOUNDARY_REFINEMENTS) throw error
+            if (!(error instanceof BoundaryConfirmationDrift) || saved || refinement === INITIAL_BOUNDARY_REFINEMENTS) throw error
             observed.boundaryChanged = true; report.frameChanged = true
-            const previous = frame.ranges[0]
-            frame = await discover(definition, frame)
-            const refreshed = frame.ranges[0]
-            if (previous.start !== refreshed.start) change('boundary-start', previous.start, refreshed.start)
-            if (previous.end !== refreshed.end) change('boundary-end', previous.end, refreshed.end)
-            // The selected positions and published population must use the same
-            // final frame; earlier candidates remain only in the change evidence.
-            before(observed, frame)
           }
         }
       } catch (error) {
