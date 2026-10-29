@@ -2,6 +2,7 @@ import type { Page } from 'playwright'
 import { PARALLEL_FETCH_ERRORS } from '../../src/types/parallelFetch.ts'
 import type { ParallelFetchReadDiagnostics } from '../../src/types/parallelFetch.ts'
 import type { SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
+import { parseParallelFetchReadDiagnostics } from '../../src/lib/parallelFetch.ts'
 import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
 import { SampleSurveyReadError } from './sample-survey-reader.ts'
 
@@ -11,6 +12,8 @@ const NETWORK_CODES = ['ERR_CONNECTION_RESET', 'ERR_CONNECTION_REFUSED', 'ERR_CO
   'ERR_NAME_NOT_RESOLVED', 'ERR_NETWORK_ACCESS_DENIED', 'ERR_TUNNEL_CONNECTION_FAILED', 'ERR_PROXY_CONNECTION_FAILED',
   'ERR_CERT_AUTHORITY_INVALID', 'ERR_ABORTED', 'ERR_INTERNET_DISCONNECTED', 'ERR_HTTP_RESPONSE_CODE_FAILURE'] as const
 const SAFE_CODES = new Set<string>([...PARALLEL_FETCH_ERRORS, 'frame-changed', 'storage-error', 'interrupted'])
+const FAILURE_KINDS = ['timeout', 'network', 'undefined-helper', 'reference-error', 'type-error', 'browser-closed', 'other'] as const
+export const SAMPLE_SURVEY_DIAGNOSTIC_MAX_BYTES = 64 * 1024
 type NetworkCode = typeof NETWORK_CODES[number]
 export type SampleSurveyDiagnosticFailureKind = 'timeout' | 'network' | 'undefined-helper' | 'reference-error'
   | 'type-error' | 'browser-closed' | 'other'
@@ -58,24 +61,26 @@ function observation(value: unknown): SampleSurveyDiagnosticObservation | undefi
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const input = value as Record<string, unknown>, result: SampleSurveyDiagnosticObservation = {}
   for (const key of ['maintenance', 'loginRequired', 'signedIn', 'loginRequiredHeading', 'conditionsMatch', 'leagueLabelsMatch', 'currentActMatch'] as const) {
-    if (input[key] === null || typeof input[key] === 'boolean') result[key] = input[key] as boolean | null
+    const candidate = input[key]
+    if (candidate === null || typeof candidate === 'boolean') result[key] = candidate
   }
-  if (input.authenticationEvidence === null || typeof input.authenticationEvidence === 'string'
-    && ['logout-control', 'login-control', 'conflicting-controls', 'no-control'].includes(input.authenticationEvidence)) {
-    result.authenticationEvidence = input.authenticationEvidence as SampleSurveyDiagnosticObservation['authenticationEvidence']
+  const { authenticationEvidence, selectedPage, range, rankIcons, entries, rows } = input
+  if (authenticationEvidence === null || typeof authenticationEvidence === 'string'
+    && ['logout-control', 'login-control', 'conflicting-controls', 'no-control'].includes(authenticationEvidence)) {
+    result.authenticationEvidence = authenticationEvidence as SampleSurveyDiagnosticObservation['authenticationEvidence']
   }
-  if (input.selectedPage === null || count(input.selectedPage)) result.selectedPage = input.selectedPage as number | null
-  if (input.range === null) result.range = null
-  else if (input.range && typeof input.range === 'object' && !Array.isArray(input.range)) {
-    const range = input.range as Record<string, unknown>
-    if (count(range.from) && count(range.to) && count(range.total)) result.range = { from: range.from, to: range.to, total: range.total }
+  if (selectedPage === null || count(selectedPage)) result.selectedPage = selectedPage
+  if (range === null) result.range = null
+  else if (range && typeof range === 'object' && !Array.isArray(range)) {
+    const { from, to, total } = range as Record<string, unknown>
+    if (count(from) && count(to) && count(total)) result.range = { from, to, total }
   }
-  if (input.rankIcons === null || typeof input.rankIcons === 'string' && ['ready', 'pending', 'unsupported'].includes(input.rankIcons)) {
-    result.rankIcons = input.rankIcons as SampleSurveyDiagnosticObservation['rankIcons']
+  if (rankIcons === null || typeof rankIcons === 'string' && ['ready', 'pending', 'unsupported'].includes(rankIcons)) {
+    result.rankIcons = rankIcons as SampleSurveyDiagnosticObservation['rankIcons']
   }
-  if (Array.isArray(input.entries)) result.entryCount = input.entries.length
-  else if (input.entries === null) result.entryCount = null
-  else if (Array.isArray(input.rows)) result.entryCount = input.rows.length
+  if (Array.isArray(entries)) result.entryCount = entries.length
+  else if (entries === null) result.entryCount = null
+  else if (Array.isArray(rows)) result.entryCount = rows.length
   return Object.keys(result).length ? result : undefined
 }
 
@@ -93,6 +98,61 @@ function classify(error: unknown): FailureClassification {
     if (error.name === 'TypeError' || /\bTypeError:/.test(message)) return { failureKind: 'type-error' }
   } catch { /* Hostile exception accessors cannot affect collection. */ }
   return { failureKind: 'other' }
+}
+
+/** Rebuild the log record at the output boundary; callback payloads are not trusted by their TypeScript type. */
+export function serializeSampleSurveyFailureDiagnostic(value: unknown): string | null {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    const input = value as Record<string, unknown>
+    const { schemaVersion, capturedAt, events: rawEvents, innerCode, httpStatus, droppedEvents, capture,
+      failureKind: rawKind, networkCode: rawCode, diagnostics } = input
+    if (schemaVersion !== 1 || typeof capturedAt !== 'string'
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(capturedAt)
+      || !Number.isFinite(Date.parse(capturedAt)) || new Date(capturedAt).toISOString() !== capturedAt
+      || !Array.isArray(rawEvents)) return null
+    const failureKind = (candidate: unknown): SampleSurveyDiagnosticFailureKind | undefined =>
+      typeof candidate === 'string' && FAILURE_KINDS.includes(candidate as SampleSurveyDiagnosticFailureKind)
+        ? candidate as SampleSurveyDiagnosticFailureKind : undefined
+    const networkCode = (candidate: unknown): NetworkCode | undefined =>
+      typeof candidate === 'string' && NETWORK_CODES.includes(candidate as NetworkCode) ? candidate as NetworkCode : undefined
+    let skipped = Math.max(0, rawEvents.length - MAX_EVENTS)
+    const events: SampleSurveyDiagnosticEvent[] = []
+    for (const item of rawEvents.slice(-MAX_EVENTS)) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) { skipped++; continue }
+      const { elapsedMs, stage, outcome, target, httpStatus: eventStatus, failureKind: eventKind,
+        networkCode: eventCode, observation: eventObservation } = item as Record<string, unknown>
+      if (typeof elapsedMs !== 'number' || !Number.isFinite(elapsedMs) || elapsedMs < 0 || elapsedMs > MAX_ELAPSED_MS
+        || !['navigation', 'ranking-evaluate', 'capture-start', 'capture-complete'].includes(stage as string)
+        || !['start', 'complete', 'failed'].includes(outcome as string)) { skipped++; continue }
+      const safe: SampleSurveyDiagnosticEvent = { elapsedMs,
+        stage: stage as SampleSurveyDiagnosticEvent['stage'], outcome: outcome as SampleSurveyDiagnosticEvent['outcome'] }
+      if (target === 'lp' || target === 'mr') safe.target = target
+      if (eventStatus === null || status(eventStatus) !== null) safe.httpStatus = status(eventStatus)
+      const kind = failureKind(eventKind), code = networkCode(eventCode)
+      if (kind) safe.failureKind = kind
+      if (code) safe.networkCode = code
+      const observed = observation(eventObservation)
+      if (observed) safe.observation = observed
+      if (eventObservation && typeof eventObservation === 'object' && !Array.isArray(eventObservation)) {
+        const entryCount = (eventObservation as Record<string, unknown>).entryCount
+        if (entryCount === null || count(entryCount) && entryCount <= 20) {
+          safe.observation ??= {}; safe.observation.entryCount = entryCount as number | null
+        }
+      }
+      events.push(safe)
+    }
+    const result: SampleSurveyFailureDiagnostic = { schemaVersion: 1, capturedAt,
+      innerCode: typeof innerCode === 'string' && SAFE_CODES.has(innerCode) ? innerCode : null,
+      httpStatus: status(httpStatus), failureKind: failureKind(rawKind) ?? 'other',
+      events, droppedEvents: Math.min(Number.MAX_SAFE_INTEGER, (count(droppedEvents) ? droppedEvents : 0) + skipped),
+      capture: capture === 'started' || capture === 'complete' ? capture : 'not-started' }
+    const code = networkCode(rawCode)
+    if (code) result.networkCode = code
+    try { if (diagnostics !== undefined) result.diagnostics = parseParallelFetchReadDiagnostics(diagnostics) } catch { /* Keep valid evidence when a nested diagnostic is malformed. */ }
+    const line = JSON.stringify({ sampleSurveyFailureDiagnostic: result })
+    return Buffer.byteLength(line, 'utf8') <= SAMPLE_SURVEY_DIAGNOSTIC_MAX_BYTES ? line : null
+  } catch { return null }
 }
 
 /** In-memory, bounded evidence only. The caller decides whether and where a failure is saved. */

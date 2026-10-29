@@ -5,6 +5,7 @@ import { isAllowedSampleSurveyCloudExecution, parseSampleSurveyCloudConfig, runS
 import { publishSampleSurveyCloud, SAMPLE_SURVEY_CLOUD_HISTORY, SAMPLE_SURVEY_CLOUD_INCOMING } from './publish-sample-survey-cloud.ts'
 import { createSampleSurveyCheckpoint, runSampleSurvey } from './lib/sample-survey-runner.ts'
 import type { SampleSurveyPlan } from '../src/types/sampleSurvey.ts'
+import { SampleSurveyReadError } from './lib/sample-survey-reader.ts'
 
 const PRIVATE = 'synthetic-private-cookie-do-not-publish'
 const now = new Date('2026-10-27T00:00:00.000Z')
@@ -61,7 +62,7 @@ test('cloud inputs reuse rank/sample validation and cap wall time without accept
 })
 test('real synthetic collection uses the existing serial runner, closes reader and publishes only aggregates', async () => {
   let clock = now.getTime(), closed = false, artifact = false
-  const env = environment(), requests: number[] = [], written: unknown[] = [], logs: unknown[] = []
+  const env = environment(), requests: number[] = [], written: unknown[] = [], logs: unknown[] = [], failures: string[] = []
   const rows = Array.from({ length: 20 }, (_, index) => ({ accountId: String(987650000 + index), value: 30020 - index, rankId: 36 }))
   const result = await runSampleSurveyCloud({ env, now: () => new Date(clock), createReader: async (options, dependencies) => {
     assert.equal(options.signal.aborted, false)
@@ -72,12 +73,67 @@ test('real synthetic collection uses the existing serial runner, closes reader a
   }, collect: (plan, options) => runSampleSurvey(plan, { ...options, wait: async ms => { clock += ms } }),
   write: async (runs, path) => { assert.equal(closed, true); assert.equal(path, SAMPLE_SURVEY_CLOUD_OUTPUT); written.push(...runs); return { datasets: 1 } },
   validate: async path => { assert.equal(path, SAMPLE_SURVEY_CLOUD_OUTPUT); return { datasets: 1 } },
-  artifactReady: async () => { artifact = true }, logReport: report => logs.push(report) })
+  artifactReady: async () => { artifact = true }, logReport: report => logs.push(report), logFailureDiagnostic: line => { failures.push(line) } })
   assert.equal(result.succeeded, true); assert.equal(result.report.strata[0].succeeded, 10)
   assert.equal(closed, true); assert.equal(artifact, true); assert.equal(written.length, 1)
+  assert.deepEqual(failures, [])
   for (let i = 1; i < requests.length; i++) assert.ok(requests[i] - requests[i - 1] >= 10000)
   const text = JSON.stringify({ result, written, logs })
   for (const secret of [PRIVATE, 'accountId', 'cookies', 'slots', 'private-github-token', ...rows.map(row => row.accountId)]) assert.equal(text.includes(secret), false)
+})
+
+function failureDiagnostic() {
+  return { schemaVersion: 1 as const, capturedAt: now.toISOString(), innerCode: 'authentication-unconfirmed', httpStatus: 200,
+    failureKind: 'other' as const, capture: 'not-started' as const, events: [], droppedEvents: 0,
+    diagnostics: { authenticationEvidence: 'login-control' as const, loginRequiredHeading: false, rankingReadable: false,
+      cookie: PRIVATE }, rawHtml: PRIVATE, message: PRIVATE, accountId: PRIVATE }
+}
+
+test('cloud records only the first safe failure diagnostic and retains the collection stop reason', async () => {
+  const lines: string[] = []
+  let closed = false, reads = 0
+  const result = await runSampleSurveyCloud({ env: environment(), now: () => now,
+    createReader: async options => ({
+      readPage: async () => {
+        reads++
+        await options.onReadFailure!(failureDiagnostic())
+        await options.onReadFailure!({ ...failureDiagnostic(), httpStatus: 503 })
+        throw new SampleSurveyReadError('authentication-unconfirmed')
+      }, close: async () => { closed = true },
+    }), logReport: () => {}, logFailureDiagnostic: line => { lines.push(line) },
+    write: async () => { assert.fail('failed collection must not publish') },
+    artifactReady: async () => { assert.fail('failed collection must not upload') },
+  })
+  assert.equal(result.succeeded, false); assert.equal(result.report.stopReason, 'authentication-unconfirmed')
+  assert.equal(reads, 1); assert.equal(closed, true); assert.equal(lines.length, 1)
+  const diagnostic = JSON.parse(lines[0]).sampleSurveyFailureDiagnostic
+  assert.equal(diagnostic.httpStatus, 200)
+  assert.deepEqual(diagnostic.diagnostics, { authenticationEvidence: 'login-control', loginRequiredHeading: false, rankingReadable: false })
+  assert.ok(!lines[0].includes(PRIVATE)); assert.ok(!JSON.stringify(result.report).includes('diagnostics'))
+})
+
+test('malformed diagnostics and failing log sinks never replace the original stop reason', async () => {
+  for (const kind of ['null', 'getter', 'throwing-log', 'rejecting-log']) {
+    let logCalls = 0, reads = 0
+    const result = await runSampleSurveyCloud({ env: environment(), now: () => now,
+      createReader: async options => ({
+        readPage: async () => {
+          reads++
+          const value = kind === 'null' ? null : kind === 'getter' ? { get schemaVersion() { throw new Error(PRIVATE) } } : failureDiagnostic()
+          await options.onReadFailure!(value as never)
+          await options.onReadFailure!(failureDiagnostic())
+          throw new SampleSurveyReadError('authentication-unconfirmed')
+        }, close: async () => {},
+      }), logReport: () => {}, logFailureDiagnostic: () => {
+        logCalls++
+        if (kind === 'rejecting-log') return Promise.reject(new Error(PRIVATE))
+        throw new Error(PRIVATE)
+      },
+    })
+    assert.equal(result.succeeded, false); assert.equal(result.report.stopReason, 'authentication-unconfirmed')
+    assert.equal(reads, 1); assert.equal(logCalls, kind === 'null' || kind === 'getter' ? 0 : 1)
+    assert.ok(!JSON.stringify(result).includes(PRIVATE))
+  }
 })
 test('legacy partial, frame-changed, missing and duplicate results fail without writing or authorizing uploads', async () => {
   for (const failure of ['partial', 'changed', 'missing', 'duplicates']) {
