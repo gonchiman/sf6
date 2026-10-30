@@ -1,0 +1,29 @@
+.legend-players-summary-empty { margin: 0; padding: 28px 8px; color: var(--text-muted); text-align: center; font-size: 13px; }
+.legend-players-character-chart { min-width: 0; margin: 0; }
+.legend-players-character-viewport { min-width: 0; }
+.legend-players-character-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.legend-players-character-scroll:focus-visible { outline-offset: -2px; }
+.legend-players-character-svg { display: block; max-width: none; font-family: inherit; }
+.legend-players-character-axis { fill: none; stroke: var(--text-muted); stroke-width: 1; }
+.legend-players-character-grid { stroke: var(--border); stroke-width: 1; }
+.legend-players-character-tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.legend-players-character-axis-title { fill: var(--text-soft); font-size: 12px; }
+.legend-players-character-bar { fill: var(--text-muted); }
+.legend-players-character-value { fill: var(--text-soft); font-size: 12px; font-variant-numeric: tabular-nums; }
+.legend-players-character-name { fill: var(--text-soft); font-size: 12px; }
+.legend-players-mr-chart { min-width: 0; margin: 0; }
+.legend-players-mr-viewport { width: 100%; overflow-x: auto; }
+.legend-players-mr-viewport svg { display: block; max-width: none; font-family: inherit; }
+.legend-players-mr-viewport svg:focus-visible { outline: 2px solid var(--text-muted); outline-offset: -2px; }
+.legend-players-mr-axis { fill: none; stroke: var(--text-muted); stroke-width: 1; }
+.legend-players-mr-grid { stroke: var(--border); stroke-width: 1; }
+.legend-players-mr-tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.legend-players-mr-axis-title { fill: var(--text-soft); font-size: 12px; }
+.legend-players-mr-hit { fill: transparent; }
+.legend-players-mr-bar { fill: var(--text-muted); }
+.legend-players-mr-zero { stroke: var(--text-muted); stroke-width: 2; }
+.legend-players-mr-value { fill: var(--text-soft); font-size: 11px; font-variant-numeric: tabular-nums; }
+.legend-players-mr-bin { cursor: pointer; }
+.legend-players-mr-bin.is-selected .legend-players-mr-bar { fill: var(--text-soft); }
+.legend-players-mr-bin.is-selected .legend-players-mr-zero { stroke: var(--text); stroke-width: 3; }
+.legend-players-mr-selection { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; min-height: 20px; margin-top: 10px; color: var(--text-soft); font-size: 12px; font-variant-numeric: tabular-nums; }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { japaneseCharacterNames } from '../lib/characterNames'
 import { loadCharacterManifest } from '../lib/characters'
 import { timestampLabel } from '../lib/dateTime'
@@ -7,6 +7,8 @@ import { usePublishedData } from '../lib/usePublishedData'
 import type { LegendPlayersDataset } from '../types/legendPlayers'
 import { DataLoadState } from './DataLoadState'
 import { LegendPlayersTable } from './LegendPlayersTable'
+import { LegendPlayersRankChart } from './LegendPlayersRankChart'
+import { LegendPlayersCharacterChart, LegendPlayersMrChart } from './LegendPlayersSummaryCharts'
 import { StatisticsPanel } from './StatisticsPanel'
 import '../win-rates.css'
 import '../legend-players.css'
@@ -15,8 +17,14 @@ type DatasetState = { key: string; version: number } & (
   { status: 'loading' | 'error' } | { status: 'ready'; dataset: LegendPlayersDataset }
 )
 const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 })
+const CHARTS = [['rank', '順位とMR'], ['characters', 'キャラ別掲載数'], ['mr', 'MR帯の分布']] as const
+type Chart = typeof CHARTS[number][0]
+type Selection = { captureId: string; rowId: string; source: 'chart' | 'table' }
 
 export function LegendPlayersPage() {
+  const chartId = useId()
+  const [chart, setChart] = useState<Chart>('rank')
+  const [selection, setSelection] = useState<Selection | null>(null)
   const { status, publication, selectedId, setSelectedId, refreshError, retry } = usePublishedData(legendPlayersFeed)
   const [loaded, setLoaded] = useState<DatasetState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
@@ -58,6 +66,14 @@ export function LegendPlayersPage() {
     : availability?.status === 'verification-pending' ? '検証待ち' : '未取得'
   const emptyMessage = !descriptor ? availabilityLabel
     : current?.status === 'error' ? '読込失敗' : loadingDataset ? '読み込み中…' : '0件（取得確認済み）'
+  // Entry IDs are local to one capture; a different date must never inherit its selection.
+  const selectedRowId = dataset && selection?.captureId === dataset.id
+    && dataset.players.some(row => row.id === selection.rowId) ? selection.rowId : null
+  const selectRow = (rowId: string, source: Selection['source']) => {
+    if (!requestKey || !dataset?.players.some(row => row.id === rowId)) return
+    setSelection({ captureId: dataset.id, rowId, source })
+    if (source === 'table') setChart('rank')
+  }
 
   if (status === 'loading') return <DataLoadState loading message="取得記録を読み込み中…" />
   if (!manifest) return <DataLoadState message="取得記録の読込失敗" onRetry={retry} />
@@ -65,7 +81,7 @@ export function LegendPlayersPage() {
   return <section className="legend-players-page" aria-label="レジェンド帯分析2">
     <div className="legend-players-toolbar">
       {descriptors.length > 0 && <label className="legend-players-capture-select"><span>取得日</span>
-        <select value={selectedId ?? ''} onChange={event => setSelectedId(event.target.value)}>
+        <select aria-label="取得日" value={selectedId ?? ''} onChange={event => { setSelection(null); setSelectedId(event.target.value) }}>
           {descriptors.map(item => <option key={item.id} value={item.id}>{item.actId.replace(/^act-/, 'Act ')} · {timestampLabel(item.captureEndedAt)}</option>)}
         </select>
       </label>}
@@ -91,8 +107,24 @@ export function LegendPlayersPage() {
       <button className="win-rates-button" type="button" onClick={() => setNamesVersion(value => value + 1)}>キャラ名を再読み込み</button>
     </div>}
 
+    <StatisticsPanel title="グラフ" headerContent={dataset && <span className="monthly-statistics-panel-summary">掲載 {integerFormat.format(dataset.totalCount)} 件</span>}>
+      <div className="win-rates-view-selector legend-players-chart-selector" role="group" aria-label="グラフの種類">
+        {CHARTS.map(([value, label]) => <button key={value} type="button" className="win-rates-button"
+          aria-pressed={chart === value} aria-controls={chartId} onClick={() => setChart(value)}>{label}</button>)}
+      </div>
+      <div id={chartId} className="legend-players-chart-content" aria-busy={loadingDataset || undefined}>
+        {!dataset ? <p className="legend-players-chart-state" role="status">{emptyMessage}</p>
+          : chart === 'rank' ? <LegendPlayersRankChart key={requestKey} rows={dataset.players} names={names}
+            selectedRowId={selectedRowId} onSelectRow={rowId => selectRow(rowId, 'chart')} />
+          : chart === 'characters' ? <LegendPlayersCharacterChart rows={dataset.players} names={names} />
+          : <LegendPlayersMrChart key={requestKey} rows={dataset.players} />}
+      </div>
+    </StatisticsPanel>
+
     <StatisticsPanel title="プレイヤー一覧" headerContent={dataset && <span className="monthly-statistics-panel-summary">{integerFormat.format(dataset.totalCount)} 件</span>}>
-      <LegendPlayersTable rows={dataset?.players ?? []} names={names} emptyMessage={emptyMessage} loading={loadingDataset} />
+      <LegendPlayersTable rows={dataset?.players ?? []} names={names} emptyMessage={emptyMessage} loading={loadingDataset}
+        selectedRowId={selectedRowId} onSelectRow={rowId => selectRow(rowId, 'table')}
+        revealRequest={selection?.source === 'chart' ? selection : undefined} />
       {current?.status === 'error' && <div className="legend-players-status" role="alert">
         <button className="win-rates-button" type="button" onClick={() => setDatasetVersion(value => value + 1)}>一覧を再読み込み</button>
       </div>}
