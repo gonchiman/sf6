@@ -1,11 +1,27 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-29T19:17:55.729Z",
+  "generatedAt": "2026-10-30T19:00:47.024Z",
   "source": {
     "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/master",
     "title": "Buckler MRランキング"
   },
   "datasets": [
+    {
+      "id": "legend-2026-10-30T18-54-13-189Z",
+      "path": "legend-2026-10-30T18-54-13-189Z.json",
+      "actId": "act-13",
+      "definitionVersion": "legend-listed-v1",
+      "membershipRule": "official-legend-badge",
+      "conditions": {
+        "region": "all",
+        "platform": "all",
+        "characters": "all",
+        "users": "source-default"
+      },
+      "captureStartedAt": "2026-10-30T18:54:13.189Z",
+      "captureEndedAt": "2026-10-30T18:56:37.837Z",
+      "totalCount": 502
+    },
     {
       "id": "legend-2026-10-29T19-15-01-367Z",
       "path": "legend-2026-10-29T19-15-01-367Z.json",

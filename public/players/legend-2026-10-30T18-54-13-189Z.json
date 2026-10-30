@@ -1,0 +1,3567 @@
+{
+  "schemaVersion": 1,
+  "id": "legend-2026-10-30T18-54-13-189Z",
+  "captureStartedAt": "2026-10-30T18:54:13.189Z",
+  "captureEndedAt": "2026-10-30T18:56:37.837Z",
+  "generatedAt": "2026-10-30T18:56:37.837Z",
+  "source": {
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/master",
+    "title": "Buckler MRランキング",
+    "population": "公式MRランキングにレジェンドとして掲載されたアカウント×キャラクターのエントリー",
+    "metric": "掲載エントリーのプレイヤー名・キャラクター・順位・MR",
+    "unit": "account-character",
+    "notes": [
+      "公式レジェンド掲載の取得期間内の断面。",
+      "1行はアカウント×キャラクター単位。"
+    ]
+  },
+  "act": {
+    "id": "act-13",
+    "label": "Act 13"
+  },
+  "definitionVersion": "legend-listed-v1",
+  "membershipRule": "official-legend-badge",
+  "conditions": {
+    "region": "all",
+    "platform": "all",
+    "characters": "all",
+    "users": "source-default"
+  },
+  "totalCount": 502,
+  "players": [
+    {
+      "id": "entry-1",
+      "playerName": "orarinSycom",
+      "characterId": "ken",
+      "rank": 1,
+      "masterRating": 2501
+    },
+    {
+      "id": "entry-2",
+      "playerName": "takepi",
+      "characterId": "jp",
+      "rank": 2,
+      "masterRating": 2479
+    },
+    {
+      "id": "entry-3",
+      "playerName": "CFN Good",
+      "characterId": "cammy",
+      "rank": 3,
+      "masterRating": 2464
+    },
+    {
+      "id": "entry-4",
+      "playerName": "＠Sycom | 今井 翔太",
+      "characterId": "elena",
+      "rank": 3,
+      "masterRating": 2464
+    },
+    {
+      "id": "entry-5",
+      "playerName": "Kazunoko",
+      "characterId": "cviper",
+      "rank": 5,
+      "masterRating": 2461
+    },
+    {
+      "id": "entry-6",
+      "playerName": "Shuto",
+      "characterId": "luke",
+      "rank": 6,
+      "masterRating": 2460
+    },
+    {
+      "id": "entry-7",
+      "playerName": "hinao",
+      "characterId": "luke",
+      "rank": 7,
+      "masterRating": 2456
+    },
+    {
+      "id": "entry-8",
+      "playerName": "kuromame",
+      "characterId": "luke",
+      "rank": 8,
+      "masterRating": 2449
+    },
+    {
+      "id": "entry-9",
+      "playerName": "BonchanRB",
+      "characterId": "gouki",
+      "rank": 9,
+      "masterRating": 2441
+    },
+    {
+      "id": "entry-10",
+      "playerName": "LeShar",
+      "characterId": "luke",
+      "rank": 9,
+      "masterRating": 2441
+    },
+    {
+      "id": "entry-11",
+      "playerName": "karura",
+      "characterId": "marisa",
+      "rank": 11,
+      "masterRating": 2438
+    },
+    {
+      "id": "entry-12",
+      "playerName": "SBI_Hibiki",
+      "characterId": "lily",
+      "rank": 12,
+      "masterRating": 2434
+    },
+    {
+      "id": "entry-13",
+      "playerName": "Shuto",
+      "characterId": "ryu",
+      "rank": 13,
+      "masterRating": 2432
+    },
+    {
+      "id": "entry-14",
+      "playerName": "れいーあ",
+      "characterId": "ken",
+      "rank": 14,
+      "masterRating": 2428
+    },
+    {
+      "id": "entry-15",
+      "playerName": "かっこいいが好きど",
+      "characterId": "arjun",
+      "rank": 15,
+      "masterRating": 2427
+    },
+    {
+      "id": "entry-16",
+      "playerName": "@Sycom｜zabutonn",
+      "characterId": "deejay",
+      "rank": 16,
+      "masterRating": 2421
+    },
+    {
+      "id": "entry-17",
+      "playerName": "す さ",
+      "characterId": "blanka",
+      "rank": 17,
+      "masterRating": 2419
+    },
+    {
+      "id": "entry-18",
+      "playerName": "watyawacha",
+      "characterId": "luke",
+      "rank": 18,
+      "masterRating": 2418
+    },
+    {
+      "id": "entry-19",
+      "playerName": "Lexx",
+      "characterId": "guile",
+      "rank": 18,
+      "masterRating": 2418
+    },
+    {
+      "id": "entry-20",
+      "playerName": "世界無二Ryukichi",
+      "characterId": "mai",
+      "rank": 20,
+      "masterRating": 2416
+    },
+    {
+      "id": "entry-21",
+      "playerName": "生駒デビル",
+      "characterId": "elena",
+      "rank": 21,
+      "masterRating": 2415
+    },
+    {
+      "id": "entry-22",
+      "playerName": "FENNEL shion",
+      "characterId": "ken",
+      "rank": 22,
+      "masterRating": 2414
+    },
+    {
+      "id": "entry-23",
+      "playerName": "big body",
+      "characterId": "ed",
+      "rank": 23,
+      "masterRating": 2412
+    },
+    {
+      "id": "entry-24",
+      "playerName": "Naooonn",
+      "characterId": "gouki",
+      "rank": 24,
+      "masterRating": 2410
+    },
+    {
+      "id": "entry-25",
+      "playerName": "みすとめーる@iMstMaiL",
+      "characterId": "kimberly",
+      "rank": 25,
+      "masterRating": 2409
+    },
+    {
+      "id": "entry-26",
+      "playerName": "cream",
+      "characterId": "zangief",
+      "rank": 26,
+      "masterRating": 2407
+    },
+    {
+      "id": "entry-27",
+      "playerName": "KT_DakCorgi",
+      "characterId": "cviper",
+      "rank": 26,
+      "masterRating": 2407
+    },
+    {
+      "id": "entry-28",
+      "playerName": "Tucker Ducker",
+      "characterId": "marisa",
+      "rank": 26,
+      "masterRating": 2407
+    },
+    {
+      "id": "entry-29",
+      "playerName": "ACQUA",
+      "characterId": "blanka",
+      "rank": 26,
+      "masterRating": 2407
+    },
+    {
+      "id": "entry-30",
+      "playerName": "Lemochin",
+      "characterId": "arjun",
+      "rank": 30,
+      "masterRating": 2406
+    },
+    {
+      "id": "entry-31",
+      "playerName": "ひぐち！",
+      "characterId": "guile",
+      "rank": 30,
+      "masterRating": 2406
+    },
+    {
+      "id": "entry-32",
+      "playerName": "テイエム",
+      "characterId": "ryu",
+      "rank": 30,
+      "masterRating": 2406
+    },
+    {
+      "id": "entry-33",
+      "playerName": "マーノ/ギコギコはしません",
+      "characterId": "arjun",
+      "rank": 33,
+      "masterRating": 2405
+    },
+    {
+      "id": "entry-34",
+      "playerName": "Taisei",
+      "characterId": "cviper",
+      "rank": 33,
+      "masterRating": 2405
+    },
+    {
+      "id": "entry-35",
+      "playerName": "inaba",
+      "characterId": "cviper",
+      "rank": 33,
+      "masterRating": 2405
+    },
+    {
+      "id": "entry-36",
+      "playerName": "FENNEL tako",
+      "characterId": "kimberly",
+      "rank": 33,
+      "masterRating": 2405
+    },
+    {
+      "id": "entry-37",
+      "playerName": "kosaku",
+      "characterId": "elena",
+      "rank": 33,
+      "masterRating": 2405
+    },
+    {
+      "id": "entry-38",
+      "playerName": "反作用ボム2",
+      "characterId": "dhalsim",
+      "rank": 38,
+      "masterRating": 2404
+    },
+    {
+      "id": "entry-39",
+      "playerName": "m1Ng",
+      "characterId": "jp",
+      "rank": 38,
+      "masterRating": 2404
+    },
+    {
+      "id": "entry-40",
+      "playerName": "Babaaaaa",
+      "characterId": "manon",
+      "rank": 38,
+      "masterRating": 2404
+    },
+    {
+      "id": "entry-41",
+      "playerName": "IBSG Akatsuki",
+      "characterId": "terry",
+      "rank": 38,
+      "masterRating": 2404
+    },
+    {
+      "id": "entry-42",
+      "playerName": "ドドガマル_pc",
+      "characterId": "chunli",
+      "rank": 42,
+      "masterRating": 2403
+    },
+    {
+      "id": "entry-43",
+      "playerName": "コウキ＿ルーク使いの人",
+      "characterId": "luke",
+      "rank": 42,
+      "masterRating": 2403
+    },
+    {
+      "id": "entry-44",
+      "playerName": "でんせつえすぴ～",
+      "characterId": "juri",
+      "rank": 42,
+      "masterRating": 2403
+    },
+    {
+      "id": "entry-45",
+      "playerName": "Shinto",
+      "characterId": "alex",
+      "rank": 45,
+      "masterRating": 2402
+    },
+    {
+      "id": "entry-46",
+      "playerName": "Papillon",
+      "characterId": "cviper",
+      "rank": 45,
+      "masterRating": 2402
+    },
+    {
+      "id": "entry-47",
+      "playerName": "なっつだよ",
+      "characterId": "terry",
+      "rank": 45,
+      "masterRating": 2402
+    },
+    {
+      "id": "entry-48",
+      "playerName": "JOZ Mocchi",
+      "characterId": "gouki",
+      "rank": 45,
+      "masterRating": 2402
+    },
+    {
+      "id": "entry-49",
+      "playerName": "高木サンダー",
+      "characterId": "blanka",
+      "rank": 45,
+      "masterRating": 2402
+    },
+    {
+      "id": "entry-50",
+      "playerName": "Junior",
+      "characterId": "zangief",
+      "rank": 50,
+      "masterRating": 2401
+    },
+    {
+      "id": "entry-51",
+      "playerName": "suisenri",
+      "characterId": "arjun",
+      "rank": 50,
+      "masterRating": 2401
+    },
+    {
+      "id": "entry-52",
+      "playerName": "あーるえいち",
+      "characterId": "honda",
+      "rank": 50,
+      "masterRating": 2401
+    },
+    {
+      "id": "entry-53",
+      "playerName": "hato",
+      "characterId": "cviper",
+      "rank": 53,
+      "masterRating": 2400
+    },
+    {
+      "id": "entry-54",
+      "playerName": "@SycomのSeichi",
+      "characterId": "elena",
+      "rank": 53,
+      "masterRating": 2400
+    },
+    {
+      "id": "entry-55",
+      "playerName": "Noble",
+      "characterId": "luke",
+      "rank": 53,
+      "masterRating": 2400
+    },
+    {
+      "id": "entry-56",
+      "playerName": "Tigger",
+      "characterId": "ryu",
+      "rank": 53,
+      "masterRating": 2400
+    },
+    {
+      "id": "entry-57",
+      "playerName": "Fuudo",
+      "characterId": "cviper",
+      "rank": 57,
+      "masterRating": 2399
+    },
+    {
+      "id": "entry-58",
+      "playerName": "2BASSA",
+      "characterId": "juri",
+      "rank": 58,
+      "masterRating": 2385
+    },
+    {
+      "id": "entry-59",
+      "playerName": "naruo",
+      "characterId": "jamie",
+      "rank": 59,
+      "masterRating": 2383
+    },
+    {
+      "id": "entry-60",
+      "playerName": "さなぎ-",
+      "characterId": "ken",
+      "rank": 59,
+      "masterRating": 2383
+    },
+    {
+      "id": "entry-61",
+      "playerName": "2先負けたらしろたんアニメ見て",
+      "characterId": "chunli",
+      "rank": 61,
+      "masterRating": 2381
+    },
+    {
+      "id": "entry-62",
+      "playerName": "Dual_Kevin",
+      "characterId": "rashid",
+      "rank": 62,
+      "masterRating": 2380
+    },
+    {
+      "id": "entry-63",
+      "playerName": "DaigoTheBeasTV",
+      "characterId": "gouki",
+      "rank": 63,
+      "masterRating": 2379
+    },
+    {
+      "id": "entry-64",
+      "playerName": "HAITANI",
+      "characterId": "chunli",
+      "rank": 64,
+      "masterRating": 2373
+    },
+    {
+      "id": "entry-65",
+      "playerName": "あでりい",
+      "characterId": "ed",
+      "rank": 65,
+      "masterRating": 2371
+    },
+    {
+      "id": "entry-66",
+      "playerName": "NLNL",
+      "characterId": "luke",
+      "rank": 66,
+      "masterRating": 2366
+    },
+    {
+      "id": "entry-67",
+      "playerName": "覚醒マレミー",
+      "characterId": "vega",
+      "rank": 67,
+      "masterRating": 2364
+    },
+    {
+      "id": "entry-68",
+      "playerName": "ChrisWong",
+      "characterId": "luke",
+      "rank": 67,
+      "masterRating": 2364
+    },
+    {
+      "id": "entry-69",
+      "playerName": "光のZeno",
+      "characterId": "blanka",
+      "rank": 67,
+      "masterRating": 2364
+    },
+    {
+      "id": "entry-70",
+      "playerName": "dible(小奶狗♡)",
+      "characterId": "cviper",
+      "rank": 70,
+      "masterRating": 2362
+    },
+    {
+      "id": "entry-71",
+      "playerName": "BonchanRB",
+      "characterId": "sagat",
+      "rank": 70,
+      "masterRating": 2362
+    },
+    {
+      "id": "entry-72",
+      "playerName": "芙兰朵露",
+      "characterId": "vega",
+      "rank": 72,
+      "masterRating": 2361
+    },
+    {
+      "id": "entry-73",
+      "playerName": "TsuneHERO",
+      "characterId": "rashid",
+      "rank": 72,
+      "masterRating": 2361
+    },
+    {
+      "id": "entry-74",
+      "playerName": "PAPI",
+      "characterId": "mai",
+      "rank": 74,
+      "masterRating": 2358
+    },
+    {
+      "id": "entry-75",
+      "playerName": "世界無二Ryukichi",
+      "characterId": "ken",
+      "rank": 75,
+      "masterRating": 2356
+    },
+    {
+      "id": "entry-76",
+      "playerName": "らおやむやむ☆ハイハイ謝謝♪",
+      "characterId": "vega",
+      "rank": 76,
+      "masterRating": 2355
+    },
+    {
+      "id": "entry-77",
+      "playerName": "生駒デビル",
+      "characterId": "vega",
+      "rank": 76,
+      "masterRating": 2355
+    },
+    {
+      "id": "entry-78",
+      "playerName": "GjijiiG。",
+      "characterId": "marisa",
+      "rank": 78,
+      "masterRating": 2354
+    },
+    {
+      "id": "entry-79",
+      "playerName": "YHC-餅",
+      "characterId": "dhalsim",
+      "rank": 79,
+      "masterRating": 2353
+    },
+    {
+      "id": "entry-80",
+      "playerName": "CRTachikawa",
+      "characterId": "cviper",
+      "rank": 79,
+      "masterRating": 2353
+    },
+    {
+      "id": "entry-81",
+      "playerName": "Sahara",
+      "characterId": "luke",
+      "rank": 79,
+      "masterRating": 2353
+    },
+    {
+      "id": "entry-82",
+      "playerName": "Erua/えるあ",
+      "characterId": "jp",
+      "rank": 82,
+      "masterRating": 2351
+    },
+    {
+      "id": "entry-83",
+      "playerName": "aiai",
+      "characterId": "juri",
+      "rank": 83,
+      "masterRating": 2350
+    },
+    {
+      "id": "entry-84",
+      "playerName": "ゴトーー",
+      "characterId": "ken",
+      "rank": 83,
+      "masterRating": 2350
+    },
+    {
+      "id": "entry-85",
+      "playerName": "めんたらこ",
+      "characterId": "zangief",
+      "rank": 85,
+      "masterRating": 2349
+    },
+    {
+      "id": "entry-86",
+      "playerName": "PipokunですSycomの",
+      "characterId": "kimberly",
+      "rank": 85,
+      "masterRating": 2349
+    },
+    {
+      "id": "entry-87",
+      "playerName": "nao:",
+      "characterId": "luke",
+      "rank": 85,
+      "masterRating": 2349
+    },
+    {
+      "id": "entry-88",
+      "playerName": "シュラリス",
+      "characterId": "lily",
+      "rank": 88,
+      "masterRating": 2347
+    },
+    {
+      "id": "entry-89",
+      "playerName": "NuckleDu",
+      "characterId": "mai",
+      "rank": 89,
+      "masterRating": 2345
+    },
+    {
+      "id": "entry-90",
+      "playerName": "世界無二Ryukichi",
+      "characterId": "cammy",
+      "rank": 90,
+      "masterRating": 2343
+    },
+    {
+      "id": "entry-91",
+      "playerName": "モダコナ",
+      "characterId": "luke",
+      "rank": 90,
+      "masterRating": 2343
+    },
+    {
+      "id": "entry-92",
+      "playerName": "hinao",
+      "characterId": "sagat",
+      "rank": 92,
+      "masterRating": 2341
+    },
+    {
+      "id": "entry-93",
+      "playerName": "shuzo｜LaVISION。",
+      "characterId": "deejay",
+      "rank": 93,
+      "masterRating": 2340
+    },
+    {
+      "id": "entry-94",
+      "playerName": "Naza",
+      "characterId": "deejay",
+      "rank": 93,
+      "masterRating": 2340
+    },
+    {
+      "id": "entry-95",
+      "playerName": "心 山崎だだだ",
+      "characterId": "mai",
+      "rank": 95,
+      "masterRating": 2339
+    },
+    {
+      "id": "entry-96",
+      "playerName": "ばやしこ｜VLY",
+      "characterId": "terry",
+      "rank": 95,
+      "masterRating": 2339
+    },
+    {
+      "id": "entry-97",
+      "playerName": "ざ・しー",
+      "characterId": "alex",
+      "rank": 97,
+      "masterRating": 2337
+    },
+    {
+      "id": "entry-98",
+      "playerName": "GTW-XiaoPang",
+      "characterId": "deejay",
+      "rank": 97,
+      "masterRating": 2337
+    },
+    {
+      "id": "entry-99",
+      "playerName": "kurapop",
+      "characterId": "ingrid",
+      "rank": 99,
+      "masterRating": 2335
+    },
+    {
+      "id": "entry-100",
+      "playerName": "蕩氣nmrING",
+      "characterId": "cviper",
+      "rank": 99,
+      "masterRating": 2335
+    },
+    {
+      "id": "entry-101",
+      "playerName": "noahtheprodigy",
+      "characterId": "luke",
+      "rank": 99,
+      "masterRating": 2335
+    },
+    {
+      "id": "entry-102",
+      "playerName": "ザンギ太郎",
+      "characterId": "zangief",
+      "rank": 102,
+      "masterRating": 2334
+    },
+    {
+      "id": "entry-103",
+      "playerName": "fumi39dc_pc",
+      "characterId": "cammy",
+      "rank": 103,
+      "masterRating": 2333
+    },
+    {
+      "id": "entry-104",
+      "playerName": "ふみじま　あきお(63)",
+      "characterId": "ingrid",
+      "rank": 103,
+      "masterRating": 2333
+    },
+    {
+      "id": "entry-105",
+      "playerName": "GTW-XiaoZhai",
+      "characterId": "cammy",
+      "rank": 105,
+      "masterRating": 2332
+    },
+    {
+      "id": "entry-106",
+      "playerName": "あくたがわ",
+      "characterId": "manon",
+      "rank": 105,
+      "masterRating": 2332
+    },
+    {
+      "id": "entry-107",
+      "playerName": "hikaru_shiftne",
+      "characterId": "arjun",
+      "rank": 105,
+      "masterRating": 2332
+    },
+    {
+      "id": "entry-108",
+      "playerName": "WIP｜ジャッシー",
+      "characterId": "jp",
+      "rank": 108,
+      "masterRating": 2331
+    },
+    {
+      "id": "entry-109",
+      "playerName": "さばのんた味噌漬けエディション",
+      "characterId": "cviper",
+      "rank": 108,
+      "masterRating": 2331
+    },
+    {
+      "id": "entry-110",
+      "playerName": "なっつだよ",
+      "characterId": "yasmine",
+      "rank": 110,
+      "masterRating": 2330
+    },
+    {
+      "id": "entry-111",
+      "playerName": "RaInPrO",
+      "characterId": "guile",
+      "rank": 110,
+      "masterRating": 2330
+    },
+    {
+      "id": "entry-112",
+      "playerName": "blaz 2g",
+      "characterId": "ryu",
+      "rank": 112,
+      "masterRating": 2329
+    },
+    {
+      "id": "entry-113",
+      "playerName": "あくたがわ",
+      "characterId": "elena",
+      "rank": 113,
+      "masterRating": 2327
+    },
+    {
+      "id": "entry-114",
+      "playerName": "ひらまさ",
+      "characterId": "vega",
+      "rank": 114,
+      "masterRating": 2326
+    },
+    {
+      "id": "entry-115",
+      "playerName": "Yanai",
+      "characterId": "vega",
+      "rank": 114,
+      "masterRating": 2326
+    },
+    {
+      "id": "entry-116",
+      "playerName": "小明哥888",
+      "characterId": "cammy",
+      "rank": 116,
+      "masterRating": 2325
+    },
+    {
+      "id": "entry-117",
+      "playerName": "Monsterjujuju",
+      "characterId": "dhalsim",
+      "rank": 116,
+      "masterRating": 2325
+    },
+    {
+      "id": "entry-118",
+      "playerName": "Nth_あしゅまる",
+      "characterId": "jp",
+      "rank": 116,
+      "masterRating": 2325
+    },
+    {
+      "id": "entry-119",
+      "playerName": "SURINI",
+      "characterId": "kimberly",
+      "rank": 119,
+      "masterRating": 2324
+    },
+    {
+      "id": "entry-120",
+      "playerName": "モダナー竹野",
+      "characterId": "lily",
+      "rank": 119,
+      "masterRating": 2324
+    },
+    {
+      "id": "entry-121",
+      "playerName": "cream",
+      "characterId": "alex",
+      "rank": 121,
+      "masterRating": 2323
+    },
+    {
+      "id": "entry-122",
+      "playerName": "pc-jieba5512",
+      "characterId": "cammy",
+      "rank": 122,
+      "masterRating": 2322
+    },
+    {
+      "id": "entry-123",
+      "playerName": "ONYX | えびはら",
+      "characterId": "ed",
+      "rank": 122,
+      "masterRating": 2322
+    },
+    {
+      "id": "entry-124",
+      "playerName": "NuckleDu",
+      "characterId": "guile",
+      "rank": 122,
+      "masterRating": 2322
+    },
+    {
+      "id": "entry-125",
+      "playerName": "とす__",
+      "characterId": "rashid",
+      "rank": 122,
+      "masterRating": 2322
+    },
+    {
+      "id": "entry-126",
+      "playerName": "Seiya",
+      "characterId": "chunli",
+      "rank": 126,
+      "masterRating": 2321
+    },
+    {
+      "id": "entry-127",
+      "playerName": "zeno",
+      "characterId": "marisa",
+      "rank": 126,
+      "masterRating": 2321
+    },
+    {
+      "id": "entry-128",
+      "playerName": "yama",
+      "characterId": "aki",
+      "rank": 126,
+      "masterRating": 2321
+    },
+    {
+      "id": "entry-129",
+      "playerName": "kincho",
+      "characterId": "terry",
+      "rank": 129,
+      "masterRating": 2320
+    },
+    {
+      "id": "entry-130",
+      "playerName": "cosazeku",
+      "characterId": "gouki",
+      "rank": 129,
+      "masterRating": 2320
+    },
+    {
+      "id": "entry-131",
+      "playerName": "niruhiru PC",
+      "characterId": "guile",
+      "rank": 129,
+      "masterRating": 2320
+    },
+    {
+      "id": "entry-132",
+      "playerName": "よっさん",
+      "characterId": "juri",
+      "rank": 129,
+      "masterRating": 2320
+    },
+    {
+      "id": "entry-133",
+      "playerName": "SGN｜とと",
+      "characterId": "yasmine",
+      "rank": 133,
+      "masterRating": 2319
+    },
+    {
+      "id": "entry-134",
+      "playerName": "Hand Me Downs",
+      "characterId": "sagat",
+      "rank": 133,
+      "masterRating": 2319
+    },
+    {
+      "id": "entry-135",
+      "playerName": "ねこじゃ",
+      "characterId": "yasmine",
+      "rank": 135,
+      "masterRating": 2318
+    },
+    {
+      "id": "entry-136",
+      "playerName": "VLY｜すりーぷ",
+      "characterId": "luke",
+      "rank": 135,
+      "masterRating": 2318
+    },
+    {
+      "id": "entry-137",
+      "playerName": "Sahara",
+      "characterId": "ryu",
+      "rank": 135,
+      "masterRating": 2318
+    },
+    {
+      "id": "entry-138",
+      "playerName": "あーるゆーおー",
+      "characterId": "jp",
+      "rank": 138,
+      "masterRating": 2316
+    },
+    {
+      "id": "entry-139",
+      "playerName": "やまもと",
+      "characterId": "vega",
+      "rank": 138,
+      "masterRating": 2316
+    },
+    {
+      "id": "entry-140",
+      "playerName": "Kushina",
+      "characterId": "sagat",
+      "rank": 138,
+      "masterRating": 2316
+    },
+    {
+      "id": "entry-141",
+      "playerName": "Torimeshi",
+      "characterId": "dhalsim",
+      "rank": 141,
+      "masterRating": 2315
+    },
+    {
+      "id": "entry-142",
+      "playerName": "りきたく",
+      "characterId": "vega",
+      "rank": 141,
+      "masterRating": 2315
+    },
+    {
+      "id": "entry-143",
+      "playerName": "Foodie",
+      "characterId": "guile",
+      "rank": 143,
+      "masterRating": 2314
+    },
+    {
+      "id": "entry-144",
+      "playerName": "Cafe",
+      "characterId": "jamie",
+      "rank": 144,
+      "masterRating": 2313
+    },
+    {
+      "id": "entry-145",
+      "playerName": "カンフーマスターpc",
+      "characterId": "honda",
+      "rank": 144,
+      "masterRating": 2313
+    },
+    {
+      "id": "entry-146",
+      "playerName": "Dynamite body",
+      "characterId": "luke",
+      "rank": 146,
+      "masterRating": 2312
+    },
+    {
+      "id": "entry-147",
+      "playerName": "Syuji",
+      "characterId": "guile",
+      "rank": 146,
+      "masterRating": 2312
+    },
+    {
+      "id": "entry-148",
+      "playerName": "双子の兄",
+      "characterId": "jp",
+      "rank": 148,
+      "masterRating": 2311
+    },
+    {
+      "id": "entry-149",
+      "playerName": "わにわにpc",
+      "characterId": "elena",
+      "rank": 148,
+      "masterRating": 2311
+    },
+    {
+      "id": "entry-150",
+      "playerName": "3S|しっくすびっと",
+      "characterId": "honda",
+      "rank": 148,
+      "masterRating": 2311
+    },
+    {
+      "id": "entry-151",
+      "playerName": "jjnj",
+      "characterId": "marisa",
+      "rank": 148,
+      "masterRating": 2311
+    },
+    {
+      "id": "entry-152",
+      "playerName": "いおりチャンネル",
+      "characterId": "ken",
+      "rank": 148,
+      "masterRating": 2311
+    },
+    {
+      "id": "entry-153",
+      "playerName": "FENNEL shion",
+      "characterId": "cviper",
+      "rank": 153,
+      "masterRating": 2310
+    },
+    {
+      "id": "entry-154",
+      "playerName": "ストーム久保",
+      "characterId": "arjun",
+      "rank": 154,
+      "masterRating": 2309
+    },
+    {
+      "id": "entry-155",
+      "playerName": "ShioTaroMaru",
+      "characterId": "kimberly",
+      "rank": 154,
+      "masterRating": 2309
+    },
+    {
+      "id": "entry-156",
+      "playerName": "blaz 2g",
+      "characterId": "luke",
+      "rank": 154,
+      "masterRating": 2309
+    },
+    {
+      "id": "entry-157",
+      "playerName": "kurobuchi_b09",
+      "characterId": "marisa",
+      "rank": 154,
+      "masterRating": 2309
+    },
+    {
+      "id": "entry-158",
+      "playerName": "わわわまいん",
+      "characterId": "juri",
+      "rank": 154,
+      "masterRating": 2309
+    },
+    {
+      "id": "entry-159",
+      "playerName": "發斗獨狗",
+      "characterId": "alex",
+      "rank": 159,
+      "masterRating": 2308
+    },
+    {
+      "id": "entry-160",
+      "playerName": "LeShar",
+      "characterId": "ed",
+      "rank": 159,
+      "masterRating": 2308
+    },
+    {
+      "id": "entry-161",
+      "playerName": "ねこまz",
+      "characterId": "juri",
+      "rank": 159,
+      "masterRating": 2308
+    },
+    {
+      "id": "entry-162",
+      "playerName": "アッキー",
+      "characterId": "deejay",
+      "rank": 159,
+      "masterRating": 2308
+    },
+    {
+      "id": "entry-163",
+      "playerName": "はっぴょうどらごん",
+      "characterId": "ingrid",
+      "rank": 163,
+      "masterRating": 2307
+    },
+    {
+      "id": "entry-164",
+      "playerName": "m1Ng",
+      "characterId": "ingrid",
+      "rank": 163,
+      "masterRating": 2307
+    },
+    {
+      "id": "entry-165",
+      "playerName": "こな７６",
+      "characterId": "ingrid",
+      "rank": 163,
+      "masterRating": 2307
+    },
+    {
+      "id": "entry-166",
+      "playerName": "WIM | you",
+      "characterId": "vega",
+      "rank": 163,
+      "masterRating": 2307
+    },
+    {
+      "id": "entry-167",
+      "playerName": "taizen",
+      "characterId": "deejay",
+      "rank": 163,
+      "masterRating": 2307
+    },
+    {
+      "id": "entry-168",
+      "playerName": "ユウティ",
+      "characterId": "cammy",
+      "rank": 168,
+      "masterRating": 2306
+    },
+    {
+      "id": "entry-169",
+      "playerName": "カンフーマスターpc",
+      "characterId": "arjun",
+      "rank": 168,
+      "masterRating": 2306
+    },
+    {
+      "id": "entry-170",
+      "playerName": "sito",
+      "characterId": "jp",
+      "rank": 170,
+      "masterRating": 2305
+    },
+    {
+      "id": "entry-171",
+      "playerName": "ゆーけー",
+      "characterId": "yasmine",
+      "rank": 170,
+      "masterRating": 2305
+    },
+    {
+      "id": "entry-172",
+      "playerName": "良かったこのキャラで",
+      "characterId": "cviper",
+      "rank": 170,
+      "masterRating": 2305
+    },
+    {
+      "id": "entry-173",
+      "playerName": "くえです",
+      "characterId": "kimberly",
+      "rank": 170,
+      "masterRating": 2305
+    },
+    {
+      "id": "entry-174",
+      "playerName": "SAKONOKO_GAME",
+      "characterId": "elena",
+      "rank": 170,
+      "masterRating": 2305
+    },
+    {
+      "id": "entry-175",
+      "playerName": "ナカムラ_",
+      "characterId": "gouki",
+      "rank": 170,
+      "masterRating": 2305
+    },
+    {
+      "id": "entry-176",
+      "playerName": "Olive_",
+      "characterId": "gouki",
+      "rank": 170,
+      "masterRating": 2305
+    },
+    {
+      "id": "entry-177",
+      "playerName": "judy",
+      "characterId": "ken",
+      "rank": 170,
+      "masterRating": 2305
+    },
+    {
+      "id": "entry-178",
+      "playerName": "だるかわ｜VLY",
+      "characterId": "dhalsim",
+      "rank": 178,
+      "masterRating": 2304
+    },
+    {
+      "id": "entry-179",
+      "playerName": "ariK",
+      "characterId": "arjun",
+      "rank": 178,
+      "masterRating": 2304
+    },
+    {
+      "id": "entry-180",
+      "playerName": "カンフーマスターpc",
+      "characterId": "cviper",
+      "rank": 178,
+      "masterRating": 2304
+    },
+    {
+      "id": "entry-181",
+      "playerName": "あ か た",
+      "characterId": "terry",
+      "rank": 178,
+      "masterRating": 2304
+    },
+    {
+      "id": "entry-182",
+      "playerName": "dekka",
+      "characterId": "sagat",
+      "rank": 178,
+      "masterRating": 2304
+    },
+    {
+      "id": "entry-183",
+      "playerName": "TangWoLong",
+      "characterId": "luke",
+      "rank": 178,
+      "masterRating": 2304
+    },
+    {
+      "id": "entry-184",
+      "playerName": "MIDORI",
+      "characterId": "marisa",
+      "rank": 178,
+      "masterRating": 2304
+    },
+    {
+      "id": "entry-185",
+      "playerName": "シゲマツ",
+      "characterId": "blanka",
+      "rank": 178,
+      "masterRating": 2304
+    },
+    {
+      "id": "entry-186",
+      "playerName": "マーノ/ギコギコはしません",
+      "characterId": "dhalsim",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-187",
+      "playerName": "HOT｜kuroasing",
+      "characterId": "jp",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-188",
+      "playerName": "Sakuma_Drops",
+      "characterId": "zangief",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-189",
+      "playerName": "ポタイズ",
+      "characterId": "arjun",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-190",
+      "playerName": "Satsuki_R",
+      "characterId": "kimberly",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-191",
+      "playerName": "ランガサミ/rangasamy",
+      "characterId": "honda",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-192",
+      "playerName": "ざーかーな",
+      "characterId": "ed",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-193",
+      "playerName": "OGreen",
+      "characterId": "marisa",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-194",
+      "playerName": "GTW-XiaoXu",
+      "characterId": "deejay",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-195",
+      "playerName": "cosazeku",
+      "characterId": "ken",
+      "rank": 186,
+      "masterRating": 2303
+    },
+    {
+      "id": "entry-196",
+      "playerName": "あともすふぃあ",
+      "characterId": "cammy",
+      "rank": 196,
+      "masterRating": 2302
+    },
+    {
+      "id": "entry-197",
+      "playerName": "ダークメンヘラ・ヨガ・ドラゴン",
+      "characterId": "arjun",
+      "rank": 196,
+      "masterRating": 2302
+    },
+    {
+      "id": "entry-198",
+      "playerName": "にこちん",
+      "characterId": "elena",
+      "rank": 196,
+      "masterRating": 2302
+    },
+    {
+      "id": "entry-199",
+      "playerName": "Wabiichi",
+      "characterId": "terry",
+      "rank": 196,
+      "masterRating": 2302
+    },
+    {
+      "id": "entry-200",
+      "playerName": "デッドロック/超ばぶーた",
+      "characterId": "vega",
+      "rank": 196,
+      "masterRating": 2302
+    },
+    {
+      "id": "entry-201",
+      "playerName": "ざきbb",
+      "characterId": "juri",
+      "rank": 196,
+      "masterRating": 2302
+    },
+    {
+      "id": "entry-202",
+      "playerName": "エルフォルテ待機勢",
+      "characterId": "arjun",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-203",
+      "playerName": "おずわるど",
+      "characterId": "yasmine",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-204",
+      "playerName": "強めのくろかわ",
+      "characterId": "ingrid",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-205",
+      "playerName": "tubaki",
+      "characterId": "mai",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-206",
+      "playerName": "tsumugiZ",
+      "characterId": "jamie",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-207",
+      "playerName": "enigma",
+      "characterId": "honda",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-208",
+      "playerName": "Nashi_espopia",
+      "characterId": "juri",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-209",
+      "playerName": "AKUMASAKI",
+      "characterId": "blanka",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-210",
+      "playerName": "ひんにょう男",
+      "characterId": "blanka",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-211",
+      "playerName": "TPBE | Hope",
+      "characterId": "aki",
+      "rank": 202,
+      "masterRating": 2301
+    },
+    {
+      "id": "entry-212",
+      "playerName": "t4nuki",
+      "characterId": "jp",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-213",
+      "playerName": "tuxa",
+      "characterId": "chunli",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-214",
+      "playerName": "ariK",
+      "characterId": "alex",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-215",
+      "playerName": "chima",
+      "characterId": "cviper",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-216",
+      "playerName": "Askey",
+      "characterId": "mai",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-217",
+      "playerName": "Nth Oniki",
+      "characterId": "vega",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-218",
+      "playerName": "morisawa",
+      "characterId": "jamie",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-219",
+      "playerName": "Ugang",
+      "characterId": "luke",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-220",
+      "playerName": "耍起超人",
+      "characterId": "luke",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-221",
+      "playerName": "草薙真吾",
+      "characterId": "luke",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-222",
+      "playerName": "ディーキ@",
+      "characterId": "deejay",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-223",
+      "playerName": "Asuka",
+      "characterId": "deejay",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-224",
+      "playerName": "NotPedro",
+      "characterId": "ken",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-225",
+      "playerName": "ファルコンタ",
+      "characterId": "ken",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-226",
+      "playerName": "konabe",
+      "characterId": "ken",
+      "rank": 212,
+      "masterRating": 2300
+    },
+    {
+      "id": "entry-227",
+      "playerName": "ウエスタン | loto6",
+      "characterId": "cammy",
+      "rank": 227,
+      "masterRating": 2294
+    },
+    {
+      "id": "entry-228",
+      "playerName": "ミリたす",
+      "characterId": "terry",
+      "rank": 228,
+      "masterRating": 2292
+    },
+    {
+      "id": "entry-229",
+      "playerName": "ネコと和解せよ",
+      "characterId": "aki",
+      "rank": 228,
+      "masterRating": 2292
+    },
+    {
+      "id": "entry-230",
+      "playerName": "ruga",
+      "characterId": "yasmine",
+      "rank": 230,
+      "masterRating": 2290
+    },
+    {
+      "id": "entry-231",
+      "playerName": "寝ることは大事",
+      "characterId": "mai",
+      "rank": 230,
+      "masterRating": 2290
+    },
+    {
+      "id": "entry-232",
+      "playerName": "Zhen",
+      "characterId": "vega",
+      "rank": 230,
+      "masterRating": 2290
+    },
+    {
+      "id": "entry-233",
+      "playerName": "だいわ_",
+      "characterId": "sagat",
+      "rank": 230,
+      "masterRating": 2290
+    },
+    {
+      "id": "entry-234",
+      "playerName": "ロマンティックすがわら",
+      "characterId": "jamie",
+      "rank": 230,
+      "masterRating": 2290
+    },
+    {
+      "id": "entry-235",
+      "playerName": "きんぐすベガ",
+      "characterId": "blanka",
+      "rank": 230,
+      "masterRating": 2290
+    },
+    {
+      "id": "entry-236",
+      "playerName": "Nth＿satoru",
+      "characterId": "rashid",
+      "rank": 236,
+      "masterRating": 2289
+    },
+    {
+      "id": "entry-237",
+      "playerName": "山田の隣",
+      "characterId": "rashid",
+      "rank": 236,
+      "masterRating": 2289
+    },
+    {
+      "id": "entry-238",
+      "playerName": "さきもり",
+      "characterId": "sagat",
+      "rank": 238,
+      "masterRating": 2288
+    },
+    {
+      "id": "entry-239",
+      "playerName": "NEPHEW237142",
+      "characterId": "juri",
+      "rank": 238,
+      "masterRating": 2288
+    },
+    {
+      "id": "entry-240",
+      "playerName": "ハマシカ",
+      "characterId": "ken",
+      "rank": 238,
+      "masterRating": 2288
+    },
+    {
+      "id": "entry-241",
+      "playerName": "kawano",
+      "characterId": "gouki",
+      "rank": 241,
+      "masterRating": 2287
+    },
+    {
+      "id": "entry-242",
+      "playerName": "ナイト894@Twitch",
+      "characterId": "jamie",
+      "rank": 241,
+      "masterRating": 2287
+    },
+    {
+      "id": "entry-243",
+      "playerName": "tora",
+      "characterId": "jp",
+      "rank": 243,
+      "masterRating": 2286
+    },
+    {
+      "id": "entry-244",
+      "playerName": "まえうしろ",
+      "characterId": "vega",
+      "rank": 243,
+      "masterRating": 2286
+    },
+    {
+      "id": "entry-245",
+      "playerName": "千載一遇",
+      "characterId": "luke",
+      "rank": 243,
+      "masterRating": 2286
+    },
+    {
+      "id": "entry-246",
+      "playerName": "JACK_DOLL",
+      "characterId": "juri",
+      "rank": 243,
+      "masterRating": 2286
+    },
+    {
+      "id": "entry-247",
+      "playerName": "NISHIKIN",
+      "characterId": "blanka",
+      "rank": 243,
+      "masterRating": 2286
+    },
+    {
+      "id": "entry-248",
+      "playerName": "miLiq｜LaVISION。",
+      "characterId": "aki",
+      "rank": 243,
+      "masterRating": 2286
+    },
+    {
+      "id": "entry-249",
+      "playerName": "SivaKaeru",
+      "characterId": "lily",
+      "rank": 243,
+      "masterRating": 2286
+    },
+    {
+      "id": "entry-250",
+      "playerName": "Poison Alex",
+      "characterId": "zangief",
+      "rank": 250,
+      "masterRating": 2285
+    },
+    {
+      "id": "entry-251",
+      "playerName": "かたつむり",
+      "characterId": "chunli",
+      "rank": 250,
+      "masterRating": 2285
+    },
+    {
+      "id": "entry-252",
+      "playerName": "daijin/対戦会中",
+      "characterId": "dhalsim",
+      "rank": 252,
+      "masterRating": 2284
+    },
+    {
+      "id": "entry-253",
+      "playerName": "Yashi8463twitch",
+      "characterId": "arjun",
+      "rank": 252,
+      "masterRating": 2284
+    },
+    {
+      "id": "entry-254",
+      "playerName": "ガチタニ",
+      "characterId": "elena",
+      "rank": 252,
+      "masterRating": 2284
+    },
+    {
+      "id": "entry-255",
+      "playerName": "リトのなっとう",
+      "characterId": "sagat",
+      "rank": 252,
+      "masterRating": 2284
+    },
+    {
+      "id": "entry-256",
+      "playerName": "おずわるど",
+      "characterId": "sagat",
+      "rank": 252,
+      "masterRating": 2284
+    },
+    {
+      "id": "entry-257",
+      "playerName": "Zacfry3d",
+      "characterId": "luke",
+      "rank": 252,
+      "masterRating": 2284
+    },
+    {
+      "id": "entry-258",
+      "playerName": "DNS l armperor",
+      "characterId": "ken",
+      "rank": 252,
+      "masterRating": 2284
+    },
+    {
+      "id": "entry-259",
+      "playerName": "双子の弟",
+      "characterId": "ryu",
+      "rank": 252,
+      "masterRating": 2284
+    },
+    {
+      "id": "entry-260",
+      "playerName": "ほしがた｜VLY",
+      "characterId": "cammy",
+      "rank": 260,
+      "masterRating": 2283
+    },
+    {
+      "id": "entry-261",
+      "playerName": "だんごだなも",
+      "characterId": "dhalsim",
+      "rank": 260,
+      "masterRating": 2283
+    },
+    {
+      "id": "entry-262",
+      "playerName": "作詞--",
+      "characterId": "zangief",
+      "rank": 260,
+      "masterRating": 2283
+    },
+    {
+      "id": "entry-263",
+      "playerName": "SGN｜かねまる",
+      "characterId": "mai",
+      "rank": 260,
+      "masterRating": 2283
+    },
+    {
+      "id": "entry-264",
+      "playerName": "しのみや",
+      "characterId": "vega",
+      "rank": 260,
+      "masterRating": 2283
+    },
+    {
+      "id": "entry-265",
+      "playerName": "キクラゲ",
+      "characterId": "blanka",
+      "rank": 260,
+      "masterRating": 2283
+    },
+    {
+      "id": "entry-266",
+      "playerName": "-shafengla-",
+      "characterId": "chunli",
+      "rank": 266,
+      "masterRating": 2282
+    },
+    {
+      "id": "entry-267",
+      "playerName": "硝子ドール",
+      "characterId": "ingrid",
+      "rank": 266,
+      "masterRating": 2282
+    },
+    {
+      "id": "entry-268",
+      "playerName": "鯖の味噌煮",
+      "characterId": "vega",
+      "rank": 266,
+      "masterRating": 2282
+    },
+    {
+      "id": "entry-269",
+      "playerName": "SAMYUWENpc",
+      "characterId": "blanka",
+      "rank": 266,
+      "masterRating": 2282
+    },
+    {
+      "id": "entry-270",
+      "playerName": "にゃじ@YouTube",
+      "characterId": "ryu",
+      "rank": 266,
+      "masterRating": 2282
+    },
+    {
+      "id": "entry-271",
+      "playerName": "Nth Oniki",
+      "characterId": "jp",
+      "rank": 271,
+      "masterRating": 2281
+    },
+    {
+      "id": "entry-272",
+      "playerName": "没有没有",
+      "characterId": "vega",
+      "rank": 271,
+      "masterRating": 2281
+    },
+    {
+      "id": "entry-273",
+      "playerName": "ahahaha",
+      "characterId": "sagat",
+      "rank": 271,
+      "masterRating": 2281
+    },
+    {
+      "id": "entry-274",
+      "playerName": "ゆーけー",
+      "characterId": "jamie",
+      "rank": 271,
+      "masterRating": 2281
+    },
+    {
+      "id": "entry-275",
+      "playerName": "Azzz",
+      "characterId": "blanka",
+      "rank": 271,
+      "masterRating": 2281
+    },
+    {
+      "id": "entry-276",
+      "playerName": "しめさば",
+      "characterId": "deejay",
+      "rank": 271,
+      "masterRating": 2281
+    },
+    {
+      "id": "entry-277",
+      "playerName": "ブッチンダ",
+      "characterId": "deejay",
+      "rank": 271,
+      "masterRating": 2281
+    },
+    {
+      "id": "entry-278",
+      "playerName": "†卍♨♨卍†｜ぬーどる（本人）",
+      "characterId": "cammy",
+      "rank": 278,
+      "masterRating": 2280
+    },
+    {
+      "id": "entry-279",
+      "playerName": "泥沼のけーくまん",
+      "characterId": "cviper",
+      "rank": 278,
+      "masterRating": 2280
+    },
+    {
+      "id": "entry-280",
+      "playerName": "めんたらこ",
+      "characterId": "cviper",
+      "rank": 278,
+      "masterRating": 2280
+    },
+    {
+      "id": "entry-281",
+      "playerName": "Struggle",
+      "characterId": "ed",
+      "rank": 278,
+      "masterRating": 2280
+    },
+    {
+      "id": "entry-282",
+      "playerName": "ayayan",
+      "characterId": "ken",
+      "rank": 278,
+      "masterRating": 2280
+    },
+    {
+      "id": "entry-283",
+      "playerName": "74u7",
+      "characterId": "dhalsim",
+      "rank": 283,
+      "masterRating": 2279
+    },
+    {
+      "id": "entry-284",
+      "playerName": "わらび餅",
+      "characterId": "jp",
+      "rank": 283,
+      "masterRating": 2279
+    },
+    {
+      "id": "entry-285",
+      "playerName": "Rerin/レリン",
+      "characterId": "jp",
+      "rank": 283,
+      "masterRating": 2279
+    },
+    {
+      "id": "entry-286",
+      "playerName": "orarinSycom",
+      "characterId": "mai",
+      "rank": 283,
+      "masterRating": 2279
+    },
+    {
+      "id": "entry-287",
+      "playerName": "Syuji",
+      "characterId": "mai",
+      "rank": 283,
+      "masterRating": 2279
+    },
+    {
+      "id": "entry-288",
+      "playerName": "カニエウェスト（本物）",
+      "characterId": "vega",
+      "rank": 283,
+      "masterRating": 2279
+    },
+    {
+      "id": "entry-289",
+      "playerName": "hikaru_shiftne",
+      "characterId": "aki",
+      "rank": 283,
+      "masterRating": 2279
+    },
+    {
+      "id": "entry-290",
+      "playerName": "Parume",
+      "characterId": "ken",
+      "rank": 283,
+      "masterRating": 2279
+    },
+    {
+      "id": "entry-291",
+      "playerName": "ばばばるじ",
+      "characterId": "cammy",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-292",
+      "playerName": "均衡保つは白き法",
+      "characterId": "chunli",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-293",
+      "playerName": "おとやんTV",
+      "characterId": "chunli",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-294",
+      "playerName": "ゆーざー",
+      "characterId": "alex",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-295",
+      "playerName": "toto",
+      "characterId": "elena",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-296",
+      "playerName": "真/しん",
+      "characterId": "vega",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-297",
+      "playerName": "SHUN1",
+      "characterId": "gouki",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-298",
+      "playerName": "ただの人",
+      "characterId": "jamie",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-299",
+      "playerName": "ZOO丨S狗",
+      "characterId": "honda",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-300",
+      "playerName": "ガチタニ",
+      "characterId": "ryu",
+      "rank": 291,
+      "masterRating": 2278
+    },
+    {
+      "id": "entry-301",
+      "playerName": "勇者きょーすけ",
+      "characterId": "ingrid",
+      "rank": 301,
+      "masterRating": 2277
+    },
+    {
+      "id": "entry-302",
+      "playerName": "テキーラです",
+      "characterId": "cviper",
+      "rank": 301,
+      "masterRating": 2277
+    },
+    {
+      "id": "entry-303",
+      "playerName": "ダス＠PC",
+      "characterId": "cviper",
+      "rank": 301,
+      "masterRating": 2277
+    },
+    {
+      "id": "entry-304",
+      "playerName": "obiheart",
+      "characterId": "vega",
+      "rank": 301,
+      "masterRating": 2277
+    },
+    {
+      "id": "entry-305",
+      "playerName": "TAKEDA",
+      "characterId": "vega",
+      "rank": 301,
+      "masterRating": 2277
+    },
+    {
+      "id": "entry-306",
+      "playerName": "エドモンド門間",
+      "characterId": "honda",
+      "rank": 301,
+      "masterRating": 2277
+    },
+    {
+      "id": "entry-307",
+      "playerName": "higg",
+      "characterId": "guile",
+      "rank": 301,
+      "masterRating": 2277
+    },
+    {
+      "id": "entry-308",
+      "playerName": "えんでび",
+      "characterId": "blanka",
+      "rank": 301,
+      "masterRating": 2277
+    },
+    {
+      "id": "entry-309",
+      "playerName": "犀川創平@スト6",
+      "characterId": "ken",
+      "rank": 301,
+      "masterRating": 2277
+    },
+    {
+      "id": "entry-310",
+      "playerName": "Popin",
+      "characterId": "cammy",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-311",
+      "playerName": "Tech.",
+      "characterId": "jp",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-312",
+      "playerName": "yabu",
+      "characterId": "jp",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-313",
+      "playerName": "ジェットドン",
+      "characterId": "manon",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-314",
+      "playerName": "zundaneko",
+      "characterId": "arjun",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-315",
+      "playerName": "shomin",
+      "characterId": "arjun",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-316",
+      "playerName": "どこでもガガゼトマン",
+      "characterId": "kimberly",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-317",
+      "playerName": "mago2dgod",
+      "characterId": "mai",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-318",
+      "playerName": "けんさば@Twitch",
+      "characterId": "sagat",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-319",
+      "playerName": "R7ou",
+      "characterId": "luke",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-320",
+      "playerName": "ぐっすみん",
+      "characterId": "juri",
+      "rank": 310,
+      "masterRating": 2276
+    },
+    {
+      "id": "entry-321",
+      "playerName": "拳の道_難易度:鬼殺",
+      "characterId": "cammy",
+      "rank": 321,
+      "masterRating": 2275
+    },
+    {
+      "id": "entry-322",
+      "playerName": "ハイテイ",
+      "characterId": "zangief",
+      "rank": 321,
+      "masterRating": 2275
+    },
+    {
+      "id": "entry-323",
+      "playerName": "Unsung",
+      "characterId": "yasmine",
+      "rank": 321,
+      "masterRating": 2275
+    },
+    {
+      "id": "entry-324",
+      "playerName": "youdau",
+      "characterId": "cviper",
+      "rank": 321,
+      "masterRating": 2275
+    },
+    {
+      "id": "entry-325",
+      "playerName": "ぱんだレッサー",
+      "characterId": "elena",
+      "rank": 321,
+      "masterRating": 2275
+    },
+    {
+      "id": "entry-326",
+      "playerName": "cyber_neet",
+      "characterId": "terry",
+      "rank": 321,
+      "masterRating": 2275
+    },
+    {
+      "id": "entry-327",
+      "playerName": "NoKawaii NoLife",
+      "characterId": "sagat",
+      "rank": 321,
+      "masterRating": 2275
+    },
+    {
+      "id": "entry-328",
+      "playerName": "レオンつまじろ",
+      "characterId": "guile",
+      "rank": 321,
+      "masterRating": 2275
+    },
+    {
+      "id": "entry-329",
+      "playerName": "ひへいへ",
+      "characterId": "marisa",
+      "rank": 321,
+      "masterRating": 2275
+    },
+    {
+      "id": "entry-330",
+      "playerName": "KOIKE",
+      "characterId": "cammy",
+      "rank": 330,
+      "masterRating": 2274
+    },
+    {
+      "id": "entry-331",
+      "playerName": "Emuemu",
+      "characterId": "zangief",
+      "rank": 330,
+      "masterRating": 2274
+    },
+    {
+      "id": "entry-332",
+      "playerName": "天翔紅々",
+      "characterId": "zangief",
+      "rank": 330,
+      "masterRating": 2274
+    },
+    {
+      "id": "entry-333",
+      "playerName": "choco@ほしとも",
+      "characterId": "cviper",
+      "rank": 330,
+      "masterRating": 2274
+    },
+    {
+      "id": "entry-334",
+      "playerName": "SGN｜ルル",
+      "characterId": "terry",
+      "rank": 330,
+      "masterRating": 2274
+    },
+    {
+      "id": "entry-335",
+      "playerName": "inaba",
+      "characterId": "vega",
+      "rank": 330,
+      "masterRating": 2274
+    },
+    {
+      "id": "entry-336",
+      "playerName": "Haru.",
+      "characterId": "gouki",
+      "rank": 330,
+      "masterRating": 2274
+    },
+    {
+      "id": "entry-337",
+      "playerName": "小走り。",
+      "characterId": "rashid",
+      "rank": 330,
+      "masterRating": 2274
+    },
+    {
+      "id": "entry-338",
+      "playerName": "SHIGEMARU",
+      "characterId": "cammy",
+      "rank": 338,
+      "masterRating": 2273
+    },
+    {
+      "id": "entry-339",
+      "playerName": "-うちわ-",
+      "characterId": "cammy",
+      "rank": 338,
+      "masterRating": 2273
+    },
+    {
+      "id": "entry-340",
+      "playerName": "あたーう",
+      "characterId": "zangief",
+      "rank": 338,
+      "masterRating": 2273
+    },
+    {
+      "id": "entry-341",
+      "playerName": "Kazunoko",
+      "characterId": "arjun",
+      "rank": 338,
+      "masterRating": 2273
+    },
+    {
+      "id": "entry-342",
+      "playerName": "val_",
+      "characterId": "ingrid",
+      "rank": 338,
+      "masterRating": 2273
+    },
+    {
+      "id": "entry-343",
+      "playerName": "ごんしゃん",
+      "characterId": "kimberly",
+      "rank": 338,
+      "masterRating": 2273
+    },
+    {
+      "id": "entry-344",
+      "playerName": "リトのなっとう",
+      "characterId": "elena",
+      "rank": 338,
+      "masterRating": 2273
+    },
+    {
+      "id": "entry-345",
+      "playerName": "ネコ派です_ネッコ座ってます",
+      "characterId": "deejay",
+      "rank": 338,
+      "masterRating": 2273
+    },
+    {
+      "id": "entry-346",
+      "playerName": "フーリガン草野",
+      "characterId": "cammy",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-347",
+      "playerName": "SOL|小野寺/onodea",
+      "characterId": "jp",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-348",
+      "playerName": "karo",
+      "characterId": "yasmine",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-349",
+      "playerName": "ナショナル動かせ",
+      "characterId": "elena",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-350",
+      "playerName": "ちゃきお～～ん",
+      "characterId": "jamie",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-351",
+      "playerName": "キョンくんさん@Twitch",
+      "characterId": "honda",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-352",
+      "playerName": "DNS l armperor",
+      "characterId": "luke",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-353",
+      "playerName": "cyber_neet",
+      "characterId": "ed",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-354",
+      "playerName": "Maxi",
+      "characterId": "ed",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-355",
+      "playerName": "-总狮范-",
+      "characterId": "blanka",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-356",
+      "playerName": "zundaneko",
+      "characterId": "ken",
+      "rank": 346,
+      "masterRating": 2272
+    },
+    {
+      "id": "entry-357",
+      "playerName": "伊予 I-yo",
+      "characterId": "dhalsim",
+      "rank": 357,
+      "masterRating": 2271
+    },
+    {
+      "id": "entry-358",
+      "playerName": "MrAriadne",
+      "characterId": "manon",
+      "rank": 357,
+      "masterRating": 2271
+    },
+    {
+      "id": "entry-359",
+      "playerName": "チューケー・タヨリスキー",
+      "characterId": "chunli",
+      "rank": 357,
+      "masterRating": 2271
+    },
+    {
+      "id": "entry-360",
+      "playerName": "yoyozaemon",
+      "characterId": "chunli",
+      "rank": 357,
+      "masterRating": 2271
+    },
+    {
+      "id": "entry-361",
+      "playerName": "ACQUA",
+      "characterId": "arjun",
+      "rank": 357,
+      "masterRating": 2271
+    },
+    {
+      "id": "entry-362",
+      "playerName": "touwa",
+      "characterId": "gouki",
+      "rank": 357,
+      "masterRating": 2271
+    },
+    {
+      "id": "entry-363",
+      "playerName": "もちきち",
+      "characterId": "luke",
+      "rank": 357,
+      "masterRating": 2271
+    },
+    {
+      "id": "entry-364",
+      "playerName": "tacos",
+      "characterId": "juri",
+      "rank": 357,
+      "masterRating": 2271
+    },
+    {
+      "id": "entry-365",
+      "playerName": "龙吟花生壳",
+      "characterId": "cammy",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-366",
+      "playerName": "キーボード",
+      "characterId": "jp",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-367",
+      "playerName": "PC6Akira",
+      "characterId": "cviper",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-368",
+      "playerName": "LUGABO",
+      "characterId": "kimberly",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-369",
+      "playerName": "deejay",
+      "characterId": "mai",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-370",
+      "playerName": "Jimmy1_ファイターズ最強",
+      "characterId": "terry",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-371",
+      "playerName": "sln3",
+      "characterId": "gouki",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-372",
+      "playerName": "ゆまちゃむ",
+      "characterId": "ed",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-373",
+      "playerName": "热情花‎",
+      "characterId": "ed",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-374",
+      "playerName": "M.YooHoo",
+      "characterId": "rashid",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-375",
+      "playerName": "nepity_Twitch",
+      "characterId": "deejay",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-376",
+      "playerName": "Olive_",
+      "characterId": "ken",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-377",
+      "playerName": "GGDZZ天道版",
+      "characterId": "ryu",
+      "rank": 365,
+      "masterRating": 2270
+    },
+    {
+      "id": "entry-378",
+      "playerName": "cokaΣickey",
+      "characterId": "manon",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-379",
+      "playerName": "おーば@61歳",
+      "characterId": "yasmine",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-380",
+      "playerName": "3S|しっくすびっと",
+      "characterId": "cviper",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-381",
+      "playerName": "ThInkWhatcAnDOQ",
+      "characterId": "cviper",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-382",
+      "playerName": "Bacon",
+      "characterId": "cviper",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-383",
+      "playerName": "峰津院大和",
+      "characterId": "mai",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-384",
+      "playerName": "USGYがる",
+      "characterId": "terry",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-385",
+      "playerName": "發斗獨狗",
+      "characterId": "vega",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-386",
+      "playerName": "iyun1212",
+      "characterId": "jamie",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-387",
+      "playerName": "ゴリラの森 | ルーーード",
+      "characterId": "luke",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-388",
+      "playerName": "ひとつのぴーす",
+      "characterId": "luke",
+      "rank": 378,
+      "masterRating": 2269
+    },
+    {
+      "id": "entry-389",
+      "playerName": "すごくつよい",
+      "characterId": "dhalsim",
+      "rank": 389,
+      "masterRating": 2268
+    },
+    {
+      "id": "entry-390",
+      "playerName": "Jimmy1_ファイターズ最強",
+      "characterId": "alex",
+      "rank": 389,
+      "masterRating": 2268
+    },
+    {
+      "id": "entry-391",
+      "playerName": "Minmi",
+      "characterId": "cviper",
+      "rank": 389,
+      "masterRating": 2268
+    },
+    {
+      "id": "entry-392",
+      "playerName": "ねじまき鳥クロニクル",
+      "characterId": "dhalsim",
+      "rank": 392,
+      "masterRating": 2267
+    },
+    {
+      "id": "entry-393",
+      "playerName": "Sahara",
+      "characterId": "gouki",
+      "rank": 392,
+      "masterRating": 2267
+    },
+    {
+      "id": "entry-394",
+      "playerName": "zundaneko",
+      "characterId": "gouki",
+      "rank": 392,
+      "masterRating": 2267
+    },
+    {
+      "id": "entry-395",
+      "playerName": "动感模式享受者",
+      "characterId": "jamie",
+      "rank": 392,
+      "masterRating": 2267
+    },
+    {
+      "id": "entry-396",
+      "playerName": "Innocent Aces",
+      "characterId": "jamie",
+      "rank": 392,
+      "masterRating": 2267
+    },
+    {
+      "id": "entry-397",
+      "playerName": "Sahara",
+      "characterId": "ed",
+      "rank": 392,
+      "masterRating": 2267
+    },
+    {
+      "id": "entry-398",
+      "playerName": "Bocchi",
+      "characterId": "deejay",
+      "rank": 392,
+      "masterRating": 2267
+    },
+    {
+      "id": "entry-399",
+      "playerName": "LNF丨一千年以后_",
+      "characterId": "jp",
+      "rank": 399,
+      "masterRating": 2266
+    },
+    {
+      "id": "entry-400",
+      "playerName": "だいふく",
+      "characterId": "arjun",
+      "rank": 399,
+      "masterRating": 2266
+    },
+    {
+      "id": "entry-401",
+      "playerName": "ハリネズミン",
+      "characterId": "yasmine",
+      "rank": 399,
+      "masterRating": 2266
+    },
+    {
+      "id": "entry-402",
+      "playerName": "シーチェックイン",
+      "characterId": "kimberly",
+      "rank": 399,
+      "masterRating": 2266
+    },
+    {
+      "id": "entry-403",
+      "playerName": "ll Moke ll",
+      "characterId": "mai",
+      "rank": 399,
+      "masterRating": 2266
+    },
+    {
+      "id": "entry-404",
+      "playerName": "LeShar",
+      "characterId": "gouki",
+      "rank": 399,
+      "masterRating": 2266
+    },
+    {
+      "id": "entry-405",
+      "playerName": "VEGA007",
+      "characterId": "honda",
+      "rank": 399,
+      "masterRating": 2266
+    },
+    {
+      "id": "entry-406",
+      "playerName": "シミソラシド",
+      "characterId": "rashid",
+      "rank": 399,
+      "masterRating": 2266
+    },
+    {
+      "id": "entry-407",
+      "playerName": "こなつ？",
+      "characterId": "dhalsim",
+      "rank": 407,
+      "masterRating": 2265
+    },
+    {
+      "id": "entry-408",
+      "playerName": "スーパーかもめ２",
+      "characterId": "ed",
+      "rank": 407,
+      "masterRating": 2265
+    },
+    {
+      "id": "entry-409",
+      "playerName": "れれれれれ～げん",
+      "characterId": "deejay",
+      "rank": 407,
+      "masterRating": 2265
+    },
+    {
+      "id": "entry-410",
+      "playerName": "Fujimura",
+      "characterId": "cviper",
+      "rank": 410,
+      "masterRating": 2264
+    },
+    {
+      "id": "entry-411",
+      "playerName": "MAI ME CARREGUE",
+      "characterId": "mai",
+      "rank": 410,
+      "masterRating": 2264
+    },
+    {
+      "id": "entry-412",
+      "playerName": "-DingChunQiu-",
+      "characterId": "jp",
+      "rank": 412,
+      "masterRating": 2263
+    },
+    {
+      "id": "entry-413",
+      "playerName": "定格電圧:AC100V",
+      "characterId": "cviper",
+      "rank": 412,
+      "masterRating": 2263
+    },
+    {
+      "id": "entry-414",
+      "playerName": "えすぴぃ",
+      "characterId": "sagat",
+      "rank": 412,
+      "masterRating": 2263
+    },
+    {
+      "id": "entry-415",
+      "playerName": "玲衣,,",
+      "characterId": "guile",
+      "rank": 412,
+      "masterRating": 2263
+    },
+    {
+      "id": "entry-416",
+      "playerName": "Clown",
+      "characterId": "lily",
+      "rank": 412,
+      "masterRating": 2263
+    },
+    {
+      "id": "entry-417",
+      "playerName": "Yoshikibi",
+      "characterId": "cammy",
+      "rank": 417,
+      "masterRating": 2262
+    },
+    {
+      "id": "entry-418",
+      "playerName": "osugi_bent",
+      "characterId": "cammy",
+      "rank": 417,
+      "masterRating": 2262
+    },
+    {
+      "id": "entry-419",
+      "playerName": "DFM竹内ジョン(新婚)",
+      "characterId": "arjun",
+      "rank": 417,
+      "masterRating": 2262
+    },
+    {
+      "id": "entry-420",
+      "playerName": "Hyup",
+      "characterId": "terry",
+      "rank": 417,
+      "masterRating": 2262
+    },
+    {
+      "id": "entry-421",
+      "playerName": "HAMY164",
+      "characterId": "luke",
+      "rank": 417,
+      "masterRating": 2262
+    },
+    {
+      "id": "entry-422",
+      "playerName": "Axela",
+      "characterId": "jp",
+      "rank": 422,
+      "masterRating": 2261
+    },
+    {
+      "id": "entry-423",
+      "playerName": "FeiChang",
+      "characterId": "alex",
+      "rank": 422,
+      "masterRating": 2261
+    },
+    {
+      "id": "entry-424",
+      "playerName": "かっこいいが好きど",
+      "characterId": "alex",
+      "rank": 422,
+      "masterRating": 2261
+    },
+    {
+      "id": "entry-425",
+      "playerName": "zundaneko",
+      "characterId": "mai",
+      "rank": 422,
+      "masterRating": 2261
+    },
+    {
+      "id": "entry-426",
+      "playerName": "ついっぎー",
+      "characterId": "lily",
+      "rank": 422,
+      "masterRating": 2261
+    },
+    {
+      "id": "entry-427",
+      "playerName": "ll Moke ll",
+      "characterId": "chunli",
+      "rank": 427,
+      "masterRating": 2260
+    },
+    {
+      "id": "entry-428",
+      "playerName": "M.M.",
+      "characterId": "aki",
+      "rank": 427,
+      "masterRating": 2260
+    },
+    {
+      "id": "entry-429",
+      "playerName": "zundaneko",
+      "characterId": "alex",
+      "rank": 429,
+      "masterRating": 2259
+    },
+    {
+      "id": "entry-430",
+      "playerName": "infimum00",
+      "characterId": "cammy",
+      "rank": 430,
+      "masterRating": 2257
+    },
+    {
+      "id": "entry-431",
+      "playerName": "Satsuki_R",
+      "characterId": "mai",
+      "rank": 430,
+      "masterRating": 2257
+    },
+    {
+      "id": "entry-432",
+      "playerName": "LEO-IG",
+      "characterId": "ed",
+      "rank": 430,
+      "masterRating": 2257
+    },
+    {
+      "id": "entry-433",
+      "playerName": "Kuromi",
+      "characterId": "ed",
+      "rank": 430,
+      "masterRating": 2257
+    },
+    {
+      "id": "entry-434",
+      "playerName": "itagaki_",
+      "characterId": "lily",
+      "rank": 430,
+      "masterRating": 2257
+    },
+    {
+      "id": "entry-435",
+      "playerName": "又摘桃花换酒钱",
+      "characterId": "kimberly",
+      "rank": 435,
+      "masterRating": 2256
+    },
+    {
+      "id": "entry-436",
+      "playerName": "あああああああああああああああ",
+      "characterId": "zangief",
+      "rank": 436,
+      "masterRating": 2255
+    },
+    {
+      "id": "entry-437",
+      "playerName": "Juso",
+      "characterId": "marisa",
+      "rank": 436,
+      "masterRating": 2255
+    },
+    {
+      "id": "entry-438",
+      "playerName": "你听得到",
+      "characterId": "deejay",
+      "rank": 436,
+      "masterRating": 2255
+    },
+    {
+      "id": "entry-439",
+      "playerName": "優しい麦茶",
+      "characterId": "vega",
+      "rank": 439,
+      "masterRating": 2254
+    },
+    {
+      "id": "entry-440",
+      "playerName": "hascao",
+      "characterId": "manon",
+      "rank": 440,
+      "masterRating": 2253
+    },
+    {
+      "id": "entry-441",
+      "playerName": "ギリギリマンボウチャンス",
+      "characterId": "kimberly",
+      "rank": 440,
+      "masterRating": 2253
+    },
+    {
+      "id": "entry-442",
+      "playerName": "sngv",
+      "characterId": "mai",
+      "rank": 440,
+      "masterRating": 2253
+    },
+    {
+      "id": "entry-443",
+      "playerName": "Bloo",
+      "characterId": "deejay",
+      "rank": 440,
+      "masterRating": 2253
+    },
+    {
+      "id": "entry-444",
+      "playerName": "じゅたろー",
+      "characterId": "chunli",
+      "rank": 444,
+      "masterRating": 2252
+    },
+    {
+      "id": "entry-445",
+      "playerName": "ベルウッド",
+      "characterId": "arjun",
+      "rank": 444,
+      "masterRating": 2252
+    },
+    {
+      "id": "entry-446",
+      "playerName": "ティファ待ち",
+      "characterId": "luke",
+      "rank": 444,
+      "masterRating": 2252
+    },
+    {
+      "id": "entry-447",
+      "playerName": "へかとん",
+      "characterId": "blanka",
+      "rank": 444,
+      "masterRating": 2252
+    },
+    {
+      "id": "entry-448",
+      "playerName": "-那覇-",
+      "characterId": "dhalsim",
+      "rank": 448,
+      "masterRating": 2251
+    },
+    {
+      "id": "entry-449",
+      "playerName": "Copycat",
+      "characterId": "ingrid",
+      "rank": 448,
+      "masterRating": 2251
+    },
+    {
+      "id": "entry-450",
+      "playerName": "良かったこのキャラで",
+      "characterId": "vega",
+      "rank": 448,
+      "masterRating": 2251
+    },
+    {
+      "id": "entry-451",
+      "playerName": "zundaneko",
+      "characterId": "sagat",
+      "rank": 448,
+      "masterRating": 2251
+    },
+    {
+      "id": "entry-452",
+      "playerName": "なふたれん",
+      "characterId": "guile",
+      "rank": 448,
+      "masterRating": 2251
+    },
+    {
+      "id": "entry-453",
+      "playerName": "GGDZZ天道版",
+      "characterId": "deejay",
+      "rank": 448,
+      "masterRating": 2251
+    },
+    {
+      "id": "entry-454",
+      "playerName": "JINJP",
+      "characterId": "jp",
+      "rank": 454,
+      "masterRating": 2250
+    },
+    {
+      "id": "entry-455",
+      "playerName": "菅原文太(偽物)",
+      "characterId": "mai",
+      "rank": 454,
+      "masterRating": 2250
+    },
+    {
+      "id": "entry-456",
+      "playerName": "くるみ、たまねぎ",
+      "characterId": "ingrid",
+      "rank": 456,
+      "masterRating": 2249
+    },
+    {
+      "id": "entry-457",
+      "playerName": "uryo",
+      "characterId": "cviper",
+      "rank": 456,
+      "masterRating": 2249
+    },
+    {
+      "id": "entry-458",
+      "playerName": "Akakuro",
+      "characterId": "marisa",
+      "rank": 456,
+      "masterRating": 2249
+    },
+    {
+      "id": "entry-459",
+      "playerName": "Shadaloo",
+      "characterId": "ingrid",
+      "rank": 459,
+      "masterRating": 2248
+    },
+    {
+      "id": "entry-460",
+      "playerName": "saritos✿",
+      "characterId": "jamie",
+      "rank": 459,
+      "masterRating": 2248
+    },
+    {
+      "id": "entry-461",
+      "playerName": "H1ghscor3",
+      "characterId": "yasmine",
+      "rank": 461,
+      "masterRating": 2247
+    },
+    {
+      "id": "entry-462",
+      "playerName": "Motchan",
+      "characterId": "aki",
+      "rank": 461,
+      "masterRating": 2247
+    },
+    {
+      "id": "entry-463",
+      "playerName": "Ｋ_Ｚ_Ｏ_",
+      "characterId": "luke",
+      "rank": 463,
+      "masterRating": 2246
+    },
+    {
+      "id": "entry-464",
+      "playerName": "へいぽんガイル",
+      "characterId": "guile",
+      "rank": 463,
+      "masterRating": 2246
+    },
+    {
+      "id": "entry-465",
+      "playerName": "しらた。",
+      "characterId": "aki",
+      "rank": 463,
+      "masterRating": 2246
+    },
+    {
+      "id": "entry-466",
+      "playerName": "Kazunoko",
+      "characterId": "jamie",
+      "rank": 466,
+      "masterRating": 2245
+    },
+    {
+      "id": "entry-467",
+      "playerName": "三田JP",
+      "characterId": "jp",
+      "rank": 467,
+      "masterRating": 2244
+    },
+    {
+      "id": "entry-468",
+      "playerName": "梅原あなたを倒すため進み続ける",
+      "characterId": "gouki",
+      "rank": 467,
+      "masterRating": 2244
+    },
+    {
+      "id": "entry-469",
+      "playerName": "ahahaha",
+      "characterId": "ingrid",
+      "rank": 469,
+      "masterRating": 2243
+    },
+    {
+      "id": "entry-470",
+      "playerName": "ナショナル動かせ",
+      "characterId": "terry",
+      "rank": 469,
+      "masterRating": 2243
+    },
+    {
+      "id": "entry-471",
+      "playerName": "DNS l armperor",
+      "characterId": "ryu",
+      "rank": 469,
+      "masterRating": 2243
+    },
+    {
+      "id": "entry-472",
+      "playerName": "バギーー",
+      "characterId": "mai",
+      "rank": 472,
+      "masterRating": 2242
+    },
+    {
+      "id": "entry-473",
+      "playerName": "jazzzzy",
+      "characterId": "luke",
+      "rank": 472,
+      "masterRating": 2242
+    },
+    {
+      "id": "entry-474",
+      "playerName": "マーノ/ギコギコはしません",
+      "characterId": "aki",
+      "rank": 472,
+      "masterRating": 2242
+    },
+    {
+      "id": "entry-475",
+      "playerName": "Akeboshi",
+      "characterId": "ryu",
+      "rank": 472,
+      "masterRating": 2242
+    },
+    {
+      "id": "entry-476",
+      "playerName": "byako",
+      "characterId": "jp",
+      "rank": 476,
+      "masterRating": 2241
+    },
+    {
+      "id": "entry-477",
+      "playerName": "zundaneko",
+      "characterId": "ryu",
+      "rank": 476,
+      "masterRating": 2241
+    },
+    {
+      "id": "entry-478",
+      "playerName": "hasegawa",
+      "characterId": "gouki",
+      "rank": 478,
+      "masterRating": 2240
+    },
+    {
+      "id": "entry-479",
+      "playerName": "Naooonn",
+      "characterId": "kimberly",
+      "rank": 479,
+      "masterRating": 2239
+    },
+    {
+      "id": "entry-480",
+      "playerName": "kikyo",
+      "characterId": "kimberly",
+      "rank": 480,
+      "masterRating": 2238
+    },
+    {
+      "id": "entry-481",
+      "playerName": "Bilibili_GM",
+      "characterId": "jamie",
+      "rank": 480,
+      "masterRating": 2238
+    },
+    {
+      "id": "entry-482",
+      "playerName": "Cacarazzi",
+      "characterId": "luke",
+      "rank": 480,
+      "masterRating": 2238
+    },
+    {
+      "id": "entry-483",
+      "playerName": "ASASE",
+      "characterId": "zangief",
+      "rank": 483,
+      "masterRating": 2237
+    },
+    {
+      "id": "entry-484",
+      "playerName": "Shotaro",
+      "characterId": "arjun",
+      "rank": 484,
+      "masterRating": 2236
+    },
+    {
+      "id": "entry-485",
+      "playerName": "smile",
+      "characterId": "yasmine",
+      "rank": 484,
+      "masterRating": 2236
+    },
+    {
+      "id": "entry-486",
+      "playerName": "Kait358",
+      "characterId": "mai",
+      "rank": 484,
+      "masterRating": 2236
+    },
+    {
+      "id": "entry-487",
+      "playerName": "cuca",
+      "characterId": "terry",
+      "rank": 484,
+      "masterRating": 2236
+    },
+    {
+      "id": "entry-488",
+      "playerName": "Yanai",
+      "characterId": "sagat",
+      "rank": 484,
+      "masterRating": 2236
+    },
+    {
+      "id": "entry-489",
+      "playerName": "kawano",
+      "characterId": "luke",
+      "rank": 484,
+      "masterRating": 2236
+    },
+    {
+      "id": "entry-490",
+      "playerName": "VLY｜すりーぷ",
+      "characterId": "ken",
+      "rank": 484,
+      "masterRating": 2236
+    },
+    {
+      "id": "entry-491",
+      "playerName": "StealthTX",
+      "characterId": "jp",
+      "rank": 491,
+      "masterRating": 2235
+    },
+    {
+      "id": "entry-492",
+      "playerName": "イブスキ",
+      "characterId": "chunli",
+      "rank": 491,
+      "masterRating": 2235
+    },
+    {
+      "id": "entry-493",
+      "playerName": "YOKOHAMA_TARO",
+      "characterId": "chunli",
+      "rank": 491,
+      "masterRating": 2235
+    },
+    {
+      "id": "entry-494",
+      "playerName": "FENNEL shion",
+      "characterId": "ryu",
+      "rank": 491,
+      "masterRating": 2235
+    },
+    {
+      "id": "entry-495",
+      "playerName": "ホムラちゃん",
+      "characterId": "arjun",
+      "rank": 495,
+      "masterRating": 2233
+    },
+    {
+      "id": "entry-496",
+      "playerName": "Keekuma",
+      "characterId": "yasmine",
+      "rank": 495,
+      "masterRating": 2233
+    },
+    {
+      "id": "entry-497",
+      "playerName": "トーイ/ttoi",
+      "characterId": "alex",
+      "rank": 495,
+      "masterRating": 2233
+    },
+    {
+      "id": "entry-498",
+      "playerName": "blaz 2g",
+      "characterId": "jamie",
+      "rank": 495,
+      "masterRating": 2233
+    },
+    {
+      "id": "entry-499",
+      "playerName": "カボス侍",
+      "characterId": "jamie",
+      "rank": 495,
+      "masterRating": 2233
+    },
+    {
+      "id": "entry-500",
+      "playerName": "Felthi",
+      "characterId": "luke",
+      "rank": 495,
+      "masterRating": 2233
+    },
+    {
+      "id": "entry-501",
+      "playerName": "はりまコーリン",
+      "characterId": "ed",
+      "rank": 495,
+      "masterRating": 2233
+    },
+    {
+      "id": "entry-502",
+      "playerName": "mea.@twitch",
+      "characterId": "ken",
+      "rank": 495,
+      "masterRating": 2233
+    }
+  ],
+  "validation": {
+    "status": "verified",
+    "coverage": "all-listed-legend-entries",
+    "checks": [
+      "conditions-confirmed",
+      "act-confirmed",
+      "membership-confirmed",
+      "pagination-confirmed",
+      "boundary-confirmed",
+      "ordering-confirmed",
+      "account-character-unit-confirmed",
+      "roster-confirmed",
+      "duplicates-checked",
+      "capture-rechecked"
+    ],
+    "notes": [
+      "条件・Act・掲載判定・表示範囲・順位・MR順・重複と両端を確認した。",
+      "行IDは取得回内だけで使用する。プロフィールID・リンク・照合用一時ハッシュは保存していない。"
+    ]
+  }
+}
