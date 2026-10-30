@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
-import { parseSampleSurveyPlan, parseSampleSurveyRun, SAMPLE_SURVEY_INTERVAL_MS, SAMPLE_SURVEY_MAX_CHANGES, SAMPLE_SURVEY_MR_BANDS, SAMPLE_SURVEY_RANKS } from '../../src/lib/sampleSurvey.ts'
-import type { SampleSurveyChange, SampleSurveyConfig, SampleSurveyError, SampleSurveyPlan, SampleSurveyRun, SampleSurveyStratumObservation, SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
+import { parseSampleSurveyPlan, parseSampleSurveyRun, SAMPLE_SURVEY_INTERVAL_MS, SAMPLE_SURVEY_MAX_BOUNDARY_DELTA, SAMPLE_SURVEY_MAX_BOUNDARY_RELATIVE_DELTA, SAMPLE_SURVEY_MAX_CHANGES, SAMPLE_SURVEY_MR_BANDS, SAMPLE_SURVEY_RANKS } from '../../src/lib/sampleSurvey.ts'
+import type { SampleSurveyBoundaryAcceptance, SampleSurveyChange, SampleSurveyConfig, SampleSurveyError, SampleSurveyPlan, SampleSurveyRun, SampleSurveyStratumObservation, SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
 import { SampleSurveyReadError } from './sample-survey-reader.ts'
 import type { SampleSurveyPage, SampleSurveyReader } from './sample-survey-reader.ts'
 
 export { SAMPLE_SURVEY_INTERVAL_MS }
 const INITIAL_BOUNDARY_REFINEMENTS = 2
+const MAX_BOUNDARY_EVIDENCE_PAGES = 4
 export interface SampleSurveyStratumDefinition {
   id: string; label: string; target: SampleSurveyTarget; requested: number; minimum: number; maximum: number | null
 }
@@ -188,6 +189,7 @@ function validatePage(page: SampleSurveyPage, target: SampleSurveyTarget, reques
 
 /** Recoverable evidence about one stratum, never an authentication/format/network failure. */
 class BoundaryDrift extends Error {}
+class BoundaryConfirmationDrift extends BoundaryDrift {}
 export interface SampleSurveyRunnerOptions {
   reader: SampleSurveyReader
   signal: AbortSignal
@@ -203,7 +205,7 @@ export function createSampleSurveyCheckpoint(value: SampleSurveyPlan, time = Dat
     schemaVersion: 2, id: randomUUID(), planId: plan.id, config: plan.config, state: 'preparing', phase: 'boundaries',
     startedAt: timestamp, updatedAt: timestamp, finishedAt: null, elapsedMs: 0, attempts: 0, successfulPages: 0,
     uniqueAccountCount: 0, strata: [], frameChanged: false, stopReason: null, resumeAllowed: false,
-    observation: { method: 'rank-position-interval-v1', strata: sampleSurveyStratumDefinitions(plan.config).map(definition => ({
+    observation: { method: 'rank-position-tolerant-v1', strata: sampleSurveyStratumDefinitions(plan.config).map(definition => ({
       id: definition.id, status: 'pending', startedAt: null, finishedAt: null, totalCountBefore: null, totalCountAfter: null,
       startBefore: null, endBefore: null, startAfter: null, endAfter: null, boundaryChanged: false,
     })), changes: [], omittedChanges: 0 },
@@ -233,6 +235,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
   const wait = options.wait ?? (async (milliseconds: number) => { await delay(milliseconds, undefined, { signal: options.signal }) })
   const definitions = sampleSurveyStratumDefinitions(plan.config), report = checkpoint.report, observation = report.observation!
   const latest = new Map<SampleSurveyTarget, { total: number; pageSize: number }>()
+  const lastObservedAt = new Map<SampleSurveyTarget, string>()
   report.state = 'preparing'; report.phase = 'boundaries'; report.stopReason = null; report.finishedAt = null; report.resumeAllowed = false
   const check = () => {
     if (options.signal.aborted) throw new SampleSurveyReadError(options.signal.reason instanceof SampleSurveyReadError ? options.signal.reason.code : 'cancelled')
@@ -269,6 +272,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
     check()
     if (known && known.total !== pageValue.totalCount) change('total-count', known.total, pageValue.totalCount)
     latest.set(target, { total: pageValue.totalCount, pageSize: pageValue.pageSize })
+    lastObservedAt.set(target, pageValue.observedAt)
     report.successfulPages++
     await publish()
     return pageValue
@@ -277,7 +281,8 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
     change(kind, before, after)
     throw new BoundaryDrift()
   }
-  async function discover(definition: SampleSurveyStratumDefinition, hint?: SampleSurveyFrame): Promise<SampleSurveyFrame> {
+  async function discover(definition: SampleSurveyStratumDefinition, hint?: SampleSurveyFrame,
+    confirmCandidate?: (kind: 'boundary-start' | 'boundary-end', cut: number) => void): Promise<SampleSurveyFrame> {
     const first = await read(definition.target, 1), cache = new Map<number, SampleSurveyPage>([[1, first]])
     // Reuse only a candidate position. Every page in this discovery and the following
     // confirmation is read anew; saved rows never establish a current boundary.
@@ -319,6 +324,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       }
       return null
     }
+    let fullRangeSearch = false
     async function firstLess(threshold: number | null, candidate?: number): Promise<number> {
       if (threshold === null || definition.target === 'lp' && threshold > 36) return 0
       if (threshold <= (definition.target === 'lp' ? 1 : 0)) return latest.get(definition.target)!.total
@@ -326,6 +332,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
         const found = await nearby(threshold, candidate)
         if (found !== null) return found
       }
+      fullRangeSearch = true
       let low = 0, high = latest.get(definition.target)!.total
       while (low < high) {
         const middle = Math.floor((low + high) / 2), page = await cached(Math.floor(middle / first.pageSize) + 1)
@@ -337,37 +344,147 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       }
       return low
     }
-    const rangeStart = await firstLess(definition.maximum, hintRange?.start), rangeEnd = await firstLess(definition.minimum, hintRange?.end)
+    const rangeStart = await firstLess(definition.maximum, hintRange?.start)
+    if (confirmCandidate) {
+      confirmCandidate('boundary-start', rangeStart)
+      await confirmBoundary(definition, rangeStart, definition.maximum, 'boundary-start', first.pageSize)
+      // Even a small stratum may put both cuts on one page. The second search
+      // must not derive its candidate from the first search's cached snapshot.
+      cache.clear()
+    }
+    fullRangeSearch = false
+    const endSearchStartAttempts = report.attempts
+    const rangeEnd = await firstLess(definition.minimum, hintRange?.end)
+    const confirmTogether = fullRangeSearch || report.attempts - endSearchStartAttempts > 1
+    if (confirmCandidate) confirmCandidate('boundary-end', rangeEnd)
     if (rangeStart > rangeEnd) drift('range-order', rangeStart, rangeEnd)
+    // A long second search would age the already-confirmed start. In that case
+    // retain the ordinary fresh check of both cuts within this same attempt.
+    if (confirmCandidate && !confirmTogether) {
+      await confirmBoundary(definition, rangeEnd, definition.minimum, 'boundary-end', first.pageSize)
+    }
     const totalCount = latest.get(definition.target)!.total
     if (rangeEnd > totalCount) drift('boundary-end', rangeEnd, totalCount)
-    return { target: definition.target, totalCount, pageSize: first.pageSize, totalPages: Math.ceil(totalCount / first.pageSize),
+    const frame: SampleSurveyFrame = { target: definition.target, totalCount, pageSize: first.pageSize, totalPages: Math.ceil(totalCount / first.pageSize),
       checkedAt: new Date(now()).toISOString(), ranges: [{ stratumId: definition.id, start: rangeStart, end: rangeEnd }] }
+    if (confirmCandidate && confirmTogether) await confirm(frame, definition)
+    return frame
   }
-  async function confirm(frame: SampleSurveyFrame, definition: SampleSurveyStratumDefinition): Promise<void> {
+  async function confirmBoundary(definition: SampleSurveyStratumDefinition, cut: number, threshold: number | null,
+    kind: 'boundary-start' | 'boundary-end', pageSize: number, fresh = new Map<number, SampleSurveyPage>()): Promise<string> {
+    const mismatch = (after: number | null): never => {
+      change(kind, cut, after)
+      throw new BoundaryConfirmationDrift()
+    }
+    if (threshold === null || definition.target === 'lp' && threshold > 36) { if (cut !== 0) mismatch(0); return lastObservedAt.get(definition.target)! }
+    if (threshold <= (definition.target === 'lp' ? 1 : 0)) {
+      // The terminal cut needs a new total observation; comparing it only with
+      // the same latest.total used by firstLess would always pass.
+      if (!fresh.has(1)) await read(definition.target, 1)
+      if (cut !== latest.get(definition.target)!.total) mismatch(latest.get(definition.target)!.total)
+      return lastObservedAt.get(definition.target)!
+    }
+    if (latest.get(definition.target)!.total === 0 && !fresh.has(1)) {
+      fresh.set(1, await read(definition.target, 1))
+    }
+    if (cut > latest.get(definition.target)!.total) mismatch(latest.get(definition.target)!.total)
+    for (const position of [cut - 1, cut]) {
+      if (position < 0 || position >= latest.get(definition.target)!.total) continue
+      const pageNumber = Math.floor(position / pageSize) + 1
+      const page = fresh.get(pageNumber) ?? await read(definition.target, pageNumber)
+      fresh.set(pageNumber, page)
+      const entry = page.entries[position % pageSize]
+      if (!entry) mismatch(null)
+      const metric = definition.target === 'lp' ? entry.rankId! : entry.value
+      if (position < cut ? metric < threshold : metric >= threshold) mismatch(null)
+    }
+    // A newly growing tail can invalidate a previously terminal cut.
+    if (cut > latest.get(definition.target)!.total) mismatch(latest.get(definition.target)!.total)
+    return lastObservedAt.get(definition.target)!
+  }
+  async function confirm(frame: SampleSurveyFrame, definition: SampleSurveyStratumDefinition): Promise<{ startObservedAt: string; endObservedAt: string }> {
     const first = await read(definition.target, 1), fresh = new Map<number, SampleSurveyPage>([[1, first]])
     const range = frame.ranges[0]
-    for (const [cut, threshold, kind] of [[range.start, definition.maximum, 'boundary-start'], [range.end, definition.minimum, 'boundary-end']] as const) {
-      if (threshold === null || definition.target === 'lp' && threshold > 36) { if (cut !== 0) drift(kind, cut, 0); continue }
-      if (threshold <= (definition.target === 'lp' ? 1 : 0)) {
-        if (cut !== latest.get(definition.target)!.total) drift(kind, cut, latest.get(definition.target)!.total)
-        continue
-      }
-      if (cut > latest.get(definition.target)!.total) drift(kind, cut, latest.get(definition.target)!.total)
-      for (const position of [cut - 1, cut]) {
-        if (position < 0 || position >= latest.get(definition.target)!.total) continue
-        const pageNumber = Math.floor(position / frame.pageSize) + 1
-        const page = fresh.get(pageNumber) ?? await read(definition.target, pageNumber)
-        fresh.set(pageNumber, page)
-        const entry = page.entries[position % frame.pageSize]
-        if (!entry) drift(kind, cut, null)
-        const metric = definition.target === 'lp' ? entry.rankId! : entry.value
-        if (position < cut ? metric < threshold : metric >= threshold) drift(kind, cut, null)
-      }
-      // A newly growing tail can invalidate a previously terminal cut.
-      if (cut > latest.get(definition.target)!.total) drift(kind, cut, latest.get(definition.target)!.total)
-    }
+    const startObservedAt = await confirmBoundary(definition, range.start, definition.maximum, 'boundary-start', frame.pageSize, fresh)
+    const endObservedAt = await confirmBoundary(definition, range.end, definition.minimum, 'boundary-end', frame.pageSize, fresh)
     frame.checkedAt = new Date(now()).toISOString()
+    return { startObservedAt, endObservedAt }
+  }
+  /** Observe a cut, rather than repeatedly requiring an old position to remain exact. */
+  async function observeBoundedBoundary(definition: SampleSurveyStratumDefinition, reference: number, candidate: number,
+    threshold: number | null, kind: 'boundary-start' | 'boundary-end', pageSize: number): Promise<{ cut: number; observedAt: string }> {
+    const unknown = (): never => {
+      change(kind, reference, null)
+      throw new BoundaryConfirmationDrift()
+    }
+    if (threshold === null || definition.target === 'lp' && threshold > 36) {
+      const first = await read(definition.target, 1)
+      return { cut: 0, observedAt: first.observedAt }
+    }
+    if (threshold <= (definition.target === 'lp' ? 1 : 0)) {
+      const first = await read(definition.target, 1)
+      return { cut: first.totalCount, observedAt: first.observedAt }
+    }
+    // Include both rows around a cut exactly on either edge of the fixed window.
+    const lower = Math.max(0, reference - SAMPLE_SURVEY_MAX_BOUNDARY_DELTA), upper = reference + SAMPLE_SURVEY_MAX_BOUNDARY_DELTA
+    const firstPage = Math.floor(Math.max(0, lower - 1) / pageSize) + 1
+    const lastPage = Math.floor(upper / pageSize) + 1
+    let pageNumber = Math.floor(Math.max(lower, Math.min(upper, candidate)) / pageSize) + 1
+    const evidence = new Map<number, SampleSurveyPage>()
+    const metric = (entry: SampleSurveyPage['entries'][number]) => definition.target === 'lp' ? entry.rankId! : entry.value
+    while (evidence.size < MAX_BOUNDARY_EVIDENCE_PAGES) {
+      pageNumber = Math.min(pageNumber, Math.max(1, Math.ceil(latest.get(definition.target)!.total / pageSize)))
+      if (pageNumber < firstPage || pageNumber > lastPage || evidence.has(pageNumber)) unknown()
+      const page = await read(definition.target, pageNumber)
+      evidence.set(pageNumber, page)
+      if (page.totalCount === 0) return { cut: 0, observedAt: page.observedAt }
+      const offset = (pageNumber - 1) * pageSize
+      const prefix = page.entries.findIndex(entry => metric(entry) < threshold)
+      if (prefix > 0) return { cut: offset + prefix, observedAt: page.observedAt }
+      if (prefix === 0) {
+        if (pageNumber === 1) return { cut: 0, observedAt: page.observedAt }
+        const previous = evidence.get(pageNumber - 1)
+        if (previous?.entries.length && metric(previous.entries.at(-1)!) >= threshold) {
+          return { cut: offset, observedAt: [previous.observedAt, page.observedAt].sort().at(-1)! }
+        }
+        pageNumber--
+      } else {
+        const cut = offset + page.entries.length
+        if (cut === page.totalCount) return { cut, observedAt: page.observedAt }
+        const next = evidence.get(pageNumber + 1)
+        if (next?.entries.length && metric(next.entries[0]) < threshold) {
+          return { cut, observedAt: [page.observedAt, next.observedAt].sort().at(-1)! }
+        }
+        pageNumber++
+      }
+    }
+    return unknown()
+  }
+  async function acceptBoundedFrame(definition: SampleSurveyStratumDefinition, reference: SampleSurveyFrame,
+    candidate: SampleSurveyFrame): Promise<{ frame: SampleSurveyFrame; acceptance: SampleSurveyBoundaryAcceptance }> {
+    const original = reference.ranges[0], proposed = candidate.ranges[0]
+    const recordMovement = (kind: 'boundary-start' | 'boundary-end', before: number, after: number) => {
+      if (before === after) return
+      change(kind, before, after)
+      observation.strata.find(item => item.id === definition.id)!.boundaryChanged = true
+      report.frameChanged = true
+    }
+    const start = await observeBoundedBoundary(definition, original.start, proposed.start, definition.maximum, 'boundary-start', reference.pageSize)
+    const startDelta = Math.abs(start.cut - original.start)
+    recordMovement('boundary-start', original.start, start.cut)
+    if (startDelta > SAMPLE_SURVEY_MAX_BOUNDARY_DELTA) throw new BoundaryConfirmationDrift()
+    const end = await observeBoundedBoundary(definition, original.end, proposed.end, definition.minimum, 'boundary-end', reference.pageSize)
+    const endDelta = Math.abs(end.cut - original.end)
+    recordMovement('boundary-end', original.end, end.cut)
+    if (endDelta > SAMPLE_SURVEY_MAX_BOUNDARY_DELTA
+      || startDelta + endDelta > Math.floor((original.end - original.start) / (1 / SAMPLE_SURVEY_MAX_BOUNDARY_RELATIVE_DELTA))) throw new BoundaryConfirmationDrift()
+    const totalCount = latest.get(definition.target)!.total
+    if (start.cut >= end.cut || end.cut > totalCount) drift('range-order', start.cut, end.cut)
+    const acceptance: SampleSurveyBoundaryAcceptance = { mode: startDelta || endDelta ? 'approximate' : 'exact',
+      referenceStart: original.start, referenceEnd: original.end, referenceCheckedAt: reference.checkedAt,
+      start: start.cut, end: end.cut, startObservedAt: start.observedAt, endObservedAt: end.observedAt }
+    return { frame: { target: definition.target, totalCount, pageSize: reference.pageSize, totalPages: Math.ceil(totalCount / reference.pageSize),
+      checkedAt: new Date(now()).toISOString(), ranges: [{ stratumId: definition.id, start: start.cut, end: end.cut }] }, acceptance }
   }
   function before(observed: SampleSurveyStratumObservation, frame: SampleSurveyFrame): void {
     Object.assign(observed, { totalCountBefore: frame.totalCount, startBefore: frame.ranges[0].start, endBefore: frame.ranges[0].end })
@@ -395,27 +512,57 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       report.phase = 'boundaries'; report.state = 'preparing'
       const saved = checkpoint.frames.find(frame => frame.ranges.some(range => range.stratumId === definition.id))
       if (saved && !latest.has(definition.target)) latest.set(definition.target, { total: saved.totalCount, pageSize: saved.pageSize })
-      let frame: SampleSurveyFrame
+      let frame: SampleSurveyFrame, acceptance: SampleSurveyBoundaryAcceptance | undefined
       try {
         frame = await discover(definition, saved)
         if (!saved) before(observed, frame)
-        for (let refinement = 0; ; refinement++) {
-          try {
-            await confirm(frame, definition)
-            break
-          } catch (error) {
-            // Only an established, unsampled candidate may be refreshed. A failed
-            // discovery, saved slots, or any read/authentication error cannot retry.
-            if (!(error instanceof BoundaryDrift) || saved || refinement === INITIAL_BOUNDARY_REFINEMENTS) throw error
-            observed.boundaryChanged = true; report.frameChanged = true
-            const previous = frame.ranges[0]
-            frame = await discover(definition, frame)
-            const refreshed = frame.ranges[0]
-            if (previous.start !== refreshed.start) change('boundary-start', previous.start, refreshed.start)
-            if (previous.end !== refreshed.end) change('boundary-end', previous.end, refreshed.end)
-            // The selected positions and published population must use the same
-            // final frame; earlier candidates remain only in the change evidence.
-            before(observed, frame)
+        if (!saved && observation.method === 'rank-position-tolerant-v1') {
+          // Freeze the first complete discovery, including its time, before any
+          // confirmation can mutate a frame or a later attempt moves a cut.
+          const reference = structuredClone(frame), range = reference.ranges[0]
+          if (range.start === range.end) {
+            // An initially empty interval is never expanded by tolerance. If it
+            // changes, leave its population unknown instead of confirming zero.
+            const times = await confirm(frame, definition)
+            acceptance = { mode: 'exact', referenceStart: range.start, referenceEnd: range.end,
+              referenceCheckedAt: reference.checkedAt, start: range.start, end: range.end, ...times }
+          } else {
+            for (let refinement = 0; ; refinement++) {
+              try {
+                const accepted = await acceptBoundedFrame(definition, reference, frame)
+                frame = accepted.frame; acceptance = accepted.acceptance
+                break
+              } catch (error) {
+                // Each attempt observes at most four fresh pages per cut in
+                // the same fixed window. Never turn an unknown cut into an
+                // unbounded search or move the reference to a later candidate.
+                if (!(error instanceof BoundaryConfirmationDrift) || refinement === INITIAL_BOUNDARY_REFINEMENTS) throw error
+                observed.boundaryChanged = true; report.frameChanged = true
+              }
+            }
+          }
+          if (acceptance.mode === 'approximate') { observed.boundaryChanged = true; report.frameChanged = true }
+        } else {
+          const candidates = { start: frame.ranges[0].start, end: frame.ranges[0].end }
+          const recordCandidate = (kind: 'boundary-start' | 'boundary-end', cut: number) => {
+            const key = kind === 'boundary-start' ? 'start' : 'end'
+            if (candidates[key] !== cut) change(kind, candidates[key], cut)
+            candidates[key] = cut
+          }
+          for (let refinement = 0; ; refinement++) {
+            try {
+              if (refinement === 0) await confirm(frame, definition)
+              else {
+                frame = await discover(definition, frame, recordCandidate)
+                before(observed, frame)
+              }
+              break
+            } catch (error) {
+              // Old methods retain strict refinement; saved positions and any
+              // failed discovery/read/authentication never permit another draw.
+              if (!(error instanceof BoundaryConfirmationDrift) || saved || refinement === INITIAL_BOUNDARY_REFINEMENTS) throw error
+              observed.boundaryChanged = true; report.frameChanged = true
+            }
           }
         }
       } catch (error) {
@@ -432,6 +579,10 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
         // This was only a resume pre-check, not the required post-collection observation.
         observed.totalCountAfter = null; observed.startAfter = null; observed.endAfter = null
       } else {
+        // Store the complete accepted range, its proof and slots together,
+        // without publishing a half-adopted frame between asynchronous reads.
+        before(observed, frame)
+        if (acceptance) observed.boundaryAcceptance = acceptance
         checkpoint.frames.push(frame)
         const range = frame.ranges[0]
         const positions = sampleSurveyPositions(range.start, range.end, Math.min(definition.requested, range.end - range.start), `${plan.seed}:${definition.id}`)

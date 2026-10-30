@@ -20,3 +20,12 @@
 .legend-players-table .legend-players-character { text-align: left; overflow-wrap: anywhere; }
 .legend-players-table .legend-players-number { text-align: right; white-space: nowrap; }
 .legend-players-table .legend-players-empty { padding: 28px 8px; text-align: center; color: var(--text-muted); }
+.legend-players-chart-selector { margin-bottom: 16px; }
+.legend-players-chart-content { min-width: 0; }
+.legend-players-chart-state { margin: 0; padding: 28px 8px; text-align: center; color: var(--text-muted); }
+.legend-players-select { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.legend-players-selectable-row { cursor: pointer; }
+.legend-players-table tbody tr[data-selected='true'] > * { background: var(--surface-hover); }
+.legend-players-table tbody tr[data-selected='true'] > :first-child { box-shadow: inset 3px 0 var(--text); }
+.legend-players-table tbody tr[data-selected='true'] .legend-players-select { text-decoration: underline; text-underline-offset: 3px; }
+@media (pointer: coarse) { .legend-players-select { min-height: 32px; } }

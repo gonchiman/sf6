@@ -35,6 +35,17 @@ export interface SampleSurveyStratumResult {
   min: number | null
   max: number | null
 }
+/** Aggregate evidence for the complete range adopted before seeded positions are selected. */
+export interface SampleSurveyBoundaryAcceptance {
+  mode: 'exact' | 'approximate'
+  referenceStart: number
+  referenceEnd: number
+  referenceCheckedAt: string
+  start: number
+  end: number
+  startObservedAt: string
+  endObservedAt: string
+}
 export interface SampleSurveyStratumObservation {
   id: string
   status: 'pending' | 'collecting' | 'checked' | 'review-required'
@@ -47,6 +58,7 @@ export interface SampleSurveyStratumObservation {
   startAfter: number | null
   endAfter: number | null
   boundaryChanged: boolean
+  boundaryAcceptance?: SampleSurveyBoundaryAcceptance
 }
 export interface SampleSurveyChange {
   kind: 'total-count' | 'boundary-start' | 'boundary-end' | 'page-size' | 'row-order' | 'range-order'
@@ -58,7 +70,7 @@ export interface SampleSurveyChange {
   after: number | null
 }
 export interface SampleSurveyObservation {
-  method: 'rank-position-interval-v1'
+  method: 'rank-position-interval-v1' | 'rank-position-tolerant-v1'
   strata: SampleSurveyStratumObservation[]
   changes: SampleSurveyChange[]
   omittedChanges: number

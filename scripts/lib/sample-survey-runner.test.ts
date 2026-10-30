@@ -4,10 +4,17 @@ import { SAMPLE_SURVEY_RANKS } from '../../src/lib/sampleSurvey.ts'
 import type { SampleSurveyPlan, SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
 import { SampleSurveyReadError } from './sample-survey-reader.ts'
 import type { SampleSurveyPage, SampleSurveyReader } from './sample-survey-reader.ts'
-import type { SampleSurveyCheckpoint } from './sample-survey-runner.ts'
-import { canResumeSampleSurvey, createSampleSurveyCheckpoint, markSampleSurveyInterrupted, parseSampleSurveyCheckpoint, runSampleSurvey, sampleSurveyPositions } from './sample-survey-runner.ts'
+import type { SampleSurveyCheckpoint, SampleSurveyRunnerOptions } from './sample-survey-runner.ts'
+import { canResumeSampleSurvey, createSampleSurveyCheckpoint, markSampleSurveyInterrupted, parseSampleSurveyCheckpoint, runSampleSurvey as runCurrentSampleSurvey, sampleSurveyPositions } from './sample-survey-runner.ts'
 
 const startTime = Date.parse('2026-10-27T00:00:00.000Z')
+// Keep the existing strict-method regressions explicit after changing the
+// default method. New-method behavior is exercised separately below.
+function runSampleSurvey(value: SampleSurveyPlan, options: SampleSurveyRunnerOptions) {
+  const checkpoint = options.checkpoint ?? createSampleSurveyCheckpoint(value, options.now?.() ?? Date.now())
+  if (!options.checkpoint) checkpoint.report.observation!.method = 'rank-position-interval-v1'
+  return runCurrentSampleSurvey(value, { ...options, checkpoint })
+}
 function plan(overrides: Partial<SampleSurveyPlan['config']> = {}): SampleSurveyPlan {
   return { schemaVersion: 1, id: 'plan-test', seed: 'a'.repeat(32), createdAt: new Date(startTime).toISOString(),
     config: { ranks: [...SAMPLE_SURVEY_RANKS], rankSampleSize: 10, includeMr: false, mrSampleSize: 10, maxDurationMinutes: 120, ...overrides } }
@@ -182,7 +189,7 @@ for (const changedRead of [2, 3]) test(`refreshes only an unsampled frame and re
   assert.equal(result.report.observation!.strata[0].status, 'review-required')
   assert.equal(result.report.strata[0].population, changedRead === 2 ? 20 : 10)
   assert.ok(result.report.observation!.changes.some(row => row.kind === 'boundary-end'))
-  assert.equal(calls, changedRead === 2 ? 7 : 5)
+  assert.equal(calls, changedRead === 2 ? 8 : 5)
 })
 
 test('a deadline abort during a read is retained as limit-reached', async () => {
@@ -552,9 +559,8 @@ test('saved large-population boundaries accelerate resume without redrawing slot
   assert.ok(f.calls.slice(oldCount).filter(call => call.stage === 'before').length < 10)
 })
 
-function shiftingLpFixture() {
+function shiftingLpFixture(cuts = [547_950, 885_684, 1_391_479, 1_762_048, 2_197_078, 2_518_323, 2_877_184, 3_061_539]) {
   let clock = startTime
-  const cuts = [547_950, 885_684, 1_391_479, 1_762_048, 2_197_078, 2_518_323, 2_877_184, 3_061_539]
   const ranks = [36, 31, 26, 21, 16, 11, 6, 1], total = cuts.at(-1)!
   const calls: { page: number; at: number }[] = [], candidates = new Map<string, string>()
   const state: { shift: number; onCandidate?: (id: string) => void; onRead?: () => void } = { shift: 0 }
@@ -576,7 +582,7 @@ function shiftingLpFixture() {
     if (candidates.get(observed.id) === key) return
     candidates.set(observed.id, key); state.onCandidate?.(observed.id)
   }
-  return { reader, state, calls, onUpdate, now: () => clock, wait: async (milliseconds: number) => { clock += milliseconds } }
+  return { reader, state, calls, cuts, onUpdate, now: () => clock, wait: async (milliseconds: number) => { clock += milliseconds } }
 }
 
 test('fresh refinement repairs a stale initial start before fixing seeded positions', async () => {
@@ -609,10 +615,17 @@ for (const moving of [false, true]) test(`all eight large LP strata complete wit
 
 test('a continuously moving initial boundary exhausts only two refinements without selecting slots', async () => {
   const f = shiftingLpFixture()
-  let candidates = 0
-  f.state.onCandidate = () => { candidates++; f.state.shift++ }
-  const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal })
-  assert.equal(result.report.state, 'complete'); assert.equal(candidates, 3)
+  let moves = 0, refining = false
+  f.state.onCandidate = () => { if (!moves) { moves++; f.state.shift++ } }
+  f.state.onRead = () => {
+    if (refining && f.calls.at(-1)!.page === 125917 && f.calls.at(-2)?.page === 125917) { moves++; f.state.shift++ }
+  }
+  const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      f.onUpdate(checkpoint)
+      refining ||= checkpoint.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === null)
+    } })
+  assert.equal(result.report.state, 'complete'); assert.equal(moves, 3)
   assert.equal(result.slots.length, 0); assert.equal(result.report.strata[0].population, null)
   assert.equal(result.report.observation!.strata[0].status, 'review-required')
   assert.equal(result.report.observation!.changes.filter(row => row.kind === 'boundary-start' && row.after === null).length, 3)
@@ -671,4 +684,363 @@ test('a corrected saved frame cannot refine or redraw positions when resume sees
   assert.equal(second.report.stopReason, 'frame-changed')
   assert.deepEqual(second.slots, first.slots); assert.deepEqual(second.frames, first.frames)
   assert.ok(f.calls.length - oldCalls <= 8, 'resume performs one fresh check, never initial refinements')
+})
+
+for (const crossing of [false, true]) test(`paired refinement immediately confirms ${crossing ? 'a page-crossing' : 'a same-page'} start`, async () => {
+  const f = shiftingLpFixture()
+  if (crossing) f.cuts[5] = 2_518_319
+  let moved = false, refinementStart: number | null = null, samplingStart: number | null = null
+  f.state.onCandidate = () => { if (!moved) { moved = true; f.state.shift++ } }
+  const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      f.onUpdate(checkpoint)
+      if (checkpoint.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === null)) refinementStart ??= f.calls.length
+      if (checkpoint.report.phase === 'sampling') samplingStart ??= f.calls.length
+    } })
+  assert.equal(result.report.strata[0].succeeded, 10)
+  const reads = f.calls.slice(refinementStart!, samplingStart!)
+  assert.deepEqual(reads.map(row => row.page), crossing
+    ? [1, 125916, 125917, 125916, 125917, 143860, 143860]
+    : [1, 125917, 125917, 143860, 143860])
+  const candidateIndex = crossing ? 2 : 1, confirmationIndex = crossing ? 4 : 2
+  assert.equal(reads[confirmationIndex].at - reads[candidateIndex].at, crossing ? 20_000 : 10_000)
+  assert.equal(reads.at(-1)!.at - reads.at(-2)!.at, 10_000)
+  assert.deepEqual(parseSampleSurveyCheckpoint(result), result)
+})
+
+test('paired refinement never reuses a start snapshot for an end on the same page', async () => {
+  const f = fixture({ rowsPerStratum: 1 })
+  let moved = false, refinementStart: number | null = null, samplingStart: number | null = null
+  const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      if (!moved && checkpoint.report.observation!.strata[0].startBefore !== null) {
+        moved = true; Object.assign(f.lp[5], { rankId: 6, value: 6000 })
+      }
+      if (checkpoint.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === null)) refinementStart ??= f.calls.length
+      if (checkpoint.report.phase === 'sampling') samplingStart ??= f.calls.length
+    } })
+  assert.equal(result.report.strata[0].succeeded, 2)
+  assert.deepEqual(f.calls.slice(refinementStart!, samplingStart!).map(row => row.page), [1, 1, 1, 1])
+  assert.deepEqual([result.frames[0].ranges[0].start, result.frames[0].ranges[0].end], [5, 7])
+})
+
+test('paired terminal cuts reread the total and detect new tail rows', async () => {
+  const f = fixture({ rowsPerStratum: 1 }), original = f.reader.readPage.bind(f.reader)
+  let moved = false, refining = false, refinementReads = 0
+  f.reader.readPage = async (target, page) => {
+    if (refining && ++refinementReads === 3) f.lp.push({ accountId: '999999', rankId: 1, value: 0 })
+    return original(target, page)
+  }
+  const result = await runSampleSurvey(plan({ ranks: ['ROOKIE'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      if (!moved && checkpoint.report.observation!.strata[0].startBefore !== null) {
+        moved = true; Object.assign(f.lp[6], { rankId: 1, value: 0 })
+      }
+      refining ||= checkpoint.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === null)
+    } })
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.strata[0].succeeded, 3)
+  assert.ok(result.report.observation!.changes.some(row => row.kind === 'boundary-end' && row.before === 8 && row.after === 9))
+  assert.deepEqual([result.frames[0].ranges[0].start, result.frames[0].ranges[0].end, result.frames[0].totalCount], [6, 9, 9])
+})
+
+test('an empty paired finite boundary obtains a new page and notices population growth', async () => {
+  const f = fixture({ rowsPerStratum: 1 }), original = f.reader.readPage.bind(f.reader)
+  let emptied = false, refining = false, refinementReads = 0
+  f.reader.readPage = async (target, page) => {
+    if (refining && ++refinementReads === 2) f.lp.push({ accountId: '999999', rankId: 16, value: 16000 })
+    return original(target, page)
+  }
+  const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      if (!emptied && checkpoint.report.observation!.strata[0].startBefore !== null) { emptied = true; f.lp.splice(0) }
+      refining ||= checkpoint.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === 0)
+    } })
+  assert.equal(result.report.state, 'complete')
+  assert.ok(result.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.before === 0 && row.after === null))
+  assert.equal(result.report.strata[0].population, 0)
+  assert.deepEqual([result.frames[0].ranges[0].start, result.frames[0].ranges[0].end, result.frames[0].totalCount], [1, 1, 1])
+  assert.ok(f.calls.every(row => row.page === 1), 'empty frames never request page zero')
+})
+
+for (const distance of [20, 100_000]) test(`a second-boundary search moving ${distance} positions rechecks both cuts`, async () => {
+  const f = shiftingLpFixture()
+  let moved = false, refining = false, movedEnd = false, samplingStart: number | null = null, refinementStart: number | null = null
+  f.state.onCandidate = () => { if (!moved) { moved = true; f.state.shift++ } }
+  f.state.onRead = () => {
+    if (refining && !movedEnd && f.calls.at(-1)!.page === 125917 && f.calls.at(-2)?.page === 125917) {
+      movedEnd = true; f.cuts[6] += distance
+    }
+  }
+  const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      f.onUpdate(checkpoint)
+      if (checkpoint.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === null)) {
+        refining = true; refinementStart ??= f.calls.length
+      }
+      if (checkpoint.report.phase === 'sampling') samplingStart ??= f.calls.length
+    } })
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.strata[0].succeeded, 10)
+  const reads = f.calls.slice(refinementStart!, samplingStart!), endPage = Math.floor((2_877_185 + distance) / 20) + 1
+  assert.deepEqual(reads.slice(-3).map(row => row.page), [1, 125917, endPage], 'ordinary confirm refreshes both cuts after the longer end search')
+  if (distance === 20) assert.equal(reads.length, 8, 'two nearby page reads also use the ordinary confirmation')
+  else assert.ok(reads.length > 12, 'the distant endpoint exercises the bounded full-range fallback')
+  assert.deepEqual([result.frames[0].ranges[0].start, result.frames[0].ranges[0].end], [2_518_324, 2_877_185 + distance])
+})
+
+test('discovery drift inside a paired refinement is not retried as a confirmation mismatch', async () => {
+  const f = shiftingLpFixture()
+  let moved = false, refining = false, movedEnd = false, stoppedAt = 0
+  f.state.onCandidate = () => { if (!moved) { moved = true; f.state.shift++ } }
+  f.state.onRead = () => {
+    if (refining && !movedEnd && f.calls.at(-1)!.page !== 125917 && f.calls.at(-2)?.page === 125917 && f.calls.at(-3)?.page === 125917) {
+      movedEnd = true; f.cuts[5] = 2_400_000; f.cuts[6] = 2_450_000
+    }
+  }
+  const result = await runSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      f.onUpdate(checkpoint)
+      refining ||= checkpoint.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === null)
+      if (checkpoint.report.observation!.changes.some(row => row.kind === 'range-order')) stoppedAt ||= f.calls.length
+    } })
+  assert.equal(result.report.state, 'complete'); assert.equal(result.slots.length, 0)
+  assert.ok(stoppedAt > 0); assert.equal(f.calls.length, stoppedAt)
+  assert.equal(result.report.observation!.strata[0].startBefore, 2_518_323, 'an incomplete corrected frame cannot replace before')
+  assert.ok(result.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === 2_518_324), 'partial candidate changes remain evidence')
+})
+
+test('the default tolerant method collects every static LP and MR stratum with consistent exact evidence', async () => {
+  const f = fixture()
+  const result = await runCurrentSampleSurvey(plan({ includeMr: true }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) { assert.deepEqual(parseSampleSurveyCheckpoint(checkpoint), checkpoint) } })
+  assert.equal(result.report.observation!.method, 'rank-position-tolerant-v1')
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.uniqueAccountCount, 140)
+  assert.ok(result.report.strata.every(row => row.population === 40 && row.succeeded === 10))
+  for (const row of result.report.observation!.strata) {
+    const accepted = row.boundaryAcceptance!
+    assert.equal(row.status, 'checked'); assert.equal(accepted.mode, 'exact')
+    assert.deepEqual([accepted.referenceStart, accepted.referenceEnd], [accepted.start, accepted.end])
+    assert.deepEqual([accepted.start, accepted.end], [row.startBefore, row.endBefore])
+    assert.ok(row.startedAt! <= accepted.referenceCheckedAt && accepted.referenceCheckedAt <= accepted.startObservedAt)
+    assert.ok(accepted.startObservedAt <= accepted.endObservedAt && accepted.endObservedAt <= row.finishedAt!)
+  }
+  for (let i = 1; i < f.calls.length; i++) assert.ok(f.calls[i].at - f.calls[i - 1].at >= 10_000)
+})
+
+for (const rows of [0, 1, 3]) test(`tolerant ${rows}-row strata keep exact empty and small populations`, async () => {
+  const f = fixture({ rowsPerStratum: rows })
+  if (rows) f.lp.splice(f.lp.findIndex(row => row.rankId === 6), rows)
+  const result = await runCurrentSampleSurvey(plan({ includeMr: true }), { ...f, signal: new AbortController().signal })
+  assert.equal(result.report.state, 'complete')
+  assert.ok(result.report.strata.every(row => row.population === (row.id === 'lp-IRON' ? 0 : rows)))
+  assert.ok(result.report.strata.every(row => row.selected === row.population && row.succeeded === row.population))
+  assert.ok(result.report.observation!.strata.every(row => row.status === 'checked' && row.boundaryAcceptance?.mode === 'exact'))
+  assert.ok(f.calls.every(call => call.page >= 1))
+  assert.deepEqual(parseSampleSurveyCheckpoint(result), result)
+})
+
+for (const shift of [-20, -1, 1, 20]) test(`tolerant sampling adopts an observed ${shift}-position shift once and fixes seeded slots`, async () => {
+  const f = shiftingLpFixture(), value = plan({ ranks: ['IRON'] })
+  let boundaryStart = 0, samplingStart = 0
+  f.state.onCandidate = () => { boundaryStart = f.calls.length; f.state.shift = shift }
+  const result = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      f.onUpdate(checkpoint)
+      if (checkpoint.report.phase === 'sampling') samplingStart ||= f.calls.length
+      assert.deepEqual(parseSampleSurveyCheckpoint(checkpoint), checkpoint)
+    } })
+  const observed = result.report.observation!.strata[0], accepted = observed.boundaryAcceptance!, range = result.frames[0].ranges[0]
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.strata[0].succeeded, 10)
+  assert.equal(accepted.mode, 'approximate'); assert.equal(observed.status, 'review-required')
+  assert.equal(observed.boundaryChanged, true); assert.equal(result.report.frameChanged, true)
+  assert.deepEqual([accepted.referenceStart, accepted.referenceEnd], [2_518_323, 2_877_184])
+  assert.deepEqual([range.start, range.end], [2_518_323 + shift, 2_877_184 + shift])
+  assert.deepEqual([accepted.start, accepted.end], [range.start, range.end])
+  assert.deepEqual([observed.startBefore, observed.endBefore], [range.start, range.end])
+  assert.deepEqual(result.slots.map(slot => slot.position), sampleSurveyPositions(range.start, range.end, 10, `${value.seed}:lp-IRON`))
+  assert.equal(samplingStart - boundaryStart, Math.abs(shift) === 20 ? 4 : 2, 'adoption needs no second exact-match wait')
+})
+
+for (const shift of [-21, 21, 1000]) test(`tolerant sampling never resets its reference for an unaccepted ${shift}-position shift`, async () => {
+  const f = shiftingLpFixture()
+  let boundaryStart = 0
+  f.state.onCandidate = () => { boundaryStart = f.calls.length; f.state.shift = shift }
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal })
+  const observed = result.report.observation!.strata[0]
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.strata[0].population, null)
+  assert.equal(result.slots.length, 0); assert.equal(result.frames.length, 0); assert.equal(observed.boundaryAcceptance, undefined)
+  assert.equal(observed.status, 'review-required'); assert.equal(observed.startBefore, 2_518_323)
+  assert.equal(result.report.observation!.changes.filter(row => row.kind === 'boundary-start').length, 3)
+  assert.ok(f.calls.length - boundaryStart <= 12, 'three attempts use at most four pages per start cut')
+  if (shift === 1000) assert.ok(result.report.observation!.changes.every(row => row.kind !== 'boundary-start' || row.after === null))
+})
+
+for (const [width, startDelta, endDelta, accepts] of [
+  [999, 1, 0, false], [1000, 1, 0, true], [1000, 1, 1, false],
+  [1999, 1, 1, false], [2000, 1, 1, true], [40_000, -20, 20, true], [39_999, -20, 20, false],
+] as const) test(`tolerant width ${width} limits the combined ${startDelta}/${endDelta} displacement`, async () => {
+  const f = shiftingLpFixture(), initialStart = 2_518_323, initialEnd = initialStart + width
+  f.cuts[6] = initialEnd
+  f.state.onCandidate = () => { f.cuts[5] = initialStart + startDelta; f.cuts[6] = initialEnd + endDelta }
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal })
+  assert.equal(result.report.state, 'complete')
+  assert.equal(result.report.strata[0].succeeded, accepts ? 10 : 0)
+  const accepted = result.report.observation!.strata[0].boundaryAcceptance
+  if (accepts) {
+    assert.equal(accepted?.mode, 'approximate')
+    assert.deepEqual([accepted!.referenceStart, accepted!.referenceEnd], [initialStart, initialEnd])
+    assert.deepEqual([accepted!.start, accepted!.end], [initialStart + startDelta, initialEnd + endDelta])
+  } else { assert.equal(accepted, undefined); assert.equal(result.report.strata[0].population, null) }
+})
+
+test('tolerant page-edge boundaries require freshly observed rows on both sides', async () => {
+  const f = shiftingLpFixture(), initialStart = 2_518_319, initialEnd = 2_877_179
+  f.cuts[5] = initialStart; f.cuts[6] = initialEnd
+  let boundaryStart = 0, samplingStart = 0
+  f.state.onCandidate = () => { boundaryStart = f.calls.length; f.state.shift = 1 }
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) { f.onUpdate(checkpoint); if (checkpoint.report.phase === 'sampling') samplingStart ||= f.calls.length } })
+  assert.equal(result.report.strata[0].succeeded, 10)
+  const reads = f.calls.slice(boundaryStart, samplingStart), acceptance = result.report.observation!.strata[0].boundaryAcceptance!
+  assert.deepEqual(reads.map(row => row.page), [125916, 125917, 143859, 143860])
+  assert.equal(acceptance.startObservedAt, new Date(reads[1].at + 100).toISOString())
+  assert.equal(acceptance.endObservedAt, new Date(reads[3].at + 100).toISOString())
+})
+
+test('tolerant same-page cuts use new evidence separately and do not accept a newly appearing empty population', async () => {
+  const f = fixture({ rowsPerStratum: 1 }), original = f.reader.readPage.bind(f.reader)
+  let candidate = false, confirmationReads = 0
+  f.lp.splice(f.lp.findIndex(row => row.rankId === 6), 1)
+  f.reader.readPage = async (target, page) => {
+    if (candidate && ++confirmationReads === 1) f.lp.splice(6, 0, { accountId: '900001', rankId: 6, value: 6000 })
+    return original(target, page)
+  }
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) { candidate ||= checkpoint.report.observation!.strata[0].startBefore !== null } })
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.strata[0].population, null)
+  assert.equal(result.frames.length, 0); assert.equal(result.report.observation!.strata[0].boundaryAcceptance, undefined)
+  assert.equal(confirmationReads, 1, 'an initially empty interval retains strict confirmation without tolerance retries')
+  const stable = fixture({ rowsPerStratum: 1 })
+  const small = await runCurrentSampleSurvey(plan({ ranks: ['IRON'] }), { ...stable, signal: new AbortController().signal })
+  const acceptance = small.report.observation!.strata[0].boundaryAcceptance!
+  assert.equal(small.report.strata[0].succeeded, 1)
+  assert.equal(Date.parse(acceptance.endObservedAt) - Date.parse(acceptance.startObservedAt), 10_000)
+})
+
+test('tolerant empty total growth cannot become a false confirmed zero', async () => {
+  const f = fixture({ rowsPerStratum: 0 })
+  let added = false
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      if (!added && checkpoint.report.observation!.strata[0].startBefore !== null) {
+        added = true; f.lp.push({ accountId: '900001', rankId: 6, value: 6000 })
+      }
+    } })
+  assert.equal(result.report.strata[0].population, null); assert.equal(result.slots.length, 0)
+  assert.equal(result.report.observation!.strata[0].boundaryAcceptance, undefined)
+  assert.ok(result.report.observation!.changes.some(row => row.kind === 'total-count' && row.before === 0 && row.after === 1))
+})
+
+test('tolerant sampling preserves duplicate and out-of-stratum missing slots without replacement', async () => {
+  const f = fixture({ rowsPerStratum: 10 })
+  f.lp[20].accountId = f.lp[0].accountId
+  let changed = false
+  const result = await runCurrentSampleSurvey(plan(), { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) {
+      if (!changed && checkpoint.report.phase === 'sampling' && checkpoint.report.observation!.strata.find(row => row.id === 'lp-IRON')!.status === 'collecting') {
+        changed = true; Object.assign(f.lp[69], { rankId: 1, value: 0 })
+      }
+    } })
+  assert.equal(result.report.state, 'complete'); assert.equal(result.slots.length, 80)
+  assert.equal(result.report.uniqueAccountCount, 78)
+  assert.equal(result.report.strata.reduce((sum, row) => sum + row.missing, 0), 1)
+  assert.equal(result.report.strata.reduce((sum, row) => sum + row.duplicates, 0), 1)
+  const iron = result.report.observation!.strata.find(row => row.id === 'lp-IRON')!
+  assert.equal(iron.boundaryAcceptance!.mode, 'exact'); assert.equal(iron.status, 'review-required')
+})
+
+test('tolerant resumed slots and acceptance remain fixed while old checkpoints retain their method', async () => {
+  const f = fixture(), value = plan(), controller = new AbortController()
+  const first = await runCurrentSampleSurvey(value, { ...f, signal: controller.signal,
+    onUpdate(checkpoint) { if (checkpoint.report.uniqueAccountCount >= 10) controller.abort() } })
+  assert.equal(first.report.stopReason, 'cancelled'); assert.equal(first.report.resumeAllowed, true)
+  const slots = structuredClone(first.slots), acceptance = structuredClone(first.report.observation!.strata[0].boundaryAcceptance)
+  f.resetFirst()
+  const second = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal, checkpoint: first })
+  assert.equal(second.report.state, 'complete'); assert.equal(second.report.uniqueAccountCount, 80)
+  assert.deepEqual(second.slots.filter(slot => slots.some(prior => prior.id === slot.id)), slots)
+  assert.deepEqual(second.report.observation!.strata[0].boundaryAcceptance, acceptance)
+  const old = fixture(), checkpoint = createSampleSurveyCheckpoint(plan({ ranks: ['IRON'] }), startTime)
+  checkpoint.report.observation!.method = 'rank-position-interval-v1'
+  const legacy = await runCurrentSampleSurvey(checkpoint.plan, { ...old, signal: new AbortController().signal, checkpoint })
+  assert.equal(legacy.report.state, 'complete'); assert.equal(legacy.report.observation!.method, 'rank-position-interval-v1')
+  assert.equal(legacy.report.observation!.strata[0].boundaryAcceptance, undefined)
+})
+
+test('tolerant resume never accepts even a small movement of already selected slots', async () => {
+  const f = shiftingLpFixture(), value = plan({ ranks: ['IRON'] }), controller = new AbortController()
+  const first = await runCurrentSampleSurvey(value, { ...f, signal: controller.signal,
+    onUpdate(checkpoint) { if (checkpoint.slots.length) controller.abort() } })
+  const slots = structuredClone(first.slots), acceptance = structuredClone(first.report.observation!.strata[0].boundaryAcceptance)
+  f.state.shift = 1
+  const result = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal, checkpoint: first })
+  assert.equal(result.report.stopReason, 'frame-changed'); assert.equal(result.report.resumeAllowed, false)
+  assert.deepEqual(result.slots, slots); assert.deepEqual(result.report.observation!.strata[0].boundaryAcceptance, acceptance)
+})
+
+for (const code of ['authentication-unconfirmed', 'human-verification', 'http-denied', 'read-failed'] as const) {
+  test(`tolerant boundary ${code} stops immediately without fallback or metadata`, async () => {
+    const f = shiftingLpFixture()
+    let confirming = false, stoppedAt = 0
+    f.state.onCandidate = () => { confirming = true }
+    f.state.onRead = () => { if (confirming) { stoppedAt = f.calls.length; throw new SampleSurveyReadError(code) } }
+    const result = await runCurrentSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal })
+    assert.equal(result.report.stopReason, code); assert.equal(result.report.resumeAllowed, false)
+    assert.equal(f.calls.length, stoppedAt); assert.equal(result.slots.length, 0)
+    assert.equal(result.report.observation!.strata[0].boundaryAcceptance, undefined)
+  })
+}
+
+for (const failure of ['format', 'row-order', 'page-size'] as const) test(`tolerant boundary ${failure} validation stays terminal`, async () => {
+  const f = shiftingLpFixture(), original = f.reader.readPage.bind(f.reader)
+  let confirming = false, stoppedAt = 0
+  f.state.onCandidate = () => { confirming = true }
+  f.reader.readPage = async (target, page) => {
+    const result = await original(target, page)
+    if (confirming) {
+      stoppedAt = f.calls.length
+      if (failure === 'format') result.entries.pop()
+      else if (failure === 'row-order') result.entries[0].rankId = 1
+      else result.pageSize = 10
+    }
+    return result
+  }
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['IRON'] }), { ...f, signal: new AbortController().signal })
+  assert.equal(result.report.stopReason, failure === 'format' ? 'read-failed' : 'frame-changed')
+  assert.equal(result.report.resumeAllowed, false); assert.equal(f.calls.length, stoppedAt)
+  assert.equal(result.slots.length, 0); assert.equal(result.report.observation!.strata[0].boundaryAcceptance, undefined)
+})
+
+test('tolerant movement evidence survives cancellation before adoption and a later exact resume', async () => {
+  const f = shiftingLpFixture(), value = plan({ ranks: ['IRON'] }), controller = new AbortController()
+  f.state.onCandidate = () => { f.state.shift = 1 }
+  const first = await runCurrentSampleSurvey(value, { ...f, signal: controller.signal,
+    onUpdate(checkpoint) {
+      f.onUpdate(checkpoint)
+      if (checkpoint.report.observation!.changes.some(row => row.kind === 'boundary-start' && row.after === 2_518_324)) controller.abort()
+    } })
+  assert.equal(first.report.stopReason, 'cancelled'); assert.equal(first.report.resumeAllowed, true)
+  assert.equal(first.report.frameChanged, true); assert.equal(first.report.observation!.strata[0].boundaryChanged, true)
+  assert.equal(first.frames.length, 0); assert.equal(first.report.observation!.strata[0].boundaryAcceptance, undefined)
+  const result = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal, checkpoint: first })
+  assert.equal(result.report.strata[0].succeeded, 10); assert.equal(result.report.observation!.strata[0].boundaryAcceptance!.mode, 'exact')
+  assert.equal(result.report.observation!.strata[0].status, 'review-required')
+})
+
+test('tolerant bounded attempts retain the normal invocation deadline and can resume before any slots exist', async () => {
+  const f = shiftingLpFixture(), value = plan({ ranks: ['IRON'], maxDurationMinutes: 6 })
+  f.state.onCandidate = () => { f.state.shift = 1000 }
+  const first = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal })
+  assert.equal(first.report.stopReason, 'limit-reached'); assert.equal(first.report.resumeAllowed, true)
+  assert.ok(f.calls.length <= 36); assert.equal(first.slots.length, 0)
+  assert.equal(first.report.observation!.strata[0].boundaryAcceptance, undefined)
 })
