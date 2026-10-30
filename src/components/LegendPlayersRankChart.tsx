@@ -32,6 +32,8 @@ export function LegendPlayersRankChart({ rows, names, selectedRowId, onSelectRow
   }, [])
 
   const chart = useMemo(() => createLegendRankChart(rows, availableWidth), [rows, availableWidth])
+  const firstPoint = chart.points[0]
+  const singlePositionPoint = firstPoint && chart.points.every(point => point.x === firstPoint.x && point.y === firstPoint.y) ? firstPoint : null
   const selectedIndex = chart.points.findIndex(point => point.row.id === selectedRowId)
   const selected = chart.points[selectedIndex]
   const characterName = selected ? names?.get(selected.row.characterId) ?? selected.row.characterId : ''
@@ -63,8 +65,9 @@ export function LegendPlayersRankChart({ rows, names, selectedRowId, onSelectRow
         role="group" tabIndex={0} aria-labelledby={`${id}-title`} aria-describedby={`${id}-description ${id}-selection`}
         onKeyDown={handleKeyDown}>
         <title id={`${id}-title`}>順位とMR</title>
-        <desc id={`${id}-description`}>横軸は順位、縦軸はMR。点はアカウントとキャラの組です。点をクリックして選択できます。
-          同じ位置の点は繰り返しクリックして切り替えます。矢印キーで前後のエントリー、HomeとEndで先頭と末尾を選択できます。</desc>
+        <desc id={`${id}-description`}>横軸は順位、縦軸はMR。アカウントとキャラの組を順位順に線で結び、選択中の位置を点で表示します。
+          線の近くをクリックして選択できます。同じ位置のエントリーは繰り返しクリックして切り替えます。
+          データが1か所に重なる場合は点で表示します。矢印キーで前後のエントリー、HomeとEndで先頭と末尾を選択できます。</desc>
         <g aria-hidden="true">
           <text className="legend-players-rank-axis-title" x={chart.left} y={16}>MR</text>
           {chart.yAxis.ticks.map(tick => <g key={`y-${tick}`}>
@@ -78,8 +81,8 @@ export function LegendPlayersRankChart({ rows, names, selectedRowId, onSelectRow
           </g>)}
           <rect className="legend-players-rank-frame" x={chart.left} y={chart.top} width={chart.right - chart.left} height={chart.bottom - chart.top} />
           {chart.points.length > 1 && <path className="legend-players-rank-line" d={chart.path} />}
-          {chart.points.map(point => <circle className="legend-players-rank-point" key={point.row.id}
-            data-rank-chart-row={point.row.id} cx={point.x} cy={point.y} r={2.4} />)}
+          {singlePositionPoint && <circle className="legend-players-rank-point"
+            cx={singlePositionPoint.x} cy={singlePositionPoint.y} r={2.4} />}
           {selected && <g>
             <line className="legend-players-rank-guide" x1={selected.x} x2={selected.x} y1={selected.y} y2={chart.bottom} />
             <circle className="legend-players-rank-selected" data-selected-rank-row={selected.row.id} cx={selected.x} cy={selected.y} r={5.5} />
