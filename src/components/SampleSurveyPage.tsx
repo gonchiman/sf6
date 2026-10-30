@@ -21,6 +21,8 @@ export function SampleSurveyPage() {
   const ordered = useMemo(() => [...descriptors].sort((a, b) => Date.parse(b.captureEndedAt) - Date.parse(a.captureEndedAt)), [descriptors])
   const rows = run?.strata.filter(row => row.target === source) ?? []
   const review = run?.observation?.strata.some(row => rows.some(item => item.id === row.id) && row.status === 'review-required')
+  const approximate = run?.observation?.method === 'rank-position-tolerant-v1'
+    && run.observation.strata.some(row => rows.some(item => item.id === row.id) && row.boundaryAcceptance?.mode === 'approximate')
   return <section className="sample-survey-page" aria-label="標本調査">
     <StatisticsPanel title="表示条件" headerContent={<span className="monthly-statistics-panel-summary">日時はJST</span>}>
       <div className="win-rates-filters sample-survey-filters">
@@ -37,7 +39,7 @@ export function SampleSurveyPage() {
     </StatisticsPanel>
     <SampleSurveyTabs value={theme} onChange={setTheme} idPrefix={prefix} panelId={panelId} />
     {refreshError && <div className="sample-survey-message" role="status"><span>{refreshError}</span><button className="win-rates-button" type="button" onClick={refresh}>更新を再確認</button></div>}
-    {review && <div className="sample-survey-change-status" role="status">境界の確認状態：要確認を含む</div>}
+    {review && <div className="sample-survey-change-status" role="status">境界の確認状態：{approximate ? '近似採用・要確認を含む' : '要確認を含む'}</div>}
     <div id={panelId} role="tabpanel" aria-labelledby={prefix + '-tab-' + theme} className="sample-survey-results">
       {loading && !run ? <DataLoadState loading message="標本調査の結果を読み込み中…" />
         : error && !run ? <DataLoadState message={error} onRetry={refresh} />

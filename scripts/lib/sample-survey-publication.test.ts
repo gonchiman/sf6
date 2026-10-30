@@ -97,6 +97,40 @@ test('an unestablished interval frame is not published as zero, but a checked em
   assert.deepEqual(publishableSampleSurveyRun(empty), empty)
 })
 
+test('tolerant boundary evidence survives publication beside legacy reports without exposing private rows', async t => {
+  const root = await temporary(t), input = join(root, 'input'), output = join(root, 'history')
+  const legacy = result(), report = intervalResult('tolerant-run')
+  report.observation!.method = 'rank-position-tolerant-v1'
+  report.frameChanged = true
+  report.strata[0].population = 50001
+  const observed = report.observation!.strata[0]
+  Object.assign(observed, { status: 'review-required', totalCountBefore: 50001, totalCountAfter: 50001,
+    startBefore: 0, endBefore: 50001, startAfter: 0, endAfter: 50001, boundaryChanged: true })
+  observed.boundaryAcceptance = { mode: 'approximate', referenceStart: 0, referenceEnd: 50000,
+    referenceCheckedAt: report.startedAt, start: 0, end: 50001,
+    startObservedAt: report.startedAt, endObservedAt: report.startedAt }
+  report.observation!.changes = [{ kind: 'boundary-end', target: 'lp', stratumId: 'lp-MASTER',
+    at: report.startedAt, before: 50000, after: 50001 }]
+  await writeSampleSurveyResults([legacy], output, generatedAt)
+  const legacyBytes = await readFile(join(output, 'runs/run-1.json'), 'utf8')
+  await writeSampleSurveyResults([report], input, generatedAt)
+  assert.deepEqual(await publishSampleSurveyResults(input, output, generatedAt), { datasets: 2 })
+  const published = JSON.parse(await readFile(join(output, 'runs/tolerant-run.json'), 'utf8'))
+  assert.deepEqual(published, report)
+  assert.equal(await readFile(join(output, 'runs/run-1.json'), 'utf8'), legacyBytes)
+  assert.equal('slots' in published, false)
+  assert.deepEqual(await validateSampleSurveyResultsDirectory(output), { datasets: 2 })
+
+  const manifestBefore = await readFile(join(output, 'index.json'), 'utf8')
+  const privateEvidence = { ...report, observation: { ...report.observation!, strata: [{ ...observed,
+    boundaryAcceptance: { ...observed.boundaryAcceptance, accountId: 'must-not-be-published' } }] } }
+  await assert.rejects(writeSampleSurveyResults([privateEvidence], output, generatedAt))
+  const missingEvidence = structuredClone(report)
+  delete missingEvidence.observation!.strata[0].boundaryAcceptance
+  await assert.rejects(writeSampleSurveyResults([missingEvidence], output, generatedAt))
+  assert.equal(await readFile(join(output, 'index.json'), 'utf8'), manifestBefore)
+})
+
 test('unfinished and augmented interval evidence cannot change published history', async t => {
   const root = await temporary(t), output = join(root, 'history')
   await writeSampleSurveyResults([result()], output, generatedAt)
