@@ -2,8 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { SAMPLE_SURVEY_RANKS } from '../../src/lib/sampleSurvey.ts'
 import type { SampleSurveyPlan, SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
-import { SampleSurveyReadError } from './sample-survey-reader.ts'
-import type { SampleSurveyPage, SampleSurveyReader } from './sample-survey-reader.ts'
+import { SampleSurveyReadError, SampleSurveyRetryableReadError } from './sample-survey-reader.ts'
+import type { SampleSurveyPage, SampleSurveyReader, SampleSurveyReadRetryEvent } from './sample-survey-reader.ts'
 import type { SampleSurveyCheckpoint, SampleSurveyRunnerOptions } from './sample-survey-runner.ts'
 import { canResumeSampleSurvey, createSampleSurveyCheckpoint, markSampleSurveyInterrupted, parseSampleSurveyCheckpoint, runSampleSurvey as runCurrentSampleSurvey, sampleSurveyPositions } from './sample-survey-runner.ts'
 
@@ -1043,4 +1043,176 @@ test('tolerant bounded attempts retain the normal invocation deadline and can re
   assert.equal(first.report.stopReason, 'limit-reached'); assert.equal(first.report.resumeAllowed, true)
   assert.ok(f.calls.length <= 36); assert.equal(first.slots.length, 0)
   assert.equal(first.report.observation!.strata[0].boundaryAcceptance, undefined)
+})
+
+function retryFixture(failure: (attempt: number) => SampleSurveyReadError | null) {
+  const f = fixture(), original = f.reader.readPage.bind(f.reader)
+  const attempted: { target: SampleSurveyTarget; page: number; at: number }[] = []
+  f.reader.readPage = async (target, page) => {
+    attempted.push({ target, page, at: f.now() })
+    const error = failure(attempted.length)
+    if (error) { await f.wait(100); throw error }
+    return original(target, page)
+  }
+  return { ...f, attempted }
+}
+
+for (const code of ['server-error', 'authentication-unconfirmed'] as const) {
+  for (const status of [502, 503, 504] as const) test(`${code}/${status} explicitly retryable reads use one 30-second same-page retry`, async () => {
+    const f = retryFixture(attempt => attempt === 2 ? new SampleSurveyRetryableReadError(code, status) : null)
+    const events: SampleSurveyReadRetryEvent[] = []
+    const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: new AbortController().signal,
+      onReadRetry: event => events.push(event) })
+    assert.equal(result.report.state, 'complete'); assert.equal(result.report.uniqueAccountCount, 10)
+    assert.equal(result.report.attempts, f.attempted.length)
+    assert.equal(result.report.attempts - result.report.successfulPages, 1)
+    assert.deepEqual(f.attempted[2], { ...f.attempted[1], at: f.attempted[1].at + 30_100 })
+    assert.deepEqual(events, [{ at: new Date(f.attempted[1].at + 100).toISOString(), target: 'lp', page: f.attempted[1].page,
+      attempt: 2, retryNumber: 1, code, httpStatus: status, delayMs: 30_000 }])
+    for (let i = 1; i < f.attempted.length; i++) assert.ok(f.attempted[i].at - f.attempted[i - 1].at >= 10_000)
+    assert.equal(result.report.observation!.strata[0].status, 'checked')
+    assert.deepEqual(parseSampleSurveyCheckpoint(result), result)
+  })
+}
+
+for (const code of ['server-error', 'authentication-unconfirmed', 'login-required', 'human-verification', 'http-denied', 'read-failed'] as const) {
+  test(`ordinary ${code} remains terminal without an explicit retryable error`, async () => {
+    const f = retryFixture(() => new SampleSurveyReadError(code)), events: SampleSurveyReadRetryEvent[] = []
+    const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: new AbortController().signal,
+      onReadRetry: event => events.push(event) })
+    assert.equal(f.attempted.length, 1); assert.equal(events.length, 0)
+    assert.equal(result.report.stopReason, code); assert.equal(result.report.resumeAllowed, false)
+  })
+}
+
+test('a failed retry preserves its latest failure and cannot retry again', async () => {
+  const f = retryFixture(attempt => new SampleSurveyRetryableReadError(attempt === 1 ? 'server-error' : 'authentication-unconfirmed', 502))
+  const events: SampleSurveyReadRetryEvent[] = []
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: new AbortController().signal,
+    onReadRetry: event => events.push(event) })
+  assert.equal(f.attempted.length, 2); assert.equal(result.report.attempts, 2); assert.equal(result.report.successfulPages, 0)
+  assert.equal(events.length, 1); assert.equal(result.report.stopReason, 'authentication-unconfirmed')
+  assert.equal(result.report.resumeAllowed, false); assert.equal(result.slots.length, 0)
+})
+
+test('a later page failure cannot spend a second retry after a successful recovery', async () => {
+  const f = retryFixture(attempt => [1, 5].includes(attempt) ? new SampleSurveyRetryableReadError('server-error', 503) : null)
+  const events: SampleSurveyReadRetryEvent[] = []
+  const result = await runCurrentSampleSurvey(plan(), { ...f, signal: new AbortController().signal, onReadRetry: event => events.push(event) })
+  assert.equal(f.attempted.length, 5); assert.equal(result.report.attempts, 5); assert.equal(result.report.successfulPages, 3)
+  assert.equal(events.length, 1); assert.equal(result.report.stopReason, 'server-error')
+})
+
+test('retry diagnostics exceptions do not change collection or fixed positions', async () => {
+  const f = retryFixture(attempt => attempt === 1 ? new SampleSurveyRetryableReadError('server-error', 504) : null)
+  const value = plan({ ranks: ['MASTER'] })
+  let callbacks = 0
+  const result = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal,
+    onReadRetry() { callbacks++; throw new Error('diagnostic sink unavailable') } })
+  assert.equal(callbacks, 1); assert.equal(result.report.state, 'complete'); assert.equal(result.report.uniqueAccountCount, 10)
+  assert.deepEqual(result.slots.map(slot => slot.position), sampleSurveyPositions(0, 40, 10, `${value.seed}:lp-MASTER`))
+})
+
+test('retry cancellation during the 30-second wait persists the consumed attempt without another read', async () => {
+  const f = retryFixture(() => new SampleSurveyRetryableReadError('server-error', 502)), controller = new AbortController()
+  const events: SampleSurveyReadRetryEvent[] = [], saved: SampleSurveyCheckpoint[] = []
+  const first = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: controller.signal,
+    onReadRetry: event => events.push(event), onUpdate: checkpoint => { saved.push(checkpoint) },
+    wait: async milliseconds => { await f.wait(milliseconds === 30_000 ? 5000 : milliseconds); if (milliseconds === 30_000) controller.abort() } })
+  assert.equal(first.report.stopReason, 'cancelled'); assert.equal(first.report.resumeAllowed, true)
+  assert.equal(f.attempted.length, 1); assert.equal(first.report.attempts, 1); assert.equal(first.report.successfulPages, 0)
+  assert.equal(events.length, 1)
+  assert.ok(saved.some(checkpoint => checkpoint.report.state === 'preparing' && checkpoint.report.attempts === 1 && checkpoint.report.successfulPages === 0))
+  const second = await runCurrentSampleSurvey(first.plan, { ...f, signal: new AbortController().signal, checkpoint: first,
+    onReadRetry: event => events.push(event) })
+  assert.equal(second.report.stopReason, 'server-error'); assert.equal(f.attempted.length, 2); assert.equal(events.length, 1)
+})
+
+test('retry waiting is not entered if the remaining invocation time cannot fit 30 seconds', async () => {
+  const f = fixture(), events: SampleSurveyReadRetryEvent[] = []
+  let calls = 0
+  f.reader.readPage = async () => { calls++; await f.wait(31_000); throw new SampleSurveyRetryableReadError('server-error', 502) }
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'], maxDurationMinutes: 1 }), { ...f,
+    signal: new AbortController().signal, onReadRetry: event => events.push(event) })
+  assert.equal(result.report.stopReason, 'limit-reached'); assert.equal(result.report.resumeAllowed, true)
+  assert.equal(calls, 1); assert.equal(events.length, 0); assert.equal(result.report.attempts, 1)
+})
+
+test('retry rechecks the invocation deadline after waiting', async () => {
+  const f = retryFixture(() => new SampleSurveyRetryableReadError('server-error', 502)), events: SampleSurveyReadRetryEvent[] = []
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'], maxDurationMinutes: 1 }), { ...f,
+    signal: new AbortController().signal, onReadRetry: event => events.push(event),
+    wait: async milliseconds => { await f.wait(milliseconds === 30_000 ? 60_000 : milliseconds) } })
+  assert.equal(result.report.stopReason, 'limit-reached'); assert.equal(f.attempted.length, 1); assert.equal(events.length, 1)
+})
+
+test('retry attempts count toward the ordinary read cap even when a test clock does not advance through waits', async () => {
+  const f = retryFixture(attempt => attempt === 1 ? new SampleSurveyRetryableReadError('server-error', 502) : null)
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'], maxDurationMinutes: 1 }), { ...f,
+    signal: new AbortController().signal, wait: async () => {} })
+  assert.equal(result.report.stopReason, 'limit-reached'); assert.equal(result.report.attempts, 7)
+  assert.equal(f.attempted.length, 7); assert.equal(result.report.successfulPages, 6)
+})
+
+test('a failed-attempt checkpoint write stops before retry waiting or another read', async () => {
+  const f = retryFixture(() => new SampleSurveyRetryableReadError('server-error', 502)), events: SampleSurveyReadRetryEvent[] = []
+  let waited = false
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: new AbortController().signal,
+    onReadRetry: event => events.push(event), wait: async milliseconds => { waited = true; await f.wait(milliseconds) },
+    onUpdate() { if (f.attempted.length) throw new Error('save unavailable') } })
+  assert.equal(result.report.stopReason, 'storage-error'); assert.equal(result.report.resumeAllowed, false)
+  assert.equal(f.attempted.length, 1); assert.equal(events.length, 0); assert.equal(waited, false)
+})
+
+for (const failedAttempts of [0, 1]) test(`an old-method checkpoint with ${failedAttempts} failed attempts ${failedAttempts ? 'cannot replenish' : 'retains'} the run retry budget`, async () => {
+  const value = plan({ ranks: ['MASTER'] }), checkpoint = createSampleSurveyCheckpoint(value, startTime)
+  checkpoint.report.observation!.method = 'rank-position-interval-v1'
+  Object.assign(checkpoint.report, { state: 'stopped', stopReason: 'cancelled', resumeAllowed: true, finishedAt: checkpoint.report.updatedAt,
+    attempts: 1, successfulPages: 1 - failedAttempts })
+  const f = retryFixture(attempt => attempt === 1 ? new SampleSurveyRetryableReadError('server-error', 502) : null)
+  const events: SampleSurveyReadRetryEvent[] = []
+  const result = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal, checkpoint,
+    onReadRetry: event => events.push(event) })
+  assert.equal(result.report.observation!.method, 'rank-position-interval-v1')
+  assert.equal(events.length, failedAttempts ? 0 : 1)
+  assert.equal(result.report.state, failedAttempts ? 'error' : 'complete')
+  if (failedAttempts) { assert.equal(result.report.stopReason, 'server-error'); assert.equal(f.attempted.length, 1) }
+})
+
+test('a sampling-page retry preserves the already selected slots and counts the page only after strict success', async () => {
+  const f = fixture(), original = f.reader.readPage.bind(f.reader), events: SampleSurveyReadRetryEvent[] = []
+  let sampling = false, failed = false, awaitingRetry = false, originalSlots: SampleSurveyCheckpoint['slots'] | null = null
+  f.reader.readPage = async (target, page) => {
+    if (sampling && !failed) { failed = true; awaitingRetry = true; throw new SampleSurveyRetryableReadError('authentication-unconfirmed', 502) }
+    const value = await original(target, page)
+    awaitingRetry = false
+    return value
+  }
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'] }), { ...f, signal: new AbortController().signal,
+    onReadRetry: event => events.push(event),
+    onUpdate(checkpoint) {
+      sampling = checkpoint.report.phase === 'sampling'
+      if (sampling) originalSlots ??= structuredClone(checkpoint.slots)
+      if (awaitingRetry) {
+        assert.equal(checkpoint.slots.filter(slot => slot.status !== 'pending').length, 0)
+      }
+    } })
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.uniqueAccountCount, 10)
+  assert.equal(events.length, 1); assert.equal(result.report.attempts - result.report.successfulPages, 1)
+  assert.deepEqual(result.slots.map(slot => [slot.id, slot.page, slot.rowIndex]), originalSlots!.map(slot => [slot.id, slot.page, slot.rowIndex]))
+})
+
+test('LP recovery consumes the single retry for later MR strata too', async () => {
+  const f = fixture(), original = f.reader.readPage.bind(f.reader), events: SampleSurveyReadRetryEvent[] = []
+  let lpFailed = false, mrAttempts = 0
+  f.reader.readPage = async (target, page) => {
+    if (target === 'lp' && !lpFailed) { lpFailed = true; throw new SampleSurveyRetryableReadError('server-error', 502) }
+    if (target === 'mr') { mrAttempts++; throw new SampleSurveyRetryableReadError('server-error', 503) }
+    return original(target, page)
+  }
+  const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'], includeMr: true }), { ...f,
+    signal: new AbortController().signal, onReadRetry: event => events.push(event) })
+  assert.equal(result.report.stopReason, 'server-error'); assert.equal(result.report.uniqueAccountCount, 10)
+  assert.equal(events.length, 1); assert.equal(events[0].target, 'lp'); assert.equal(mrAttempts, 1)
+  assert.equal(result.report.attempts - result.report.successfulPages, 2)
 })

@@ -2,8 +2,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseSampleSurveyPlan, parseSampleSurveyRun, SAMPLE_SURVEY_INTERVAL_MS, SAMPLE_SURVEY_MAX_BOUNDARY_DELTA, SAMPLE_SURVEY_MAX_BOUNDARY_RELATIVE_DELTA, SAMPLE_SURVEY_MAX_CHANGES, SAMPLE_SURVEY_MR_BANDS, SAMPLE_SURVEY_RANKS } from '../../src/lib/sampleSurvey.ts'
 import type { SampleSurveyBoundaryAcceptance, SampleSurveyChange, SampleSurveyConfig, SampleSurveyError, SampleSurveyPlan, SampleSurveyRun, SampleSurveyStratumObservation, SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
-import { SampleSurveyReadError } from './sample-survey-reader.ts'
-import type { SampleSurveyPage, SampleSurveyReader } from './sample-survey-reader.ts'
+import { SampleSurveyReadError, SampleSurveyRetryableReadError } from './sample-survey-reader.ts'
+import type { SampleSurveyPage, SampleSurveyReader, SampleSurveyReadRetryEvent } from './sample-survey-reader.ts'
 
 export { SAMPLE_SURVEY_INTERVAL_MS }
 const INITIAL_BOUNDARY_REFINEMENTS = 2
@@ -195,6 +195,7 @@ export interface SampleSurveyRunnerOptions {
   signal: AbortSignal
   checkpoint?: SampleSurveyCheckpoint
   onUpdate?(checkpoint: SampleSurveyCheckpoint): Promise<void> | void
+  onReadRetry?(event: SampleSurveyReadRetryEvent): void
   now?(): number
   wait?(milliseconds: number): Promise<void>
 }
@@ -234,6 +235,9 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
   let lastStart: number | null = null, current: SampleSurveyStratumDefinition | null = null
   const wait = options.wait ?? (async (milliseconds: number) => { await delay(milliseconds, undefined, { signal: options.signal }) })
   const definitions = sampleSurveyStratumDefinitions(plan.config), report = checkpoint.report, observation = report.observation!
+  // A failed or interrupted prior attempt conservatively consumes the run's
+  // single retry, including older checkpoints with no explicit retry metadata.
+  let readRetryUsed = report.attempts > report.successfulPages
   const latest = new Map<SampleSurveyTarget, { total: number; pageSize: number }>()
   const lastObservedAt = new Map<SampleSurveyTarget, string>()
   report.state = 'preparing'; report.phase = 'boundaries'; report.stopReason = null; report.finishedAt = null; report.resumeAllowed = false
@@ -253,16 +257,35 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
     catch { throw new SampleSurveyReadError('storage-error') }
   }
   async function read(target: SampleSurveyTarget, page: number): Promise<SampleSurveyPage> {
-    check()
-    if (report.attempts - initialAttempts >= maxReads) throw new SampleSurveyReadError('limit-reached')
-    if (lastStart !== null) {
-      const remaining = Math.max(0, SAMPLE_SURVEY_INTERVAL_MS - (now() - lastStart))
-      if (now() - start + remaining >= timeoutMs) throw new SampleSurveyReadError('limit-reached')
-      await wait(remaining); check()
+    let raw: SampleSurveyPage
+    for (;;) {
+      check()
+      if (report.attempts - initialAttempts >= maxReads) throw new SampleSurveyReadError('limit-reached')
+      if (lastStart !== null) {
+        const remaining = Math.max(0, SAMPLE_SURVEY_INTERVAL_MS - (now() - lastStart))
+        if (now() - start + remaining >= timeoutMs) throw new SampleSurveyReadError('limit-reached')
+        await wait(remaining); check()
+      }
+      report.attempts++; lastStart = now()
+      await publish(); check()
+      try { raw = await options.reader.readPage(target, page); break }
+      catch (error) {
+        if (!(error instanceof SampleSurveyRetryableReadError) || readRetryUsed) throw error
+        check()
+        if (report.attempts - initialAttempts >= maxReads || now() - start + 30_000 >= timeoutMs) throw new SampleSurveyReadError('limit-reached')
+        readRetryUsed = true
+        // Persist the failed attempt before waiting so cancellation/restart
+        // cannot grant another retry. Storage errors are never retryable.
+        await publish(); check()
+        try {
+          options.onReadRetry?.({ at: new Date(now()).toISOString(), target, page, attempt: report.attempts,
+            retryNumber: 1, code: error.code as SampleSurveyReadRetryEvent['code'], httpStatus: error.transientHttpStatus, delayMs: 30_000 })
+        } catch { /* Optional diagnostics cannot alter collection decisions. */ }
+        check()
+        await wait(30_000)
+        // The next loop repeats all ordinary pacing, budget and abort checks.
+      }
     }
-    report.attempts++; lastStart = now()
-    await publish()
-    const raw = await options.reader.readPage(target, page)
     const known = latest.get(target)
     if (known && integer(raw?.pageSize, 1, 20) && known.pageSize !== raw.pageSize) {
       change('page-size', known.pageSize, raw.pageSize)
