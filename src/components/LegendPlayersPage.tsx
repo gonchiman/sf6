@@ -64,7 +64,7 @@ export function LegendPlayersPage() {
 
   return <section className="legend-players-page" aria-label="レジェンド帯分析2">
     <div className="legend-players-toolbar">
-      {descriptors.length > 1 && <label className="legend-players-capture-select"><span>取得日</span>
+      {descriptors.length > 0 && <label className="legend-players-capture-select"><span>取得日</span>
         <select value={selectedId ?? ''} onChange={event => setSelectedId(event.target.value)}>
           {descriptors.map(item => <option key={item.id} value={item.id}>{item.actId.replace(/^act-/, 'Act ')} · {timestampLabel(item.captureEndedAt)}</option>)}
         </select>
