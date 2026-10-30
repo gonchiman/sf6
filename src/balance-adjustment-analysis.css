@@ -1,0 +1,36 @@
+.balance-adjustment-analysis-page { min-width: 0; display: grid; gap: 16px; }
+.balance-adjustment-analysis-filters.win-rates-filters { padding: 0; border: 0; background: none; }
+.balance-adjustment-analysis-filters label { flex: 0 1 180px; }
+.balance-adjustment-analysis-filters select { width: 100%; }
+.balance-adjustment-analysis-scroll { max-height: min(65vh, 640px); position: relative; }
+.balance-adjustment-analysis-table { min-width: 850px; table-layout: fixed; }
+.balance-adjustment-analysis-subject-column { width: 120px; }
+.balance-adjustment-analysis-target-column { width: 240px; }
+.balance-adjustment-analysis-element-column { width: 170px; }
+.balance-adjustment-analysis-direction-column { width: 80px; }
+.balance-adjustment-analysis-value-column { width: 100px; }
+.balance-adjustment-analysis-table td { text-align: left; overflow-wrap: anywhere; }
+.balance-adjustment-analysis-table .balance-adjustment-analysis-number { text-align: right; }
+.balance-adjustment-analysis-table tr.is-selected > * { background: var(--surface-hover); }
+.balance-adjustment-analysis-table .balance-adjustment-analysis-target-cell { padding: 0; }
+.balance-adjustment-analysis-select { display: block; width: 100%; min-height: 36px; border: 0; padding: 7px 8px; color: var(--text); background: none; text-align: left; font: inherit; white-space: pre-line; overflow-wrap: anywhere; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.balance-adjustment-analysis-select:hover { background: var(--surface-hover); }
+.balance-adjustment-analysis-select[aria-pressed='true'] { font-weight: 500; box-shadow: inset 3px 0 var(--text); }
+.balance-adjustment-analysis-source { min-width: 0; }
+.balance-adjustment-analysis-source h3 { margin: 0; font-size: 14px; font-weight: 500; white-space: pre-line; overflow-wrap: anywhere; }
+.balance-adjustment-analysis-description { margin: 14px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.9; }
+.balance-adjustment-analysis-description mark { color: var(--text); background: var(--surface-hover); box-shadow: inset 0 -1px var(--text-muted); }
+.balance-adjustment-analysis-facts { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px 16px; margin: 0; font-size: 13px; }
+.balance-adjustment-analysis-facts dt { color: var(--text-muted); }
+.balance-adjustment-analysis-facts dd { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.balance-adjustment-analysis-source-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; color: var(--text-muted); font-size: 12px; }
+.balance-adjustment-analysis-source-meta a { color: var(--text); text-underline-offset: 3px; }
+.balance-adjustment-analysis-empty { margin: 0; color: var(--text-muted); font-size: 13px; }
+.balance-adjustment-analysis-table .balance-adjustment-analysis-empty-cell { text-align: left; color: var(--text-muted); }
+@media (max-width: 640px) {
+  .balance-adjustment-analysis-filters label { flex: 1 1 130px; }
+  .balance-adjustment-analysis-facts { grid-template-columns: 70px minmax(0, 1fr); gap: 7px 12px; }
+}
+@media (max-width: 760px), (pointer: coarse) {
+  .balance-adjustment-analysis-select { min-height: 44px; }
+}
