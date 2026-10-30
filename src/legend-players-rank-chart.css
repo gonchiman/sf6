@@ -1,0 +1,21 @@
+.legend-players-rank-chart { min-width: 0; margin: 0; color: var(--text); }
+.legend-players-rank-viewport { min-width: 0; }
+.legend-players-rank-svg { display: block; max-width: 100%; }
+.legend-players-rank-svg:focus-visible { outline-offset: 2px; }
+.legend-players-rank-axis-title { fill: var(--text-soft); font-size: 12px; font-weight: 500; }
+.legend-players-rank-tick { fill: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.legend-players-rank-grid { stroke: var(--border); stroke-width: 1; }
+.legend-players-rank-grid.is-vertical { opacity: .5; }
+.legend-players-rank-frame { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+.legend-players-rank-line { fill: none; stroke: var(--text-muted); stroke-width: 1.5; stroke-linejoin: round; }
+.legend-players-rank-point { fill: var(--text-muted); }
+.legend-players-rank-selected { fill: var(--text); stroke: var(--surface); stroke-width: 2; }
+.legend-players-rank-guide { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 4; }
+.legend-players-rank-hit { fill: transparent; cursor: crosshair; }
+.legend-players-rank-selection { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 8px; font-size: 12px; }
+.legend-players-rank-selection-values { display: flex; flex: 1 1 240px; flex-wrap: wrap; min-width: 0; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+.legend-players-rank-selection-values > span { min-width: 0; overflow-wrap: anywhere; }
+.legend-players-rank-selection-nav { display: flex; gap: 8px; }
+.legend-players-rank-selection-nav .win-rates-button { min-height: 36px; }
+.legend-players-rank-empty { padding: 48px 16px; text-align: center; color: var(--text-muted); }
+@media (pointer: coarse) { .legend-players-rank-selection-nav .win-rates-button { min-height: 44px; min-width: 44px; } }

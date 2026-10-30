@@ -18,6 +18,7 @@ export const APP_NAV_ITEMS = [
   { id: 'sample-survey', label: '標本調査', href: '#sample-survey' },
   { id: 'character-traits', label: 'キャラ分類', href: '#character-traits' },
   { id: 'balance-adjustments', label: 'バトル変更一覧', href: '#balance-adjustments' },
+  { id: 'adjustment-analysis', label: 'バトル変更分析', href: '#adjustment-analysis' },
   { id: 'character-releases', label: 'キャラ実装日', href: '#character-releases' },
 ] as const
 

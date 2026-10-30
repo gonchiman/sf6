@@ -17,6 +17,7 @@ export type AppRoute =
   | { page: 'character-releases' }
   | { page: 'character-traits' }
   | { page: 'balance-adjustments' }
+  | { page: 'adjustment-analysis' }
   | { page: 'balance-adjustment-detail'; adjustmentId: string; scope: string | null }
 
 export function characterHash(characterId: string): string {
@@ -29,6 +30,9 @@ export function balanceAdjustmentDetailHash(adjustmentId: string, scope: string 
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#adjustment-analysis' || hash === '#adjustment-analysis/') {
+    return { page: 'adjustment-analysis' }
+  }
   if (hash === '#sample-survey' || hash === '#sample-survey/') {
     return { page: 'sample-survey' }
   }
