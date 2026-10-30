@@ -1,0 +1,281 @@
+{
+  "schemaVersion": 2,
+  "id": "03d23d37-30b6-42be-ba6e-6ad3295d224b",
+  "planId": "bf8927c8-2fd2-46c3-adf3-882b54713ac3",
+  "config": {
+    "ranks": [
+      "BRONZE",
+      "GOLD"
+    ],
+    "rankSampleSize": 10,
+    "includeMr": false,
+    "mrSampleSize": 10,
+    "maxDurationMinutes": 30
+  },
+  "state": "complete",
+  "phase": "complete",
+  "startedAt": "2026-10-30T11:10:49.974Z",
+  "updatedAt": "2026-10-30T11:28:24.675Z",
+  "finishedAt": "2026-10-30T11:28:24.675Z",
+  "elapsedMs": 1054701,
+  "attempts": 106,
+  "successfulPages": 106,
+  "uniqueAccountCount": 20,
+  "strata": [
+    {
+      "id": "lp-BRONZE",
+      "label": "BRONZE",
+      "target": "lp",
+      "requested": 10,
+      "population": 326569,
+      "selected": 10,
+      "processed": 10,
+      "succeeded": 10,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 4044.1,
+      "min": 3135,
+      "max": 4630
+    },
+    {
+      "id": "lp-GOLD",
+      "label": "GOLD",
+      "target": "lp",
+      "requested": 10,
+      "population": 375963,
+      "selected": 10,
+      "processed": 10,
+      "succeeded": 10,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 10825,
+      "min": 9212,
+      "max": 12595
+    }
+  ],
+  "frameChanged": true,
+  "stopReason": null,
+  "resumeAllowed": false,
+  "observation": {
+    "method": "rank-position-tolerant-v1",
+    "strata": [
+      {
+        "id": "lp-BRONZE",
+        "status": "review-required",
+        "startedAt": "2026-10-30T11:10:49.978Z",
+        "finishedAt": "2026-10-30T11:19:33.662Z",
+        "totalCountBefore": 3102278,
+        "totalCountAfter": 3102281,
+        "startBefore": 2224246,
+        "endBefore": 2550815,
+        "startAfter": 2224248,
+        "endAfter": 2550820,
+        "boundaryChanged": true,
+        "boundaryAcceptance": {
+          "mode": "approximate",
+          "referenceStart": 2224242,
+          "referenceEnd": 2550815,
+          "referenceCheckedAt": "2026-10-30T11:16:14.127Z",
+          "start": 2224246,
+          "end": 2550815,
+          "startObservedAt": "2026-10-30T11:16:23.880Z",
+          "endObservedAt": "2026-10-30T11:16:34.205Z"
+        }
+      },
+      {
+        "id": "lp-GOLD",
+        "status": "review-required",
+        "startedAt": "2026-10-30T11:19:33.662Z",
+        "finishedAt": "2026-10-30T11:28:24.675Z",
+        "totalCountBefore": 3102285,
+        "totalCountAfter": 3102287,
+        "startBefore": 1406103,
+        "endBefore": 1782066,
+        "startAfter": 1406106,
+        "endAfter": 1782067,
+        "boundaryChanged": true,
+        "boundaryAcceptance": {
+          "mode": "approximate",
+          "referenceStart": 1406097,
+          "referenceEnd": 1782066,
+          "referenceCheckedAt": "2026-10-30T11:25:23.294Z",
+          "start": 1406103,
+          "end": 1782066,
+          "startObservedAt": "2026-10-30T11:25:44.263Z",
+          "endObservedAt": "2026-10-30T11:25:55.053Z"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:11:24.141Z",
+        "before": 3102273,
+        "after": 3102274
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:12:23.409Z",
+        "before": 3102274,
+        "after": 3102275
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:13:54.540Z",
+        "before": 3102275,
+        "after": 3102276
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:14:24.196Z",
+        "before": 3102276,
+        "after": 3102278
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:16:23.880Z",
+        "before": 2224242,
+        "after": 2224246
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:16:54.393Z",
+        "before": 3102278,
+        "after": 3102279
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:18:45.326Z",
+        "before": 3102279,
+        "after": 3102280
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:18:52.857Z",
+        "before": 2224246,
+        "after": 2224248
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:18:52.857Z",
+        "before": 2550815,
+        "after": 2550820
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:19:13.856Z",
+        "before": 3102280,
+        "after": 3102281
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-BRONZE",
+        "at": "2026-10-30T11:19:33.662Z",
+        "before": 2550820,
+        "after": null
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:20:15.056Z",
+        "before": 3102281,
+        "after": 3102282
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:20:33.476Z",
+        "before": 3102282,
+        "after": 3102283
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:21:03.037Z",
+        "before": 3102283,
+        "after": 3102284
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:23:33.887Z",
+        "before": 3102284,
+        "after": 3102285
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:25:44.263Z",
+        "before": 1406097,
+        "after": 1406103
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:28:03.869Z",
+        "before": 3102285,
+        "after": 3102286
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:28:03.870Z",
+        "before": 1406103,
+        "after": 1406106
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:28:03.870Z",
+        "before": 1782066,
+        "after": 1782067
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:28:24.675Z",
+        "before": 3102286,
+        "after": 3102287
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-10-30T11:28:24.675Z",
+        "before": 1406106,
+        "after": null
+      }
+    ],
+    "omittedChanges": 0
+  }
+}
