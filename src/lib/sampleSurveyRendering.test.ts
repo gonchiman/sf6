@@ -35,6 +35,18 @@ function legacyRun(ranks: SampleSurveyRank[] = ['MASTER']): SampleSurveyRun {
       min: rank === 'MASTER' ? 24900 : 0, max: rank === 'MASTER' ? 25100 : 0 })),
     frameChanged: false, stopReason: null, resumeAllowed: false }
 }
+function tolerantRun(mode: 'exact' | 'approximate'): SampleSurveyRun {
+  const run = legacyRun(), start = mode === 'exact' ? 10000 : 10004, end = mode === 'exact' ? 20000 : 19998
+  run.schemaVersion = 2; run.uniqueAccountCount = 10; run.frameChanged = mode === 'approximate'
+  Object.assign(run.strata[0], { population: end - start, selected: 10, processed: 10, succeeded: 10 })
+  run.observation = { method: 'rank-position-tolerant-v1', omittedChanges: 0, changes: [],
+    strata: [{ id: 'lp-MASTER', status: mode === 'exact' ? 'checked' : 'review-required', startedAt: run.startedAt, finishedAt: run.finishedAt,
+      totalCountBefore: 30000, totalCountAfter: 30000, startBefore: start, endBefore: end, startAfter: start, endAfter: end,
+      boundaryChanged: mode === 'approximate', boundaryAcceptance: { mode, referenceStart: 10000, referenceEnd: 20000,
+        referenceCheckedAt: '2026-10-20T01:01:00.000Z', start, end,
+        startObservedAt: '2026-10-20T01:01:10.000Z', endObservedAt: '2026-10-20T01:01:20.000Z' } }] }
+  return run
+}
 function dataset(theme: SampleSurveyInsightTheme, metrics: SampleSurveyInsightMetrics): SampleSurveyInsightDataset {
   const period = theme === 'battle' ? { kind: 'last-100' } as const : theme === 'recent' ? { kind: 'recent-10' } as const
     : theme === 'attributes' ? { kind: 'capture' } as const : { kind: 'act', act: 10 } as const
@@ -167,6 +179,7 @@ test('quality keeps legacy/interval boundary evidence and independent acquisitio
   assert.match(visibleText(legacy), /層別抽出（旧形式）/)
   assert.match(visibleText(legacy), /母集団への推定 未実施/)
   assert.match(visibleText(legacy), /追加データの取得状況 未取得/)
+  assert.doesNotMatch(legacy, /掲載位置の境界|初期観測|近似採用/)
   const data = dataset('activity', { activeShare: { kind: 'ratio', n: 2, numerator: 1, denominator: 2 } })
   data.coverage[0].validAccounts = 2; data.coverage[0].failedAccounts = 1; data.rows[0].validAccounts = 2
   const run = withDataset(data); run.schemaVersion = 2; run.frameChanged = true
@@ -180,4 +193,67 @@ test('quality keeps legacy/interval boundary evidence and independent acquisitio
   assert.match(visibleText(html), /掲載総数の変化：あり/)
   assert.match(visibleText(html), /MASTER 3 2 1 一部欠測/)
   assert.match(html, /aria-label="追加データの条件別取得状況"/)
+  assert.doesNotMatch(html, /掲載位置の境界|初期観測|近似採用/)
+})
+
+test('tolerant quality exposes approximate adopted cuts, signed movement and separate observation times', () => {
+  const run = parseSampleSurveyResultsRun(tolerantRun('approximate'))
+  const html = renderToStaticMarkup(createElement(Quality, { run, source: 'lp' })), text = visibleText(html)
+  assert.match(text, /近似採用・要確認/)
+  assert.match(text, /掲載位置の境界（0起点） 初期 → 採用（差）/)
+  assert.match(text, /開始：10,000 → 10,004（差 \+4）/)
+  assert.match(text, /終了：20,000 → 19,998（差 -2）/)
+  assert.match(text, /抽出区間幅：9,994枠/)
+  assert.match(text, /移動量合計：6位置 · 許容：10位置/)
+  assert.match(text, /各端20位置・合計は初期区間幅の0\.1％（切捨て）/)
+  for (const [label, iso, clock] of [
+    ['初期観測', '2026-10-20T01:01:00.000Z', '10:01:00'],
+    ['開始観測', '2026-10-20T01:01:10.000Z', '10:01:10'],
+    ['終了観測', '2026-10-20T01:01:20.000Z', '10:01:20'],
+  ]) {
+    assert.ok(html.includes(`${label}：<time dateTime="${iso}">`))
+    assert.ok(text.includes(`${clock} JST`))
+  }
+  assert.match(text, /母集団への推定 未実施/)
+  assert.doesNotMatch(html, /NaN|Infinity|undefined|確認不能/)
+  const otherSeries = renderToStaticMarkup(createElement(Quality, { run, source: 'mr' }))
+  assert.doesNotMatch(otherSeries, /近似採用・要確認|10,004|19,998/)
+})
+
+test('exact adoption and a verified empty range are distinct from unavailable boundary evidence', () => {
+  const exact = parseSampleSurveyResultsRun(tolerantRun('exact'))
+  const html = renderToStaticMarkup(createElement(Quality, { run: exact, source: 'lp' })), text = visibleText(html)
+  assert.match(text, /前後一致/); assert.match(text, /採用：一致 · 抽出区間幅：10,000枠/)
+  assert.match(text, /移動量合計：0位置 · 許容：10位置/)
+  assert.doesNotMatch(text, /近似採用|未採用|確認不能/)
+
+  const empty = tolerantRun('exact'), observed = empty.observation!.strata[0]
+  empty.uniqueAccountCount = 0
+  Object.assign(empty.strata[0], { population: 0, selected: 0, processed: 0, succeeded: 0, mean: null, min: null, max: null })
+  Object.assign(observed, { startBefore: 0, endBefore: 0, startAfter: 0, endAfter: 0 })
+  Object.assign(observed.boundaryAcceptance!, { referenceStart: 0, referenceEnd: 0, start: 0, end: 0 })
+  const emptyHtml = renderToStaticMarkup(createElement(Quality, { run: parseSampleSurveyResultsRun(empty), source: 'lp' }))
+  assert.match(visibleText(emptyHtml), /採用：一致 · 抽出区間幅：0枠/)
+  assert.doesNotMatch(emptyHtml, /未取得・確認不能|未採用/)
+
+  const unknown = tolerantRun('exact'), unavailable = unknown.observation!.strata[0]
+  unknown.uniqueAccountCount = 0
+  Object.assign(unknown.strata[0], { population: null, selected: 0, processed: 0, succeeded: 0, mean: null, min: null, max: null })
+  Object.assign(unavailable, { status: 'review-required', startBefore: null, endBefore: null, startAfter: null, endAfter: null })
+  delete unavailable.boundaryAcceptance
+  const unknownHtml = renderToStaticMarkup(createElement(Quality, { run: parseSampleSurveyResultsRun(unknown), source: 'lp' }))
+  assert.match(visibleText(unknownHtml), /10 — — — — 未取得・確認不能/)
+  assert.match(visibleText(unknownHtml), /未採用/)
+  assert.doesNotMatch(unknownHtml, /抽出区間幅：0|採用：一致|近似採用|初期観測/)
+})
+
+test('displayed total movement allowance also respects the per-boundary cap for large strata', () => {
+  const run = tolerantRun('approximate'), observed = run.observation!.strata[0]
+  run.strata[0].population = 99960
+  Object.assign(observed, { totalCountBefore: 300000, totalCountAfter: 300000,
+    startBefore: 100020, endBefore: 199980, startAfter: 100020, endAfter: 199980 })
+  Object.assign(observed.boundaryAcceptance!, { referenceStart: 100000, referenceEnd: 200000, start: 100020, end: 199980 })
+  const html = renderToStaticMarkup(createElement(Quality, { run: parseSampleSurveyResultsRun(run), source: 'lp' }))
+  assert.match(visibleText(html), /移動量合計：40位置 · 許容：40位置/)
+  assert.doesNotMatch(visibleText(html), /許容：100位置/)
 })
