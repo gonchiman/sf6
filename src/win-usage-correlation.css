@@ -1,11 +1,24 @@
 .win-usage-correlation-page { min-width: 0; display: grid; gap: 16px; }
-.win-rates-filters.correlation-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; margin: 0; padding: 0; border: 0; background: transparent; }
+.correlation-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.correlation-tabs .win-rates-button[aria-selected=true] { color: var(--surface); background: var(--text); border-color: var(--text); }
+.correlation-tab-panel { min-width: 0; }
+.correlation-tab-panel[hidden] { display: none; }
+.correlation-tab-panel > .monthly-statistics-panel > .monthly-statistics-panel-body { padding: 0; }
+.win-rates-filters.correlation-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 14px 16px; margin: 0; padding: 16px; border: 0; border-bottom: 1px solid var(--border); background: transparent; }
 .correlation-filters label { min-width: 0; }
 .correlation-filters select { width: 100%; min-width: 0; }
+.correlation-filters .correlation-fixed-control { min-height: 36px; padding: 7px 0; color: var(--text); font-size: 14px; }
+.correlation-month-content, .correlation-history-content { padding: 16px; min-width: 0; }
+.correlation-subheading, .correlation-detail-heading h3 { margin: 0; font-size: 14px; font-weight: 500; }
+.correlation-subheading { margin-bottom: 12px; }
+.correlation-detail { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); min-width: 0; }
+.correlation-detail-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }
+.correlation-detail-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.correlation-detail-grid > section { min-width: 0; }
 .correlation-chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; }
 .correlation-chart-controls label, .correlation-inline-select { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
 .correlation-chart-controls select, .correlation-inline-select select { max-width: 100%; min-height: 36px; border: 1px solid var(--border-strong); border-radius: 0; padding: 6px 28px 6px 10px; color: var(--text); background: var(--surface); font: inherit; }
-.correlation-check { min-height: 36px; }
+.correlation-check { display: flex; align-items: center; gap: 8px; min-height: 36px; font-size: 12px; color: var(--text-soft); }
 .correlation-check input { accent-color: var(--text); }
 .correlation-summary { margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 12px 32px; font-variant-numeric: tabular-nums; }
 .correlation-summary > div { display: flex; align-items: baseline; gap: 10px; }
@@ -14,7 +27,7 @@
 .correlation-panel-summary { color: var(--text-muted); font-size: 12px; }
 .correlation-message { padding: 12px 0; color: var(--text-muted); font-size: 13px; }
 .correlation-selected-month { margin-top: 8px; font-variant-numeric: tabular-nums; font-size: 13px; }
-.correlation-character-scroll { max-height: 480px; }
+.correlation-character-scroll { max-height: 400px; }
 .correlation-character-table { min-width: 360px; }
 .correlation-character-table tbody th { white-space: nowrap; }
 .correlation-character-table td { width: 26%; }
@@ -29,11 +42,16 @@
 .correlation-league-context { margin-bottom: 12px; }
 .correlation-league-table { min-width: 460px; }
 .correlation-league-table th, .correlation-league-table td { white-space: nowrap; }
+.correlation-league-table tr.is-selected > * { background: var(--surface-hover); }
 .correlation-league-table .correlation-league-notes { min-width: 180px; max-width: 360px; white-space: normal; text-align: left; }
 .correlation-league-notes > span { display: block; }
 .correlation-league-notes summary { cursor: pointer; }
 .correlation-league-notes ul { margin: 8px 0; padding-left: 20px; }
-@media (max-width: 640px) { .win-rates-filters.correlation-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 980px) { .correlation-detail-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .win-rates-filters.correlation-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; }
+  .correlation-month-content, .correlation-history-content { padding: 12px; }
+}
 @media (max-width: 380px) { .win-rates-filters.correlation-filters { grid-template-columns: minmax(0, 1fr); } }
 @media (pointer: coarse) {
   .correlation-chart-controls select, .correlation-inline-select select { min-height: 44px; font-size: 16px; }

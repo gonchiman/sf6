@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { timestampLabel } from '../lib/dateTime'
 import { leagueLabel } from '../lib/winRateConditions'
 import { loadWinRateManifest } from '../lib/winRates'
 import { loadUsageRateManifest } from '../lib/usageRates'
 import { monthLabel } from '../lib/winRateHistory'
 import {
-  correlationConditions, correlationHistoryRequestKey, correlationMonths, createCorrelationHistory,
-  initialCorrelationSelection, loadCorrelationHistory,
+  correlationHistoryRequestKey, correlationMonths, createCorrelationHistory, loadCorrelationHistory,
 } from '../lib/winUsageCorrelation'
+import { correlationPageCalendars, initialCorrelationPageState, updateCorrelationPageState } from '../lib/correlationPageSelection'
 import {
   createLeagueCorrelationRows, leagueCorrelationRequestKey, loadLeagueCorrelationComparison,
 } from '../lib/leagueWinUsageCorrelation'
@@ -16,8 +16,7 @@ import type { WinRateManifest } from '../types/winRates'
 import type { UsageRateManifest } from '../types/usageRates'
 import type { MonthlyLineChartSeries } from '../types/monthlyLineChart'
 import type {
-  CorrelationCondition, CorrelationExclusionReason, CorrelationHistoryResults, CorrelationMode,
-  CorrelationPoint, CorrelationRow, CorrelationSelection,
+  CorrelationExclusionReason, CorrelationHistoryResults, CorrelationPoint, CorrelationRow,
 } from '../types/winUsageCorrelation'
 import { DataLoadState } from './DataLoadState'
 import { MonthlyLineChart } from './MonthlyLineChart'
@@ -37,6 +36,10 @@ type LeagueLoaded = { key: string; version: number } & (
   { status: 'loading' | 'error' } | { status: 'ready'; results: LeagueCorrelationResults }
 )
 type Metric = 'pearson' | 'spearman'
+type Tab = 'month' | 'history'
+type PageState = ReturnType<typeof initialCorrelationPageState>
+type PagePatch = Parameters<typeof updateCorrelationPageState>[2]
+type Calendars = ReturnType<typeof correlationPageCalendars>
 const CONTROL_LABELS = { combined: '合算', classic: 'クラシック', modern: 'モダン' } as const
 const EXCLUSION_LABELS: Record<CorrelationExclusionReason, string> = {
   'win-unlisted': '勝率未掲載', 'usage-unlisted': '使用率未掲載', 'win-missing': '勝率欠損',
@@ -51,21 +54,62 @@ const coefficientReason = (row: CorrelationRow) => row.unavailableReason === 'in
   : row.unavailableReason === 'constant-win-rate' ? '勝率がすべて同じため相関係数を算出できません。'
     : row.unavailableReason === 'constant-usage-rate' ? '使用率がすべて同じため相関係数を算出できません。' : ''
 
-/** Keep a compatible condition and clamp the period to its common publication range. */
-function changeSelection(conditions: readonly CorrelationCondition[], current: CorrelationSelection,
-  patch: Partial<Pick<CorrelationSelection, 'edition' | 'league' | 'controlType'>>): CorrelationSelection {
-  const edition = patch.edition ?? current.edition
-  const editionConditions = conditions.filter(item => item.edition === edition)
-  const control = patch.controlType ?? current.controlType
-  const controlConditions = editionConditions.filter(item => item.controlType === control)
-  const combinedConditions = editionConditions.filter(item => item.controlType === 'combined')
-  const candidates = controlConditions.length ? controlConditions : combinedConditions.length ? combinedConditions : editionConditions
-  const league = patch.league ?? current.league
-  const condition = candidates.find(item => item.league === league) ?? candidates.find(item => item.league === 'MASTER') ?? candidates[0]
-  const fromMonth = condition.months.find(month => month >= current.fromMonth) ?? condition.months.at(-1)!
-  const toMonth = [...condition.months].reverse().find(month => month <= current.toMonth) ?? condition.months[0]
-  return { edition: condition.edition, league: condition.league, controlType: condition.controlType,
-    fromMonth: fromMonth <= toMonth ? fromMonth : condition.months[0], toMonth }
+/** Reuse the two-tab keyboard pattern of ExpectedMatchLpReference. */
+function CorrelationTabs({ id, value, onChange }: { id: string; value: Tab; onChange: (value: Tab) => void }) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  function navigate(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? 1
+      : event.key === 'ArrowLeft' || event.key === 'ArrowRight' ? 1 - index : null
+    if (next === null) return
+    event.preventDefault()
+    onChange(next === 0 ? 'month' : 'history')
+    window.requestAnimationFrame(() => refs.current[next]?.focus({ preventScroll: true }))
+  }
+  return <div className="correlation-tabs" role="tablist" aria-label="相関の表示">
+    {(['month', 'history'] as const).map((tab, index) => <button key={tab} type="button" className="win-rates-button" role="tab"
+      id={`${id}-tab-${tab}`} aria-selected={value === tab} aria-controls={`${id}-panel-${tab}`} tabIndex={value === tab ? 0 : -1}
+      ref={element => { refs.current[index] = element }} onClick={() => onChange(tab)} onKeyDown={event => navigate(event, index)}>
+      {tab === 'month' ? '対象月' : '期間推移'}
+    </button>)}
+  </div>
+}
+
+function ConditionInputs({ state, calendars, view, metric, onMetricChange, onChange }: {
+  state: PageState; calendars: Calendars; view: Tab; metric: Metric
+  onMetricChange: (metric: Metric) => void; onChange: (patch: PagePatch) => void
+}) {
+  const { selection, selectedMonth, mode } = state
+  const calendar = calendars.find(item => item.edition === selection.edition && item.controlType === selection.controlType)!
+  const editions = [...new Set(calendars.map(item => item.edition))]
+  const controls = calendars.filter(item => item.edition === selection.edition).map(item => item.controlType)
+  const monthOptions = mode === 'common' ? correlationMonths(selection) : calendar.months
+  return <div className="win-rates-filters correlation-filters">
+    <label><span>統計</span><select aria-label="統計" value={selection.edition} onChange={event => onChange({ edition: event.target.value as PagePatch['edition'] })}>
+      {editions.map(edition => <option key={edition} value={edition}>{edition === 'general' ? '総合版' : 'マスター版'}</option>)}
+    </select></label>
+    <label><span>操作タイプ</span>{controls.length > 1 ? <select aria-label="操作タイプ" value={selection.controlType} onChange={event => onChange({ controlType: event.target.value as PagePatch['controlType'] })}>
+      {controls.map(control => <option key={control} value={control}>{CONTROL_LABELS[control]}</option>)}
+    </select> : <span className="correlation-fixed-control">{CONTROL_LABELS[selection.controlType]}</span>}</label>
+    {view === 'month' ? <label><span>対象月</span><select aria-label="対象月" value={selectedMonth} onChange={event => onChange({ selectedMonth: event.target.value })}>
+      {monthOptions.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}
+    </select></label> : <label><span>ランク</span><select aria-label="ランク" value={selection.league} onChange={event => onChange({ league: event.target.value })}>
+      {calendar.leagues.map(league => <option key={league} value={league}>{leagueLabel(league)}</option>)}
+    </select></label>}
+    <label><span>集計対象</span><select aria-label="集計対象" value={mode} onChange={event => onChange({ mode: event.target.value as PagePatch['mode'] })}>
+      <option value="monthly">各月に両方の値があるキャラ</option><option value="common">選択期間の共通キャラ</option>
+    </select></label>
+    {(view === 'history' || mode === 'common') && <>
+      <label><span>開始月</span><select aria-label="開始月" value={selection.fromMonth} onChange={event => onChange({ fromMonth: event.target.value })}>
+        {calendar.months.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}
+      </select></label>
+      <label><span>終了月</span><select aria-label="終了月" value={selection.toMonth} onChange={event => onChange({ toMonth: event.target.value })}>
+        {calendar.months.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}
+      </select></label>
+    </>}
+    {view === 'history' && <label><span>指標</span><select aria-label="相関係数" value={metric} onChange={event => onMetricChange(event.target.value as Metric)}>
+      <option value="pearson">Pearson</option><option value="spearman">Spearman</option>
+    </select></label>}
+  </div>
 }
 
 function CharacterTable({ points }: { points: readonly CorrelationPoint[] }) {
@@ -88,7 +132,9 @@ function CharacterTable({ points }: { points: readonly CorrelationPoint[] }) {
   </div>
 }
 
-function LeagueTable({ rows }: { rows: readonly LeagueCorrelationRow[] }) {
+function LeagueTable({ rows, selectedLeague, onSelect }: {
+  rows: readonly LeagueCorrelationRow[]; selectedLeague: string; onSelect: (league: string) => void
+}) {
   const hasNotes = rows.some(({ row }) => row.status !== 'ready' || row.unavailableReason
     || row.exclusions.length > 0 || row.usageTotalMismatch)
   const signedCoefficient = (value: number | null) => {
@@ -99,8 +145,8 @@ function LeagueTable({ rows }: { rows: readonly LeagueCorrelationRow[] }) {
     <table className="data-table correlation-league-table">
       <caption className="win-rates-visually-hidden">各ランク内のキャラ間で求めた勝率と使用率の相関係数</caption>
       <thead><tr><th scope="col">ランク</th><th scope="col">Pearson r</th><th scope="col">Spearman ρ</th><th scope="col">対象キャラ数</th>{hasNotes && <th scope="col">状態</th>}</tr></thead>
-      <tbody>{rows.map(({ league, row }) => <tr key={league}>
-        <th scope="row">{leagueLabel(league)}</th><td>{signedCoefficient(row.pearson)}</td><td>{signedCoefficient(row.spearman)}</td><td>{row.status === 'ready' ? row.points.length : '—'}</td>
+      <tbody>{rows.map(({ league, row }) => <tr key={league} className={league === selectedLeague ? 'is-selected' : undefined}>
+        <th scope="row"><button type="button" className="correlation-month-button" aria-pressed={league === selectedLeague} onClick={() => onSelect(league)}>{leagueLabel(league)}</button></th><td>{signedCoefficient(row.pearson)}</td><td>{signedCoefficient(row.spearman)}</td><td>{row.status === 'ready' ? row.points.length : '—'}</td>
         {hasNotes && <td className="correlation-league-notes">
           {row.status !== 'ready' ? unavailableLabel(row) : <>
             {row.unavailableReason && <span>{coefficientReason(row)}</span>}
@@ -116,43 +162,45 @@ function LeagueTable({ rows }: { rows: readonly LeagueCorrelationRow[] }) {
 export function WinUsageCorrelationPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap>({ status: 'loading' })
   const [bootstrapVersion, setBootstrapVersion] = useState(0)
-  const [selection, setSelection] = useState<CorrelationSelection | null>(null)
+  const [page, setPage] = useState<PageState | null>(null)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [loadVersion, setLoadVersion] = useState(0)
   const [leagueLoaded, setLeagueLoaded] = useState<LeagueLoaded | null>(null)
   const [leagueLoadVersion, setLeagueLoadVersion] = useState(0)
-  const [mode, setMode] = useState<CorrelationMode>('monthly')
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
   const [metric, setMetric] = useState<Metric>('pearson')
   const [showNames, setShowNames] = useState(false)
+  const [tab, setTab] = useState<Tab>('month')
+  const id = useId()
 
   useEffect(() => {
     let current = true
     setBootstrap({ status: 'loading' })
     void Promise.all([loadWinRateManifest(), loadUsageRateManifest()]).then(([win, usage]) => {
       if (!current) return
-      setSelection(initialCorrelationSelection(win, usage))
-      setSelectedMonth(null)
+      setPage(initialCorrelationPageState(correlationPageCalendars(win, usage)))
       setBootstrap({ status: 'ready', win, usage })
     }).catch(() => { if (current) setBootstrap({ status: 'error' }) })
     return () => { current = false }
   }, [bootstrapVersion])
 
   const manifests = bootstrap.status === 'ready' ? bootstrap : null
-  const conditions = useMemo(() => manifests ? correlationConditions(manifests.win, manifests.usage) : [], [manifests])
-  const months = useMemo(() => selection ? correlationMonths(selection) : [], [selection])
-  const month = months.includes(selectedMonth ?? '') ? selectedMonth! : months.at(-1) ?? null
+  const calendars = useMemo(() => manifests ? correlationPageCalendars(manifests.win, manifests.usage) : [], [manifests])
+  const selection = page?.selection ?? null
+  const mode = page?.mode ?? 'monthly'
+  const month = page?.selectedMonth ?? null
   const requestKey = manifests && selection ? correlationHistoryRequestKey(manifests.win, manifests.usage, selection) : null
+  const historyQuery = useMemo(() => manifests && selection && requestKey
+    ? { ...manifests, selection, key: requestKey } : null, [manifests, requestKey])
   useEffect(() => {
-    if (!manifests || !selection || !requestKey) return
+    if (!historyQuery) return
     let current = true
-    const key = requestKey
+    const { win, usage, selection, key } = historyQuery
     setLoaded({ key, version: loadVersion, status: 'loading' })
-    void loadCorrelationHistory(manifests.win, manifests.usage, selection).then(results => {
+    void loadCorrelationHistory(win, usage, selection).then(results => {
       if (current) setLoaded({ key, version: loadVersion, status: 'ready', results })
     }).catch(() => { if (current) setLoaded({ key, version: loadVersion, status: 'error' }) })
     return () => { current = false }
-  }, [manifests, selection, requestKey, loadVersion])
+  }, [historyQuery, loadVersion])
 
   const leagueRequestKey = manifests && selection && month
     ? leagueCorrelationRequestKey(manifests.win, manifests.usage, selection, month, mode) : null
@@ -181,133 +229,120 @@ export function WinUsageCorrelationPage() {
     ? createCorrelationHistory(manifests.win, manifests.usage, selection, readyResults, mode) : null,
   [manifests, selection, readyResults, mode])
   const rows = history?.rows ?? []
-  const row = rows.find(row => row.month === month) ?? null
+  // The single-month view remains usable when its month is outside the trend period.
+  const row = leagueRows?.find(item => item.league === selection?.league)?.row ?? null
+  const historyRow = rows.find(row => row.month === month) ?? null
+  const sourceRow = tab === 'month' ? row : historyRow ?? rows.at(-1) ?? null
   const series = useMemo<MonthlyLineChartSeries[]>(() => [{ id: metric, label: metric === 'pearson' ? 'Pearson' : 'Spearman',
     points: rows.map(row => ({ month: row.month, value: row[metric] })), style: { color: 'var(--text-soft)', marker: 'circle' } }], [rows, metric])
 
   if (bootstrap.status === 'loading') return <DataLoadState loading message="勝率と使用率の条件を読み込み中…" />
-  if (!manifests || !selection) return <DataLoadState message="勝率と使用率の共通条件を読み込めませんでした。" onRetry={() => setBootstrapVersion(value => value + 1)} />
-  const condition = conditions.find(item => item.edition === selection.edition && item.league === selection.league && item.controlType === selection.controlType)!
-  const editions = [...new Set(conditions.map(item => item.edition))]
-  const leagues = [...new Set(conditions.filter(item => item.edition === selection.edition && item.controlType === selection.controlType).map(item => item.league))]
-  const controls = [...new Set(conditions.filter(item => item.edition === selection.edition && item.league === selection.league).map(item => item.controlType))]
-  const change = (patch: Parameters<typeof changeSelection>[2]) => setSelection(changeSelection(conditions, selection, patch))
+  if (!manifests || !page || !selection || !month) return <DataLoadState message="勝率と使用率の条件を読み込めませんでした。" onRetry={() => setBootstrapVersion(value => value + 1)} />
+  const change = (patch: PagePatch) => setPage(current => current ? updateCorrelationPageState(calendars, current, patch) : current)
+  const selectMonth = (selectedMonth: string) => change({ selectedMonth })
   const retry = () => { setLoadVersion(value => value + 1); setLeagueLoadVersion(value => value + 1) }
   const failed = rows.filter(row => row.status === 'error')
   const leagueFailures = leagueResults && Object.values(leagueResults).some(results => results
     && (results.winResults.some(result => result.status === 'error') || results.usageResults.some(result => result.status === 'error')))
   const metricName = metric === 'pearson' ? 'Pearson' : 'Spearman'
-  const loadingState = current?.status === 'error'
+  const historyLoadingState = current?.status === 'error'
     ? <DataLoadState message="勝率と使用率を読み込めませんでした。" onRetry={retry} />
     : <DataLoadState loading message="月別の勝率と使用率を読み込み中…" />
+  const monthLoadingState = currentLeagues?.status === 'error'
+    ? <DataLoadState message="ランク別の勝率と使用率を読み込めませんでした。" onRetry={retry} />
+    : <DataLoadState loading message="ランク別の相関係数を読み込み中…" />
 
   return <section className="win-usage-correlation-page" aria-label="勝率と使用率の相関">
-    <StatisticsPanel title="条件選択">
-      <div className="win-rates-filters correlation-filters">
-        <label><span>統計</span><select aria-label="統計" value={selection.edition} onChange={event => change({ edition: event.target.value as CorrelationSelection['edition'] })}>
-          {editions.map(edition => <option key={edition} value={edition}>{edition === 'general' ? '総合版' : 'マスター版'}</option>)}
-        </select></label>
-        <label><span>リーグ</span><select aria-label="リーグ" value={selection.league} onChange={event => change({ league: event.target.value })}>
-          {leagues.map(league => <option key={league} value={league}>{leagueLabel(league)}</option>)}
-        </select></label>
-        <label><span>操作タイプ</span><select aria-label="操作タイプ" value={selection.controlType} onChange={event => change({ controlType: event.target.value as CorrelationSelection['controlType'] })}>
-          {controls.map(control => <option key={control} value={control}>{CONTROL_LABELS[control]}</option>)}
-        </select></label>
-        <label><span>開始月</span><select aria-label="開始月" value={selection.fromMonth} onChange={event => setSelection({ ...selection, fromMonth: event.target.value, toMonth: selection.toMonth < event.target.value ? event.target.value : selection.toMonth })}>
-          {condition.months.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}
-        </select></label>
-        <label><span>終了月</span><select aria-label="終了月" value={selection.toMonth} onChange={event => setSelection({ ...selection, toMonth: event.target.value, fromMonth: selection.fromMonth > event.target.value ? event.target.value : selection.fromMonth })}>
-          {condition.months.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}
-        </select></label>
-        <label><span>集計対象</span><select aria-label="集計対象" value={mode} onChange={event => setMode(event.target.value as CorrelationMode)}>
-          <option value="monthly">各月に両方の値があるキャラ</option><option value="common">選択期間の共通キャラ</option>
-        </select></label>
-      </div>
-    </StatisticsPanel>
+    <CorrelationTabs id={id} value={tab} onChange={setTab} />
+    <div className="correlation-tab-panel" id={`${id}-panel-month`} role="tabpanel" aria-labelledby={`${id}-tab-month`} hidden={tab !== 'month'}>
+      <StatisticsPanel title="対象月の比較">
+        <ConditionInputs state={page} calendars={calendars} view="month" metric={metric} onMetricChange={setMetric} onChange={change} />
+        <div className="correlation-month-content">
+          <section aria-labelledby={`${id}-ranks`}>
+            <h3 id={`${id}-ranks`} className="correlation-subheading">ランク別の相関係数</h3>
+            {leagueRows ? <>
+              <LeagueTable rows={leagueRows} selectedLeague={selection.league} onSelect={league => change({ league })} />
+              {leagueFailures && <div className="history-load-error" role="alert"><span>一部のランクのデータを読み込めませんでした。</span><button className="win-rates-button" type="button" onClick={retry}>再読み込み</button></div>}
+            </> : monthLoadingState}
+          </section>
+          <section className="correlation-detail" aria-labelledby={`${id}-detail`}>
+            <div className="correlation-detail-heading"><h3 id={`${id}-detail`}>{leagueLabel(selection.league)}の詳細</h3><span className="correlation-panel-summary">{monthLabel(month)}</span></div>
+            {!row ? monthLoadingState : row.status !== 'ready' ? <div className="correlation-message" role="status">{unavailableLabel(row)}</div> : <>
+              <dl className="correlation-summary" aria-live="polite">
+                <div><dt>Pearson r</dt><dd>{coefficientLabel(row.pearson)}</dd></div>
+                <div><dt>Spearman ρ</dt><dd>{coefficientLabel(row.spearman)}</dd></div>
+                <div><dt>対象／掲載</dt><dd>{row.points.length}／{row.listedCount} キャラ</dd></div>
+              </dl>
+              {row.unavailableReason && <div className="correlation-message" role="status">{coefficientReason(row)}</div>}
+              {row.usageTotalMismatch && <div className="correlation-message" role="status">使用率の掲載値合計：{row.usagePublishedTotal?.toFixed(3)}%</div>}
+              <div className="correlation-detail-grid">
+                <section aria-labelledby={`${id}-scatter`}>
+                  <div className="correlation-detail-heading"><h3 id={`${id}-scatter`}>散布図</h3><label className="correlation-check"><input type="checkbox" checked={showNames} onChange={event => setShowNames(event.target.checked)} /><span>キャラ名</span></label></div>
+                  {tab === 'month' && <WinUsageScatterChart points={row.points} showNames={showNames} />}
+                </section>
+                <section aria-labelledby={`${id}-characters`}>
+                  <h3 id={`${id}-characters`} className="correlation-subheading">キャラ別の数値</h3>
+                  {row.points.length ? <CharacterTable points={row.points} /> : <div className="correlation-message">両方の値が揃うキャラがありません。</div>}
+                </section>
+              </div>
+            </>}
+          </section>
+        </div>
+      </StatisticsPanel>
+    </div>
 
-    <StatisticsPanel title="ランク別の相関係数" headerContent={month && <label className="correlation-inline-select"><span>対象月</span><select aria-label="ランク別の対象月" value={month} onChange={event => setSelectedMonth(event.target.value)}>
-      {months.map(item => <option key={item} value={item}>{monthLabel(item)}</option>)}
-    </select></label>}>
-      <div className="correlation-panel-summary correlation-league-context">{selection.edition === 'general' ? '総合版' : 'マスター版'}・操作タイプ{CONTROL_LABELS[selection.controlType]}</div>
-      {leagueRows ? <>
-        <LeagueTable rows={leagueRows} />
-        {leagueFailures && <div className="history-load-error" role="alert"><span>一部のランクのデータを読み込めませんでした。</span><button className="win-rates-button" type="button" onClick={retry}>再読み込み</button></div>}
-      </> : currentLeagues?.status === 'error'
-        ? <DataLoadState message="ランク別の勝率と使用率を読み込めませんでした。" onRetry={retry} />
-        : <DataLoadState loading message="ランク別の相関係数を読み込み中…" />}
-    </StatisticsPanel>
+    <div className="correlation-tab-panel" id={`${id}-panel-history`} role="tabpanel" aria-labelledby={`${id}-tab-history`} hidden={tab !== 'history'}>
+      <StatisticsPanel title={`${leagueLabel(selection.league)}の相関係数の推移`}>
+        <ConditionInputs state={page} calendars={calendars} view="history" metric={metric} onMetricChange={setMetric} onChange={change} />
+        <div className="correlation-history-content">
+          {failed.length > 0 && <div className="history-load-error" role="alert"><span>読み込めなかった月：{failed.map(row => monthLabel(row.month)).join('、')}</span><button className="win-rates-button" type="button" onClick={retry}>再読み込み</button></div>}
+          {mode === 'common' && history?.commonUnavailable && <div className="correlation-message" role="status">期間内のデータが揃っていないため、共通キャラの相関を算出できません。</div>}
+          {!history ? historyLoadingState : <>
+            {tab === 'history' && <MonthlyLineChart series={series} selectedMonth={month} onSelect={selectMonth}
+              title={`${leagueLabel(selection.league)}の${metricName}相関係数の月別推移`}
+              description="各月のキャラ間の勝率と使用率の相関係数。縦軸は−1から1で、欠損月・計算できない月は線をつなぎません。選択月は散布図と連動します。"
+              regionLabel="相関係数の推移グラフ" axisLabel="相関係数" axis={AXIS} formatTick={value => value.toFixed(1)}
+              valueLabel={(_, selected) => coefficientLabel(rows.find(row => row.month === selected)?.[metric] ?? null)}
+              reference={{ value: 0, label: '' }} />}
+            {historyRow && <div className="correlation-selected-month" aria-live="polite">{monthLabel(month)}　{metricName} {coefficientLabel(historyRow[metric])}</div>}
+            <details className="win-rates-details correlation-history-values"><summary>月別の相関係数</summary><div className="win-rates-details-content">
+              <div className="data-table-scroll correlation-month-scroll" role="region" tabIndex={0} aria-label="月別の相関係数・スクロール領域"><table className="data-table correlation-month-table">
+                <thead><tr><th scope="col">対象月</th><th scope="col">Pearson r</th><th scope="col">Spearman ρ</th><th scope="col">対象キャラ数</th><th scope="col">状態</th></tr></thead>
+                <tbody>{rows.map(item => <tr key={item.month} className={item.month === month ? 'is-selected' : undefined}><th scope="row"><button type="button" className="correlation-month-button" aria-pressed={item.month === month} onClick={() => selectMonth(item.month)}>{monthLabel(item.month)}</button></th>
+                  <td>{coefficientLabel(item.pearson)}</td><td>{coefficientLabel(item.spearman)}</td><td>{item.status === 'ready' ? item.points.length : '—'}</td><td>{item.status === 'ready' ? item.unavailableReason ? '算出不可' : '取得済み' : item.status === 'error' ? '読込失敗' : item.status === 'incomplete' ? '共通対象未確定' : '未登録'}</td></tr>)}</tbody>
+              </table></div>
+            </div></details>
+          </>}
+        </div>
+      </StatisticsPanel>
+    </div>
 
-    {failed.length > 0 && <div className="history-load-error" role="alert"><span>読み込めなかった月：{failed.map(row => monthLabel(row.month)).join('、')}</span><button className="win-rates-button" type="button" onClick={retry}>再読み込み</button></div>}
-    {mode === 'common' && history?.commonUnavailable && <div className="correlation-message" role="status">期間内のデータが揃っていないため、共通キャラの相関を算出できません。</div>}
-
-    <StatisticsPanel title="散布図" headerContent={<div className="correlation-chart-controls">
-      {month && <label><span>対象月</span><select aria-label="対象月" value={month} onChange={event => setSelectedMonth(event.target.value)}>
-        {months.map(item => <option key={item} value={item}>{monthLabel(item)}</option>)}
-      </select></label>}
-      <label className="correlation-check"><input type="checkbox" checked={showNames} onChange={event => setShowNames(event.target.checked)} /><span>キャラ名</span></label>
-    </div>}>
-      {!row ? loadingState : row.status !== 'ready' ? <div className="correlation-message" role="status">{unavailableLabel(row)}</div> : <>
-        <dl className="correlation-summary" aria-live="polite">
-          <div><dt>Pearson r</dt><dd>{coefficientLabel(row.pearson)}</dd></div>
-          <div><dt>Spearman ρ</dt><dd>{coefficientLabel(row.spearman)}</dd></div>
-          <div><dt>対象／掲載</dt><dd>{row.points.length}／{row.listedCount} キャラ</dd></div>
-        </dl>
-        {row.unavailableReason && <div className="correlation-message" role="status">{coefficientReason(row)}</div>}
-        {row.usageTotalMismatch && <div className="correlation-message" role="status">使用率の掲載値合計は{row.usagePublishedTotal?.toFixed(3)}%です。元の公表値を使って計算しています。</div>}
-        <WinUsageScatterChart points={row.points} showNames={showNames} />
-      </>}
-    </StatisticsPanel>
-
-    <StatisticsPanel title="相関係数の推移" headerContent={<label className="correlation-inline-select"><span>指標</span><select aria-label="相関係数" value={metric} onChange={event => setMetric(event.target.value as Metric)}><option value="pearson">Pearson</option><option value="spearman">Spearman</option></select></label>}>
-      {!history || !month ? loadingState : <>
-        <MonthlyLineChart series={series} selectedMonth={month} onSelect={setSelectedMonth}
-          title={`${leagueLabel(selection.league)}の${metricName}相関係数の月別推移`}
-          description="各月のキャラ間の勝率と使用率の相関係数。縦軸は−1から1で、欠損月・計算できない月は線をつなぎません。選択月は散布図と連動します。"
-          regionLabel="相関係数の推移グラフ" axisLabel="相関係数" axis={AXIS} formatTick={value => value.toFixed(1)}
-          valueLabel={(_, selected) => coefficientLabel(rows.find(row => row.month === selected)?.[metric] ?? null)}
-          reference={{ value: 0, label: '' }} />
-        <div className="correlation-selected-month" aria-live="polite">{monthLabel(month)}　{metricName} {coefficientLabel(row?.[metric] ?? null)}</div>
-        <label className="history-month-slider"><span>確認する月</span><input type="range" aria-label="確認する月" min={0} max={rows.length - 1} step={1}
-          value={rows.findIndex(row => row.month === month)} disabled={rows.length < 2} aria-valuetext={`${monthLabel(month)} ${metricName} ${coefficientLabel(row?.[metric] ?? null)}`}
-          onChange={event => setSelectedMonth(rows[Number(event.target.value)].month)} /></label>
-      </>}
-    </StatisticsPanel>
-
-    <StatisticsPanel title="キャラ別の数値" headerContent={row && <span className="correlation-panel-summary">{monthLabel(row.month)}・{leagueLabel(selection.league)}</span>}>
-      {!row ? loadingState : row.status !== 'ready' ? <div className="correlation-message">{unavailableLabel(row)}</div>
-        : row.points.length ? <CharacterTable points={row.points} /> : <div className="correlation-message">両方の値が揃うキャラがありません。</div>}
-    </StatisticsPanel>
-
-    {history && <>
-      <details className="win-rates-details"><summary>月別の相関係数</summary><div className="win-rates-details-content">
-        <div className="data-table-scroll correlation-month-scroll" role="region" tabIndex={0} aria-label="月別の相関係数・スクロール領域"><table className="data-table correlation-month-table">
-          <thead><tr><th scope="col">対象月</th><th scope="col">Pearson r</th><th scope="col">Spearman ρ</th><th scope="col">対象キャラ数</th><th scope="col">状態</th></tr></thead>
-          <tbody>{rows.map(item => <tr key={item.month} className={item.month === month ? 'is-selected' : undefined}><th scope="row"><button type="button" className="correlation-month-button" aria-pressed={item.month === month} onClick={() => setSelectedMonth(item.month)}>{monthLabel(item.month)}</button></th>
-            <td>{coefficientLabel(item.pearson)}</td><td>{coefficientLabel(item.spearman)}</td><td>{item.status === 'ready' ? item.points.length : '—'}</td><td>{item.status === 'ready' ? item.unavailableReason ? '算出不可' : '取得済み' : item.status === 'error' ? '読込失敗' : item.status === 'incomplete' ? '共通対象未確定' : '未登録'}</td></tr>)}</tbody>
-        </table></div>
-      </div></details>
       <details className="win-rates-details"><summary>計算方法・見方</summary><div className="win-rates-details-content">
         <p>同じ月・統計・リーグ・操作タイプで、各キャラの公式Total換算値と公式使用率を1組として同じ重みで計算します。Totalの5.058は50.58%、使用率の保存値9566は9.566%です。計算後に相関係数を小数第3位へ丸めます。</p>
         <p>Pearsonは値の直線的な関係、Spearmanは順位の関係を表します。同順位には平均順位を使います。−1は逆向き、1は同じ向きの関係で、0はそれぞれの方法での相関がない状態です。対象が3キャラ未満、またはどちらかの値がすべて同じ場合は「—」です。</p>
         <p>推移は各月のキャラ間の相関です。1キャラの月ごとの勝率と使用率の相関ではありません。「選択期間の共通キャラ」は全月に有効な両方の値がある同じキャラだけを使います。選択月を含む期間に未登録・読込失敗がある場合、共通キャラの係数は算出しません。</p>
-        <p>ランク別の表は対象月・統計・操作タイプを揃え、各ランク内のキャラ間で計算します。「選択期間の共通キャラ」はランクごとに適用するため、対象キャラの集合はランク間で一致するとは限りません。リーグの選択は散布図・推移・キャラ別の数値に適用されます。</p>
+        <p>ランク別の表は対象月・統計・操作タイプを揃え、各ランク内のキャラ間で計算します。「選択期間の共通キャラ」はランクごとに適用するため、対象キャラの集合はランク間で一致するとは限りません。表のランク選択は散布図・推移・キャラ別の数値に適用されます。</p>
         <p>欠損・片方に未掲載・少数サンプルのキャラを除外し、0%で補いません。実際の0%は含めます。使用率を100%へ再正規化せず、操作タイプやリーグ同士の割合も合算しません。使用率のALL（全体）に対応する勝率がないため、リーグ別に比較します。</p>
         <p>使用件数・試合数の分母、勝率Totalの厳密な算出方法、ミラー戦・引き分け・切断の扱いは取得データから確認できません。信頼区間や有意差は表示せず、相関からキャラの絶対的な強さや因果関係は判断しません。</p>
       </div></details>
       <details className="win-rates-details"><summary>除外状況・出典</summary><div className="win-rates-details-content">
-        {row && <>
-          <dl className="win-rates-source"><div><dt>対象月・条件</dt><dd>{monthLabel(row.month)}・{selection.edition === 'general' ? '総合版' : 'マスター版'}・{leagueLabel(selection.league)}・{CONTROL_LABELS[selection.controlType]}</dd></div>
-            <div><dt>集計対象</dt><dd>{mode === 'monthly' ? '各月に両方の値があるキャラ' : `選択期間の共通キャラ：${history.commonCharacterCount ?? '確認不可'}`}</dd></div>
-            {([{ key: 'win', label: '勝率', source: row.winSource, captured: row.winCapturedAt, generated: row.winGeneratedAt }, { key: 'usage', label: '使用率', source: row.usageSource, captured: row.usageCapturedAt, generated: row.usageGeneratedAt }] as const).map(item => <div key={item.key}><dt>{item.label}の出典・取得日時</dt><dd>{item.source ? <a href={item.source.url} target="_blank" rel="noreferrer">{item.source.title}</a> : '—'}<br />{item.captured ? timestampLabel(item.captured) : '—'}<br />生成：{item.generated ? timestampLabel(item.generated) : '—'}</dd></div>)}
-            <div><dt>一覧生成日時</dt><dd>勝率：{timestampLabel(manifests.win.generatedAt)}<br />使用率：{timestampLabel(manifests.usage.generatedAt)}</dd></div>
-            <div><dt>データ形式</dt><dd>勝率 Version {manifests.win.schemaVersion}／使用率 Version {manifests.usage.schemaVersion}</dd></div>
-            <div><dt>使用率の掲載値合計</dt><dd>{row.usagePublishedTotal === null ? '—' : `${row.usagePublishedTotal.toFixed(3)}%`}{row.usageTotalMismatch ? '（公式値の合計不一致を確認済み）' : ''}</dd></div>
+        <dl className="win-rates-source">
+          <div><dt>対象条件</dt><dd>{selection.edition === 'general' ? '総合版' : 'マスター版'}・{leagueLabel(selection.league)}・{CONTROL_LABELS[selection.controlType]}</dd></div>
+          <div><dt>{tab === 'month' && mode === 'monthly' ? '対象月' : '対象期間'}</dt><dd>{tab === 'month' && mode === 'monthly' ? monthLabel(month) : `${monthLabel(selection.fromMonth)}〜${monthLabel(selection.toMonth)}`}</dd></div>
+          <div><dt>集計対象</dt><dd>{mode === 'monthly' ? '各月に両方の値があるキャラ' : '選択期間の共通キャラ'}</dd></div>
+          <div><dt>一覧生成日時</dt><dd>勝率：{timestampLabel(manifests.win.generatedAt)}<br />使用率：{timestampLabel(manifests.usage.generatedAt)}</dd></div>
+          <div><dt>データ形式</dt><dd>勝率 Version {manifests.win.schemaVersion}／使用率 Version {manifests.usage.schemaVersion}</dd></div>
+        </dl>
+        {sourceRow && <>
+          <dl className="win-rates-source"><div><dt>{tab === 'history' ? '出典対象月' : '対象月'}</dt><dd>{monthLabel(sourceRow.month)}</dd></div>
+            <div><dt>対象／掲載</dt><dd>{sourceRow.status === 'ready' ? sourceRow.points.length : '—'}／{sourceRow.listedCount ?? '—'} キャラ</dd></div>
+            {([{ key: 'win', label: '勝率', source: sourceRow.winSource, captured: sourceRow.winCapturedAt, generated: sourceRow.winGeneratedAt }, { key: 'usage', label: '使用率', source: sourceRow.usageSource, captured: sourceRow.usageCapturedAt, generated: sourceRow.usageGeneratedAt }] as const).map(item => <div key={item.key}><dt>{item.label}の出典・取得日時</dt><dd>{item.source ? <a href={item.source.url} target="_blank" rel="noreferrer">{item.source.title}</a> : '—'}<br />{item.captured ? timestampLabel(item.captured) : '—'}<br />生成：{item.generated ? timestampLabel(item.generated) : '—'}</dd></div>)}
+            <div><dt>使用率の掲載値合計</dt><dd>{sourceRow.usagePublishedTotal === null ? '—' : `${sourceRow.usagePublishedTotal.toFixed(3)}%`}{sourceRow.usageTotalMismatch ? '（公式値の合計不一致を確認済み）' : ''}</dd></div>
           </dl>
-          {row.usageTotalMismatch && <p>{row.usageTotalMismatch.reason} 確認：{timestampLabel(row.usageTotalMismatch.verifiedAt)}</p>}
-          {row.status !== 'ready' && <p>{unavailableLabel(row)} 勝率：{row.winStatus === 'ready' ? '取得済み' : row.winStatus === 'error' ? '読込失敗' : '未登録'}／使用率：{row.usageStatus === 'ready' ? '取得済み' : row.usageStatus === 'error' ? '読込失敗' : '未登録'}</p>}
-          {row.exclusions.length > 0 ? <div className="data-table-scroll" role="region" tabIndex={0} aria-label="除外キャラ・スクロール領域"><table className="data-table"><thead><tr><th scope="col">キャラ</th><th scope="col">除外理由</th></tr></thead><tbody>{row.exclusions.map(item => <tr key={item.characterId}><th scope="row">{item.name}</th><td>{item.reasons.map(reason => EXCLUSION_LABELS[reason]).join('、')}</td></tr>)}</tbody></table></div> : row.status === 'ready' && <p>除外キャラはありません。</p>}
+          {sourceRow.usageTotalMismatch && <p>{sourceRow.usageTotalMismatch.reason} 確認：{timestampLabel(sourceRow.usageTotalMismatch.verifiedAt)}</p>}
+          {sourceRow.status !== 'ready' && <p>{unavailableLabel(sourceRow)} 勝率：{sourceRow.winStatus === 'ready' ? '取得済み' : sourceRow.winStatus === 'error' ? '読込失敗' : '未登録'}／使用率：{sourceRow.usageStatus === 'ready' ? '取得済み' : sourceRow.usageStatus === 'error' ? '読込失敗' : '未登録'}</p>}
+          {sourceRow.exclusions.length > 0 ? <div className="data-table-scroll" role="region" tabIndex={0} aria-label="除外キャラ・スクロール領域"><table className="data-table"><thead><tr><th scope="col">キャラ</th><th scope="col">除外理由</th></tr></thead><tbody>{sourceRow.exclusions.map(item => <tr key={item.characterId}><th scope="row">{item.name}</th><td>{item.reasons.map(reason => EXCLUSION_LABELS[reason]).join('、')}</td></tr>)}</tbody></table></div> : sourceRow.status === 'ready' && <p>除外キャラはありません。</p>}
         </>}
       </div></details>
-    </>}
   </section>
 }
