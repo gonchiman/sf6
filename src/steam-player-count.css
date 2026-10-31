@@ -1,0 +1,58 @@
+.steam-player-count-page { --steam-player-count-series: #657f99; min-width: 0; display: grid; gap: 20px; }
+.steam-player-count-context { display: flex; flex-wrap: wrap; gap: 5px 20px; margin: 0; color: var(--text-muted); font-size: 12px; }
+.steam-player-count-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border: 0; padding: 0; background: transparent; }
+.steam-player-count-filters input, .steam-player-count-filters select { min-width: 0; width: 100%; }
+.steam-player-count-filters input, .steam-player-count-selection select { min-height: 36px; border: 1px solid var(--border-strong); border-radius: 0; padding: 6px 10px; color: var(--text); background: var(--surface); }
+.steam-player-count-filters input:disabled, .steam-player-count-filters select:disabled { color: var(--text-muted); background: var(--surface-soft); }
+.steam-player-count-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.steam-player-count-tabs .win-rates-button { flex: 1 1 110px; }
+.steam-player-count-tabs [aria-selected='true'] { color: var(--surface); background: var(--text); border-color: var(--text); }
+.steam-player-count-panel { min-width: 0; }
+.steam-player-count-panel[hidden] { display: none; }
+.steam-player-count-meta { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.steam-player-count-collection { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 12px; line-height: 1.8; font-variant-numeric: tabular-nums; }
+.steam-player-count-collection > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 8px; }
+.steam-player-count-collection dt { color: var(--text-muted); }
+.steam-player-count-collection dd { margin: 0; }
+.steam-player-count-collection strong { font-size: 15px; font-weight: 600; }
+.steam-player-count-message { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; border: 1px solid var(--border); background: var(--surface-soft); padding: 10px 14px; color: var(--text-soft); font-size: 12px; line-height: 1.8; }
+.steam-player-count-message .win-rates-button { font-size: 12px; }
+.steam-player-count-chart, .steam-player-count-chart-viewport { min-width: 0; margin: 0; }
+.steam-player-count-chart-viewport { position: relative; }
+.steam-player-count-hourly-empty { position: absolute; display: grid; place-content: center; padding: 12px; color: var(--text-muted); font-size: 12px; text-align: center; pointer-events: none; }
+.steam-player-count-svg { display: block; max-width: 100%; touch-action: pan-y; }
+.steam-player-count-svg:focus-visible { outline-offset: -2px; }
+.steam-player-count-axis-title { fill: var(--text-soft); font-size: 12px; }
+.steam-player-count-tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.steam-player-count-grid { stroke: var(--border); stroke-width: 1; }
+.steam-player-count-bar { fill: var(--steam-player-count-series); }
+.steam-player-count-bar.is-selected { fill: var(--text); }
+.steam-player-count-line { fill: none; stroke: var(--steam-player-count-series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.steam-player-count-guide { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 4; opacity: .65; }
+.steam-player-count-isolated-point { fill: var(--steam-player-count-series); }
+.steam-player-count-selected-point { fill: var(--text); stroke: var(--surface); stroke-width: 1.5; }
+.steam-player-count-hit { fill: transparent; cursor: pointer; }
+.steam-player-count-empty-label { fill: var(--text-muted); font-size: 12px; }
+.steam-player-count-empty { padding: 70px 12px; color: var(--text-muted); font-size: 12px; text-align: center; }
+.steam-player-count-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; border-top: 1px solid var(--border); padding-top: 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.steam-player-count-selection label { flex: 0 1 145px; min-width: 0; display: grid; gap: 5px; color: var(--text-muted); font-size: 12px; }
+.steam-player-count-selection select { min-width: 0; width: 100%; }
+.steam-player-count-selection-values { min-width: 0; display: flex; flex: 1 1 220px; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; }
+.steam-player-count-selection-values strong { font-weight: 500; }
+.steam-player-count-selection-nav { display: flex; gap: 6px; }
+.steam-player-count-page button:disabled { opacity: .5; cursor: default; }
+.steam-player-count-table-scroll { max-height: 460px; }
+.steam-player-count-table { min-width: 480px; }
+.steam-player-count-table tr > :first-child { white-space: nowrap; }
+.steam-player-count-table .is-unavailable { color: var(--text-muted); }
+.steam-player-count-basis { margin: 0; }
+@media (max-width: 640px) {
+  .steam-player-count-page { gap: 14px; }
+  .steam-player-count-filters { grid-template-columns: minmax(0, 1fr); }
+  .steam-player-count-selection-values { gap: 6px 12px; }
+}
+@media (max-width: 760px), (pointer: coarse) {
+  .steam-player-count-filters input, .steam-player-count-filters select,
+  .steam-player-count-selection select, .steam-player-count-page .win-rates-button { min-height: 44px; }
+  .steam-player-count-filters input, .steam-player-count-filters select, .steam-player-count-selection select { font-size: 16px; }
+}

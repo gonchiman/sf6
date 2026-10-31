@@ -3,6 +3,7 @@ import { japaneseCharacterNames } from '../lib/characterNames'
 import { loadCharacterManifest } from '../lib/characters'
 import { timestampLabel } from '../lib/dateTime'
 import { legendPlayersFeed } from '../lib/legendPlayersFeed'
+import { filterLegendPlayers, legendPlayerCharacterOptions } from '../lib/legendPlayers'
 import { usePublishedData } from '../lib/usePublishedData'
 import type { LegendPlayersDataset } from '../types/legendPlayers'
 import { DataLoadState } from './DataLoadState'
@@ -30,6 +31,7 @@ export function LegendPlayersPage() {
   const [view, setView] = useState<View>('table')
   const [chart, setChart] = useState<Chart>('rank')
   const [selection, setSelection] = useState<Selection | null>(null)
+  const [filters, setFilters] = useState({ query: '', characterId: '' })
   const { status, publication, selectedId, setSelectedId, refreshError, retry } = usePublishedData(legendPlayersFeed)
   const [loaded, setLoaded] = useState<DatasetState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
@@ -65,6 +67,9 @@ export function LegendPlayersPage() {
 
   const current = loaded?.key === requestKey && loaded.version === datasetVersion ? loaded : null
   const dataset = current?.status === 'ready' ? current.dataset : null
+  const visiblePlayers = useMemo(() => filterLegendPlayers(dataset?.players ?? [], filters), [dataset, filters])
+  const characterOptions = useMemo(() => legendPlayerCharacterOptions(dataset?.players ?? [], names, filters.characterId),
+    [dataset, names, filters.characterId])
   const loadingDataset = Boolean(descriptor && (!current || current.status === 'loading'))
   const availability = manifest?.availability
   const availabilityLabel = availability?.status === 'collection-failed' ? '取得失敗'
@@ -121,10 +126,27 @@ export function LegendPlayersPage() {
     <div id={`${viewId}-panel-table`} className="legend-players-view-panel" role="tabpanel"
       aria-labelledby={`${viewId}-tab-table`} hidden={view !== 'table'}>
       <StatisticsPanel title="プレイヤー一覧" headerContent={dataset && <div className="legend-players-table-summary">
-        <span className="monthly-statistics-panel-summary">{integerFormat.format(dataset.totalCount)} 件</span>
+        <span className="monthly-statistics-panel-summary" role="status" aria-live="polite" aria-atomic="true" aria-label="表示件数">
+          {integerFormat.format(visiblePlayers.length)} / {integerFormat.format(dataset.totalCount)} 件
+        </span>
         <span className="monthly-statistics-panel-summary">対戦数：{dataset.rankedMatchScope ? `${dataset.act.label}・ランクマッチ（Act全期間）` : '未取得'}</span>
       </div>}>
-        <LegendPlayersTable rows={dataset?.players ?? []} names={names} emptyMessage={emptyMessage} loading={loadingDataset}
+        <div className="win-rates-filters legend-players-filters">
+          <label className="legend-players-name-filter"><span>プレイヤー名</span>
+            <input type="search" aria-label="プレイヤー名" placeholder="名前を入力" value={filters.query} disabled={!dataset}
+              onChange={event => setFilters(previous => ({ ...previous, query: event.target.value }))} />
+          </label>
+          <label className="legend-players-character-filter"><span>キャラ</span>
+            <select aria-label="キャラ" value={filters.characterId} disabled={!dataset}
+              onChange={event => setFilters(previous => ({ ...previous, characterId: event.target.value }))}>
+              <option value="">すべて</option>
+              {characterOptions.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <LegendPlayersTable rows={visiblePlayers} names={names}
+          emptyMessage={dataset && dataset.totalCount > 0 && visiblePlayers.length === 0 ? '該当するプレイヤーがいません' : emptyMessage}
+          loading={loadingDataset} scrollResetKey={JSON.stringify([filters.query, filters.characterId])}
           active={view === 'table'} selectedRowId={selectedRowId} onSelectRow={rowId => selectRow(rowId, 'table')}
           revealRequest={selection?.source === 'chart' ? selection : undefined} />
         {current?.status === 'error' && <div className="legend-players-status" role="alert">

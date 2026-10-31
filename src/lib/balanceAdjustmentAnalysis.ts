@@ -26,6 +26,8 @@ export const ADJUSTMENT_ANALYSIS_CATEGORIES: readonly { id: AdjustmentAnalysisCa
 interface Span { start: number; end: number }
 interface ElementMatch extends Span { categoryId: AdjustmentAnalysisCategoryId; label: string }
 interface Operation { start: number; direction: AdjustmentAnalysisDirection }
+type UnevaluatedRow = Omit<AdjustmentAnalysisRow, 'evaluation'>
+type Evaluation = AdjustmentAnalysisRow['evaluation']
 
 // These terms identify the subject of an explicit modification. A term merely mentioned in a
 // condition or comparison does not identify another change (e.g. 攻撃持続終了から…移動量を縮小).
@@ -222,13 +224,95 @@ function extractCondition(text: string, element: ElementMatch): string | null {
   return embedded?.[0] ?? null
 }
 
+function unjudged(reason: string): Evaluation {
+  return { verdict: 'unjudged', reason, ruleId: null }
+}
+
+/** Only four explicit, directional scalar changes have initial evaluation rules. */
+function evaluateChange(row: UnevaluatedRow): Evaluation {
+  const text = row.description.slice(row.evidence.start, row.evidence.end)
+  if (row.officialCategoryLabel.includes('取消線') || cancelledSpans(row.description).some(span => span.start < row.evidence.end && row.evidence.start < span.end)
+    || /^【取消線】[\s\S]*【\/取消線】$/u.test(row.target.trim())) return unjudged('取り消された記述のため')
+  if (row.subjectId === 'common') return unjudged('共通の変更は評価対象外')
+  if (/意図せず|次回|予定|不具合|現象|なっていた|されていた/u.test(text)) return unjudged('不具合・旧記述の文脈を要確認')
+  if (row.status !== 'candidate') return unjudged('変更内容が未分類')
+
+  let metric: { key: string; label: string; goodSign: 1 | -1; units: readonly string[]; pairOnly: boolean } | null = null
+  if (row.categoryId === 'damage' && /^(?:削り)?ダメージ$/u.test(row.elementLabel)) {
+    if (/補正|被ダメージ|受け(?:る|た)[^、。]*ダメージ|相手(?:側)?(?:の|が与える|が受ける)[^、。]*ダメージ/u.test(`${row.target}\n${text}`)) {
+      return unjudged('補正・被ダメージ・相手側の変更は評価対象外')
+    }
+    metric = { key: 'damage', label: row.elementLabel, goodSign: 1, units: [''], pairOnly: false }
+  } else if (row.categoryId === 'startup' && /^攻撃発生(?:時間)?$/u.test(row.elementLabel)) {
+    metric = { key: 'attack-startup', label: '攻撃発生', goodSign: -1, units: ['F'], pairOnly: false }
+  } else if (row.categoryId === 'recovery' && /^(?:全体動作|硬直(?:時間)?|着地(?:後)?硬直|(?:ヒット|ガード|空振り)(?:時|後)の硬直)$/u.test(row.elementLabel)) {
+    metric = { key: 'self-recovery', label: row.elementLabel, goodSign: -1, units: ['F'], pairOnly: false }
+  } else if (row.categoryId === 'frame-advantage' && /^(?:ヒット|ガード)(?:時|後)の硬直差$/u.test(row.elementLabel)) {
+    metric = { key: 'frame-advantage', label: row.elementLabel, goodSign: 1, units: ['F', ''], pairOnly: true }
+  }
+  if (!metric) return unjudged('この変更要素の評価ルールは未対応')
+  // A change in the opponent's recovery does not have the same sign as one's own recovery.
+  if (/(?:相手|相手側|敵|敵側)(?:の|側の)[^、。]*(?:硬直|全体動作|攻撃発生)|相手側|受けるダメージ/u.test(`${row.target}\n${text}`)) {
+    return unjudged('効果が及ぶ側を特定できないため')
+  }
+  if ((metric.key === 'self-recovery' && /(?:ガード|ヒット)硬直/u.test(text))
+    || /(?:相手|相手側|敵|敵側)(?:への|に与える|にかかる)[^、。]*硬直/u.test(text)) {
+    return unjudged('ガード・ヒット硬直の主体を要確認')
+  }
+  if (/条件により|場合によって|いずれか|相殺|一方|ただし/u.test(text)) return unjudged('複数条件・相反する記述を要確認')
+  if (/[0-9０-９)]\s*[+＋×＊*÷/／−－-]\s*[-+＋−－]?[0-9０-９]/u.test(text)
+    || [...text.matchAll(/[⇒→]/gu)].length > 1) return unjudged('式・複数の数値対応は評価対象外')
+
+  let amount: number
+  let unit: string
+  let evidence: string
+  if (row.beforeValue !== null && row.afterValue !== null) {
+    const before = scalar(row.beforeValue)
+    const after = scalar(row.afterValue)
+    if (!before || !after || before.unit !== after.unit) return unjudged('変更前後を単一の数値として比較できないため')
+    amount = after.number - before.number
+    unit = before.unit
+    if (!metric.units.includes(unit)) return unjudged('数値の単位が評価ルールの対象外')
+    if (metric.key !== 'frame-advantage' && (before.number < 0 || after.number < 0)) return unjudged('ダメージ・動作時間に負の値があるため')
+    evidence = `${row.beforeValue}から${row.afterValue}`
+    if (row.deltaValue !== null) {
+      const statedDelta = scalar(row.deltaValue)
+      if (!statedDelta || statedDelta.unit !== unit || Math.abs(statedDelta.number - amount) > 1e-9) {
+        return unjudged('変更前後と増減量が一致しないため')
+      }
+    }
+  } else if (!metric.pairOnly && row.beforeValue === null && row.afterValue === null && row.deltaValue !== null) {
+    const delta = scalar(row.deltaValue)
+    if (!delta) return unjudged('増減量を単一の数値として比較できないため')
+    amount = delta.number
+    unit = delta.unit
+    evidence = `${Math.abs(amount)}${unit}${amount > 0 ? '増加' : '減少'}`
+  } else {
+    return unjudged(metric.pairOnly ? '比較できる変更前後の数値が未抽出' : '比較できる変更前後・増減量が未抽出')
+  }
+  if (!metric.units.includes(unit)) return unjudged('数値の単位が評価ルールの対象外')
+  if (amount === 0) return unjudged('変更前後の数値が同じため')
+  if ((row.direction === '増加' && amount < 0) || (row.direction === '減少' && amount > 0)
+    || (row.direction !== '増加' && row.direction !== '減少' && row.direction !== '変更')) {
+    return unjudged('記述と数値の増減が一致しないため')
+  }
+  const verdict = Math.sign(amount) === metric.goodSign ? 'buff' : 'nerf'
+  const change = metric.key === 'frame-advantage' ? (amount > 0 ? '改善' : '悪化')
+    : metric.key === 'damage' ? (amount > 0 ? '増加' : '減少') : (amount < 0 ? '短縮' : '延長')
+  return {
+    verdict,
+    reason: row.beforeValue !== null ? `${metric.label}が${evidence}へ${change}` : `${metric.label}が${evidence}`,
+    ruleId: `${metric.key}-${amount > 0 ? 'increase' : 'decrease'}-v1`,
+  }
+}
+
 function analyzeChange(change: BalanceAdjustmentChange, subjectId: string, subjectName: string,
   source: BalanceAdjustmentSource): AdjustmentAnalysisRow[] {
   const base = { sourceChangeId: change.id, subjectId, subjectName, target: change.target,
     officialCategoryLabel: change.categoryLabel, description: change.description, source }
   const cancelled = cancelledSpans(change.description)
   const cancelledRow = change.categoryLabel.includes('取消線') || /^【取消線】[\s\S]*【\/取消線】$/u.test(change.target.trim())
-  return descriptionSpans(change.description).flatMap<AdjustmentAnalysisRow>((span, spanIndex) => {
+  const rows = descriptionSpans(change.description).flatMap<UnevaluatedRow>((span, spanIndex) => {
     const text = change.description.slice(span.start, span.end)
     const withdrawn = cancelledRow || cancelled.some(range => range.start < span.end && span.start < range.end)
     const action = withdrawn ? null : operation(text)
@@ -245,6 +329,7 @@ function analyzeChange(change: BalanceAdjustmentChange, subjectId: string, subje
       evidence: span, status: 'candidate' as const,
     }))
   })
+  return rows.map(row => ({ ...row, evaluation: evaluateChange(row) }))
 }
 
 export function analyzeBalanceAdjustmentPatch(patch: BalanceAdjustmentPatchDetails): AdjustmentAnalysisResult {
@@ -263,5 +348,6 @@ export function analyzeBalanceAdjustmentPatch(patch: BalanceAdjustmentPatchDetai
 export function filterAdjustmentAnalysisRows(rows: readonly AdjustmentAnalysisRow[], filters: AdjustmentAnalysisFilters): AdjustmentAnalysisRow[] {
   return rows.filter(row => (filters.subjectId === 'all' || filters.subjectId === row.subjectId)
     && (filters.categoryId === 'all' || filters.categoryId === row.categoryId)
-    && (filters.status === 'all' || filters.status === row.status))
+    && (filters.status === 'all' || filters.status === row.status)
+    && (!filters.verdict || filters.verdict === 'all' || filters.verdict === row.evaluation.verdict))
 }

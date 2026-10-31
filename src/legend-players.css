@@ -32,6 +32,13 @@
 .legend-players-table .legend-players-unavailable { color: var(--text-muted); }
 .legend-players-table .legend-players-number { text-align: right; white-space: nowrap; }
 .legend-players-table-summary { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.legend-players-filters { margin-bottom: 16px; padding: 0; border: 0; background: transparent; gap: 12px; }
+.legend-players-name-filter { flex: 2 1 220px; }
+.legend-players-character-filter { flex: 1 1 160px; }
+.legend-players-filters select { width: 100%; min-width: 0; }
+.legend-players-filters input { width: 100%; min-width: 0; min-height: 36px; border: 1px solid var(--border-strong); border-radius: 0; padding: 6px 10px; background: var(--surface); color: var(--text); font: inherit; }
+.legend-players-filters :is(input, select):disabled { opacity: .6; }
+@media (pointer: coarse) { .legend-players-filters :is(input, select) { min-height: 44px; font-size: 16px; } }
 .legend-players-table .legend-players-empty { padding: 28px 8px; text-align: center; color: var(--text-muted); }
 .legend-players-chart-selector { margin-bottom: 16px; }
 .legend-players-chart-content { min-width: 0; }

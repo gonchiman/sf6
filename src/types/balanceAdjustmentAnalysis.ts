@@ -6,8 +6,9 @@ export type AdjustmentAnalysisCategoryId =
   | 'pushback' | 'cancel' | 'input' | 'hit-effect' | 'unclassified'
 
 export type AdjustmentAnalysisDirection = '増加' | '減少' | '拡大' | '縮小' | '追加' | '削除' | '変更' | '不明'
+export type AdjustmentAnalysisVerdict = 'buff' | 'nerf' | 'unjudged'
 
-/** Rule candidates describe the wording, not a buff/nerf judgment. */
+/** A local, rule-based evaluation of the extracted change; not overall character strength. */
 export interface AdjustmentAnalysisRow {
   id: string
   sourceChangeId: string
@@ -27,6 +28,7 @@ export interface AdjustmentAnalysisRow {
   condition: string | null
   evidence: { start: number; end: number }
   status: 'candidate' | 'unclassified'
+  evaluation: { verdict: AdjustmentAnalysisVerdict; reason: string; ruleId: string | null }
 }
 
 export interface AdjustmentAnalysisResult {
@@ -38,4 +40,5 @@ export interface AdjustmentAnalysisFilters {
   subjectId: string
   categoryId: 'all' | AdjustmentAnalysisCategoryId
   status: 'all' | 'candidate' | 'unclassified'
+  verdict?: 'all' | AdjustmentAnalysisVerdict
 }

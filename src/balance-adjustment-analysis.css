@@ -3,13 +3,15 @@
 .balance-adjustment-analysis-filters label { flex: 0 1 180px; }
 .balance-adjustment-analysis-filters select { width: 100%; }
 .balance-adjustment-analysis-scroll { max-height: min(65vh, 640px); position: relative; }
-.balance-adjustment-analysis-table { min-width: 850px; table-layout: fixed; }
+.balance-adjustment-analysis-table { min-width: 1000px; table-layout: fixed; }
 .balance-adjustment-analysis-subject-column { width: 120px; }
 .balance-adjustment-analysis-target-column { width: 240px; }
 .balance-adjustment-analysis-element-column { width: 170px; }
 .balance-adjustment-analysis-direction-column { width: 80px; }
+.balance-adjustment-analysis-verdict-column { width: 90px; }
 .balance-adjustment-analysis-value-column { width: 100px; }
 .balance-adjustment-analysis-table td { text-align: left; overflow-wrap: anywhere; }
+.balance-adjustment-analysis-table .balance-adjustment-analysis-verdict { white-space: nowrap; }
 .balance-adjustment-analysis-table .balance-adjustment-analysis-number { text-align: right; }
 .balance-adjustment-analysis-table tr.is-selected > * { background: var(--surface-hover); }
 .balance-adjustment-analysis-table .balance-adjustment-analysis-target-cell { padding: 0; }

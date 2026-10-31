@@ -9,6 +9,7 @@ type Props = {
   emptyMessage?: string
   loading?: boolean
   active?: boolean
+  scrollResetKey?: string
   selectedRowId?: string | null
   onSelectRow?: (id: string) => void
   revealRequest?: { rowId: string }
@@ -27,15 +28,24 @@ const HEADINGS: { key: LegendPlayerSortKey; label: string }[] = [
 ]
 
 export function LegendPlayersTable({ rows, names, emptyMessage = '0件（取得確認済み）', loading = false,
-  active = true, selectedRowId = null, onSelectRow, revealRequest }: Props) {
+  active = true, scrollResetKey, selectedRowId = null, onSelectRow, revealRequest }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [sort, setSort] = useState<{ key: LegendPlayerSortKey; direction: LegendPlayerSortDirection }>({ key: 'rank', direction: 'asc' })
   const sorted = useMemo(() => sortLegendPlayers(rows, sort.key, sort.direction, names ?? undefined), [rows, sort, names])
   const revealed = useRef<{ request: Props['revealRequest']; rows: typeof sorted } | null>(null)
+  const previousResetKey = useRef(scrollResetKey)
 
   useLayoutEffect(() => {
     const container = scrollRef.current
-    if (!active || !revealRequest || !selectedRowId || !container) return
+    if (!active || !container) return
+    if (previousResetKey.current !== scrollResetKey) {
+      previousResetKey.current = scrollResetKey
+      container.scrollTop = 0
+      // A filter change takes precedence over revealing an older chart selection.
+      revealed.current = { request: revealRequest, rows: sorted }
+      return
+    }
+    if (!revealRequest || !selectedRowId) return
     // Defer hidden-panel measurement, and preserve manual scrolling on later tab visits.
     if (revealed.current?.request === revealRequest && revealed.current.rows === sorted) return
     const row = container.querySelector<HTMLTableRowElement>('tbody tr[data-selected="true"]')
@@ -45,7 +55,7 @@ export function LegendPlayersTable({ rows, names, emptyMessage = '0件（取得�
     const headingHeight = container.querySelector('thead')?.getBoundingClientRect().height ?? 0
     if (bounds.top < viewport.top + headingHeight) container.scrollTop += bounds.top - viewport.top - headingHeight
     else if (bounds.bottom > viewport.bottom) container.scrollTop += bounds.bottom - viewport.bottom
-  }, [active, selectedRowId, revealRequest, sorted])
+  }, [active, scrollResetKey, selectedRowId, revealRequest, sorted])
 
   return <div ref={scrollRef} className="data-table-scroll legend-players-scroll" role="region" tabIndex={0}
     aria-label="レジェンド帯のプレイヤー一覧・スクロール領域" aria-busy={loading || undefined}>

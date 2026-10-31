@@ -21,7 +21,8 @@ type LoadState =
   | { status: 'error' }
   | { status: 'ready'; history: BalanceAdjustmentCatalog; details: BalanceAdjustmentDetailsCatalog }
 
-const INITIAL_FILTERS: AdjustmentAnalysisFilters = { subjectId: 'all', categoryId: 'all', status: 'all' }
+const INITIAL_FILTERS: AdjustmentAnalysisFilters = { subjectId: 'all', categoryId: 'all', status: 'all', verdict: 'all' }
+const EVALUATION_LABELS = { buff: '強化', nerf: '弱体化', unjudged: '未判定' } as const
 
 export function BalanceAdjustmentAnalysisPage() {
   const sourcePanelId = useId()
@@ -55,9 +56,16 @@ export function BalanceAdjustmentAnalysisPage() {
   const effectiveFilters = subjects.some(subject => subject.id === filters.subjectId) || filters.subjectId === 'all'
     ? filters : { ...filters, subjectId: 'all' }
   const visibleRows = useMemo(() => filterAdjustmentAnalysisRows(analysis?.rows ?? [], effectiveFilters),
-    [analysis, effectiveFilters.subjectId, effectiveFilters.categoryId, effectiveFilters.status])
+    [analysis, effectiveFilters.subjectId, effectiveFilters.categoryId, effectiveFilters.status, effectiveFilters.verdict])
   const selected = visibleRows.find(row => row.id === selectedId) ?? visibleRows[0] ?? null
-  const unclassifiedCount = visibleRows.filter(row => row.status === 'unclassified').length
+  const verdictCounts = visibleRows.reduce((counts, row) => {
+    counts[row.evaluation.verdict] += 1
+    return counts
+  }, { buff: 0, nerf: 0, unjudged: 0 })
+  const selectedElementLabel = selected ? [...new Set([
+    ADJUSTMENT_ANALYSIS_CATEGORIES.find(category => category.id === selected.categoryId)?.label ?? '未分類',
+    selected.elementLabel,
+  ])].join(' · ') : ''
 
   const changeFilter = (next: Partial<AdjustmentAnalysisFilters>) => {
     setFilters(previous => ({ ...previous, ...next }))
@@ -96,11 +104,15 @@ export function BalanceAdjustmentAnalysisPage() {
           onChange={change => changeFilter({ status: change.target.value as AdjustmentAnalysisFilters['status'] })}>
           <option value="all">すべて</option><option value="candidate">分類候補あり</option><option value="unclassified">未分類</option>
         </select></label>
+        <label><span>強弱判定</span><select aria-label="強弱判定" aria-controls={tableId} disabled={!analysis} value={filters.verdict ?? 'all'}
+          onChange={change => changeFilter({ verdict: change.target.value as AdjustmentAnalysisFilters['verdict'] })}>
+          <option value="all">すべて</option><option value="buff">強化</option><option value="nerf">弱体化</option><option value="unjudged">未判定</option>
+        </select></label>
       </div>
     </StatisticsPanel>
 
     <StatisticsPanel title="分類一覧" headerContent={analysis && <span className="monthly-statistics-panel-summary" aria-live="polite">
-      表示{visibleRows.length}件・未分類{unclassifiedCount}件
+      表示{visibleRows.length}件・強化{verdictCounts.buff}件・弱体化{verdictCounts.nerf}件・未判定{verdictCounts.unjudged}件
     </span>}>
       {!event ? <DataLoadState message="バトル変更履歴がありません。" />
         : !analysis ? <DataLoadState message="選択した日付の変更内容は未取込です。" />
@@ -116,7 +128,9 @@ export function BalanceAdjustmentAnalysisPage() {
         <p className="balance-adjustment-analysis-description"><HighlightedDescription row={selected} /></p>
         <dl className="balance-adjustment-analysis-facts">
           <dt>公式分類</dt><dd>{selected.officialCategoryLabel || '記載なし'}</dd>
-          <dt>変更要素</dt><dd>{ADJUSTMENT_ANALYSIS_CATEGORIES.find(category => category.id === selected.categoryId)?.label ?? '未分類'} · {selected.elementLabel}</dd>
+          <dt>変更要素</dt><dd>{selectedElementLabel}</dd>
+          <dt>自動判定</dt><dd>{EVALUATION_LABELS[selected.evaluation.verdict]}</dd>
+          <dt>判定根拠</dt><dd>{selected.evaluation.reason}</dd>
           <dt>条件</dt><dd>{selected.condition ?? '未抽出'}</dd>
           <dt>変更前</dt><dd>{selected.beforeValue ?? '未抽出'}</dd>
           <dt>変更後</dt><dd>{selected.afterValue ?? '未抽出'}</dd>
@@ -146,12 +160,13 @@ function AdjustmentAnalysisTable({ rows, selectedId, tableId, sourcePanelId, onS
   return <div ref={scrollRef} className="data-table-scroll balance-adjustment-analysis-scroll" role="region" tabIndex={0}
     aria-label="分解したバトル変更の分類一覧・スクロール領域">
     <table id={tableId} className="data-table balance-adjustment-analysis-table">
-      <caption className="win-rates-visually-hidden">バトル変更の分類候補と変更前後の値</caption>
+      <caption className="win-rates-visually-hidden">バトル変更の分類候補・自動判定・変更前後の値</caption>
       <colgroup><col className="balance-adjustment-analysis-subject-column" /><col className="balance-adjustment-analysis-target-column" />
         <col className="balance-adjustment-analysis-element-column" /><col className="balance-adjustment-analysis-direction-column" />
+        <col className="balance-adjustment-analysis-verdict-column" />
         <col className="balance-adjustment-analysis-value-column" /><col className="balance-adjustment-analysis-value-column" /><col className="balance-adjustment-analysis-value-column" /></colgroup>
       <thead><tr><th scope="col">対象</th><th scope="col">変更箇所</th><th scope="col">変更要素</th><th scope="col">変化</th>
-        <th scope="col">変更前</th><th scope="col">変更後</th><th scope="col">増減量</th></tr></thead>
+        <th scope="col">自動判定</th><th scope="col">変更前</th><th scope="col">変更後</th><th scope="col">増減量</th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.id} ref={row.id === selectedId ? selectedRowRef : undefined}
         className={row.id === selectedId ? 'is-selected' : undefined}>
         <th scope="row">{row.subjectName}</th>
@@ -159,10 +174,11 @@ function AdjustmentAnalysisTable({ rows, selectedId, tableId, sourcePanelId, onS
           aria-pressed={row.id === selectedId} aria-controls={sourcePanelId} aria-label={`${row.subjectName}・${row.target || '変更箇所の記載なし'}・${row.elementLabel}の原文を表示`}
           onClick={() => onSelect(row.id)}>{row.target || '記載なし'}</button></td>
         <td>{row.elementLabel}</td><td>{row.direction}</td>
+        <td className="balance-adjustment-analysis-verdict">{EVALUATION_LABELS[row.evaluation.verdict]}</td>
         <td className="balance-adjustment-analysis-number">{row.beforeValue ?? '—'}</td>
         <td className="balance-adjustment-analysis-number">{row.afterValue ?? '—'}</td>
         <td className="balance-adjustment-analysis-number">{row.deltaValue ?? '—'}</td>
-      </tr>)}{rows.length === 0 && <tr><td colSpan={7} className="balance-adjustment-analysis-empty-cell">該当する変更はありません。</td></tr>}</tbody>
+      </tr>)}{rows.length === 0 && <tr><td colSpan={8} className="balance-adjustment-analysis-empty-cell">該当する変更はありません。</td></tr>}</tbody>
     </table>
   </div>
 }

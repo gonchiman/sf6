@@ -13,6 +13,7 @@ export const APP_NAV_ITEMS = [
   { id: 'rank-distribution', label: 'ランク分布', href: '#rank-distribution' },
   { id: 'legend-analysis', label: 'レジェンド帯分析', href: '#legend-analysis' },
   { id: 'legend-analysis-2', label: 'レジェンド帯分析2', href: '#legend-analysis-2' },
+  { id: 'steam-player-count', label: 'Steam同時接続数', href: '#steam-player-count' },
   { id: 'new-account-observation', label: '新規参入観測', href: '#new-account-observation' },
   { id: 'parallel-fetch-test', label: '並列取得テスト', href: '#parallel-fetch-test' },
   { id: 'fetch-interval-test', label: '取得間隔テスト', href: '#fetch-interval-test' },
