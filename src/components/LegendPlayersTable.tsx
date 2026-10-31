@@ -8,6 +8,7 @@ type Props = {
   names: ReadonlyMap<string, string> | null
   emptyMessage?: string
   loading?: boolean
+  active?: boolean
   selectedRowId?: string | null
   onSelectRow?: (id: string) => void
   revealRequest?: { rowId: string }
@@ -26,21 +27,25 @@ const HEADINGS: { key: LegendPlayerSortKey; label: string }[] = [
 ]
 
 export function LegendPlayersTable({ rows, names, emptyMessage = '0件（取得確認済み）', loading = false,
-  selectedRowId = null, onSelectRow, revealRequest }: Props) {
+  active = true, selectedRowId = null, onSelectRow, revealRequest }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [sort, setSort] = useState<{ key: LegendPlayerSortKey; direction: LegendPlayerSortDirection }>({ key: 'rank', direction: 'asc' })
   const sorted = useMemo(() => sortLegendPlayers(rows, sort.key, sort.direction, names ?? undefined), [rows, sort, names])
+  const revealed = useRef<{ request: Props['revealRequest']; rows: typeof sorted } | null>(null)
 
   useLayoutEffect(() => {
     const container = scrollRef.current
-    if (!revealRequest || !selectedRowId || !container) return
+    if (!active || !revealRequest || !selectedRowId || !container) return
+    // Defer hidden-panel measurement, and preserve manual scrolling on later tab visits.
+    if (revealed.current?.request === revealRequest && revealed.current.rows === sorted) return
     const row = container.querySelector<HTMLTableRowElement>('tbody tr[data-selected="true"]')
     if (!row) return
+    revealed.current = { request: revealRequest, rows: sorted }
     const viewport = container.getBoundingClientRect(), bounds = row.getBoundingClientRect()
     const headingHeight = container.querySelector('thead')?.getBoundingClientRect().height ?? 0
     if (bounds.top < viewport.top + headingHeight) container.scrollTop += bounds.top - viewport.top - headingHeight
     else if (bounds.bottom > viewport.bottom) container.scrollTop += bounds.bottom - viewport.bottom
-  }, [selectedRowId, revealRequest, sorted])
+  }, [active, selectedRowId, revealRequest, sorted])
 
   return <div ref={scrollRef} className="data-table-scroll legend-players-scroll" role="region" tabIndex={0}
     aria-label="レジェンド帯のプレイヤー一覧・スクロール領域" aria-busy={loading || undefined}>

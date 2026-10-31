@@ -6,6 +6,7 @@ import { legendPlayersFeed } from '../lib/legendPlayersFeed'
 import { usePublishedData } from '../lib/usePublishedData'
 import type { LegendPlayersDataset } from '../types/legendPlayers'
 import { DataLoadState } from './DataLoadState'
+import { ContentTabs } from './ContentTabs'
 import { LegendPlayersTable } from './LegendPlayersTable'
 import { LegendPlayersRankChart } from './LegendPlayersRankChart'
 import { LegendPlayersCharacterChart, LegendPlayersMrChart } from './LegendPlayersSummaryCharts'
@@ -18,11 +19,15 @@ type DatasetState = { key: string; version: number } & (
 )
 const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 })
 const CHARTS = [['rank', '順位とMR'], ['characters', 'キャラ別掲載数'], ['mr', 'MR帯の分布']] as const
+const VIEWS = [['table', 'プレイヤー一覧'], ['chart', 'グラフ']] as const
 type Chart = typeof CHARTS[number][0]
+type View = typeof VIEWS[number][0]
 type Selection = { captureId: string; rowId: string; source: 'chart' | 'table' }
 
 export function LegendPlayersPage() {
+  const viewId = useId()
   const chartId = useId()
+  const [view, setView] = useState<View>('table')
   const [chart, setChart] = useState<Chart>('rank')
   const [selection, setSelection] = useState<Selection | null>(null)
   const { status, publication, selectedId, setSelectedId, refreshError, retry } = usePublishedData(legendPlayersFeed)
@@ -110,30 +115,39 @@ export function LegendPlayersPage() {
       <button className="win-rates-button" type="button" onClick={() => setNamesVersion(value => value + 1)}>キャラ名を再読み込み</button>
     </div>}
 
-    <StatisticsPanel title="グラフ" headerContent={dataset && <span className="monthly-statistics-panel-summary">掲載 {integerFormat.format(dataset.totalCount)} 件</span>}>
-      <div className="win-rates-view-selector legend-players-chart-selector" role="group" aria-label="グラフの種類">
-        {CHARTS.map(([value, label]) => <button key={value} type="button" className="win-rates-button"
-          aria-pressed={chart === value} aria-controls={chartId} onClick={() => setChart(value)}>{label}</button>)}
-      </div>
-      <div id={chartId} className="legend-players-chart-content" aria-busy={loadingDataset || undefined}>
-        {!dataset ? <p className="legend-players-chart-state" role="status">{emptyMessage}</p>
-          : chart === 'rank' ? <LegendPlayersRankChart key={requestKey} rows={dataset.players} names={names}
-            selectedRowId={selectedRowId} onSelectRow={rowId => selectRow(rowId, 'chart')} />
-          : chart === 'characters' ? <LegendPlayersCharacterChart rows={dataset.players} names={names} />
-          : <LegendPlayersMrChart key={requestKey} rows={dataset.players} />}
-      </div>
-    </StatisticsPanel>
+    <ContentTabs id={viewId} label="レジェンド帯分析2の表示" className="legend-players-view-tabs"
+      options={VIEWS} value={view} onChange={setView} />
 
-    <StatisticsPanel title="プレイヤー一覧" headerContent={dataset && <div className="legend-players-table-summary">
-      <span className="monthly-statistics-panel-summary">{integerFormat.format(dataset.totalCount)} 件</span>
-      <span className="monthly-statistics-panel-summary">対戦数：{dataset.rankedMatchScope ? `${dataset.act.label}・ランクマッチ（Act全期間）` : '未取得'}</span>
-    </div>}>
-      <LegendPlayersTable rows={dataset?.players ?? []} names={names} emptyMessage={emptyMessage} loading={loadingDataset}
-        selectedRowId={selectedRowId} onSelectRow={rowId => selectRow(rowId, 'table')}
-        revealRequest={selection?.source === 'chart' ? selection : undefined} />
-      {current?.status === 'error' && <div className="legend-players-status" role="alert">
-        <button className="win-rates-button" type="button" onClick={() => setDatasetVersion(value => value + 1)}>一覧を再読み込み</button>
-      </div>}
-    </StatisticsPanel>
+    <div id={`${viewId}-panel-table`} className="legend-players-view-panel" role="tabpanel"
+      aria-labelledby={`${viewId}-tab-table`} hidden={view !== 'table'}>
+      <StatisticsPanel title="プレイヤー一覧" headerContent={dataset && <div className="legend-players-table-summary">
+        <span className="monthly-statistics-panel-summary">{integerFormat.format(dataset.totalCount)} 件</span>
+        <span className="monthly-statistics-panel-summary">対戦数：{dataset.rankedMatchScope ? `${dataset.act.label}・ランクマッチ（Act全期間）` : '未取得'}</span>
+      </div>}>
+        <LegendPlayersTable rows={dataset?.players ?? []} names={names} emptyMessage={emptyMessage} loading={loadingDataset}
+          active={view === 'table'} selectedRowId={selectedRowId} onSelectRow={rowId => selectRow(rowId, 'table')}
+          revealRequest={selection?.source === 'chart' ? selection : undefined} />
+        {current?.status === 'error' && <div className="legend-players-status" role="alert">
+          <button className="win-rates-button" type="button" onClick={() => setDatasetVersion(value => value + 1)}>一覧を再読み込み</button>
+        </div>}
+      </StatisticsPanel>
+    </div>
+
+    <div id={`${viewId}-panel-chart`} className="legend-players-view-panel" role="tabpanel"
+      aria-labelledby={`${viewId}-tab-chart`} hidden={view !== 'chart'}>
+      <StatisticsPanel title="グラフ" headerContent={dataset && <span className="monthly-statistics-panel-summary">掲載 {integerFormat.format(dataset.totalCount)} 件</span>}>
+        <div className="win-rates-view-selector legend-players-chart-selector" role="group" aria-label="グラフの種類">
+          {CHARTS.map(([value, label]) => <button key={value} type="button" className="win-rates-button"
+            aria-pressed={chart === value} aria-controls={chartId} onClick={() => setChart(value)}>{label}</button>)}
+        </div>
+        <div id={chartId} className="legend-players-chart-content" aria-busy={loadingDataset || undefined}>
+          {!dataset ? <p className="legend-players-chart-state" role="status">{emptyMessage}</p>
+            : chart === 'rank' ? <LegendPlayersRankChart key={requestKey} rows={dataset.players} names={names}
+              selectedRowId={selectedRowId} onSelectRow={rowId => selectRow(rowId, 'chart')} />
+            : chart === 'characters' ? <LegendPlayersCharacterChart rows={dataset.players} names={names} />
+            : <LegendPlayersMrChart key={requestKey} rows={dataset.players} />}
+        </div>
+      </StatisticsPanel>
+    </div>
   </section>
 }
