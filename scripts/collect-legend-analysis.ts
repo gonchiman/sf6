@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { BrowserContextOptions } from 'playwright'
 import { LEGEND_ANALYSIS_SOURCE, parseLegendAnalysisDataset, parseLegendAnalysisManifest } from '../src/lib/legendAnalysis.ts'
 import { createLegendPlayersDescriptor, parseLegendPlayersDataset, parseLegendPlayersManifest } from '../src/lib/legendPlayers.ts'
-import type { LegendPlayersDataset } from '../src/types/legendPlayers.ts'
+import type { LegendPlayersDataset, LegendRankedMatchScope } from '../src/types/legendPlayers.ts'
 import { collectLegendAnalysisDataset, LEGEND_ANALYSIS_COLLECTION_ERROR_CODES, LEGEND_ANALYSIS_COLLECTION_PHASES,
   LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS, LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
 import type { LegendAnalysisCollectionErrorCode, LegendAnalysisCollectionPhase, LegendAnalysisPage,
@@ -25,6 +25,7 @@ export interface LegendAnalysisTransport {
   initialize(): Promise<{ act: { id: string; label: string }; characterIds: string[]; characterNames: Record<string, string> }>
   fetchPage(page: number, url: string): Promise<LegendAnalysisPage>
   confirmAct(): Promise<void>
+  fetchPlayerRankedMatches?(playerId: string, characterIds: readonly string[]): Promise<Record<string, number>>
   getDiagnostics(): { requestCount: number; lastStep?: LegendAnalysisReaderStep; lastErrorCode?: LegendAnalysisDomErrorCode | null;
     characterFilter?: '1' | '2' | '3' | '4' | null; visibleRosterButtonCount?: number | null;
     clickFailure?: LegendClickFailure | null; clickHitKind?: LegendClickHit | null; clickHitTag?: LegendClickObservation['hitTag'];
@@ -46,6 +47,8 @@ export interface LegendAnalysisCaptureReport {
   lastAttemptedPage: number | null
   /** Accepted ranking pages, including preparation and rechecks, excluding PLAY Act pages. */
   successfulReadCount: number
+  profileTotalCount?: number
+  profileReadCount?: number
   /** One-based whole-capture attempt; null until normal collection starts. */
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -79,6 +82,8 @@ export interface LegendAnalysisSafeCaptureReport {
   endedAt: string | null
   requestCount: number
   successfulReadCount: number
+  profileTotalCount: number
+  profileReadCount: number
   retryCount: number
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -125,7 +130,7 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     if (typeof candidate !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(candidate)) return null
     try { return new Date(candidate).toISOString() === candidate ? candidate : null } catch { return null }
   }
-  const requestCount = bounded(input.requestCount, 0, 1000) ? input.requestCount : 0
+  const requestCount = bounded(input.requestCount, 0, 2000) ? input.requestCount : 0
   const successfulReadCount = bounded(input.successfulReadCount, 0, requestCount) ? input.successfulReadCount : 0
   const recheckChangeKinds = Array.isArray(input.recheckChangeKinds) && input.recheckChangeKinds.length >= 1 && input.recheckChangeKinds.length <= 3
     && new Set(input.recheckChangeKinds).size === input.recheckChangeKinds.length
@@ -135,14 +140,16 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     status: input.status === 'succeeded' ? 'succeeded' : 'failed',
     reason: ['authentication-unavailable', 'source-unconfirmed', 'source-changed', 'access-unavailable', 'cancelled', 'request-limit', 'collection-failed', 'output-unavailable'].includes(input.reason as string) ? input.reason as LegendAnalysisFailureReason : null,
     startedAt: time(input.startedAt), endedAt: time(input.endedAt), requestCount, successfulReadCount,
+    profileTotalCount: bounded(input.profileTotalCount, 0, 1000) ? input.profileTotalCount : 0,
+    profileReadCount: bounded(input.profileReadCount, 0, Number(input.profileTotalCount) || 0) && input.profileReadCount <= 1000 ? input.profileReadCount : 0,
     retryCount: bounded(input.retryCount, 0, 2) ? input.retryCount : 0,
     captureAttempt: bounded(input.captureAttempt, 1, 3) ? input.captureAttempt : null,
     collectionPhase: LEGEND_ANALYSIS_COLLECTION_PHASES.includes(input.collectionPhase as LegendAnalysisCollectionPhase) ? input.collectionPhase as LegendAnalysisCollectionPhase : 'preparation',
     lastAttemptedPage: bounded(input.lastAttemptedPage, 1, 1000000) ? input.lastAttemptedPage : null,
     datasetId: typeof input.datasetId === 'string' && /^legend-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/.test(input.datasetId) ? input.datasetId : null,
     browserClosed: input.browserClosed === true,
-    lastStep: ['idle', 'ranking-navigation', 'ranking-observation', 'act-navigation', 'act-observation', 'roster-condition', 'roster-open', 'roster-observation', 'complete'].includes(input.lastStep as string) ? input.lastStep as LegendAnalysisReaderStep : null,
-    domErrorCode: ['invalid-request', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(input.domErrorCode as string) ? input.domErrorCode as LegendAnalysisDomErrorCode : null,
+    lastStep: ['idle', 'ranking-navigation', 'ranking-observation', 'act-navigation', 'act-observation', 'roster-condition', 'roster-open', 'roster-observation', 'profile-navigation', 'profile-filter', 'profile-observation', 'complete'].includes(input.lastStep as string) ? input.lastStep as LegendAnalysisReaderStep : null,
+    domErrorCode: ['invalid-request', 'request-limit', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(input.domErrorCode as string) ? input.domErrorCode as LegendAnalysisDomErrorCode : null,
     lastHttpStatus: bounded(input.lastHttpStatus, 100, 599) ? input.lastHttpStatus : null,
     lastLoginRequired: typeof input.lastLoginRequired === 'boolean' ? input.lastLoginRequired : null,
     lastSignedIn: typeof input.lastSignedIn === 'boolean' ? input.lastSignedIn : null,
@@ -173,7 +180,7 @@ async function launch(state: LegendAnalysisStorageState, signal: AbortSignal, en
   try {
     signal.throwIfAborted()
     const context = await browser.newContext({ locale: 'ja-JP', acceptDownloads: false, storageState: state })
-    const reader = createLegendAnalysisPageReader(await context.newPage(), { signal, minIntervalMs: 5000, includePlayers })
+    const reader = createLegendAnalysisPageReader(await context.newPage(), { signal, minIntervalMs: 5000, includePlayers, maxRequests: includePlayers ? 2000 : 150 })
     return { ...reader, close: () => browser.close() }
   } catch { await browser.close().catch(() => {}); throw new Error('browser-unavailable') }
 }
@@ -185,6 +192,7 @@ function reason(error: unknown, signal: AbortSignal): LegendAnalysisFailureReaso
     if (error.code === 'evidence-unconfirmed') return 'source-unconfirmed'
   }
   if (error instanceof LegendAnalysisDomError) {
+    if (error.code === 'request-limit') return 'request-limit'
     if (error.code === 'authentication-required') return 'authentication-unavailable'
     if (['act-unconfirmed', 'unsupported-dom', 'condition-mismatch'].includes(error.code)) return 'source-unconfirmed'
     if (error.code === 'act-changed') return 'source-changed'
@@ -210,7 +218,7 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
     characterFilter: null, visibleRosterButtonCount: null, lastAttemptedPage: null, successfulReadCount: 0,
     captureAttempt: null, collectionPhase: 'preparation', collectionErrorCode: null, validationCheck: null, recheckChangeKinds: null,
     attemptFailures: [], humanVerification: normalizeDistributionHumanVerification(null) }
-  const deadline = AbortSignal.timeout(15 * 60 * 1000)
+  const deadline = AbortSignal.timeout((options.includePlayers ? 120 : 15) * 60 * 1000)
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline
   const output = resolve(options.outputDirectory), publicDirectory = resolve(output, 'public')
   await checkLegendAnalysisParents(output)
@@ -220,6 +228,8 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
   let transport: LegendAnalysisTransport | undefined
   let dataset: ReturnType<typeof parseLegendAnalysisDataset> | null = null
   const playerCapture: { rows: readonly LegendAnalysisVerifiedPlayer[] | null } = { rows: null }
+  let enrichedPlayers: (LegendAnalysisVerifiedPlayer & { rankedMatchCount: number })[] | null = null
+  let rankedMatchScope: LegendRankedMatchScope | null = null
   try {
     signal.throwIfAborted()
     let state: LegendAnalysisStorageState
@@ -241,6 +251,35 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
       } })
     dataset = collected.dataset; report.retryCount = collected.retryCount
     signal.throwIfAborted()
+    if (options.includePlayers) {
+      if (!playerCapture.rows || !transport.fetchPlayerRankedMatches) throw new LegendAnalysisCollectionError('evidence-unconfirmed', 'entry-values')
+      const profiles = new Map<string, Set<string>>()
+      for (const row of playerCapture.rows) {
+        if (!profiles.has(row.playerId)) profiles.set(row.playerId, new Set())
+        profiles.get(row.playerId)!.add(row.characterId)
+      }
+      if (profiles.size > 1000) throw new LegendAnalysisCollectionError('request-limit', 'request-budget')
+      report.profileTotalCount = profiles.size; report.profileReadCount = 0
+      const collectionStartedAt = now().toISOString(), counts = new Map<string, Record<string, number>>()
+      for (const [playerId, characters] of profiles) {
+        signal.throwIfAborted()
+        const value = await transport.fetchPlayerRankedMatches(playerId, [...characters])
+        const verifiedCounts: Record<string, number> = Object.create(null)
+        for (const characterId of characters) {
+          const count = value?.[characterId]
+          if (!Object.hasOwn(value ?? {}, characterId) || !Number.isSafeInteger(count) || count < 0) {
+            throw new LegendAnalysisCollectionError('evidence-unconfirmed', 'entry-values')
+          }
+          verifiedCounts[characterId] = count
+        }
+        counts.set(playerId, verifiedCounts); report.profileReadCount++
+      }
+      rankedMatchScope = { actId: initial.act.id, mode: 'ranked', collectionStartedAt, collectionEndedAt: now().toISOString() }
+      enrichedPlayers = playerCapture.rows.map(row => ({ ...row, rankedMatchCount: counts.get(row.playerId)![row.characterId] }))
+      // Profile collection can span an Act boundary even after ranking validation completed.
+      await transport.confirmAct()
+      signal.throwIfAborted()
+    }
   } catch (error) {
     report.reason ??= reason(error, signal); dataset = null
     if (error instanceof LegendAnalysisCollectionError) {
@@ -252,11 +291,11 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
     if (transport) {
       try {
         const diagnostics = transport.getDiagnostics(), count = diagnostics.requestCount
-        if (Number.isSafeInteger(count) && count >= 0 && count <= 1000) report.requestCount = count
+        if (Number.isSafeInteger(count) && count >= 0 && count <= 2000) report.requestCount = count
         if (Number.isSafeInteger(diagnostics.lastAttemptedPage) && diagnostics.lastAttemptedPage! >= 1 && diagnostics.lastAttemptedPage! <= 1000000) report.lastAttemptedPage = diagnostics.lastAttemptedPage
         if (Number.isSafeInteger(diagnostics.successfulReadCount) && diagnostics.successfulReadCount >= 0 && diagnostics.successfulReadCount <= report.requestCount) report.successfulReadCount = diagnostics.successfulReadCount
-        if (['idle', 'ranking-navigation', 'ranking-observation', 'act-navigation', 'act-observation', 'roster-condition', 'roster-open', 'roster-observation', 'complete'].includes(diagnostics.lastStep ?? '')) report.lastStep = diagnostics.lastStep!
-        if (['invalid-request', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(diagnostics.lastErrorCode ?? '')) report.domErrorCode = diagnostics.lastErrorCode!
+        if (['idle', 'ranking-navigation', 'ranking-observation', 'act-navigation', 'act-observation', 'roster-condition', 'roster-open', 'roster-observation', 'profile-navigation', 'profile-filter', 'profile-observation', 'complete'].includes(diagnostics.lastStep ?? '')) report.lastStep = diagnostics.lastStep!
+        if (['invalid-request', 'request-limit', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(diagnostics.lastErrorCode ?? '')) report.domErrorCode = diagnostics.lastErrorCode!
         if (['1', '2', '3', '4'].includes(diagnostics.characterFilter ?? '')) report.characterFilter = diagnostics.characterFilter!
         if (Number.isSafeInteger(diagnostics.visibleRosterButtonCount) && diagnostics.visibleRosterButtonCount! >= 0 && diagnostics.visibleRosterButtonCount! <= 20) report.visibleRosterButtonCount = diagnostics.visibleRosterButtonCount!
         if (['intercepts-pointer-events', 'not-visible', 'not-stable', 'outside-viewport', 'strict-mode', 'other'].includes(diagnostics.clickFailure ?? '')) report.clickFailure = diagnostics.clickFailure!
@@ -281,14 +320,14 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
     if (dataset) {
       const verified = parseLegendAnalysisDataset(dataset)
       const players: LegendPlayersDataset | null = options.includePlayers ? parseLegendPlayersDataset({
-        schemaVersion: 1, id: verified.id, captureStartedAt: verified.captureStartedAt, captureEndedAt: verified.captureEndedAt,
-        generatedAt: verified.generatedAt, source: { ...verified.source, metric: '掲載エントリーのプレイヤー名・キャラクター・順位・MR',
-          notes: ['公式レジェンド掲載の取得期間内の断面。', '1行はアカウント×キャラクター単位。'] },
+        schemaVersion: 2, id: verified.id, captureStartedAt: verified.captureStartedAt, captureEndedAt: verified.captureEndedAt,
+        generatedAt, rankedMatchScope, source: { ...verified.source, metric: '掲載エントリーのプレイヤー情報・キャラクター・順位・MR・今Actランクマッチ対戦数',
+          notes: ['公式レジェンド掲載の取得期間内の断面。', '1行はアカウント×キャラクター単位。', '対戦数は掲載キャラのAct全期間のランクマッチ数で、レジェンド到達前も含む。'] },
         act: verified.act, definitionVersion: verified.definitionVersion, membershipRule: verified.membershipRule,
         conditions: verified.conditions, totalCount: verified.totalCount,
-        players: (playerCapture.rows ?? []).map((row, index) => ({ id: `entry-${index + 1}`, ...row })),
+        players: (enrichedPlayers ?? []).map((row, index) => ({ id: `entry-${index + 1}`, ...row })),
         validation: { ...verified.validation, notes: ['条件・Act・掲載判定・表示範囲・順位・MR順・重複と両端を確認した。',
-          '行IDは取得回内だけで使用する。プロフィールID・リンク・照合用一時ハッシュは保存していない。'] },
+          '行IDは取得回内だけで使用する。プレイヤーIDは公開ユーザーコード。', '各プロフィールのユーザーコード・Act・ランクマッチ指定と掲載キャラの対戦数を確認した。'] },
       }) : null
       const manifest = parseLegendAnalysisManifest({ schemaVersion: 1, generatedAt, source: LEGEND_ANALYSIS_SOURCE,
         datasets: [{ id: verified.id, path: `${verified.id}.json`, actId: verified.act.id, definitionVersion: verified.definitionVersion,

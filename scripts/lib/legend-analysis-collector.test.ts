@@ -49,7 +49,7 @@ test('complete capture aggregates account-character entries and rechecks both en
 
 test('opt-in player projection emits only accepted rows once after the final successful retry', async () => {
   const data = fixture()
-  data.values.forEach((entry, index) => { entry.playerName = `Synthetic ${index}` })
+  data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
   const read = data.options.fetchPage
   let reads = 0
   data.options.fetchPage = async (page, url) => {
@@ -62,8 +62,8 @@ test('opt-in player projection emits only accepted rows once after the final suc
   const result = await collectLegendAnalysisDataset(data.options)
   assert.equal(result.retryCount, 1)
   assert.deepEqual(callbacks, [[
-    { playerName: 'Synthetic 0', characterId: 'ryu', rank: 1, masterRating: 2400 },
-    { playerName: 'Synthetic 1', characterId: 'ken', rank: 2, masterRating: 2399 },
+    { playerName: 'Synthetic 0', playerId: '10000', region: '日本', platform: 'Steam', characterId: 'ryu', rank: 1, masterRating: 2400 },
+    { playerName: 'Synthetic 1', playerId: '10001', region: '日本', platform: 'Steam', characterId: 'ken', rank: 2, masterRating: 2399 },
   ]])
   assert.doesNotMatch(JSON.stringify(callbacks), /accountKey|Synthetic 2|Synthetic 3/)
   assert.doesNotMatch(JSON.stringify(result), /Synthetic|playerName|accountKey/)
@@ -72,7 +72,7 @@ test('opt-in player projection emits only accepted rows once after the final suc
 test('opt-in player projection rejects missing names before output and never runs on failed rechecks', async () => {
   for (const scenario of ['missing', 'changed'] as const) {
     const data = fixture()
-    data.values.forEach((entry, index) => { entry.playerName = `Synthetic ${index}` })
+    data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
     let callbacks = 0
     data.options.onVerifiedPlayers = () => { callbacks++ }
     if (scenario === 'missing') delete data.values[0].playerName
@@ -86,6 +86,24 @@ test('opt-in player projection rejects missing names before output and never run
     }
     await assert.rejects(collectLegendAnalysisDataset(data.options), LegendAnalysisCollectionError)
     assert.equal(callbacks, 0)
+  }
+})
+
+test('opt-in projection requires official player attributes without affecting aggregate-only collection', async () => {
+  for (const [field, value] of [['playerId', undefined], ['playerId', 'https://example.com/1'], ['playerId', '1'.repeat(21)],
+    ['region', undefined], ['region', ''], ['region', '日本\n'], ['platform', undefined], ['platform', 'Steam\u0000'], ['platform', 'x'.repeat(65)]] as const) {
+    const data = fixture()
+    data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
+    Object.assign(data.values[0], { [field]: value })
+    let callbacks = 0
+    data.options.onVerifiedPlayers = () => { callbacks++ }
+    await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError
+      && error.code === 'evidence-unconfirmed' && error.validationCheck === 'entry-values')
+    assert.equal(callbacks, 0)
+    delete data.options.onVerifiedPlayers
+    const aggregate = await collectLegendAnalysisDataset(data.options)
+    assert.equal(aggregate.dataset.totalCount, 2)
+    assert.doesNotMatch(JSON.stringify(aggregate), /playerId|Synthetic|accountKey|platform":"Steam/)
   }
 })
 

@@ -17,8 +17,12 @@ const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 
 const HEADINGS: { key: LegendPlayerSortKey; label: string }[] = [
   { key: 'rank', label: '順位' },
   { key: 'playerName', label: 'プレイヤー' },
+  { key: 'playerId', label: 'ID' },
   { key: 'characterId', label: 'キャラ' },
   { key: 'masterRating', label: 'MR' },
+  { key: 'region', label: '国／地域' },
+  { key: 'platform', label: 'プラットフォーム' },
+  { key: 'rankedMatchCount', label: '対戦数' },
 ]
 
 export function LegendPlayersTable({ rows, names, emptyMessage = '0件（取得確認済み）', loading = false,
@@ -42,10 +46,13 @@ export function LegendPlayersTable({ rows, names, emptyMessage = '0件（取得�
     aria-label="レジェンド帯のプレイヤー一覧・スクロール領域" aria-busy={loading || undefined}>
     <table className="data-table legend-players-table">
       <caption className="win-rates-visually-hidden">レジェンド帯のプレイヤー一覧（アカウント×キャラ単位）</caption>
-      <colgroup><col className="legend-players-rank-column" /><col /><col className="legend-players-character-column" /><col className="legend-players-mr-column" /></colgroup>
+      <colgroup><col className="legend-players-rank-column" /><col /><col className="legend-players-id-column" />
+        <col className="legend-players-character-column" /><col className="legend-players-mr-column" />
+        <col className="legend-players-region-column" /><col className="legend-players-platform-column" /><col className="legend-players-matches-column" /></colgroup>
       <thead><tr>{HEADINGS.map(heading => {
         const active = sort.key === heading.key
-        const nextDirection = active ? sort.direction === 'asc' ? 'desc' : 'asc' : heading.key === 'masterRating' ? 'desc' : 'asc'
+        const nextDirection = active ? sort.direction === 'asc' ? 'desc' : 'asc'
+          : heading.key === 'masterRating' || heading.key === 'rankedMatchCount' ? 'desc' : 'asc'
         return <th key={heading.key} scope="col" aria-sort={active ? sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
           <button className="legend-players-sort" type="button" disabled={rows.length === 0}
             aria-label={`${heading.label}を${nextDirection === 'asc' ? '昇順' : '降順'}に並べる`}
@@ -63,10 +70,15 @@ export function LegendPlayersTable({ rows, names, emptyMessage = '0件（取得�
             aria-label={`${row.playerName}、${names?.get(row.characterId) ?? row.characterId}、${integerFormat.format(row.rank)}位、${integerFormat.format(row.masterRating)} MRを選択`}>
             <bdi>{row.playerName}</bdi>
           </button> : <bdi>{row.playerName}</bdi>}</th>
+        <td className={`legend-players-id${row.playerId === undefined ? ' legend-players-unavailable' : ''}`}>{row.playerId ?? '未取得'}</td>
         <td className="legend-players-character">{names?.get(row.characterId) ?? row.characterId}</td>
         <td className="legend-players-number">{integerFormat.format(row.masterRating)}</td>
+        <td className={`legend-players-label${row.region === undefined ? ' legend-players-unavailable' : ''}`}><bdi>{row.region ?? '未取得'}</bdi></td>
+        <td className={`legend-players-label${row.platform === undefined ? ' legend-players-unavailable' : ''}`}><bdi>{row.platform ?? '未取得'}</bdi></td>
+        <td className={`legend-players-number${row.rankedMatchCount === undefined ? ' legend-players-unavailable' : ''}`}>
+          {row.rankedMatchCount === undefined ? '未取得' : integerFormat.format(row.rankedMatchCount)}</td>
       </tr>)}
-        {sorted.length === 0 && <tr><td colSpan={4} className="legend-players-empty" role="status">{emptyMessage}</td></tr>}
+        {sorted.length === 0 && <tr><td colSpan={HEADINGS.length} className="legend-players-empty" role="status">{emptyMessage}</td></tr>}
       </tbody>
     </table>
   </div>

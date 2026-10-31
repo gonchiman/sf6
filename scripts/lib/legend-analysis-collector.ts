@@ -10,8 +10,17 @@ export interface LegendAnalysisEntry {
   isLegend: boolean
   /** Opt-in visible label for the separate player list; omitted by aggregate-only readers. */
   playerName?: string
+  /** Opt-in public profile attributes; aggregate-only results never retain these. */
+  playerId?: string
+  region?: string
+  platform?: string
 }
-export type LegendAnalysisVerifiedPlayer = Pick<LegendAnalysisEntry, 'characterId' | 'rank' | 'masterRating'> & { playerName: string }
+export type LegendAnalysisVerifiedPlayer = Pick<LegendAnalysisEntry, 'characterId' | 'rank' | 'masterRating'> & {
+  playerName: string
+  playerId: string
+  region: string
+  platform: string
+}
 export interface LegendAnalysisPage {
   sourceUrl: string
   page: number
@@ -176,7 +185,10 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       }
       if (options.onVerifiedPlayers && entry.isLegend && (typeof entry.playerName !== 'string'
         || !entry.playerName.trim() || entry.playerName !== entry.playerName.trim() || entry.playerName.length > 128
-        || /\p{Cc}/u.test(entry.playerName))) fail('evidence-unconfirmed', 'entry-values')
+        || /\p{Cc}/u.test(entry.playerName)
+        || typeof entry.playerId !== 'string' || !/^\d{1,20}$/.test(entry.playerId)
+        || [entry.region, entry.platform].some(value => typeof value !== 'string' || !value.trim()
+          || value !== value.trim() || value.length > 64 || /\p{Cc}/u.test(value)))) fail('evidence-unconfirmed', 'entry-values')
     }
     return value
   }
@@ -244,8 +256,8 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
             'レジェンド掲載の終端と先頭を再確認した。取得時点が異なる全行の同時点性を保証するものではない。',
             'プレイヤー名、識別子、プロフィールリンク、行データ、照合用一時ハッシュは保存していない。'] },
       })
-      options.onVerifiedPlayers?.(accepted.map(({ playerName, characterId, rank, masterRating }) => ({
-        playerName: playerName!, characterId, rank, masterRating,
+      options.onVerifiedPlayers?.(accepted.map(({ playerName, playerId, region, platform, characterId, rank, masterRating }) => ({
+        playerName: playerName!, playerId: playerId!, region: region!, platform: platform!, characterId, rank, masterRating,
       })))
       progress('complete', null)
       return { dataset, requestCount, retryCount: attempt, pagesRead }

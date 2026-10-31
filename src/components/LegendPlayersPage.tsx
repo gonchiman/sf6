@@ -91,8 +91,11 @@ export function LegendPlayersPage() {
     </div>
 
     {dataset && <dl className="legend-players-capture">
-      <div><dt>取得区間</dt><dd><time dateTime={dataset.captureStartedAt}>{timestampLabel(dataset.captureStartedAt)}</time>
+      <div><dt>順位・MR取得区間</dt><dd><time dateTime={dataset.captureStartedAt}>{timestampLabel(dataset.captureStartedAt)}</time>
         {' 〜 '}<time dateTime={dataset.captureEndedAt}>{timestampLabel(dataset.captureEndedAt)}</time></dd></div>
+      {dataset.rankedMatchScope && <div><dt>対戦数取得区間</dt><dd>
+        <time dateTime={dataset.rankedMatchScope.collectionStartedAt}>{timestampLabel(dataset.rankedMatchScope.collectionStartedAt)}</time>
+        {' 〜 '}<time dateTime={dataset.rankedMatchScope.collectionEndedAt}>{timestampLabel(dataset.rankedMatchScope.collectionEndedAt)}</time></dd></div>}
       <div><dt>対象</dt><dd>{dataset.act.label} · {dataset.conditions.region === 'all' ? '全地域' : dataset.conditions.region}
         {' · '}{dataset.conditions.platform === 'all' ? '全プラットフォーム' : dataset.conditions.platform}</dd></div>
     </dl>}
@@ -121,7 +124,10 @@ export function LegendPlayersPage() {
       </div>
     </StatisticsPanel>
 
-    <StatisticsPanel title="プレイヤー一覧" headerContent={dataset && <span className="monthly-statistics-panel-summary">{integerFormat.format(dataset.totalCount)} 件</span>}>
+    <StatisticsPanel title="プレイヤー一覧" headerContent={dataset && <div className="legend-players-table-summary">
+      <span className="monthly-statistics-panel-summary">{integerFormat.format(dataset.totalCount)} 件</span>
+      <span className="monthly-statistics-panel-summary">対戦数：{dataset.rankedMatchScope ? `${dataset.act.label}・ランクマッチ（Act全期間）` : '未取得'}</span>
+    </div>}>
       <LegendPlayersTable rows={dataset?.players ?? []} names={names} emptyMessage={emptyMessage} loading={loadingDataset}
         selectedRowId={selectedRowId} onSelectRow={rowId => selectRow(rowId, 'table')}
         revealRequest={selection?.source === 'chart' ? selection : undefined} />
