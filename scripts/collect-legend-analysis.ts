@@ -50,6 +50,8 @@ export interface LegendAnalysisCaptureReport {
   profileTotalCount?: number
   profileReadCount?: number
   profileRetryCount?: number
+  pageRecoveryAttemptCount?: number
+  pageRecoverySuccessCount?: number
   /** One-based whole-capture attempt; null until normal collection starts. */
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -86,6 +88,8 @@ export interface LegendAnalysisSafeCaptureReport {
   profileTotalCount: number
   profileReadCount: number
   profileRetryCount: number
+  pageRecoveryAttemptCount: number
+  pageRecoverySuccessCount: number
   retryCount: number
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -134,6 +138,7 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
   }
   const requestCount = bounded(input.requestCount, 0, 2000) ? input.requestCount : 0
   const successfulReadCount = bounded(input.successfulReadCount, 0, requestCount) ? input.successfulReadCount : 0
+  const pageRecoveryAttemptCount = bounded(input.pageRecoveryAttemptCount, 0, 1) ? input.pageRecoveryAttemptCount : 0
   const recheckChangeKinds = Array.isArray(input.recheckChangeKinds) && input.recheckChangeKinds.length >= 1 && input.recheckChangeKinds.length <= 3
     && new Set(input.recheckChangeKinds).size === input.recheckChangeKinds.length
     && input.recheckChangeKinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind as LegendAnalysisRecheckChangeKind))
@@ -145,6 +150,8 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     profileTotalCount: bounded(input.profileTotalCount, 0, 1000) ? input.profileTotalCount : 0,
     profileReadCount: bounded(input.profileReadCount, 0, Number(input.profileTotalCount) || 0) && input.profileReadCount <= 1000 ? input.profileReadCount : 0,
     profileRetryCount: bounded(input.profileRetryCount, 0, 1000) ? input.profileRetryCount : 0,
+    pageRecoveryAttemptCount,
+    pageRecoverySuccessCount: bounded(input.pageRecoverySuccessCount, 0, pageRecoveryAttemptCount) ? input.pageRecoverySuccessCount : 0,
     retryCount: bounded(input.retryCount, 0, 2) ? input.retryCount : 0,
     captureAttempt: bounded(input.captureAttempt, 1, 3) ? input.captureAttempt : null,
     collectionPhase: LEGEND_ANALYSIS_COLLECTION_PHASES.includes(input.collectionPhase as LegendAnalysisCollectionPhase) ? input.collectionPhase as LegendAnalysisCollectionPhase : 'preparation',
@@ -217,7 +224,8 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
   const now = dependencies.now ?? (() => new Date())
   const startedAt = now().toISOString()
   const report: LegendAnalysisCaptureReport = { status: 'failed', reason: null, startedAt, endedAt: startedAt,
-    requestCount: 0, retryCount: 0, datasetId: null, browserClosed: false, lastStep: null, domErrorCode: null,
+    requestCount: 0, retryCount: 0, pageRecoveryAttemptCount: 0, pageRecoverySuccessCount: 0,
+    datasetId: null, browserClosed: false, lastStep: null, domErrorCode: null,
     characterFilter: null, visibleRosterButtonCount: null, lastAttemptedPage: null, successfulReadCount: 0,
     captureAttempt: null, collectionPhase: 'preparation', collectionErrorCode: null, validationCheck: null, recheckChangeKinds: null,
     attemptFailures: [], humanVerification: normalizeDistributionHumanVerification(null) }
@@ -247,6 +255,10 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
       membershipRule: 'official-legend-badge', membershipConfirmed: true, signal, now, maxRequests: 120, maxAttempts: 2,
       ...(options.includePlayers ? { onVerifiedPlayers: (players: readonly LegendAnalysisVerifiedPlayer[]) => { playerCapture.rows = players } } : {}),
       onRetry: count => { if (Number.isSafeInteger(count) && count >= 1 && count <= 2) report.retryCount = count },
+      onPageRecovery: state => {
+        if (state === 'started') report.pageRecoveryAttemptCount = 1
+        if (state === 'succeeded') report.pageRecoverySuccessCount = 1
+      },
       onAttemptFailure: failure => { report.attemptFailures = safeAttemptFailures([...(report.attemptFailures ?? []), failure]) },
       onProgress: value => {
         if (LEGEND_ANALYSIS_COLLECTION_PHASES.includes(value.phase)) report.collectionPhase = value.phase

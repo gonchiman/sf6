@@ -278,13 +278,16 @@ test('failure diagnostics distinguish end recheck, start recheck and Act recheck
 
 test('stdout report boundary accepts fixed enums and bounded integers and drops arbitrary identities and paths', () => {
   const report = summarizeLegendAnalysisCaptureReport({ status: 'failed', reason: SECRET, startedAt: SECRET, endedAt: SECRET,
-    requestCount: 30, successfulReadCount: 31, retryCount: 999, profileRetryCount: SECRET, captureAttempt: 999, collectionPhase: SECRET,
+    requestCount: 30, successfulReadCount: 31, retryCount: 999, profileRetryCount: SECRET,
+    pageRecoveryAttemptCount: SECRET, pageRecoverySuccessCount: 999, captureAttempt: 999, collectionPhase: SECRET,
     lastAttemptedPage: Number.MAX_SAFE_INTEGER, datasetId: `legend-${SECRET}`, lastStep: SECRET, domErrorCode: SECRET,
     lastHttpStatus: 1000, lastSignedIn: SECRET, profileUrl: `https://example.com/${SECRET}`, storageState: { cookies: [SECRET] },
     localPath: `C:/Users/${SECRET}/private`, collectionErrorCode: SECRET, validationCheck: SECRET, recheckChangeKinds: ['legend-entries', SECRET] })
   assert.equal(report.successfulReadCount, 0)
   assert.equal(report.retryCount, 0)
   assert.equal(report.profileRetryCount, 0)
+  assert.equal(report.pageRecoveryAttemptCount, 0)
+  assert.equal(report.pageRecoverySuccessCount, 0)
   assert.equal(report.captureAttempt, null)
   assert.equal(report.collectionPhase, 'preparation')
   assert.equal(report.lastAttemptedPage, null)
@@ -302,6 +305,51 @@ test('stdout report boundary accepts fixed enums and bounded integers and drops 
   assert.equal(known.collectionErrorCode, 'source-changed')
   assert.equal(known.validationCheck, 'end-recheck')
   assert.deepEqual(known.recheckChangeKinds, ['non-legend-entries', 'metadata'])
+})
+
+test('stdout bounds page recovery success by the single permitted attempt and defaults old reports to zero', () => {
+  for (const value of [{}, { pageRecoveryAttemptCount: 0, pageRecoverySuccessCount: 1 },
+    { pageRecoveryAttemptCount: 2, pageRecoverySuccessCount: 1 }]) {
+    const safe = summarizeLegendAnalysisCaptureReport(value)
+    assert.equal(safe.pageRecoveryAttemptCount, 0)
+    assert.equal(safe.pageRecoverySuccessCount, 0)
+  }
+  const safe = summarizeLegendAnalysisCaptureReport({ pageRecoveryAttemptCount: 1, pageRecoverySuccessCount: 1 })
+  assert.equal(safe.pageRecoveryAttemptCount, 1)
+  assert.equal(safe.pageRecoverySuccessCount, 1)
+})
+
+test('adjacent page recovery reports its result and never retries a denied recheck', async t => {
+  for (const denied of [false, true]) {
+    const data = await fixture(t), pages: number[] = []
+    data.transport.fetchPage = async (page, sourceUrl) => {
+      pages.push(page); data.calls.read++
+      if (denied && pages.length === 3) throw new LegendAnalysisDomError('http-denied')
+      const offset = (page - 1) * 20
+      const entries = Array.from({ length: 20 }, (_, index) => ({
+        accountKey: (offset + index + 1).toString(16).padStart(64, '0'),
+        characterId: 'ryu', rank: offset + index + 1, masterRating: 2400 - offset - index,
+        isLegend: offset + index < 22,
+      }))
+      if (pages.length === 2) entries[0].accountKey = (20).toString(16).padStart(64, '0')
+      return { sourceUrl, page, pageSize: 20, totalCount: 800000, from: offset + 1, to: offset + 20,
+        nextPage: page + 1, actId: 'act-13', conditions: { ...LEGEND_ANALYSIS_CONDITIONS },
+        conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries }
+    }
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
+    const safe = summarizeLegendAnalysisCaptureReport(result.report)
+    assert.equal(safe.pageRecoveryAttemptCount, 1)
+    assert.equal(safe.pageRecoverySuccessCount, denied ? 0 : 1)
+    assert.equal(safe.retryCount, 0)
+    assert.equal(result.succeeded, !denied)
+    assert.deepEqual(pages, denied ? [1, 2, 1] : [1, 2, 1, 2, 2, 1])
+    if (denied) {
+      assert.equal(result.report.reason, 'access-unavailable')
+      assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json'])
+    } else {
+      assert.deepEqual(await validateLegendAnalysisDirectory(resolve(data.output, 'public')), { datasets: 1, entries: 22 })
+    }
+  }
 })
 
 test('collector MR-order failure propagates fixed diagnostics through the CLI and stdout summary', async t => {
