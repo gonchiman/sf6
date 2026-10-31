@@ -278,12 +278,13 @@ test('failure diagnostics distinguish end recheck, start recheck and Act recheck
 
 test('stdout report boundary accepts fixed enums and bounded integers and drops arbitrary identities and paths', () => {
   const report = summarizeLegendAnalysisCaptureReport({ status: 'failed', reason: SECRET, startedAt: SECRET, endedAt: SECRET,
-    requestCount: 30, successfulReadCount: 31, retryCount: 999, captureAttempt: 999, collectionPhase: SECRET,
+    requestCount: 30, successfulReadCount: 31, retryCount: 999, profileRetryCount: SECRET, captureAttempt: 999, collectionPhase: SECRET,
     lastAttemptedPage: Number.MAX_SAFE_INTEGER, datasetId: `legend-${SECRET}`, lastStep: SECRET, domErrorCode: SECRET,
     lastHttpStatus: 1000, lastSignedIn: SECRET, profileUrl: `https://example.com/${SECRET}`, storageState: { cookies: [SECRET] },
     localPath: `C:/Users/${SECRET}/private`, collectionErrorCode: SECRET, validationCheck: SECRET, recheckChangeKinds: ['legend-entries', SECRET] })
   assert.equal(report.successfulReadCount, 0)
   assert.equal(report.retryCount, 0)
+  assert.equal(report.profileRetryCount, 0)
   assert.equal(report.captureAttempt, null)
   assert.equal(report.collectionPhase, 'preparation')
   assert.equal(report.lastAttemptedPage, null)
@@ -296,7 +297,8 @@ test('stdout report boundary accepts fixed enums and bounded integers and drops 
   assert.equal(report.recheckChangeKinds, null)
   assert.equal(JSON.stringify(report).includes(SECRET), false)
   assert.equal(JSON.stringify(report).includes('storageState'), false)
-  const known = summarizeLegendAnalysisCaptureReport({ collectionErrorCode: 'source-changed', validationCheck: 'end-recheck', recheckChangeKinds: ['non-legend-entries', 'metadata'] })
+  const known = summarizeLegendAnalysisCaptureReport({ collectionErrorCode: 'source-changed', validationCheck: 'end-recheck', recheckChangeKinds: ['non-legend-entries', 'metadata'], profileRetryCount: 2 })
+  assert.equal(known.profileRetryCount, 2)
   assert.equal(known.collectionErrorCode, 'source-changed')
   assert.equal(known.validationCheck, 'end-recheck')
   assert.deepEqual(known.recheckChangeKinds, ['non-legend-entries', 'metadata'])

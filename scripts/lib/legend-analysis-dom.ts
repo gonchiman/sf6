@@ -369,7 +369,7 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
   let act: { id: string; label: string } | null = null
   let characterIds = options.characterIds ? [...options.characterIds] : []
   let ready = false
-  let requestCount = 0
+  let requestCount = 0, profileRetryCount = 0
   let lastStep: LegendAnalysisReaderStep = 'idle'
   let lastErrorCode: LegendAnalysisDomErrorCode | null = null
   let characterFilter: '1' | '2' | '3' | '4' | null = null, visibleRosterButtonCount: number | null = null
@@ -593,38 +593,52 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
       const wantedCharacters = [...requestedCharacters], url = `https://www.streetfighter.com/6/buckler/ja-jp/profile/${playerId}/play`
       try {
         lastAccepted = null
-        lastStep = 'profile-navigation'; await navigate(url)
-        // A fresh PLAY document defaults to all modes. Its visible Act must still be the captured Act.
-        await profileObservation(url, playerId, wantedCharacters, '1', false)
-        lastStep = 'profile-filter'; await beginNavigation(null)
-        const requests = new Set<Request>()
-        const onRequest = (request: Request): void => { if (matchesLegendRankedMatchRequest(request, playerId, act!.id)) requests.add(request) }
-        page.on('request', onRequest)
-        // Observe only the request created by the ordinary select change, never an earlier response.
-        const completion = page.waitForResponse(response => requests.has(response.request()), { timeout: 30000 }).catch(() => null)
-        try {
-          await page.locator('select:visible').nth(1).selectOption('2', { timeout: 10000 })
-          const response = await completion
-          check()
-          if (!response || requests.size !== 1) throw new LegendAnalysisDomError('unsupported-dom')
-          const status = response.status()
-          lastHttpStatus = Number.isSafeInteger(status) && status >= 100 && status <= 599 ? status : null
-          humanVerification = readDistributionHumanVerificationResponse(response)
-          await observeHumanVerification()
-          if (humanVerification.wafAction || humanVerification.domDetected === true || [401, 403, 429].includes(status)) throw new LegendAnalysisDomError('http-denied')
-          if (status >= 500) throw new LegendAnalysisDomError('server-error')
-          if (status < 200 || status >= 300) throw new LegendAnalysisDomError('http-error')
-          if (await response.finished()) throw new LegendAnalysisDomError('read-failed')
-          await page.evaluate(settleLegendPlayerRender)
-          const value = await profileObservation(url, playerId, wantedCharacters, '2', true)
-          if (requests.size !== 1) throw new LegendAnalysisDomError('unsupported-dom')
-          lastStep = 'complete'
-          return { ...value.matches! }
-        } finally { page.off('request', onRequest) }
+        for (let filterAttempt = 0; filterAttempt < 2; filterAttempt++) {
+          // A navigation failure is never caught by the filter recovery; navigate keeps its own single retry.
+          lastStep = 'profile-navigation'
+          const beforeNavigation = requestCount
+          try { await navigate(url) }
+          finally { if (filterAttempt === 1 && requestCount > beforeNavigation) profileRetryCount++ }
+          // A fresh PLAY document defaults to all modes. Its visible Act must still be the captured Act.
+          await profileObservation(url, playerId, wantedCharacters, '1', false)
+          lastStep = 'profile-filter'; await beginNavigation(null)
+          const requests = new Set<Request>()
+          const onRequest = (request: Request): void => { if (matchesLegendRankedMatchRequest(request, playerId, act!.id)) requests.add(request) }
+          page.on('request', onRequest)
+          // Observe only the request created by the ordinary select change, never an earlier response.
+          const completion = page.waitForResponse(response => requests.has(response.request()), { timeout: 30000 }).catch(() => null)
+          try {
+            await page.locator('select:visible').nth(1).selectOption('2', { timeout: 10000 })
+            const response = await completion
+            check()
+            if (!response || requests.size !== 1) throw new LegendAnalysisDomError('unsupported-dom')
+            const status = response.status()
+            lastHttpStatus = Number.isSafeInteger(status) && status >= 100 && status <= 599 ? status : null
+            humanVerification = readDistributionHumanVerificationResponse(response)
+            await observeHumanVerification()
+            if (humanVerification.wafAction || humanVerification.domDetected === true || [401, 403, 429].includes(status)) throw new LegendAnalysisDomError('http-denied')
+            if (page.url() !== url) throw new LegendAnalysisDomError('condition-mismatch')
+            if (status >= 500 && status <= 599) {
+              if (await challengeVisible()) throw new LegendAnalysisDomError('http-denied')
+              if (filterAttempt === 1 || !humanVerification.wafHeaderChecked || humanVerification.domDetected !== false) throw new LegendAnalysisDomError('server-error')
+              // Reload the ordinary PLAY page once, rather than reusing its failed mode/error state.
+              await wait(Math.max(5000, interval)); check()
+              continue
+            }
+            if (status < 200 || status >= 300) throw new LegendAnalysisDomError('http-error')
+            if (await response.finished()) throw new LegendAnalysisDomError('read-failed')
+            await page.evaluate(settleLegendPlayerRender)
+            const value = await profileObservation(url, playerId, wantedCharacters, '2', true)
+            if (requests.size !== 1) throw new LegendAnalysisDomError('unsupported-dom')
+            lastStep = 'complete'
+            return { ...value.matches! }
+          } finally { page.off('request', onRequest) }
+        }
+        throw new LegendAnalysisDomError('server-error')
       } catch (error) { lastErrorCode = error instanceof LegendAnalysisDomError ? error.code : 'read-failed'; throw new LegendAnalysisDomError(lastErrorCode) }
       finally { running = false }
     },
-    getDiagnostics: () => ({ requestCount, lastStep, lastErrorCode, characterFilter, visibleRosterButtonCount,
+    getDiagnostics: () => ({ requestCount, profileRetryCount, lastStep, lastErrorCode, characterFilter, visibleRosterButtonCount,
       clickFailure, clickHitKind: clickObservation?.hitKind ?? null, clickHitTag: clickObservation?.hitTag ?? null,
       parentParagraph: clickObservation?.parentParagraph === true, pointerEventsNone: clickObservation?.pointerEventsNone === true,
       rosterDiagnostics: ready && rosterDiagnostics ? { ...rosterDiagnostics, items: [] } : rosterDiagnostics,

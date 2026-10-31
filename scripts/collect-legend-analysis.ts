@@ -31,7 +31,7 @@ export interface LegendAnalysisTransport {
     clickFailure?: LegendClickFailure | null; clickHitKind?: LegendClickHit | null; clickHitTag?: LegendClickObservation['hitTag'];
     parentParagraph?: boolean; pointerEventsNone?: boolean; rosterDiagnostics?: LegendRosterDiagnostics | null;
     lastLoginRequired?: boolean | null; lastSignedIn?: boolean | null; lastRankingReadable?: boolean | null; readableWithoutSignInReadCount?: number; lastHttpStatus?: number | null;
-    humanVerification?: DistributionHumanVerificationDiagnostics;
+    humanVerification?: DistributionHumanVerificationDiagnostics; profileRetryCount?: number;
     lastAttemptedPage: number | null; successfulReadCount: number }
   close(): Promise<void>
 }
@@ -49,6 +49,7 @@ export interface LegendAnalysisCaptureReport {
   successfulReadCount: number
   profileTotalCount?: number
   profileReadCount?: number
+  profileRetryCount?: number
   /** One-based whole-capture attempt; null until normal collection starts. */
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -84,6 +85,7 @@ export interface LegendAnalysisSafeCaptureReport {
   successfulReadCount: number
   profileTotalCount: number
   profileReadCount: number
+  profileRetryCount: number
   retryCount: number
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -142,6 +144,7 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     startedAt: time(input.startedAt), endedAt: time(input.endedAt), requestCount, successfulReadCount,
     profileTotalCount: bounded(input.profileTotalCount, 0, 1000) ? input.profileTotalCount : 0,
     profileReadCount: bounded(input.profileReadCount, 0, Number(input.profileTotalCount) || 0) && input.profileReadCount <= 1000 ? input.profileReadCount : 0,
+    profileRetryCount: bounded(input.profileRetryCount, 0, 1000) ? input.profileRetryCount : 0,
     retryCount: bounded(input.retryCount, 0, 2) ? input.retryCount : 0,
     captureAttempt: bounded(input.captureAttempt, 1, 3) ? input.captureAttempt : null,
     collectionPhase: LEGEND_ANALYSIS_COLLECTION_PHASES.includes(input.collectionPhase as LegendAnalysisCollectionPhase) ? input.collectionPhase as LegendAnalysisCollectionPhase : 'preparation',
@@ -305,6 +308,7 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
         if (typeof diagnostics.pointerEventsNone === 'boolean') report.pointerEventsNone = diagnostics.pointerEventsNone
         report.rosterDiagnostics = sanitizeLegendRosterDiagnostics(diagnostics.rosterDiagnostics)
         report.humanVerification = normalizeDistributionHumanVerification(diagnostics.humanVerification)
+        if (Number.isSafeInteger(diagnostics.profileRetryCount) && diagnostics.profileRetryCount! >= 0 && diagnostics.profileRetryCount! <= 1000) report.profileRetryCount = diagnostics.profileRetryCount
         for (const key of ['lastLoginRequired', 'lastSignedIn', 'lastRankingReadable'] as const) if (typeof diagnostics[key] === 'boolean') report[key] = diagnostics[key]
         if (Number.isSafeInteger(diagnostics.readableWithoutSignInReadCount) && diagnostics.readableWithoutSignInReadCount! >= 0 && diagnostics.readableWithoutSignInReadCount! <= 1000) report.readableWithoutSignInReadCount = diagnostics.readableWithoutSignInReadCount!
         if (Number.isSafeInteger(diagnostics.lastHttpStatus) && diagnostics.lastHttpStatus! >= 100 && diagnostics.lastHttpStatus! <= 599) report.lastHttpStatus = diagnostics.lastHttpStatus!
