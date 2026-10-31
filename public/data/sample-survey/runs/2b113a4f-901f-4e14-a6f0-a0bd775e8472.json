@@ -1,0 +1,625 @@
+{
+  "schemaVersion": 2,
+  "id": "2b113a4f-901f-4e14-a6f0-a0bd775e8472",
+  "planId": "d0490710-3e2e-4211-bb9b-9ccea887d376",
+  "config": {
+    "ranks": [
+      "ROOKIE",
+      "IRON"
+    ],
+    "rankSampleSize": 200,
+    "includeMr": false,
+    "mrSampleSize": 100,
+    "maxDurationMinutes": 120
+  },
+  "state": "complete",
+  "phase": "complete",
+  "startedAt": "2026-10-31T09:19:32.807Z",
+  "updatedAt": "2026-10-31T10:38:58.359Z",
+  "finishedAt": "2026-10-31T10:38:58.359Z",
+  "elapsedMs": 4765552,
+  "attempts": 475,
+  "successfulPages": 474,
+  "uniqueAccountCount": 399,
+  "strata": [
+    {
+      "id": "lp-ROOKIE",
+      "label": "ROOKIE",
+      "target": "lp",
+      "requested": 200,
+      "population": 187068,
+      "selected": 200,
+      "processed": 200,
+      "succeeded": 199,
+      "missing": 0,
+      "duplicates": 1,
+      "mean": 387.85929648241205,
+      "min": 0,
+      "max": 970
+    },
+    {
+      "id": "lp-IRON",
+      "label": "IRON",
+      "target": "lp",
+      "requested": 200,
+      "population": 364585,
+      "selected": 200,
+      "processed": 200,
+      "succeeded": 200,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 1704.495,
+      "min": 1000,
+      "max": 2910
+    }
+  ],
+  "frameChanged": true,
+  "stopReason": null,
+  "resumeAllowed": false,
+  "observation": {
+    "method": "rank-position-tolerant-v1",
+    "strata": [
+      {
+        "id": "lp-ROOKIE",
+        "status": "review-required",
+        "startedAt": "2026-10-31T09:19:32.810Z",
+        "finishedAt": "2026-10-31T09:57:26.744Z",
+        "totalCountBefore": 3104068,
+        "totalCountAfter": 3104132,
+        "startBefore": 2917000,
+        "endBefore": 3104068,
+        "startAfter": 2917060,
+        "endAfter": 3104130,
+        "boundaryChanged": true,
+        "boundaryAcceptance": {
+          "mode": "exact",
+          "referenceStart": 2917000,
+          "referenceEnd": 3104068,
+          "referenceCheckedAt": "2026-10-31T09:22:36.393Z",
+          "start": 2917000,
+          "end": 3104068,
+          "startObservedAt": "2026-10-31T09:22:58.351Z",
+          "endObservedAt": "2026-10-31T09:23:08.089Z"
+        }
+      },
+      {
+        "id": "lp-IRON",
+        "status": "review-required",
+        "startedAt": "2026-10-31T09:57:26.744Z",
+        "finishedAt": "2026-10-31T10:38:58.359Z",
+        "totalCountBefore": 3104149,
+        "totalCountAfter": 3104205,
+        "startBefore": 2552491,
+        "endBefore": 2917076,
+        "startAfter": 2552539,
+        "endAfter": 2917126,
+        "boundaryChanged": true,
+        "boundaryAcceptance": {
+          "mode": "approximate",
+          "referenceStart": 2552486,
+          "referenceEnd": 2917076,
+          "referenceCheckedAt": "2026-10-31T10:03:08.561Z",
+          "start": 2552491,
+          "end": 2917076,
+          "startObservedAt": "2026-10-31T10:03:18.484Z",
+          "endObservedAt": "2026-10-31T10:03:31.796Z"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T09:59:49.558Z",
+        "before": 3104138,
+        "after": 3104139
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T09:59:57.719Z",
+        "before": 3104139,
+        "after": 3104138
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:00:08.498Z",
+        "before": 3104138,
+        "after": 3104141
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:01:40.696Z",
+        "before": 3104141,
+        "after": 3104142
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:01:48.919Z",
+        "before": 3104142,
+        "after": 3104143
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:01:59.896Z",
+        "before": 3104143,
+        "after": 3104144
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:02:39.267Z",
+        "before": 3104144,
+        "after": 3104145
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:02:58.357Z",
+        "before": 3104145,
+        "after": 3104146
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:03:08.560Z",
+        "before": 3104146,
+        "after": 3104147
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:03:18.484Z",
+        "before": 3104147,
+        "after": 3104149
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:03:18.484Z",
+        "before": 2552486,
+        "after": 2552491
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:03:49.513Z",
+        "before": 3104149,
+        "after": 3104150
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:04:00.388Z",
+        "before": 3104150,
+        "after": 3104151
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:04:09.315Z",
+        "before": 3104151,
+        "after": 3104152
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:07:16.972Z",
+        "before": 3104152,
+        "after": 3104153
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:07:47.776Z",
+        "before": 3104153,
+        "after": 3104154
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:08:27.822Z",
+        "before": 3104154,
+        "after": 3104155
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:08:39.911Z",
+        "before": 3104155,
+        "after": 3104156
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:08:49.444Z",
+        "before": 3104156,
+        "after": 3104157
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:09:28.699Z",
+        "before": 3104157,
+        "after": 3104158
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:10:37.649Z",
+        "before": 3104158,
+        "after": 3104159
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:13:29.468Z",
+        "before": 3104159,
+        "after": 3104160
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:13:37.939Z",
+        "before": 3104160,
+        "after": 3104161
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:14:47.995Z",
+        "before": 3104161,
+        "after": 3104162
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:15:08.417Z",
+        "before": 3104162,
+        "after": 3104163
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:15:38.934Z",
+        "before": 3104163,
+        "after": 3104164
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:16:00.756Z",
+        "before": 3104164,
+        "after": 3104165
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:16:48.709Z",
+        "before": 3104165,
+        "after": 3104166
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:16:58.315Z",
+        "before": 3104166,
+        "after": 3104167
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:18:09.902Z",
+        "before": 3104167,
+        "after": 3104168
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:18:57.338Z",
+        "before": 3104168,
+        "after": 3104169
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:19:27.332Z",
+        "before": 3104169,
+        "after": 3104170
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:22:58.635Z",
+        "before": 3104170,
+        "after": 3104171
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:23:08.157Z",
+        "before": 3104171,
+        "after": 3104172
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:24:07.219Z",
+        "before": 3104172,
+        "after": 3104173
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:24:18.853Z",
+        "before": 3104173,
+        "after": 3104175
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:25:09.881Z",
+        "before": 3104175,
+        "after": 3104176
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:25:30.326Z",
+        "before": 3104176,
+        "after": 3104177
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:25:39.070Z",
+        "before": 3104177,
+        "after": 3104178
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:25:48.083Z",
+        "before": 3104178,
+        "after": 3104179
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:26:28.868Z",
+        "before": 3104179,
+        "after": 3104180
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:26:48.850Z",
+        "before": 3104180,
+        "after": 3104181
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:27:18.393Z",
+        "before": 3104181,
+        "after": 3104182
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:28:28.882Z",
+        "before": 3104182,
+        "after": 3104183
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:29:38.300Z",
+        "before": 3104183,
+        "after": 3104184
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:29:59.276Z",
+        "before": 3104184,
+        "after": 3104185
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:30:08.287Z",
+        "before": 3104185,
+        "after": 3104189
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:30:59.784Z",
+        "before": 3104189,
+        "after": 3104190
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:31:09.469Z",
+        "before": 3104190,
+        "after": 3104191
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:31:37.643Z",
+        "before": 3104191,
+        "after": 3104192
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:32:07.567Z",
+        "before": 3104192,
+        "after": 3104193
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:33:18.764Z",
+        "before": 3104193,
+        "after": 3104194
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:33:28.657Z",
+        "before": 3104194,
+        "after": 3104196
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:33:58.743Z",
+        "before": 3104196,
+        "after": 3104197
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:34:38.175Z",
+        "before": 3104197,
+        "after": 3104198
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:35:27.662Z",
+        "before": 3104198,
+        "after": 3104199
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:36:18.222Z",
+        "before": 3104199,
+        "after": 3104200
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:36:58.173Z",
+        "before": 3104200,
+        "after": 3104202
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:37:16.797Z",
+        "before": 3104202,
+        "after": 3104203
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:37:47.581Z",
+        "before": 3104203,
+        "after": 3104204
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:38:18.434Z",
+        "before": 3104204,
+        "after": 3104205
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:38:40.483Z",
+        "before": 2552491,
+        "after": 2552539
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:38:40.483Z",
+        "before": 2917076,
+        "after": 2917126
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-IRON",
+        "at": "2026-10-31T10:38:58.358Z",
+        "before": 2552539,
+        "after": null
+      }
+    ],
+    "omittedChanges": 66
+  }
+}
