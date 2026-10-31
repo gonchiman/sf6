@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS } from './legendAnalysis.ts'
-import { createLegendPlayersDescriptor, parseLegendPlayersDataset, parseLegendPlayersDescriptor,
+import { createLegendPlayersDescriptor, filterLegendPlayers, legendPlayerCharacterOptions, parseLegendPlayersDataset, parseLegendPlayersDescriptor,
   parseLegendPlayersManifest, sortLegendPlayers } from './legendPlayers.ts'
 import { createLegendPlayersFeed } from './legendPlayersFeed.ts'
 import type { LegendPlayersDataset, LegendPlayersManifest } from '../types/legendPlayers.ts'
@@ -114,6 +114,41 @@ test('sorting uses Japanese display names, preserves ties, and never mutates the
   const names = new Map([['ryu', 'あ'], ['ken', 'い'], ['chunli', 'う']])
   assert.deepEqual(sortLegendPlayers(rows, 'characterId', 'asc', names).map(row => row.id), ['entry-1', 'entry-2', 'entry-3'])
   assert.deepEqual(sortLegendPlayers(rows, 'rank', 'desc').map(row => row.id), ['entry-2', 'entry-3', 'entry-1'])
+  assert.deepEqual(rows, original)
+})
+
+test('name filtering normalizes case and width, combines the character condition, and preserves source identities', () => {
+  const rows = dataset().players.map((row, index) => ({ ...row, playerName: index === 1 ? 'Other' : '＠Sycom | ｻﾝﾌﾟﾙ', playerId: '987654321' }))
+  const original = structuredClone(rows)
+  assert.deepEqual(filterLegendPlayers(rows, { query: '  ＳＹＣＯＭ  ', characterId: '' }), [rows[0], rows[2]])
+  assert.deepEqual(filterLegendPlayers(rows, { query: 'サンプル', characterId: 'chunli' }), [rows[2]])
+  assert.deepEqual(filterLegendPlayers(rows, { query: 'sycom', characterId: 'ken' }), [])
+  assert.deepEqual(filterLegendPlayers(rows, { query: '　 ', characterId: 'ken' }), [rows[1]])
+  assert.deepEqual(filterLegendPlayers(rows, { query: '', characterId: '' }), rows)
+  assert.equal(filterLegendPlayers(rows, { query: 'sycom', characterId: '' })[0], rows[0])
+  assert.deepEqual(rows, original)
+})
+
+test('name filtering is literal and does not search account IDs or character IDs', () => {
+  const rows = [{ ...dataset().players[0], playerName: 'Name [A].*', playerId: '987654321' }]
+  for (const query of ['987654321', 'ryu', 'リュウ', 'missing', '^Name']) {
+    assert.deepEqual(filterLegendPlayers(rows, { query, characterId: '' }), [])
+  }
+  assert.deepEqual(filterLegendPlayers(rows, { query: '[a].*', characterId: '' }), rows)
+  assert.deepEqual(filterLegendPlayers([], { query: '', characterId: '' }), [])
+})
+
+test('character options deduplicate original rows, sort display names, and retain unlisted selections', () => {
+  const rows = [...dataset().players, dataset().players[0]]
+  const original = structuredClone(rows)
+  const names = new Map([['ryu', 'う'], ['ken', 'あ'], ['chunli', 'い'], ['ed', 'え']])
+  assert.deepEqual(legendPlayerCharacterOptions(rows, names, 'ken'), [
+    { id: 'ken', name: 'あ' }, { id: 'chunli', name: 'い' }, { id: 'ryu', name: 'う' },
+  ])
+  assert.deepEqual(legendPlayerCharacterOptions(rows, names, 'ed').at(-1), { id: 'ed', name: 'え' })
+  assert.deepEqual(legendPlayerCharacterOptions([], names, 'ken'), [{ id: 'ken', name: 'あ' }])
+  assert.deepEqual(legendPlayerCharacterOptions([], null, 'future_fighter'), [{ id: 'future_fighter', name: 'future_fighter' }])
+  assert.deepEqual(legendPlayerCharacterOptions([], names, ''), [])
   assert.deepEqual(rows, original)
 })
 

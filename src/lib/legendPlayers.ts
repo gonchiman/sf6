@@ -120,6 +120,23 @@ export function createLegendPlayersDescriptor(value: LegendPlayersDataset): Lege
   return descriptorFor(parseLegendPlayersDataset(value))
 }
 
+/** Match displayed names using the same text normalization as the character move search. */
+export function filterLegendPlayers(rows: readonly LegendPlayerRow[], filters: { query: string; characterId: string }): LegendPlayerRow[] {
+  const normalize = (value: string) => value.normalize('NFKC').trim().toLocaleLowerCase('ja')
+  const query = normalize(filters.query)
+  return rows.filter(row => (!filters.characterId || row.characterId === filters.characterId)
+    && (!query || normalize(row.playerName).includes(query)))
+}
+
+/** Keep an unlisted selection available when switching capture dates. */
+export function legendPlayerCharacterOptions(rows: readonly LegendPlayerRow[], names: ReadonlyMap<string, string> | null,
+  selectedId: string): { id: string; name: string }[] {
+  const ids = new Set(rows.map(row => row.characterId))
+  if (selectedId) ids.add(selectedId)
+  return [...ids].map(id => ({ id, name: names?.get(id) ?? id }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ja') || a.id.localeCompare(b.id))
+}
+
 /** Equal values retain source order; player names are labels, not unique identities. */
 export function sortLegendPlayers(rows: readonly LegendPlayerRow[], key: LegendPlayerSortKey,
   direction: LegendPlayerSortDirection, names?: ReadonlyMap<string, string>): LegendPlayerRow[] {
