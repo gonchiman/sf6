@@ -30,6 +30,18 @@ async function fixture(t: test.TestContext) {
   return { root, output, transport, calls }
 }
 
+function withPlayers(transport: LegendAnalysisTransport): void {
+  const read = transport.fetchPage
+  transport.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    value.entries.forEach((entry, index) => Object.assign(entry, {
+      playerName: `Synthetic player ${index}`, playerId: String(index + 1).padStart(10, '0'), region: '日本', platform: 'Steam',
+    }))
+    return value
+  }
+  transport.fetchPlayerRankedMatches = async (_id, characters) => Object.fromEntries(characters.map(id => [id, 123]))
+}
+
 test('run persists aggregates only after all checks and successful browser closure', async t => {
   const data = await fixture(t)
   const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
@@ -49,13 +61,9 @@ test('run persists aggregates only after all checks and successful browser closu
   for (const value of [SECRET, 'accountKey', 'profile/', 'cookies', 'storageState']) assert.equal(all.includes(value), false)
 })
 
-test('explicit player opt-in persists a complete separate projection with capture-local IDs', async t => {
-  const data = await fixture(t), read = data.transport.fetchPage
-  data.transport.fetchPage = async (page, url) => {
-    const value = await read(page, url)
-    value.entries.forEach((entry, index) => { entry.playerName = `Synthetic player ${index}` })
-    return value
-  }
+test('explicit player opt-in persists v2 fields with public IDs and a separate profile scope', async t => {
+  const data = await fixture(t)
+  withPlayers(data.transport)
   let includePlayers: boolean | undefined
   const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, {
     now, launch: async (_state, _signal, _env, enabled) => { includePlayers = enabled; return data.transport },
@@ -66,9 +74,14 @@ test('explicit player opt-in persists a complete separate projection with captur
   const manifest = JSON.parse(await readFile(resolve(playerDirectory, 'index.json'), 'utf8'))
   const players = JSON.parse(await readFile(resolve(playerDirectory, manifest.datasets[0].path), 'utf8'))
   assert.deepEqual(players.players, [
-    { id: 'entry-1', playerName: 'Synthetic player 0', characterId: 'ryu', rank: 1, masterRating: 2400 },
-    { id: 'entry-2', playerName: 'Synthetic player 1', characterId: 'ryu', rank: 2, masterRating: 2399 },
+    { id: 'entry-1', playerName: 'Synthetic player 0', characterId: 'ryu', rank: 1, masterRating: 2400, playerId: '0000000001', region: '日本', platform: 'Steam', rankedMatchCount: 123 },
+    { id: 'entry-2', playerName: 'Synthetic player 1', characterId: 'ryu', rank: 2, masterRating: 2399, playerId: '0000000002', region: '日本', platform: 'Steam', rankedMatchCount: 123 },
   ])
+  assert.equal(players.schemaVersion, 2)
+  assert.equal(manifest.schemaVersion, 1)
+  assert.deepEqual(players.rankedMatchScope, { actId: 'act-13', mode: 'ranked', collectionStartedAt: now().toISOString(), collectionEndedAt: now().toISOString() })
+  assert.equal(data.calls.act, 2)
+  assert.equal(result.report.profileReadCount, 2)
   assert.equal(players.totalCount, 2)
   assert.doesNotMatch(JSON.stringify(players), /accountKey|profile\/|cookies|storageState|synthetic-secret/)
   assert.doesNotMatch(JSON.stringify(result), /Synthetic player|playerName|accountKey/)
@@ -88,12 +101,8 @@ test('incomplete player capture writes only failure manifests and no fabricated 
 })
 
 test('player opt-in cannot publish a completed projection when browser closure fails', async t => {
-  const data = await fixture(t), read = data.transport.fetchPage
-  data.transport.fetchPage = async (page, url) => {
-    const value = await read(page, url)
-    value.entries.forEach(entry => { entry.playerName = 'Synthetic player' })
-    return value
-  }
+  const data = await fixture(t)
+  withPlayers(data.transport)
   data.transport.close = async () => { throw new Error('Synthetic player') }
   const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
   assert.equal(result.succeeded, false)
@@ -114,6 +123,78 @@ test('raw browser failures produce only a safe failure manifest, with no fabrica
   assert.equal(manifest.datasets.length, 0)
   assert.equal(manifest.availability.status, 'collection-failed')
   assert.equal((JSON.stringify(result) + text).includes(SECRET), false)
+})
+
+test('one profile read covers multiple listed characters of the same account and preserves confirmed zero', async t => {
+  const data = await fixture(t)
+  withPlayers(data.transport)
+  const read = data.transport.fetchPage, profiles: { playerId: string; characterIds: readonly string[] }[] = []
+  data.transport.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    Object.assign(value.entries[1], { accountKey: value.entries[0].accountKey, playerId: value.entries[0].playerId, characterId: 'arjun' })
+    return value
+  }
+  data.transport.fetchPlayerRankedMatches = async (playerId, characterIds) => {
+    profiles.push({ playerId, characterIds }); return { ryu: 0, arjun: 345 }
+  }
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+  assert.equal(result.succeeded, true)
+  assert.deepEqual(profiles, [{ playerId: '0000000001', characterIds: ['ryu', 'arjun'] }])
+  assert.equal(result.report.profileTotalCount, 1)
+  assert.equal(result.report.profileReadCount, 1)
+  const value = JSON.parse(await readFile(resolve(data.output, 'public/players', `${result.report.datasetId}.json`), 'utf8'))
+  assert.deepEqual(value.players.map((row: { rankedMatchCount: number }) => row.rankedMatchCount), [0, 345])
+})
+
+test('unavailable profile counts stop enrichment and never publish partial rows or substitute zero', async t => {
+  for (const count of [undefined, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const data = await fixture(t)
+    withPlayers(data.transport)
+    let reads = 0
+    data.transport.fetchPlayerRankedMatches = async () => { reads++; return count === undefined ? {} : { ryu: count } }
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+    assert.equal(result.succeeded, false)
+    assert.equal(result.report.reason, 'source-unconfirmed')
+    assert.equal(reads, 1)
+    assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+  }
+})
+
+test('profile CAPTCHA denial ends collection immediately and records bounded diagnostics without player IDs', async t => {
+  const data = await fixture(t)
+  withPlayers(data.transport)
+  let reads = 0
+  data.transport.fetchPlayerRankedMatches = async () => { reads++; throw new LegendAnalysisDomError('http-denied') }
+  data.transport.getDiagnostics = () => ({ requestCount: 8, lastAttemptedPage: 1, successfulReadCount: 3,
+    lastStep: 'profile-navigation', lastErrorCode: 'http-denied', lastHttpStatus: 403,
+    humanVerification: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: true } })
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+  assert.equal(result.report.reason, 'access-unavailable')
+  assert.equal(reads, 1)
+  const safe = summarizeLegendAnalysisCaptureReport(result.report)
+  assert.equal(safe.lastStep, 'profile-navigation')
+  assert.equal(safe.humanVerification.wafAction, 'captcha')
+  assert.equal(safe.profileReadCount, 0)
+  assert.doesNotMatch(JSON.stringify(safe), /0000000001|Synthetic player/)
+  assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+})
+
+test('Act changes after profile collection invalidate the whole capture', async t => {
+  const data = await fixture(t)
+  withPlayers(data.transport)
+  data.transport.confirmAct = async () => { if (++data.calls.act === 2) throw new LegendAnalysisDomError('act-changed') }
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+  assert.equal(result.report.reason, 'source-changed')
+  assert.equal(result.succeeded, false)
+  assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+})
+
+test('aggregate-only collection never calls player profile enrichment', async t => {
+  const data = await fixture(t)
+  data.transport.fetchPlayerRankedMatches = async () => { assert.fail('Unexpected profile request') }
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
+  assert.equal(result.succeeded, true)
+  assert.equal((await readdir(resolve(data.output, 'public'))).includes('players'), false)
 })
 
 test('failed close suppresses completed dataset; an existing staging root is refused', async t => {
@@ -197,12 +278,16 @@ test('failure diagnostics distinguish end recheck, start recheck and Act recheck
 
 test('stdout report boundary accepts fixed enums and bounded integers and drops arbitrary identities and paths', () => {
   const report = summarizeLegendAnalysisCaptureReport({ status: 'failed', reason: SECRET, startedAt: SECRET, endedAt: SECRET,
-    requestCount: 30, successfulReadCount: 31, retryCount: 999, captureAttempt: 999, collectionPhase: SECRET,
+    requestCount: 30, successfulReadCount: 31, retryCount: 999, profileRetryCount: SECRET,
+    pageRecoveryAttemptCount: SECRET, pageRecoverySuccessCount: 999, captureAttempt: 999, collectionPhase: SECRET,
     lastAttemptedPage: Number.MAX_SAFE_INTEGER, datasetId: `legend-${SECRET}`, lastStep: SECRET, domErrorCode: SECRET,
     lastHttpStatus: 1000, lastSignedIn: SECRET, profileUrl: `https://example.com/${SECRET}`, storageState: { cookies: [SECRET] },
     localPath: `C:/Users/${SECRET}/private`, collectionErrorCode: SECRET, validationCheck: SECRET, recheckChangeKinds: ['legend-entries', SECRET] })
   assert.equal(report.successfulReadCount, 0)
   assert.equal(report.retryCount, 0)
+  assert.equal(report.profileRetryCount, 0)
+  assert.equal(report.pageRecoveryAttemptCount, 0)
+  assert.equal(report.pageRecoverySuccessCount, 0)
   assert.equal(report.captureAttempt, null)
   assert.equal(report.collectionPhase, 'preparation')
   assert.equal(report.lastAttemptedPage, null)
@@ -215,10 +300,56 @@ test('stdout report boundary accepts fixed enums and bounded integers and drops 
   assert.equal(report.recheckChangeKinds, null)
   assert.equal(JSON.stringify(report).includes(SECRET), false)
   assert.equal(JSON.stringify(report).includes('storageState'), false)
-  const known = summarizeLegendAnalysisCaptureReport({ collectionErrorCode: 'source-changed', validationCheck: 'end-recheck', recheckChangeKinds: ['non-legend-entries', 'metadata'] })
+  const known = summarizeLegendAnalysisCaptureReport({ collectionErrorCode: 'source-changed', validationCheck: 'end-recheck', recheckChangeKinds: ['non-legend-entries', 'metadata'], profileRetryCount: 2 })
+  assert.equal(known.profileRetryCount, 2)
   assert.equal(known.collectionErrorCode, 'source-changed')
   assert.equal(known.validationCheck, 'end-recheck')
   assert.deepEqual(known.recheckChangeKinds, ['non-legend-entries', 'metadata'])
+})
+
+test('stdout bounds page recovery success by the single permitted attempt and defaults old reports to zero', () => {
+  for (const value of [{}, { pageRecoveryAttemptCount: 0, pageRecoverySuccessCount: 1 },
+    { pageRecoveryAttemptCount: 2, pageRecoverySuccessCount: 1 }]) {
+    const safe = summarizeLegendAnalysisCaptureReport(value)
+    assert.equal(safe.pageRecoveryAttemptCount, 0)
+    assert.equal(safe.pageRecoverySuccessCount, 0)
+  }
+  const safe = summarizeLegendAnalysisCaptureReport({ pageRecoveryAttemptCount: 1, pageRecoverySuccessCount: 1 })
+  assert.equal(safe.pageRecoveryAttemptCount, 1)
+  assert.equal(safe.pageRecoverySuccessCount, 1)
+})
+
+test('adjacent page recovery reports its result and never retries a denied recheck', async t => {
+  for (const denied of [false, true]) {
+    const data = await fixture(t), pages: number[] = []
+    data.transport.fetchPage = async (page, sourceUrl) => {
+      pages.push(page); data.calls.read++
+      if (denied && pages.length === 3) throw new LegendAnalysisDomError('http-denied')
+      const offset = (page - 1) * 20
+      const entries = Array.from({ length: 20 }, (_, index) => ({
+        accountKey: (offset + index + 1).toString(16).padStart(64, '0'),
+        characterId: 'ryu', rank: offset + index + 1, masterRating: 2400 - offset - index,
+        isLegend: offset + index < 22,
+      }))
+      if (pages.length === 2) entries[0].accountKey = (20).toString(16).padStart(64, '0')
+      return { sourceUrl, page, pageSize: 20, totalCount: 800000, from: offset + 1, to: offset + 20,
+        nextPage: page + 1, actId: 'act-13', conditions: { ...LEGEND_ANALYSIS_CONDITIONS },
+        conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries }
+    }
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
+    const safe = summarizeLegendAnalysisCaptureReport(result.report)
+    assert.equal(safe.pageRecoveryAttemptCount, 1)
+    assert.equal(safe.pageRecoverySuccessCount, denied ? 0 : 1)
+    assert.equal(safe.retryCount, 0)
+    assert.equal(result.succeeded, !denied)
+    assert.deepEqual(pages, denied ? [1, 2, 1] : [1, 2, 1, 2, 2, 1])
+    if (denied) {
+      assert.equal(result.report.reason, 'access-unavailable')
+      assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json'])
+    } else {
+      assert.deepEqual(await validateLegendAnalysisDirectory(resolve(data.output, 'public')), { datasets: 1, entries: 22 })
+    }
+  }
 })
 
 test('collector MR-order failure propagates fixed diagnostics through the CLI and stdout summary', async t => {

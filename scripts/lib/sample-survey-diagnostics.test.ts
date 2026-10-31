@@ -3,9 +3,35 @@ import test from 'node:test'
 import type { Page } from 'playwright'
 import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
 import { SampleSurveyReadError } from './sample-survey-reader.ts'
-import { createSampleSurveyDiagnostics, serializeSampleSurveyFailureDiagnostic, SAMPLE_SURVEY_DIAGNOSTIC_MAX_BYTES } from './sample-survey-diagnostics.ts'
+import { createSampleSurveyDiagnostics, serializeSampleSurveyFailureDiagnostic, serializeSampleSurveyReadRetry, SAMPLE_SURVEY_DIAGNOSTIC_MAX_BYTES } from './sample-survey-diagnostics.ts'
 
 const secret = 'private-cookie-profile-id-and-url'
+const retry = { at: '2026-10-30T12:00:00.000Z', target: 'lp', page: 130877, attempt: 21,
+  retryNumber: 1, code: 'authentication-unconfirmed', httpStatus: 502, delayMs: 30000 }
+
+test('retry diagnostics whitelist bounded values without exporting failed rows or authentication details', () => {
+  for (const retryNumber of [1, 2, 3]) {
+    for (const code of ['authentication-unconfirmed', 'server-error']) {
+      for (const httpStatus of code === 'authentication-unconfirmed' ? [200, 502, 503, 504] : [502, 503, 504]) {
+        const line = serializeSampleSurveyReadRetry({ ...retry, code, retryNumber, httpStatus, accountId: secret, cookie: secret, url: secret, message: secret })!
+        assert.deepEqual(JSON.parse(line), { sampleSurveyReadRetry: { ...retry, code, retryNumber, httpStatus } })
+        assert.ok(!line.includes(secret)); assert.ok(Buffer.byteLength(line) < 1024)
+      }
+    }
+  }
+})
+
+test('unsupported retry evidence and hostile getters cannot be written as a recovery event', () => {
+  for (const patch of [{ at: '2026-02-30T00:00:00.000Z' }, { target: secret }, { page: -1 }, { page: 1.5 },
+    { attempt: 0 }, { retryNumber: 0 }, { retryNumber: 4 }, { retryNumber: 1.5 }, { retryNumber: '2' },
+    { code: 'human-verification' }, { httpStatus: 403 }, { httpStatus: 429 }, { httpStatus: 500 },
+    { code: 'server-error', httpStatus: 200 }, { delayMs: 0 }]) {
+    assert.equal(serializeSampleSurveyReadRetry({ ...retry, ...patch }), null)
+  }
+  for (const value of [null, [], {}, { get at() { throw new Error(secret) } }]) {
+    assert.equal(serializeSampleSurveyReadRetry(value), null)
+  }
+})
 function fakePage(options: { value?: unknown; gotoError?: unknown; evaluateError?: unknown; status?: number } = {}): Page {
   return { goto: async () => { if (options.gotoError) throw options.gotoError; return { status: () => options.status ?? 200 } },
     evaluate: async () => { if (options.evaluateError) throw options.evaluateError; return options.value },

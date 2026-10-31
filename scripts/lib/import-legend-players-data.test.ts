@@ -28,6 +28,15 @@ function dataset(day = '27', empty = false): LegendPlayersDataset {
   })
 }
 
+function enrichedDataset(day = '28'): LegendPlayersDataset {
+  const legacy = dataset(day)
+  return parseLegendPlayersDataset({ ...legacy, schemaVersion: 2, generatedAt: `2026-10-${day}T01:00:00.000Z`,
+    rankedMatchScope: { actId: legacy.act.id, mode: 'ranked', collectionStartedAt: `2026-10-${day}T00:01:00.000Z`,
+      collectionEndedAt: `2026-10-${day}T00:45:00.000Z` },
+    players: legacy.players.map((row, index) => ({ ...row, playerId: '0012345678', region: '日本', platform: 'Steam',
+      rankedMatchCount: index === 0 ? 0 : 1203 })) })
+}
+
 async function fixture(t: test.TestContext) {
   const parent = resolve('.cache/legend-players-import-tests')
   await mkdir(parent, { recursive: true })
@@ -132,5 +141,50 @@ test('aggregate-only dataset is rejected rather than interpreted as missing play
       mr: summarizeLegendMr([row.masterRating]) })), mr: summarizeLegendMr(players.map(row => row.masterRating)) }
   await writeFile(paths.input, JSON.stringify(aggregate))
   await assert.rejects(importLegendPlayersData(paths.input, paths.output, generatedAt))
+  assert.deepEqual(await snapshot(paths.output), before)
+})
+
+test('v1 and v2 player captures coexist and a failed refresh preserves both immutable datasets', async t => {
+  const paths = await fixture(t), legacy = dataset(), enriched = enrichedDataset()
+  await writeFile(paths.input, JSON.stringify(legacy))
+  await importLegendPlayersData(paths.input, paths.output, generatedAt)
+  const original = await snapshot(paths.output)
+  await writeFile(paths.input, JSON.stringify(enriched))
+  assert.deepEqual(await importLegendPlayersData(paths.input, paths.output, generatedAt), { datasets: 2, entries: 4 })
+  const combined = await snapshot(paths.output), saved = JSON.parse(combined[`${enriched.id}.json`])
+  assert.equal(combined[`${legacy.id}.json`], original[`${legacy.id}.json`])
+  assert.equal(saved.schemaVersion, 2)
+  assert.equal(saved.players[0].playerId, '0012345678')
+  assert.equal(saved.players[0].rankedMatchCount, 0)
+  assert.equal(saved.players[1].rankedMatchCount, 1203)
+  assert.equal(Object.hasOwn(JSON.parse(combined[`${legacy.id}.json`]).players[0], 'rankedMatchCount'), false)
+  assert.deepEqual(saved.rankedMatchScope, enriched.rankedMatchScope)
+  const failed = resolve(paths.root, 'failed-v2')
+  await writeAvailability(failed, 'collection-failed')
+  assert.deepEqual(await publishLegendPlayersData(failed, paths.output, generatedAt), { datasets: 2, entries: 4 })
+  const after = await snapshot(paths.output), manifest = JSON.parse(after['index.json'])
+  assert.equal(manifest.schemaVersion, 1)
+  assert.deepEqual(manifest.datasets.map((value: { id: string }) => value.id), [enriched.id, legacy.id])
+  assert.equal(manifest.availability.status, 'collection-failed')
+  for (const id of [legacy.id, enriched.id]) assert.equal(after[`${id}.json`], combined[`${id}.json`])
+})
+
+test('invalid enriched values and edits to an existing v2 capture never replace published history', async t => {
+  const paths = await fixture(t), enriched = enrichedDataset('27')
+  await writeFile(paths.input, JSON.stringify(enriched))
+  await importLegendPlayersData(paths.input, paths.output, generatedAt)
+  const before = await snapshot(paths.output), next = enrichedDataset()
+  for (const patch of [{ playerId: 'not-an-id' }, { region: '' }, { platform: { label: 'Steam' } },
+    { rankedMatchCount: -1 }, { rankedMatchCount: undefined }, { accountKey: 'must-not-publish' }]) {
+    await writeFile(paths.input, JSON.stringify({ ...next, players: [{ ...next.players[0], ...patch }, next.players[1]] }))
+    await assert.rejects(importLegendPlayersData(paths.input, paths.output, generatedAt))
+    assert.deepEqual(await snapshot(paths.output), before)
+  }
+  await writeFile(paths.input, JSON.stringify({ ...next, rankedMatchScope: { ...next.rankedMatchScope, actId: 'act-12' } }))
+  await assert.rejects(importLegendPlayersData(paths.input, paths.output, generatedAt))
+  const changed = structuredClone(enriched)
+  changed.players[0].rankedMatchCount = 1
+  await writeFile(paths.input, JSON.stringify(changed))
+  await assert.rejects(importLegendPlayersData(paths.input, paths.output, generatedAt), /同じID/)
   assert.deepEqual(await snapshot(paths.output), before)
 })

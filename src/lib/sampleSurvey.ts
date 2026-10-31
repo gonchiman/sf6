@@ -1,4 +1,4 @@
-import type { SampleSurveyChange, SampleSurveyConfig, SampleSurveyError, SampleSurveyObservation, SampleSurveyPlan, SampleSurveyRank, SampleSurveyRun, SampleSurveyServiceStatus, SampleSurveyStratumObservation, SampleSurveyStratumResult } from '../types/sampleSurvey.ts'
+import type { SampleSurveyBoundaryAcceptance, SampleSurveyChange, SampleSurveyConfig, SampleSurveyError, SampleSurveyObservation, SampleSurveyPlan, SampleSurveyRank, SampleSurveyRun, SampleSurveyServiceStatus, SampleSurveyStratumObservation, SampleSurveyStratumResult } from '../types/sampleSurvey.ts'
 import { parseSampleSurveyInsights } from './sampleSurveyInsights.ts'
 
 export const SAMPLE_SURVEY_RANKS: readonly SampleSurveyRank[] = ['ROOKIE', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER']
@@ -12,6 +12,8 @@ export const SAMPLE_SURVEY_MR_BANDS = [
 ] as const
 export const SAMPLE_SURVEY_INTERVAL_MS = 10_000
 export const SAMPLE_SURVEY_MAX_CHANGES = 64
+export const SAMPLE_SURVEY_MAX_BOUNDARY_DELTA = 20
+export const SAMPLE_SURVEY_MAX_BOUNDARY_RELATIVE_DELTA = 0.001
 export const DEFAULT_SAMPLE_SURVEY_CONFIG: SampleSurveyConfig = {
   ranks: [...SAMPLE_SURVEY_RANKS], rankSampleSize: 200, includeMr: true, mrSampleSize: 100, maxDurationMinutes: 120,
 }
@@ -97,14 +99,36 @@ const changeKinds: readonly SampleSurveyChange['kind'][] = [
 ]
 function nullableInteger(value: unknown): number | null { return value === null ? null : integer(value) }
 function nullableTime(value: unknown): string | null { return value === null ? null : time(value) }
+function parseBoundaryAcceptance(value: unknown, observation: SampleSurveyStratumObservation, population: number,
+  updatedAt: string): SampleSurveyBoundaryAcceptance {
+  const input = record(value, ['mode', 'referenceStart', 'referenceEnd', 'referenceCheckedAt', 'start', 'end', 'startObservedAt', 'endObservedAt'])
+  const mode = oneOf(input.mode, ['exact', 'approximate'] as const)
+  const referenceStart = integer(input.referenceStart), referenceEnd = integer(input.referenceEnd, referenceStart)
+  const start = integer(input.start), end = integer(input.end, start)
+  const referenceCheckedAt = time(input.referenceCheckedAt), startObservedAt = time(input.startObservedAt), endObservedAt = time(input.endObservedAt)
+  const startDelta = Math.abs(start - referenceStart), endDelta = Math.abs(end - referenceEnd)
+  // Compare both cuts with the same original range; rounding is toward fewer permitted positions.
+  const relativeLimit = Math.floor((referenceEnd - referenceStart) / (1 / SAMPLE_SURVEY_MAX_BOUNDARY_RELATIVE_DELTA))
+  if (start !== observation.startBefore || end !== observation.endBefore || population !== end - start
+    || observation.totalCountBefore === null || end > observation.totalCountBefore
+    || observation.startedAt === null || referenceCheckedAt < observation.startedAt
+    || referenceCheckedAt > startObservedAt || startObservedAt > endObservedAt
+    || endObservedAt > (observation.finishedAt ?? updatedAt)
+    || startDelta > SAMPLE_SURVEY_MAX_BOUNDARY_DELTA || endDelta > SAMPLE_SURVEY_MAX_BOUNDARY_DELTA
+    || startDelta + endDelta > relativeLimit
+    || (mode === 'exact' ? startDelta + endDelta !== 0
+      : startDelta + endDelta === 0 || !observation.boundaryChanged || observation.status === 'checked')) fail()
+  return { mode, referenceStart, referenceEnd, referenceCheckedAt, start, end, startObservedAt, endObservedAt }
+}
 function parseObservation(value: unknown, rows: SampleSurveyStratumResult[], startedAt: string, updatedAt: string): SampleSurveyObservation {
   const item = record(value, ['method', 'strata', 'changes', 'omittedChanges'])
-  if (item.method !== 'rank-position-interval-v1' || !Array.isArray(item.strata) || item.strata.length !== rows.length
+  const method = oneOf(item.method, ['rank-position-interval-v1', 'rank-position-tolerant-v1'] as const)
+  if (!Array.isArray(item.strata) || item.strata.length !== rows.length
     || !Array.isArray(item.changes) || item.changes.length > SAMPLE_SURVEY_MAX_CHANGES) fail()
   const withinPeriod = (at: string | null) => at === null || at >= startedAt && at <= updatedAt
   const strata = item.strata.map((value, index): SampleSurveyStratumObservation => {
     const row = rows[index], input = record(value, ['id', 'status', 'startedAt', 'finishedAt', 'totalCountBefore', 'totalCountAfter',
-      'startBefore', 'endBefore', 'startAfter', 'endAfter', 'boundaryChanged'])
+      'startBefore', 'endBefore', 'startAfter', 'endAfter', 'boundaryChanged'], method === 'rank-position-tolerant-v1' ? ['boundaryAcceptance'] : [])
     if (input.id !== row.id) fail()
     const status = oneOf(input.status, ['pending', 'collecting', 'checked', 'review-required'] as const)
     const observation: SampleSurveyStratumObservation = { id: row.id, status, startedAt: nullableTime(input.startedAt),
@@ -128,6 +152,11 @@ function parseObservation(value: unknown, rows: SampleSurveyStratumResult[], sta
     if (row.population !== null && startBefore !== null && endBefore !== null && row.population !== endBefore - startBefore) fail()
     if ((startBefore !== null && startAfter !== null && startBefore !== startAfter
       || endBefore !== null && endAfter !== null && endBefore !== endAfter) && !observation.boundaryChanged) fail()
+    if (method === 'rank-position-tolerant-v1') {
+      const accepted = Object.hasOwn(input, 'boundaryAcceptance')
+      if (accepted !== (row.population !== null)) fail()
+      if (accepted) observation.boundaryAcceptance = parseBoundaryAcceptance(input.boundaryAcceptance, observation, row.population!, updatedAt)
+    }
     if (status === 'checked' && ([observation.totalCountBefore, observation.totalCountAfter, startBefore, endBefore, startAfter, endAfter].some(value => value === null)
       || endBefore! > observation.totalCountBefore! || endAfter! > observation.totalCountAfter!
       || observation.boundaryChanged || startBefore !== startAfter || endBefore !== endAfter || row.population === null
@@ -141,7 +170,7 @@ function parseObservation(value: unknown, rows: SampleSurveyStratumResult[], sta
     if (!withinPeriod(at) || !rows.some(row => row.target === target && (stratumId === null || row.id === stratumId))) fail()
     return { kind, target, stratumId, at, before: nullableInteger(input.before), after: nullableInteger(input.after) }
   })
-  return { method: 'rank-position-interval-v1', strata, changes, omittedChanges: integer(item.omittedChanges) }
+  return { method, strata, changes, omittedChanges: integer(item.omittedChanges) }
 }
 export function parseSampleSurveyRun(value: unknown): SampleSurveyRun {
   const item = record(value, ['schemaVersion', 'id', 'planId', 'config', 'state', 'phase', 'startedAt', 'updatedAt', 'finishedAt',

@@ -10,8 +10,17 @@ export interface LegendAnalysisEntry {
   isLegend: boolean
   /** Opt-in visible label for the separate player list; omitted by aggregate-only readers. */
   playerName?: string
+  /** Opt-in public profile attributes; aggregate-only results never retain these. */
+  playerId?: string
+  region?: string
+  platform?: string
 }
-export type LegendAnalysisVerifiedPlayer = Pick<LegendAnalysisEntry, 'characterId' | 'rank' | 'masterRating'> & { playerName: string }
+export type LegendAnalysisVerifiedPlayer = Pick<LegendAnalysisEntry, 'characterId' | 'rank' | 'masterRating'> & {
+  playerName: string
+  playerId: string
+  region: string
+  platform: string
+}
 export interface LegendAnalysisPage {
   sourceUrl: string
   page: number
@@ -33,7 +42,7 @@ export type LegendAnalysisCollectionErrorCode = typeof LEGEND_ANALYSIS_COLLECTIO
 export const LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS = ['unclassified', 'configuration', 'membership-evidence', 'cancellation',
   'request-budget', 'page-identity', 'source-conditions', 'source-act', 'source-roster', 'page-size', 'pagination',
   'entry-count', 'entry-values', 'character-roster', 'first-rank', 'rank-position', 'rank-order', 'mr-order',
-  'duplicate-entry', 'legend-contiguity', 'legend-presence', 'end-recheck', 'start-recheck', 'terminal-coverage',
+  'duplicate-entry', 'legend-contiguity', 'legend-presence', 'adjacent-recheck', 'end-recheck', 'start-recheck', 'terminal-coverage',
   'capture-clock', 'completion'] as const
 export type LegendAnalysisValidationCheck = typeof LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS[number]
 export const LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS = ['legend-entries', 'non-legend-entries', 'metadata'] as const
@@ -91,6 +100,8 @@ export interface CollectLegendAnalysisOptions {
   onRetry?: (retryCount: number) => void
   /** Receives fixed diagnostic fields for collection-validation failures, before retry or final throw. */
   onAttemptFailure?: (failure: LegendAnalysisAttemptFailure) => void
+  /** At most one adjacent-page recovery across all attempts; fixed states only, never row values. */
+  onPageRecovery?: (state: 'started' | 'succeeded') => void
   onProgress?: (progress: LegendAnalysisCollectionProgress) => void
   /** Opt-in projection after complete validation; never receives account keys or non-Legend rows. */
   onVerifiedPlayers?: (players: readonly LegendAnalysisVerifiedPlayer[]) => void
@@ -126,6 +137,7 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
     || !['official-legend-badge', 'official-ranking-cutoff'].includes(options.membershipRule)) fail('configuration-invalid', 'configuration')
   if (options.membershipConfirmed !== true) fail('evidence-unconfirmed', 'membership-evidence')
   let requestCount = 0
+  let pageRecoveryUsed = false
   let captureAttempt = 0
   let currentPhase: LegendAnalysisCollectionPhase = 'preparation'
   let currentPage: number | null = null
@@ -149,6 +161,9 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
     }
     // Diagnostics must not change the collection's retry decision or replace its original error.
     try { options.onAttemptFailure?.(failure) } catch {}
+  }
+  const pageRecovery = (state: 'started' | 'succeeded'): void => {
+    try { options.onPageRecovery?.(state) } catch { /* Diagnostic failures cannot change acceptance. */ }
   }
   const read = async (page: number, phase: LegendAnalysisCollectionPhase = 'listing'): Promise<LegendAnalysisPage> => {
     cancelled()
@@ -176,7 +191,10 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       }
       if (options.onVerifiedPlayers && entry.isLegend && (typeof entry.playerName !== 'string'
         || !entry.playerName.trim() || entry.playerName !== entry.playerName.trim() || entry.playerName.length > 128
-        || /\p{Cc}/u.test(entry.playerName))) fail('evidence-unconfirmed', 'entry-values')
+        || /\p{Cc}/u.test(entry.playerName)
+        || typeof entry.playerId !== 'string' || !/^\d{1,20}$/.test(entry.playerId)
+        || [entry.region, entry.platform].some(value => typeof value !== 'string' || !value.trim()
+          || value !== value.trim() || value.length > 64 || /\p{Cc}/u.test(value)))) fail('evidence-unconfirmed', 'entry-values')
     }
     return value
   }
@@ -191,25 +209,51 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       const accepted: LegendAnalysisEntry[] = []
       const seen = new Set<string>()
       let current = first, previous: LegendAnalysisEntry | null = null, boundary = false
+      let previousPage: LegendAnalysisPage | null = null
       let pagesRead = 0
+      // Validate a whole candidate before mutating any accepted prefix, including its last row and Legend boundary.
+      const inspect = (page: LegendAnalysisPage) => {
+        if (page.pageSize !== first.pageSize) fail('source-changed', 'page-size')
+        const keys = new Set<string>(), additions: LegendAnalysisEntry[] = []
+        const precedingKeys = new Set(previousPage?.entries.map(entry => `${entry.accountKey}:${entry.characterId}`) ?? [])
+        let nextPrevious = previous, nextBoundary = boundary, duplicate = false, withinPageDuplicate = false, earlierPageDuplicate = false
+        for (const [index, entry] of page.entries.entries()) {
+          if (page.page === 1 && index === 0 && entry.rank !== 1) fail('source-changed', 'first-rank')
+          if (entry.rank > page.from + index) fail('source-changed', 'rank-position')
+          if (nextPrevious && entry.rank < nextPrevious.rank) fail('source-changed', 'rank-order')
+          if (nextPrevious && entry.masterRating > nextPrevious.masterRating) fail('source-changed', 'mr-order')
+          const key = `${entry.accountKey}:${entry.characterId}`
+          if (keys.has(key)) { duplicate = true; withinPageDuplicate = true }
+          if (seen.has(key)) { duplicate = true; if (!precedingKeys.has(key)) earlierPageDuplicate = true }
+          keys.add(key)
+          if (!entry.isLegend) nextBoundary = true
+          else {
+            if (nextBoundary) fail('source-changed', 'legend-contiguity')
+            additions.push(entry)
+          }
+          nextPrevious = entry
+        }
+        return { keys, additions, nextPrevious, nextBoundary, duplicate, withinPageDuplicate, earlierPageDuplicate }
+      }
       while (true) {
         pagesRead++
-        if (current.pageSize !== first.pageSize) fail('source-changed', 'page-size')
-        for (const [index, entry] of current.entries.entries()) {
-          if (current.page === 1 && index === 0 && entry.rank !== 1) fail('source-changed', 'first-rank')
-          if (entry.rank > current.from + index) fail('source-changed', 'rank-position')
-          if (previous && entry.rank < previous.rank) fail('source-changed', 'rank-order')
-          if (previous && entry.masterRating > previous.masterRating) fail('source-changed', 'mr-order')
-          const key = `${entry.accountKey}:${entry.characterId}`
-          if (seen.has(key)) fail('duplicate-entry', 'duplicate-entry')
-          seen.add(key)
-          if (!entry.isLegend) boundary = true
-          else {
-            if (boundary) fail('source-changed', 'legend-contiguity')
-            accepted.push(entry)
+        let candidate = inspect(current)
+        if (candidate.duplicate) {
+          if (pageRecoveryUsed || !previousPage || previousPage.page + 1 !== current.page || candidate.withinPageDuplicate || candidate.earlierPageDuplicate) {
+            fail('duplicate-entry', 'duplicate-entry')
           }
-          previous = entry
+          pageRecoveryUsed = true
+          pageRecovery('started')
+          const adjacentAgain = await read(previousPage.page)
+          if (!equal(stablePage(previousPage), stablePage(adjacentAgain))) fail('source-changed', 'adjacent-recheck', recheckChanges(previousPage, adjacentAgain))
+          current = await read(current.page)
+          candidate = inspect(current)
+          if (candidate.duplicate) fail('duplicate-entry', 'duplicate-entry')
+          pageRecovery('succeeded')
         }
+        for (const key of candidate.keys) seen.add(key)
+        accepted.push(...candidate.additions)
+        previous = candidate.nextPrevious; boundary = candidate.nextBoundary; previousPage = current
         if (boundary || current.nextPage === null) break
         current = await read(current.nextPage)
       }
@@ -244,8 +288,8 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
             'レジェンド掲載の終端と先頭を再確認した。取得時点が異なる全行の同時点性を保証するものではない。',
             'プレイヤー名、識別子、プロフィールリンク、行データ、照合用一時ハッシュは保存していない。'] },
       })
-      options.onVerifiedPlayers?.(accepted.map(({ playerName, characterId, rank, masterRating }) => ({
-        playerName: playerName!, characterId, rank, masterRating,
+      options.onVerifiedPlayers?.(accepted.map(({ playerName, playerId, region, platform, characterId, rank, masterRating }) => ({
+        playerName: playerName!, playerId: playerId!, region: region!, platform: platform!, characterId, rank, masterRating,
       })))
       progress('complete', null)
       return { dataset, requestCount, retryCount: attempt, pagesRead }

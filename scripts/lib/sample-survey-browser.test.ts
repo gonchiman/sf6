@@ -6,7 +6,9 @@ import type { Browser, Page } from 'playwright'
 import { createSampleSurveyReader, observeSampleSurveyRows } from './sample-survey-browser.ts'
 import { createParallelFetchBrowserSession, observeParallelFetchChallenge } from './parallel-fetch-browser.ts'
 import type { ParallelFetchBrowserDependencies } from './parallel-fetch-browser.ts'
-import { SampleSurveyReadError } from './sample-survey-reader.ts'
+import { SampleSurveyReadError, SampleSurveyRetryableReadError } from './sample-survey-reader.ts'
+import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
+import type { ParallelFetchReadDiagnostics } from '../../src/types/parallelFetch.ts'
 import type { ParallelFetchNavigationGate } from './parallel-fetch-runner.ts'
 import { RankDistributionDomError } from './rank-distribution-dom.ts'
 
@@ -16,7 +18,9 @@ type Capture = NonNullable<Awaited<ReturnType<typeof observeSampleSurveyRows>>>
 type Target = 'lp' | 'mr'
 function fixture() {
   let loaded = 0, launched = 0, contextClosed = 0, browserClosed = 0, captureCount = 0
-  let challenge = false, readError: Error | null = null
+  let challenge = false, readError: Error | null = null, status = 200
+  let readDiagnostics: Record<string, unknown> | null = null
+  let network: { status?: number; failed?: boolean; resource?: string; site?: string; headers?: Record<string, string> | null }[] = []
   let mutate: ((capture: Capture) => void) | undefined
   let duringCapture: ((page: Page) => Promise<void>) | undefined
   const pages: Page[] = [], navigation: { target: Target; page: number }[] = [], factoryOptions: unknown[] = []
@@ -33,7 +37,18 @@ function fixture() {
       let url = 'about:blank'
       const page = Object.assign(new EventEmitter(), {
         close: async () => {}, url: () => url,
-        goto: async (value: string) => { url = value; return { status: () => 200 } },
+        goto: async (value: string) => {
+          url = value
+          for (const event of network) {
+            const request = { url: () => event.site ?? value, resourceType: () => event.resource ?? 'fetch' }
+            const events = page as unknown as EventEmitter
+            events.emit('request', request)
+            if (event.failed) events.emit('requestfailed', request)
+            else events.emit('response', { request: () => request, status: () => event.status,
+              ...(event.headers === null ? {} : { headers: () => event.headers ?? {} }) })
+          }
+          return { status: () => status }
+        },
         evaluate: async (fn: unknown) => {
           if (fn === observeParallelFetchChallenge) return challenge
           if (fn !== observeSampleSurveyRows) return null
@@ -49,7 +64,7 @@ function fixture() {
       return page
     },
   }) } as unknown as Browser
-  const factory = (target: Target) => (guarded: Page, options: { navigateWithPacing: ParallelFetchNavigationGate }) => {
+  const factory = (target: Target) => (guarded: Page, options: { navigateWithPacing: ParallelFetchNavigationGate; onObservation(value: unknown): void }) => {
     const page = pages.at(-1)!
     targetFor.set(page, target)
     factoryOptions.push(options)
@@ -58,13 +73,15 @@ function fixture() {
         await options.navigateWithPacing(() => guarded.goto(url))
         navigation.push({ target, page: pageNumber }); lastPages.set(page, pageNumber)
         await guarded.evaluate(() => null, { salt })
+        if (readDiagnostics) options.onObservation({ authenticationEvidence: readDiagnostics.lastAuthenticationEvidence,
+          loginRequiredHeading: readDiagnostics.lastLoginRequiredHeading, rankingReadable: readDiagnostics.lastRankingReadable })
         if (readError) throw readError
         return { page: pageNumber, pageSize: 2, totalCount: 6, totalPages: 3, sourceUrl: url,
           entries: rows(target, pageNumber).map(row => target === 'lp'
             ? { accountKey: row.accountKey, leaguePoint: row.value, rankId: row.rankId }
             : { accountKey: row.accountKey, masterRating: row.value }) }
       },
-      getDiagnostics: () => ({ lastHttpStatus: 200 }),
+      getDiagnostics: () => ({ lastHttpStatus: status, ...(readDiagnostics ? { lastAttemptedPage: lastPages.get(page), ...readDiagnostics } : {}) }),
     }
   }
   const dependencies: ParallelFetchBrowserDependencies = {
@@ -75,7 +92,10 @@ function fixture() {
   return { dependencies, pages, navigation, factoryOptions,
     mutate: (value: typeof mutate) => { mutate = value },
     duringCapture: (value: typeof duringCapture) => { duringCapture = value },
-    setChallenge: () => { challenge = true }, setError: (error: Error) => { readError = error },
+    setChallenge: () => { challenge = true }, setError: (error: Error | null) => { readError = error },
+    setStatus: (value: number) => { status = value },
+    setReadDiagnostics: (value: Record<string, unknown> | null) => { readDiagnostics = value },
+    setNetwork: (value: typeof network) => { network = value },
     stats: () => ({ loaded, launched, contextClosed, browserClosed, captureCount }),
   }
 }
@@ -188,6 +208,205 @@ test('fixed diagnostic evidence is delivered before closing without replacing th
   assert.equal((evidence[0] as { innerCode: string }).innerCode, 'authentication-unconfirmed')
   assert.doesNotMatch(JSON.stringify(evidence), /synthetic-cookie|synthetic-private-storage-error|"accountId"|"accountKey"|"salt"/)
   assert.equal(f.stats().browserClosed, 1)
+})
+
+function transientAuthentication(f: ReturnType<typeof fixture>, status: 200 | 502 | 503 | 504 = 502) {
+  f.setError(new RankDistributionDomError('authentication-unconfirmed'))
+  f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
+  f.setNetwork(status === 200 ? [] : [{ status }])
+}
+const retryable = (code: string, status: number) => (error: unknown) => {
+  errorCode(code)(error)
+  assert.ok(error instanceof SampleSurveyRetryableReadError)
+  assert.equal(error.transientHttpStatus, status)
+  return true
+}
+const terminal = (code: string) => (error: unknown) => {
+  errorCode(code)(error)
+  assert.ok(!(error instanceof SampleSurveyRetryableReadError))
+  return true
+}
+
+test('HTTP 200 retry evidence is reserved for an unconfirmed authentication read', () => {
+  assert.equal(new SampleSurveyRetryableReadError('authentication-unconfirmed', 200).transientHttpStatus, 200)
+  assert.throws(() => new SampleSurveyRetryableReadError('server-error', 200), terminal('read-failed'))
+})
+
+for (const target of ['lp', 'mr'] as const) for (const status of [200, 502] as const) test(`${target} auth failure (${status}) retains the strict reader until a caller-paced same-page recovery`, async () => {
+  const f = fixture(), evidence: unknown[] = [], controller = new AbortController()
+  const reader = await createSampleSurveyReader({ signal: controller.signal, onReadFailure(value) { evidence.push(value) } }, { browser: f.dependencies })
+  await reader.readPage(target, 1)
+  transientAuthentication(f, status)
+  await assert.rejects(reader.readPage(target, 2), retryable('authentication-unconfirmed', status))
+  assert.equal(f.navigation.length, 2, 'the adapter never starts its own retry')
+  assert.equal(f.stats().captureCount, 1, 'failed authentication never enters private capture')
+  assert.equal(f.stats().contextClosed, 0); assert.equal(evidence.length, 0)
+  f.setError(null); f.setNetwork([])
+  f.setReadDiagnostics({ lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
+  const recovered = await reader.readPage(target, 2)
+  assert.equal(recovered.page, 2); assert.equal(recovered.entries[0].accountId, '10003')
+  assert.deepEqual(f.navigation.map(value => value.page), [1, 2, 2])
+  assert.equal(f.stats().captureCount, 2)
+  await reader.close()
+  assert.equal(evidence.length, 0, 'successful strict recovery discards the pending failure')
+  assert.equal(f.stats().contextClosed, 1)
+  assert.equal(f.stats().loaded, 1); assert.equal(f.stats().launched, 1)
+  assert.equal(f.pages.length, 1, 'recovery retains the same page and browser session')
+  for (const options of f.factoryOptions as { allowReadablePagesAfterSignIn: boolean }[]) assert.equal(options.allowReadablePagesAfterSignIn, false)
+})
+
+for (const status of [502, 503, 504] as const) test(`a verified main-document ${status} can be retried before initial sign-in`, async () => {
+  const f = fixture(), evidence: unknown[] = []
+  f.setStatus(status); f.setError(new RankDistributionDomError('server-error'))
+  f.setNetwork([{ status, resource: 'document' }])
+  const reader = await createSampleSurveyReader({ signal: new AbortController().signal, onReadFailure(value) { evidence.push(value) } }, { browser: f.dependencies })
+  await assert.rejects(reader.readPage('lp', 1), retryable('server-error', status))
+  assert.equal(f.stats().contextClosed, 0); assert.equal(f.stats().captureCount, 0); assert.equal(evidence.length, 0)
+  f.setStatus(200); f.setError(null); f.setNetwork([])
+  await reader.readPage('lp', 1); await reader.close()
+  assert.deepEqual(f.navigation.map(value => value.page), [1, 1]); assert.equal(evidence.length, 0)
+})
+
+for (const target of ['lp', 'mr'] as const) for (const status of [200, 502] as const) test(`${target} authentication retry (${status}) needs a prior strict success for that target`, async () => {
+  const f = fixture(), reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies })
+  if (target === 'mr') await reader.readPage('lp', 1)
+  transientAuthentication(f, status)
+  await assert.rejects(reader.readPage(target, 1), terminal('authentication-unconfirmed'))
+  assert.equal(f.stats().contextClosed, 1)
+})
+
+test('a later unconfirmed or fatal read replaces pending evidence and closes once when the caller stops', async () => {
+  for (const code of ['authentication-unconfirmed', 'page-mismatch'] as const) {
+    const f = fixture(), evidence: { innerCode: string | null; diagnostics?: ParallelFetchReadDiagnostics }[] = []
+    const reader = await createSampleSurveyReader({ signal: new AbortController().signal, onReadFailure(value) { evidence.push(value) } }, { browser: f.dependencies })
+    await reader.readPage('lp', 1); transientAuthentication(f)
+    await assert.rejects(reader.readPage('lp', 2), retryable('authentication-unconfirmed', 502))
+    f.setNetwork([]); f.setError(new RankDistributionDomError(code))
+    await assert.rejects(reader.readPage('lp', 2), code === 'authentication-unconfirmed' ? retryable(code, 200) : terminal(code))
+    await reader.close()
+    assert.equal(evidence.length, 1); assert.equal(evidence[0].innerCode, code)
+    assert.equal(evidence[0].diagnostics?.trace?.network.length, 0, 'final evidence does not reuse the initial 502')
+    assert.equal(f.stats().contextClosed, 1)
+  }
+})
+
+for (const finish of ['close', 'abort'] as const) test(`pending transient evidence is flushed once on ${finish} when the runner cannot retry`, async () => {
+  const f = fixture(), evidence: { innerCode: string | null; diagnostics?: ParallelFetchReadDiagnostics }[] = [], controller = new AbortController()
+  const reader = await createSampleSurveyReader({ signal: controller.signal, onReadFailure(value) {
+    evidence.push(value); throw new Error('synthetic-private-log-failure')
+  } }, { browser: f.dependencies })
+  await reader.readPage('lp', 1); transientAuthentication(f)
+  await assert.rejects(reader.readPage('lp', 2), retryable('authentication-unconfirmed', 502))
+  assert.equal(evidence.length, 0)
+  if (finish === 'abort') controller.abort()
+  await reader.close(); await reader.close()
+  assert.equal(evidence.length, 1); assert.equal(evidence[0].innerCode, 'authentication-unconfirmed')
+  assert.equal(evidence[0].diagnostics?.trace?.network[0].status, 502)
+  assert.equal(f.stats().contextClosed, 1)
+  assert.doesNotMatch(JSON.stringify(evidence), /synthetic-cookie|synthetic-private-log-failure|"accountId"|"accountKey"|"salt"|profile\//)
+})
+
+test('a complete ambiguous HTTP 200 page permits strict rereading without a Buckler 5xx', async () => {
+  const networks = [[], [{ failed: true, resource: 'fetch', site: 'https://example.com/unrelated' }, { failed: true, resource: 'other' }],
+    [{ status: 502, site: 'https://example.com/unrelated' }], [{ status: 502, resource: 'image' }]]
+  for (const network of networks) {
+    const f = fixture(), reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies })
+    await reader.readPage('lp', 1); transientAuthentication(f, 200); f.setNetwork(network)
+    await assert.rejects(reader.readPage('lp', 2), retryable('authentication-unconfirmed', 200))
+    assert.equal(f.stats().captureCount, 1)
+    await reader.close()
+  }
+})
+
+test('authentication retry requires complete current-read evidence without a denial or challenge', async () => {
+  const scenarios: { name: string; change(f: ReturnType<typeof fixture>): void; code?: string }[] = [
+    { name: 'unchecked protection headers', change: f => f.setNetwork([{ status: 502, headers: null }]) },
+    { name: 'omitted events', change: f => f.setNetwork(Array.from({ length: 81 }, () => ({ status: 502 }))) },
+    { name: 'login heading', change: f => f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: true, lastRankingReadable: true }) },
+    { name: 'unreadable ranking', change: f => f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: false }) },
+    { name: 'missing header evidence', change: f => f.setReadDiagnostics(null) },
+    { name: 'conflicting controls', change: f => f.setReadDiagnostics({ lastAuthenticationEvidence: 'conflicting-controls', lastLoginRequiredHeading: false, lastRankingReadable: true }) },
+    ...[401, 403, 404, 429].map(status => ({ name: `subresource ${status}`, change: (f: ReturnType<typeof fixture>) => f.setNetwork([{ status: 502 }, { status }]) })),
+    ...[401, 403, 429].map(status => ({ name: `main response ${status}`, change: (f: ReturnType<typeof fixture>) => f.setStatus(status), code: 'http-denied' })),
+    { name: 'visible human verification', change: f => f.setChallenge(), code: 'human-verification' },
+    { name: 'WAF CAPTCHA', change: f => f.setNetwork([{ status: 502 }, { status: 405, headers: { 'x-amzn-waf-action': 'captcha' } }]), code: 'human-verification' },
+    { name: 'WAF challenge', change: f => f.setNetwork([{ status: 202, headers: { 'x-amzn-waf-action': 'challenge' } }]), code: 'human-verification' },
+    ...(['login-required', 'condition-mismatch', 'page-mismatch', 'read-failed', 'timeout'] as const).map(code => ({ name: code, change: (f: ReturnType<typeof fixture>) => f.setError(new RankDistributionDomError(code)), code })),
+  ]
+  for (const scenario of scenarios) {
+    const f = fixture(), reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies })
+    await reader.readPage('lp', 1); transientAuthentication(f); scenario.change(f)
+    await assert.rejects(reader.readPage('lp', 2), terminal(scenario.code ?? 'authentication-unconfirmed'), scenario.name)
+    assert.equal(f.stats().contextClosed, 1, scenario.name)
+    assert.ok(f.navigation.length <= 2, scenario.name)
+  }
+})
+
+test('transient document eligibility requires the exact main response and checked protection evidence', async () => {
+  for (const events of [[], [{ status: 502 }], [{ status: 503, resource: 'document' }], [{ status: 502, resource: 'document', headers: null }],
+    [{ status: 502, resource: 'document' }, { status: 429 }]]) {
+    const f = fixture(); f.setStatus(502); f.setError(new RankDistributionDomError('server-error')); f.setNetwork(events)
+    const reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies })
+    await assert.rejects(reader.readPage('lp', 1), terminal('server-error'))
+    assert.equal(f.stats().contextClosed, 1)
+  }
+})
+
+test('missing, omitted, post-stop and protected observation traces never enable recovery', async () => {
+  const mutations: ((value: ParallelFetchReadDiagnostics) => void)[] = [
+    value => { delete value.trace },
+    value => { value.trace!.droppedObservations = 1 },
+    value => { value.trace!.observations = [] },
+    value => { value.trace!.observations[0].humanVerification = true },
+    value => { value.trace!.observations[0].humanVerification = null },
+    value => { value.trace!.observations[0].loginRequiredHeading = true },
+    value => { value.trace!.observations[0].phase = 'after-stop' },
+    value => { value.trace!.network[0].phase = 'after-stop' },
+    value => { value.trace!.postStop = { durationMs: 0, outcome: 'not-run' } },
+  ]
+  for (const mutate of mutations) {
+    const f = fixture()
+    const reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies,
+      async createSession(options, dependencies) {
+        const session = await createParallelFetchBrowserSession(options, dependencies)
+        return { ...session, async createReader(...args) {
+          const inner = await session.createReader(...args)
+          return { ...inner, async readPage(...args) {
+            try { return await inner.readPage(...args) } catch (error) {
+              assert.ok(error instanceof ParallelFetchReadError)
+              const evidence = structuredClone(error.diagnostics!)
+              mutate(evidence)
+              throw new ParallelFetchReadError(error.code, error.httpStatus, evidence)
+            }
+          } }
+        } }
+      },
+    })
+    await reader.readPage('lp', 1); transientAuthentication(f)
+    await assert.rejects(reader.readPage('lp', 2), terminal('authentication-unconfirmed'))
+    assert.equal(f.stats().contextClosed, 1)
+  }
+})
+
+test('private-row mismatches cannot be reclassified as transient even alongside a 502', async () => {
+  const f = fixture(), reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies })
+  await reader.readPage('lp', 1)
+  f.setNetwork([{ status: 502 }]); f.mutate(value => { value.rows[0].value++ })
+  await assert.rejects(reader.readPage('lp', 2), terminal('condition-mismatch'))
+  assert.equal(f.stats().contextClosed, 1)
+})
+
+test('an HTTP 200 recovery still requires a fresh verified private capture', async () => {
+  const f = fixture(), reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies })
+  await reader.readPage('lp', 1); transientAuthentication(f, 200)
+  await assert.rejects(reader.readPage('lp', 2), retryable('authentication-unconfirmed', 200))
+  f.setError(null)
+  f.setReadDiagnostics({ lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
+  f.mutate(value => { value.rows[0].value++ })
+  await assert.rejects(reader.readPage('lp', 2), terminal('condition-mismatch'))
+  assert.deepEqual(f.navigation.map(value => value.page), [1, 2, 2])
+  assert.equal(f.stats().captureCount, 2)
+  assert.equal(f.stats().contextClosed, 1)
 })
 
 test('WAF CAPTCHA during private capture rejects promptly and closes before any late result', async () => {

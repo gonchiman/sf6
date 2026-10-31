@@ -140,7 +140,7 @@ async function bundleFixture(t: test.TestContext) {
   t.after(async () => { if (legendAnalysisPathWithin(parent, root)) await rm(root, { recursive: true, force: true }) })
   return root
 }
-async function writeBundle(root: string, includePlayers: boolean, day = '27', failed = false) {
+async function writeBundle(root: string, includePlayers: boolean, day = '27', failed = false, playerSchemaVersion: 1 | 2 = 1) {
   const captured = `2026-10-${day}T00:00:00.000Z`
   const players = parseLegendPlayersDataset({ schemaVersion: 1, id: `legend-${captured.replace(/[:.]/g, '-')}`,
     captureStartedAt: captured, captureEndedAt: captured, generatedAt: captured,
@@ -149,11 +149,15 @@ async function writeBundle(root: string, includePlayers: boolean, day = '27', fa
     conditions: { region: 'all', platform: 'all', characters: 'all', users: 'source-default' }, totalCount: 1,
     players: [{ id: 'entry-1', playerName: '人工プレイヤー', characterId: 'ryu', rank: 1, masterRating: 2500 }],
     validation: { status: 'verified', coverage: 'all-listed-legend-entries', checks: [...LEGEND_ANALYSIS_VALIDATION_CHECKS], notes: ['人工テスト。'] } })
+  const playerDataset = playerSchemaVersion === 1 ? players : parseLegendPlayersDataset({ ...players, schemaVersion: 2,
+    generatedAt: `2026-10-${day}T00:46:00.000Z`, rankedMatchScope: { actId: players.act.id, mode: 'ranked',
+      collectionStartedAt: `2026-10-${day}T00:01:00.000Z`, collectionEndedAt: `2026-10-${day}T00:45:00.000Z` },
+    players: players.players.map(row => ({ ...row, playerId: '0001234567', region: '日本', platform: 'Steam', rankedMatchCount: 0 })) })
   const { players: _rows, ...metadata } = players
   const aggregate = { ...metadata, characterIds: ['ryu'],
     characters: [{ characterId: 'ryu', name: 'リュウ', count: 1, mr: summarizeLegendMr([2500]) }], mr: summarizeLegendMr([2500]) }
   const manifest = { schemaVersion: 1, generatedAt: bundleGeneratedAt, source: LEGEND_ANALYSIS_SOURCE,
-    datasets: failed ? [] : [createLegendPlayersDescriptor(players)],
+    datasets: failed ? [] : [createLegendPlayersDescriptor(playerDataset)],
     ...(failed ? { availability: { status: 'collection-failed', checkedAt: bundleGeneratedAt, message: '取得失敗' } } : {}) }
   await mkdir(root, { recursive: true })
   await writeFile(resolve(root, 'index.json'), JSON.stringify(manifest))
@@ -161,7 +165,7 @@ async function writeBundle(root: string, includePlayers: boolean, day = '27', fa
   if (includePlayers) {
     await mkdir(resolve(root, 'players'))
     await writeFile(resolve(root, 'players/index.json'), JSON.stringify(manifest))
-    if (!failed) await writeFile(resolve(root, `players/${players.id}.json`), JSON.stringify(players))
+    if (!failed) await writeFile(resolve(root, `players/${players.id}.json`), JSON.stringify(playerDataset))
   }
   return players.id
 }
@@ -217,4 +221,47 @@ test('bundle input mismatches and invalid player files cannot modify either exis
   await writeFile(resolve(bad, `players/${id}.json`), JSON.stringify(invalid))
   await assert.rejects(publishLegendDailyBundle(bad, output, true, bundleGeneratedAt))
   assert.deepEqual(await bundleSnapshot(output), before)
+})
+
+test('daily bundle preserves v1 and v2 history while profile collection times stay separate from ranking descriptors', async t => {
+  const root = await bundleFixture(t), first = resolve(root, 'v1'), second = resolve(root, 'v2'), failed = resolve(root, 'failed'), output = resolve(root, 'public')
+  const firstId = await writeBundle(first, true)
+  await publishLegendDailyBundle(first, output, true, bundleGeneratedAt)
+  const legacy = await bundleSnapshot(output)
+  const secondId = await writeBundle(second, true, '28', false, 2)
+  assert.deepEqual(await validateLegendDailyBundle(second, true), { datasets: 1, entries: 1 })
+  await publishLegendDailyBundle(second, output, true, bundleGeneratedAt)
+  const combined = await bundleSnapshot(output)
+  const aggregate = JSON.parse(combined[`${secondId}.json`]), players = JSON.parse(combined[`players/${secondId}.json`])
+  assert.equal(aggregate.schemaVersion, 1)
+  assert.equal(players.schemaVersion, 2)
+  assert.equal(players.captureStartedAt, aggregate.captureStartedAt)
+  assert.equal(players.captureEndedAt, aggregate.captureEndedAt)
+  assert.ok(players.rankedMatchScope.collectionStartedAt > aggregate.captureEndedAt)
+  assert.ok(players.rankedMatchScope.collectionEndedAt < players.generatedAt)
+  assert.equal(players.players[0].rankedMatchCount, 0)
+  assert.equal(combined[`players/${firstId}.json`], legacy[`players/${firstId}.json`])
+  assert.deepEqual(JSON.parse(combined['players/index.json']).datasets, JSON.parse(combined['index.json']).datasets)
+  await writeBundle(failed, true, '29', true, 2)
+  await publishLegendDailyBundle(failed, output, true, bundleGeneratedAt)
+  const after = await bundleSnapshot(output)
+  for (const id of [firstId, secondId]) {
+    assert.equal(after[`${id}.json`], combined[`${id}.json`])
+    assert.equal(after[`players/${id}.json`], combined[`players/${id}.json`])
+  }
+  assert.equal(JSON.parse(after['players/index.json']).schemaVersion, 1)
+  assert.equal(JSON.parse(after['players/index.json']).availability.status, 'collection-failed')
+})
+
+test('invalid v2 profile values leave both aggregate and player history unchanged', async t => {
+  const root = await bundleFixture(t), first = resolve(root, 'v1'), incoming = resolve(root, 'v2'), output = resolve(root, 'public')
+  await writeBundle(first, true)
+  await publishLegendDailyBundle(first, output, true, bundleGeneratedAt)
+  const before = await bundleSnapshot(output), id = await writeBundle(incoming, true, '28', false, 2)
+  const playerPath = resolve(incoming, `players/${id}.json`), valid = JSON.parse(await readFile(playerPath, 'utf8'))
+  for (const patch of [{ playerId: 'not-an-id' }, { region: '' }, { platform: '' }, { rankedMatchCount: -1 }]) {
+    await writeFile(playerPath, JSON.stringify({ ...valid, players: [{ ...valid.players[0], ...patch }] }))
+    await assert.rejects(publishLegendDailyBundle(incoming, output, true, bundleGeneratedAt))
+    assert.deepEqual(await bundleSnapshot(output), before)
+  }
 })

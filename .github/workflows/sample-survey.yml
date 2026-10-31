@@ -24,7 +24,7 @@ on:
         type: number
         default: 10
       max_duration_minutes:
-        description: '取得時間上限（1〜120分、準備を含む）'
+        description: '取得時間上限（LPあり1〜120分、MRのみ1〜180分、準備を含む）'
         required: true
         type: number
         default: 10
@@ -41,7 +41,7 @@ jobs:
   collect:
     if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: windows-2025
-    timeout-minutes: 150
+    timeout-minutes: ${{ inputs.ranks == '' && inputs.include_mr && 210 || 150 }}
     permissions:
       contents: read
     outputs:

@@ -1,18 +1,23 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Page } from 'playwright'
-import { classifyLegendClickFailure, createLegendAnalysisPageReader, LegendAnalysisDomError, legendAnalysisPageUrl, legendAnalysisPageUrlMatches, observeLegendAnalysisDom, observeLegendAnalysisRoster, sanitizeLegendRosterDiagnostics } from './legend-analysis-dom.ts'
+import type { Page, Request, Response } from 'playwright'
+import { classifyLegendClickFailure, createLegendAnalysisPageReader, LegendAnalysisDomError, legendAnalysisPageUrl, legendAnalysisPageUrlMatches, observeLegendAnalysisDom, observeLegendAnalysisRoster, sanitizeLegendRosterDiagnostics, type LegendAnalysisPageReaderOptions } from './legend-analysis-dom.ts'
+import { matchesLegendRankedMatchRequest, observeLegendPlayerProfile } from './legend-player-profile-dom.ts'
 
-function fixture() {
+function fixture(options: Partial<LegendAnalysisPageReaderOptions> = {}) {
   let url = '', clock = 0, actId = 13, status = 200, redirected = false, readyOnAttempt = 1, controlReads = 0, cookieOverlay = false, autoOpen = false
   let signedIn = true, loginRequired = false, authenticationEvidence = 'logout-control'
   let bodyPage: number | null = null, staleReads = 0, duplicateReads = 0, identicalRanks = false, rankingReads = 0, challenge = false
   let sharedChallenge = false, unavailableChallengeDom = false
+  let profileMode = '1', profileStatus = 200, profilePlayerId: string | null = null, profileMatches: number | null = 42, profileStaleReads = 0
+  let profileFinished = false, renderSettled = false, wrongRequest = false, actAfterProfileResponse: number | null = null
+  const profileHeaders: Record<string, string> = {}, listeners = new Set<(request: Request) => void>(), starts: number[] = []
+  let responseWaiter: ((response: Response) => void) | null = null
   const headers: Record<string, string> = {}
-  const statuses: number[] = []
+  const statuses: number[] = [], profileStatuses: number[] = []
   const navigations: string[] = [], salts: string[] = [], waits: number[] = [], controls: string[] = []
   const page = {
-    goto: async (value: string) => { url = redirected ? 'https://example.com/unconfirmed' : value; navigations.push(value); const actual = statuses.shift() ?? status; return { status: () => actual, url: () => url, headers: () => ({ ...headers }) } },
+    goto: async (value: string) => { url = redirected ? 'https://example.com/unconfirmed' : value; navigations.push(value); starts.push(clock); profileMode = '1'; profileFinished = false; renderSettled = false; const actual = statuses.shift() ?? status; return { status: () => actual, url: () => url, headers: () => ({ ...headers }) } },
     url: () => url,
     evaluate: async (operation: { name: string }, input?: { salt: string }) => {
       if (!operation.name || operation.name === 'observeDistributionHumanVerification') {
@@ -20,6 +25,10 @@ function fixture() {
         return operation.name ? sharedChallenge : challenge
       }
       if (operation.name === 'observeLegendAnalysisAct') return { id: `act-${actId}`, label: `Act ${actId}` }
+      if (operation.name === 'settleLegendPlayerRender') { assert.equal(profileFinished, true); renderSettled = true; return }
+      if (operation.name === 'observeLegendPlayerProfile') return { observedUrl: url, playerId: profilePlayerId ?? /\/profile\/(\d+)\//.exec(url)?.[1], actId: `act-${actId}`, mode: profileMode,
+        controlsConfirmed: true, loading: false, errorVisible: false,
+        matches: profileMatches === null ? null : { ryu: profileMode === '1' || !renderSettled || profileStaleReads-- > 0 ? 1000 : profileMatches } }
       if (operation.name === 'observeLegendAnalysisRoster') return { roster: [{ characterId: 'arjun', name: 'アージュン' }, { characterId: 'ryu', name: 'リュウ' }],
         diagnostics: { h3Count: 1, liCount: 3, randomCount: 1, failedIndex: null, reason: null, items: [] } }
       if (operation.name === 'observeLegendAnalysisRosterControl') return { characterFilter: ++controlReads >= readyOnAttempt ? '4' : '1', visibleRosterButtonCount: controlReads >= readyOnAttempt ? 1 : 0, rosterModalVisible: autoOpen && controlReads >= readyOnAttempt }
@@ -35,21 +44,47 @@ function fixture() {
         entries: Array.from({ length: 20 }, (_, index) => ({ accountKey: String((contentPage - 1) * 20 + (duplicate && index === 1 ? 0 : index)).padStart(64, '0'), characterId: 'ryu', rank: identicalRanks ? 1 : (contentPage - 1) * 20 + index + 1,
           masterRating: identicalRanks ? 2400 : 2400 - ((contentPage - 1) * 20 + index), isLegend: true })) }
     },
-    locator: (selector: string) => ({ first() { return this }, selectOption: async (value: string) => { controls.push(`${selector}:${value}`) },
+    on: (_name: string, callback: (request: Request) => void) => { listeners.add(callback) },
+    off: (_name: string, callback: (request: Request) => void) => { listeners.delete(callback) },
+    waitForResponse: (predicate: (response: Response) => boolean) => new Promise((resolve, reject) => {
+      responseWaiter = response => predicate(response) ? resolve(response) : reject(new Error('private-response-timeout'))
+    }),
+    locator: (selector: string) => ({ index: 0, first() { return this }, nth(index: number) { this.index = index; return this }, selectOption: async function (value: string) {
+      controls.push(`${selector}:${value}`)
+      if (this.index !== 1) return
+      starts.push(clock); profileMode = value
+      const request = { url: () => 'https://www.streetfighter.com/6/buckler/api/profile/play/act/characterwinrate', method: () => 'POST',
+        postDataJSON: () => ({ targetShortId: wrongRequest ? '999' : /\/profile\/(\d+)\//.exec(url)?.[1], targetSeasonId: actId, targetModeId: 2, lang: 'ja-jp' }) } as unknown as Request
+      for (const listener of listeners) listener(request)
+      const responseStatus = profileStatuses.shift() ?? profileStatus
+      if (actAfterProfileResponse !== null) actId = actAfterProfileResponse
+      responseWaiter?.({ request: () => request, url: () => request.url(), status: () => responseStatus, headers: () => ({ ...profileHeaders }),
+        finished: async () => { profileFinished = true; return null } } as unknown as Response)
+    },
       count: async () => selector === 'button#onetrust-reject-all-handler:visible' && cookieOverlay ? 1 : 0,
       click: async () => { controls.push(selector)
         if (selector === 'button#onetrust-reject-all-handler:visible') cookieOverlay = false
         else if (selector.includes('ranking_search_character_btn') && cookieOverlay) throw new Error('private-source-text intercepts pointer events')
       } }),
   } as unknown as Page
-  const reader = createLegendAnalysisPageReader(page, { now: () => clock, wait: async milliseconds => { waits.push(milliseconds); clock += milliseconds } })
+  const reader = createLegendAnalysisPageReader(page, { now: () => clock, wait: async milliseconds => { waits.push(milliseconds); clock += milliseconds }, ...options })
   return { reader, navigations, salts, waits, controls, changeAct: () => { actId++ }, deny: () => { status = 403 }, redirect: () => { redirected = true }, hydrateAfter: (attempts: number) => { readyOnAttempt = attempts }, showCookieOverlay: () => { cookieOverlay = true }, autoOpenRoster: () => { autoOpen = true },
     staleBody: (page: number, reads: number) => { bodyPage = page; staleReads = reads }, duplicateBody: (reads: number) => { duplicateReads = reads }, tieAllRows: () => { identicalRanks = true }, readCount: () => rankingReads, showChallenge: () => { challenge = true },
     showLoginControl: () => { signedIn = false; authenticationEvidence = 'login-control' },
     showLoginHeading: () => { signedIn = false; authenticationEvidence = 'login-control'; loginRequired = true },
     showNoControls: () => { signedIn = false; authenticationEvidence = 'no-control' }, respond: (...values: number[]) => { statuses.push(...values) },
     setHeaders: (values: Record<string, string>) => { for (const key of Object.keys(headers)) delete headers[key]; Object.assign(headers, values) },
-    showSharedChallenge: () => { sharedChallenge = true }, unavailableChallengeDom: () => { unavailableChallengeDom = true } }
+    showSharedChallenge: () => { sharedChallenge = true }, unavailableChallengeDom: () => { unavailableChallengeDom = true }, starts,
+    setProfile: (value: { status?: number; statuses?: number[]; actAfterResponse?: number; playerId?: string; matches?: number | null; staleReads?: number; wrongRequest?: boolean; headers?: Record<string, string> }) => {
+      if (value.status !== undefined) profileStatus = value.status
+      if (value.statuses) profileStatuses.push(...value.statuses)
+      if (value.actAfterResponse !== undefined) actAfterProfileResponse = value.actAfterResponse
+      if (value.playerId !== undefined) profilePlayerId = value.playerId
+      if (value.matches !== undefined) profileMatches = value.matches
+      if (value.staleReads !== undefined) profileStaleReads = value.staleReads
+      if (value.wrongRequest !== undefined) wrongRequest = value.wrongRequest
+      if (value.headers) Object.assign(profileHeaders, value.headers)
+    }, listenerCount: () => listeners.size }
 }
 
 test('reader confirms Act and visible source roster, uses one salt, and spaces navigations by five seconds', async () => {
@@ -64,9 +99,192 @@ test('reader confirms Act and visible source roster, uses one salt, and spaces n
   assert.equal(new Set(data.salts).size, 1)
   assert.equal(data.waits.filter(value => value >= 5000).length > 0, true)
   assert.deepEqual(data.controls, ['select:visible:1', 'select:visible:4', 'span[class*="ranking_search_character_btn"]:visible'])
-  assert.deepEqual(Object.keys(data.reader.getDiagnostics()), ['requestCount', 'lastStep', 'lastErrorCode', 'characterFilter', 'visibleRosterButtonCount', 'clickFailure', 'clickHitKind', 'clickHitTag', 'parentParagraph', 'pointerEventsNone', 'rosterDiagnostics', 'lastLoginRequired', 'lastSignedIn', 'lastRankingReadable', 'readableWithoutSignInReadCount', 'lastHttpStatus', 'lastAttemptedPage', 'successfulReadCount', 'humanVerification'])
+  assert.deepEqual(Object.keys(data.reader.getDiagnostics()), ['requestCount', 'profileRetryCount', 'lastStep', 'lastErrorCode', 'characterFilter', 'visibleRosterButtonCount', 'clickFailure', 'clickHitKind', 'clickHitTag', 'parentParagraph', 'pointerEventsNone', 'rosterDiagnostics', 'lastLoginRequired', 'lastSignedIn', 'lastRankingReadable', 'readableWithoutSignInReadCount', 'lastHttpStatus', 'lastAttemptedPage', 'successfulReadCount', 'humanVerification'])
   assert.equal(data.reader.getDiagnostics().lastAttemptedPage, 1)
   assert.equal(data.reader.getDiagnostics().successfulReadCount, 4)
+})
+
+test('profile collection waits for the matching mode response and stable ranked values using the same start gate', async () => {
+  const data = fixture({ includePlayers: true }); await data.reader.initialize()
+  data.setProfile({ staleReads: 2 })
+  assert.deepEqual(await data.reader.fetchPlayerRankedMatches('12345', ['ryu']), { ryu: 42 })
+  assert.ok(data.starts.slice(1).every((value, index) => value - data.starts[index] >= 5000))
+  assert.equal(data.reader.getDiagnostics().requestCount, 5)
+  assert.equal(data.reader.getDiagnostics().lastStep, 'complete')
+  assert.equal(data.reader.getDiagnostics().lastAttemptedPage, null)
+  assert.equal(data.listenerCount(), 0)
+  assert.doesNotMatch(JSON.stringify(data.reader.getDiagnostics()), /12345|targetShortId|characterwinrate/)
+  data.setProfile({ matches: 0 })
+  assert.deepEqual(await data.reader.fetchPlayerRankedMatches('12345', ['ryu']), { ryu: 0 })
+})
+
+test('profile collection fails closed on scope, missing values and unmatched filter responses', async () => {
+  const aggregateOnly = fixture(); await aggregateOnly.reader.initialize()
+  await assert.rejects(aggregateOnly.reader.fetchPlayerRankedMatches('12345', ['ryu']), /invalid-request/)
+  for (const change of [{ playerId: '67890' }, { matches: null }, { wrongRequest: true }]) {
+    const data = fixture({ includePlayers: true }); await data.reader.initialize(); data.setProfile(change)
+    await assert.rejects(data.reader.fetchPlayerRankedMatches('12345', ['ryu']), /condition-mismatch|unsupported-dom/)
+    assert.equal(data.listenerCount(), 0)
+    assert.doesNotMatch(JSON.stringify(data.reader.getDiagnostics()), /12345|67890|private-response-timeout/)
+  }
+  const changed = fixture({ includePlayers: true }); await changed.reader.initialize(); changed.changeAct()
+  await assert.rejects(changed.reader.fetchPlayerRankedMatches('12345', ['ryu']), /act-changed/)
+  const invalid = fixture({ includePlayers: true }); await invalid.reader.initialize()
+  for (const [player, characters] of [['bad/id', ['ryu']], ['12345', []], ['12345', ['ryu', 'ryu']], ['12345', ['unknown']]] as const) {
+    await assert.rejects(invalid.reader.fetchPlayerRankedMatches(player, characters), /invalid-request/)
+  }
+})
+
+test('profile mode denial and CAPTCHA stop without repeat and keep only fixed diagnostics', async () => {
+  for (const status of [200, 403, 405, 429, 502, 503]) {
+    const data = fixture({ includePlayers: true }); await data.reader.initialize()
+    data.setProfile({ status, headers: { 'x-amzn-waf-action': 'captcha', 'set-cookie': 'private-cookie-value' } })
+    await assert.rejects(data.reader.fetchPlayerRankedMatches('12345', ['ryu']), /http-denied/)
+    assert.equal(data.reader.getDiagnostics().requestCount, 5)
+    assert.equal(data.reader.getDiagnostics().humanVerification.wafAction, 'captcha')
+    assert.equal(data.reader.getDiagnostics().lastHttpStatus, status)
+    assert.equal(data.listenerCount(), 0)
+    assert.doesNotMatch(JSON.stringify(data.reader.getDiagnostics()), /12345|private-cookie/)
+  }
+  const bounded = fixture({ includePlayers: true, maxRequests: 4 }); await bounded.reader.initialize()
+  await assert.rejects(bounded.reader.fetchPlayerRankedMatches('12345', ['ryu']), /request-limit/)
+  assert.equal(bounded.reader.getDiagnostics().requestCount, 4)
+  assert.equal(bounded.reader.getDiagnostics().lastStep, 'profile-filter')
+})
+
+test('profile mode non-server HTTP failures retain their cause and do not resubmit the UI request', async () => {
+  for (const [status, code] of [[302, 'http-error'], [401, 'http-denied'], [405, 'http-error']] as const) {
+    const data = fixture({ includePlayers: true }); await data.reader.initialize(); data.setProfile({ status })
+    await assert.rejects(data.reader.fetchPlayerRankedMatches('12345', ['ryu']), new RegExp(code))
+    assert.equal(data.reader.getDiagnostics().requestCount, 5)
+    assert.equal(data.reader.getDiagnostics().lastHttpStatus, status)
+    assert.equal(data.reader.getDiagnostics().humanVerification.wafAction, null)
+    assert.equal(data.listenerCount(), 0)
+  }
+})
+
+test('profile mode server recovery reloads once, revalidates scope and preserves global request spacing', async () => {
+  const data = fixture({ includePlayers: true }); await data.reader.initialize()
+  data.setProfile({ statuses: [502, 200] })
+  assert.deepEqual(await data.reader.fetchPlayerRankedMatches('12345', ['ryu']), { ryu: 42 })
+  assert.equal(data.reader.getDiagnostics().requestCount, 7)
+  assert.equal(data.reader.getDiagnostics().profileRetryCount, 1)
+  assert.equal(data.navigations.filter(url => url.endsWith('/profile/12345/play')).length, 3) // Initialization plus the two profile attempts.
+  assert.equal(data.controls.filter(value => value === 'select:visible:2').length, 2)
+  assert.ok(data.starts.slice(1).every((value, index) => value - data.starts[index] >= 5000))
+  assert.equal(data.listenerCount(), 0)
+  assert.equal(data.reader.getDiagnostics().lastHttpStatus, 200)
+})
+
+test('profile filter recovery is bounded and never wraps failed navigation retries', async () => {
+  const repeated = fixture({ includePlayers: true }); await repeated.reader.initialize(); repeated.setProfile({ statuses: [502, 502, 200] })
+  await assert.rejects(repeated.reader.fetchPlayerRankedMatches('12345', ['ryu']), /server-error/)
+  assert.equal(repeated.reader.getDiagnostics().requestCount, 7)
+  assert.equal(repeated.reader.getDiagnostics().profileRetryCount, 1)
+  assert.equal(repeated.reader.getDiagnostics().lastHttpStatus, 502)
+  assert.equal(repeated.controls.filter(value => value === 'select:visible:2').length, 2)
+  assert.equal(repeated.listenerCount(), 0)
+  const navigation = fixture({ includePlayers: true }); await navigation.reader.initialize(); navigation.respond(502, 502, 200)
+  await assert.rejects(navigation.reader.fetchPlayerRankedMatches('12345', ['ryu']), /server-error/)
+  assert.equal(navigation.reader.getDiagnostics().requestCount, 5)
+  assert.equal(navigation.reader.getDiagnostics().profileRetryCount, 0)
+  assert.equal(navigation.controls.filter(value => value === 'select:visible:2').length, 0)
+  const recoveryNavigation = fixture({ includePlayers: true }); await recoveryNavigation.reader.initialize()
+  recoveryNavigation.respond(200, 502, 502, 200); recoveryNavigation.setProfile({ statuses: [502, 200] })
+  await assert.rejects(recoveryNavigation.reader.fetchPlayerRankedMatches('12345', ['ryu']), /server-error/)
+  assert.equal(recoveryNavigation.reader.getDiagnostics().requestCount, 7)
+  assert.equal(recoveryNavigation.reader.getDiagnostics().profileRetryCount, 1)
+  assert.equal(recoveryNavigation.controls.filter(value => value === 'select:visible:2').length, 1)
+})
+
+test('profile recovery does not proceed with unavailable verification evidence or exhausted request budget', async () => {
+  const unknown = fixture({ includePlayers: true }); await unknown.reader.initialize(); unknown.setProfile({ statuses: [502, 200] }); unknown.unavailableChallengeDom()
+  await assert.rejects(unknown.reader.fetchPlayerRankedMatches('12345', ['ryu']), /read-failed|server-error/)
+  assert.equal(unknown.reader.getDiagnostics().requestCount, 5)
+  assert.equal(unknown.reader.getDiagnostics().profileRetryCount, 0)
+  assert.equal(unknown.listenerCount(), 0)
+  for (const maxRequests of [5, 6]) {
+    const limited = fixture({ includePlayers: true, maxRequests }); await limited.reader.initialize(); limited.setProfile({ statuses: [502, 200] })
+    await assert.rejects(limited.reader.fetchPlayerRankedMatches('12345', ['ryu']), /request-limit/)
+    assert.equal(limited.reader.getDiagnostics().requestCount, maxRequests)
+    assert.equal(limited.reader.getDiagnostics().profileRetryCount, maxRequests === 5 ? 0 : 1)
+    assert.equal(limited.controls.filter(value => value === 'select:visible:2').length, 1)
+    assert.equal(limited.listenerCount(), 0)
+  }
+})
+
+test('profile recovery rechecks the current Act before another mode selection', async () => {
+  const changed = fixture({ includePlayers: true }); await changed.reader.initialize()
+  changed.setProfile({ statuses: [502, 200], actAfterResponse: 14 })
+  await assert.rejects(changed.reader.fetchPlayerRankedMatches('12345', ['ryu']), /act-changed/)
+  assert.equal(changed.reader.getDiagnostics().requestCount, 6)
+  assert.equal(changed.reader.getDiagnostics().profileRetryCount, 1)
+  assert.equal(changed.controls.filter(value => value === 'select:visible:2').length, 1)
+})
+
+test('filter response matching is exact for origin, path, method, account, Act and ranked mode', () => {
+  const good = { url: () => 'https://www.streetfighter.com/6/buckler/api/profile/play/act/characterwinrate', method: () => 'POST',
+    postDataJSON: () => ({ targetShortId: '12345', targetSeasonId: 13, targetModeId: 2, lang: 'ja-jp' }) }
+  assert.equal(matchesLegendRankedMatchRequest(good, '12345', 'act-13'), true)
+  for (const changed of [{ url: () => 'https://example.com/6/buckler/api/profile/play/act/characterwinrate' },
+    { url: () => `${good.url()}?unconfirmed=1` }, { method: () => 'GET' },
+    { postDataJSON: () => ({ targetShortId: '67890', targetSeasonId: 13, targetModeId: 2 }) },
+    { postDataJSON: () => ({ targetShortId: '12345', targetSeasonId: 12, targetModeId: 2 }) },
+    { postDataJSON: () => ({ targetShortId: '12345', targetSeasonId: 13, targetModeId: 1 }) },
+    { postDataJSON: () => { throw new Error('private-body') } }]) {
+    assert.equal(matchesLegendRankedMatchRequest({ ...good, ...changed }, '12345', 'act-13'), false)
+  }
+})
+
+test('profile DOM requires the visible current Act and ranked condition, extracts exact counts and distinguishes missing from zero', t => {
+  const element = (innerText = '', selectors: Record<string, unknown[]> = {}) => ({ innerText, parentElement: null, hidden: false,
+    getBoundingClientRect: () => ({ width: 100, height: 20 }), hasAttribute: () => false,
+    querySelectorAll: (selector: string) => selectors[selector] ?? [], closest: (_selector: string): unknown => null })
+  const act = { ...element(), value: '13', options: [{ value: '13', textContent: 'Act:13' }, { value: '12', textContent: 'Act:12' }, { value: '-1', textContent: '累計' }] }
+  const mode = { ...element(), value: '2', options: ['モード:すべて', 'モード:ランクマッチ', 'モード:カジュアルマッチ', 'モード:ルームマッチ', 'モード:バトルハブマッチ'].map((textContent, i) => ({ value: String(i + 1), textContent })) }
+  const code = element('ユーザーコード:12345'), tab = element('勝率')
+  const makeRow = (characterId: string, rateText: string) => {
+    const image = { ...element(), complete: true, naturalWidth: 100, currentSrc: `https://www.streetfighter.com/6/buckler/assets/images/material/character/character_${characterId}_l.png` }
+    const rate = element(rateText), name = element(characterId === 'all' ? 'ALL' : characterId.toUpperCase())
+    const assets: Record<string, unknown[]> = { img: characterId === 'all' ? [] : [image], noscript: [] }
+    const container = element('', assets)
+    const row = element('', { 'div[class*="winning_rate_image__"]': [container], 'p[class*="winning_rate_rate__"]': [rate] })
+    name.closest = () => row
+    return { name, rate, image, assets }
+  }
+  const ryu = makeRow('ryu', '0勝/0戦'), ken = makeRow('ken', '1748勝/2733戦'), all = makeRow('all', '1748勝/2733戦')
+  const rows = [all.name, ryu.name, ken.name]
+  const nodes: Record<string, unknown[]> = { select: [act, mode], 'li[class*="status_sid__"]': [code],
+    'li[class*="play_nav_active__"]': [tab], 'p[class*="winning_rate_name__"]': rows,
+    '[class*="play_loader__"]': [], '[class*="play_modal_error__"]': [] }
+  const globals: Record<string, unknown> = { document: { querySelectorAll: (selector: string) => nodes[selector] ?? [] },
+    window: { getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }) },
+    DOMParser: class { parseFromString(html: string) { return { querySelectorAll: () => [{ getAttribute: () => /src="([^"]+)"/.exec(html)?.[1] ?? null }] } } },
+    location: { origin: 'https://www.streetfighter.com', href: 'https://www.streetfighter.com/6/buckler/ja-jp/profile/12345/play' } }
+  const previous = Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const)
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value })
+  t.after(() => { for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key) } })
+  const read = () => observeLegendPlayerProfile({ characterIds: ['ryu', 'ken'] })
+  assert.deepEqual(read().matches, { ryu: 0, ken: 2733 })
+  assert.equal(read().mode, '2'); assert.equal(read().actId, 'act-13'); assert.equal(read().playerId, '12345')
+  const officialKen = ken.image.currentSrc
+  ken.image.currentSrc = `https://www.streetfighter.com/6/buckler/_next/image?url=${encodeURIComponent(officialKen)}&w=96&q=75`
+  assert.deepEqual(read().matches, { ryu: 0, ken: 2733 })
+  ken.image.currentSrc = 'data:image/gif;base64,placeholder'
+  ken.assets.noscript = [{ ...element(), textContent: `<img src="${officialKen}">` }]
+  assert.deepEqual(read().matches, { ryu: 0, ken: 2733 })
+  ken.assets.noscript = []; assert.equal(read().matches, null)
+  ken.image.currentSrc = officialKen.replace('www.streetfighter.com', 'example.com'); assert.equal(read().matches, null)
+  ken.image.currentSrc = officialKen
+  mode.value = '1'; assert.equal(read().mode, '1'); mode.value = '2'
+  act.value = '12'; assert.equal(read().matches, null); act.value = '13'
+  tab.innerText = 'リーグ情報'; assert.equal(read().matches, null); tab.innerText = '勝率'
+  code.innerText = 'ユーザーコード:unknown'; assert.equal(read().matches, null); code.innerText = 'ユーザーコード:12345'
+  ken.rate.innerText = '2734勝/2733戦'; assert.equal(read().matches, null); ken.rate.innerText = '1748勝/2733戦'
+  nodes['[class*="play_loader__"]'] = [element()]; assert.equal(read().matches, null); nodes['[class*="play_loader__"]'] = []
+  nodes['[class*="play_modal_error__"]'] = [element()]; assert.equal(read().matches, null); nodes['[class*="play_modal_error__"]'] = []
+  rows.push(ken.name); assert.equal(read().matches, null); rows.pop()
+  rows.pop(); assert.equal(read().matches, null)
 })
 
 test('reader rejects Act change, denied HTTP, redirects and noncanonical requests without leaking URLs', async () => {
@@ -393,16 +611,24 @@ test('ranking observation freezes both rows and header before asynchronous ident
     const attributes = { href: `/6/buckler/ja-jp/profile/${profile}` }
     const rankNode = element(`${rank}位`), mrNode = element(`${mr}MR`)
     const nameNode = element(`Synthetic ${profile}`)
+    const regionAttributes = { alt: '日本' }, platformAttributes = { alt: 'Steam' }
+    const regionImages = [element('', {}, { alt: '' }), element('', {}, regionAttributes)]
+    const platformImages = [element('', {}, platformAttributes)]
     const characterImage = asset(`/6/buckler/assets/images/material/character/character_${character}_l.png`)
     const badgeImage = asset('/6/buckler/assets/images/material/rank/rank37_l.png')
     const row = element('private display name', {
       'div[class*="ranking_page_data"]': [element()],
       'p[class*="ranking_fighter__"] span[class*="ranking_name__"]': [nameNode],
+      '[class*="ranking_frag__"] img[alt]': regionImages,
+      '[class*="ranking_platform__"] img[alt]': platformImages,
       '[class*="ranking_time"]': [element('', { 'dl dt': [rankNode], 'dl dd': [mrNode] })],
       'div[class*="ranking_character"]': [element('', { img: [characterImage] })],
       'div[class*="ranking_league_rank_icon"] p[class*="ranking_master_rating_icon"]': [element('', { img: [badgeImage] })],
     }, attributes)
     return { row, setName: (name: string) => { nameNode.innerText = name },
+      setRegion: (label: string) => { regionAttributes.alt = label },
+      setPlatform: (label: string) => { platformAttributes.alt = label },
+      duplicateRegion: () => { regionImages.push(element('', {}, { alt: '日本' })) },
       setLegend: () => { badgeImage.currentSrc = 'https://www.streetfighter.com/6/buckler/assets/images/material/rank/rank37_l.png' },
       replace: (profile: string, character: string, rank: number, mr: number) => {
       attributes.href = `/6/buckler/ja-jp/profile/${profile}`
@@ -470,6 +696,9 @@ test('ranking observation freezes both rows and header before asynchronous ident
   assert.doesNotMatch(JSON.stringify(safeObservation), /987654321|987654322|777777771|777777772|private display name/)
   const withNames = await observeLegendAnalysisDom({ salt, characterIds: ['ryu', 'ken', 'dhalsim', 'honda'], includePlayers: true })
   assert.deepEqual(withNames.entries?.map(row => row.playerName), ['Synthetic 987654321', 'Synthetic 987654322'])
+  assert.deepEqual(withNames.entries?.map(row => ({ playerId: row.playerId, region: row.region, platform: row.platform })), [
+    { playerId: '777777771', region: '日本', platform: 'Steam' }, { playerId: '777777772', region: '日本', platform: 'Steam' },
+  ])
   assert.equal(withNames.entries?.some(row => row.playerName === 'private display name'), false)
   // A blank label is rejected only for listed Legend entries; non-Legend rows are never projected.
   rows[0].replace('987654321', 'ryu', 1, 2430)
@@ -479,4 +708,14 @@ test('ranking observation freezes both rows and header before asynchronous ident
   assert.equal(noNameOptIn.entries, null)
   const noNameDefault = await observeLegendAnalysisDom({ salt, characterIds: ['ryu', 'ken', 'dhalsim', 'honda'] })
   assert.ok(noNameDefault.entries)
+  rows[0].setName('Synthetic restored')
+  for (const mutate of [() => rows[0].setRegion(''), () => { rows[0].setRegion('日本'); rows[0].setPlatform('Steam\u0000') },
+    () => { rows[0].setPlatform('Steam'); rows[0].duplicateRegion() }]) {
+    mutate()
+    const missingAttribute = await observeLegendAnalysisDom({ salt, characterIds: ['ryu', 'ken', 'dhalsim', 'honda'], includePlayers: true })
+    assert.equal(missingAttribute.entries, null)
+    const aggregatesOnly = await observeLegendAnalysisDom({ salt, characterIds: ['ryu', 'ken', 'dhalsim', 'honda'] })
+    assert.ok(aggregatesOnly.entries)
+    assert.equal(aggregatesOnly.entries[0].playerId, undefined)
+  }
 })

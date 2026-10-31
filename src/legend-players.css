@@ -1,4 +1,9 @@
 .legend-players-page { min-width: 0; display: grid; gap: 16px; }
+.legend-players-view-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.legend-players-view-tabs .win-rates-button { min-height: 44px; }
+.legend-players-view-tabs .win-rates-button[aria-selected='true'] { background: var(--text); color: var(--surface); border-color: var(--text); }
+.legend-players-view-panel { min-width: 0; }
+.legend-players-view-panel[hidden] { display: none; }
 .legend-players-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; font-size: 12px; color: var(--text-muted); }
 .legend-players-capture-select { display: grid; gap: 4px; min-width: 0; max-width: 100%; }
 .legend-players-capture-select select { max-width: 100%; padding: 7px 8px; border: 1px solid var(--border); border-radius: 0; color: var(--text); background: var(--surface); font: inherit; }
@@ -7,10 +12,14 @@
 .legend-players-capture dd { margin: 2px 0 0; color: var(--text-soft); overflow-wrap: anywhere; }
 .legend-players-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--text-muted); font-size: 12px; }
 .legend-players-scroll { max-height: 640px; scroll-padding-top: 48px; }
-.legend-players-table { min-width: 470px; table-layout: fixed; }
+.legend-players-table { min-width: 1080px; table-layout: fixed; }
 .legend-players-rank-column { width: 76px; }
-.legend-players-character-column { width: 26%; }
+.legend-players-id-column { width: 148px; }
+.legend-players-character-column { width: 136px; }
 .legend-players-mr-column { width: 100px; }
+.legend-players-region-column { width: 132px; }
+.legend-players-platform-column { width: 164px; }
+.legend-players-matches-column { width: 104px; }
 .legend-players-table thead th { padding: 0; }
 .legend-players-sort { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; min-height: 44px; padding: 7px 8px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .legend-players-sort:hover:not(:disabled) { background: var(--surface-hover); }
@@ -18,5 +27,25 @@
 .legend-players-sort-indicator { color: var(--text-muted); font-size: 10px; }
 .legend-players-table tbody .legend-players-name { background: var(--surface); color: var(--text); font-weight: 400; overflow-wrap: anywhere; }
 .legend-players-table .legend-players-character { text-align: left; overflow-wrap: anywhere; }
+.legend-players-table .legend-players-label { text-align: left; overflow-wrap: anywhere; }
+.legend-players-table .legend-players-id { text-align: left; overflow-wrap: anywhere; }
+.legend-players-table .legend-players-unavailable { color: var(--text-muted); }
 .legend-players-table .legend-players-number { text-align: right; white-space: nowrap; }
+.legend-players-table-summary { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.legend-players-filters { margin-bottom: 16px; padding: 0; border: 0; background: transparent; gap: 12px; }
+.legend-players-name-filter { flex: 2 1 220px; }
+.legend-players-character-filter { flex: 1 1 160px; }
+.legend-players-filters select { width: 100%; min-width: 0; }
+.legend-players-filters input { width: 100%; min-width: 0; min-height: 36px; border: 1px solid var(--border-strong); border-radius: 0; padding: 6px 10px; background: var(--surface); color: var(--text); font: inherit; }
+.legend-players-filters :is(input, select):disabled { opacity: .6; }
+@media (pointer: coarse) { .legend-players-filters :is(input, select) { min-height: 44px; font-size: 16px; } }
 .legend-players-table .legend-players-empty { padding: 28px 8px; text-align: center; color: var(--text-muted); }
+.legend-players-chart-selector { margin-bottom: 16px; }
+.legend-players-chart-content { min-width: 0; }
+.legend-players-chart-state { margin: 0; padding: 28px 8px; text-align: center; color: var(--text-muted); }
+.legend-players-select { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.legend-players-selectable-row { cursor: pointer; }
+.legend-players-table tbody tr[data-selected='true'] > * { background: var(--surface-hover); }
+.legend-players-table tbody tr[data-selected='true'] > :first-child { box-shadow: inset 3px 0 var(--text); }
+.legend-players-table tbody tr[data-selected='true'] .legend-players-select { text-decoration: underline; text-underline-offset: 3px; }
+@media (pointer: coarse) { .legend-players-select { min-height: 32px; } }

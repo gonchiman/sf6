@@ -3,7 +3,7 @@ import test from 'node:test'
 import { LEGEND_ANALYSIS_SOURCE } from '../../src/lib/legendAnalysis.ts'
 import { collectLegendAnalysisDataset, LegendAnalysisCollectionError } from './legend-analysis-collector.ts'
 import type { CollectLegendAnalysisOptions, LegendAnalysisAttemptFailure, LegendAnalysisEntry, LegendAnalysisPage } from './legend-analysis-collector.ts'
-import { LEGEND_ANALYSIS_CONDITIONS, legendAnalysisPageUrl } from './legend-analysis-dom.ts'
+import { LEGEND_ANALYSIS_CONDITIONS, LegendAnalysisDomError, legendAnalysisPageUrl } from './legend-analysis-dom.ts'
 
 function fixture(rows?: LegendAnalysisEntry[], pageSize = 2) {
   const values = rows ?? Array.from({ length: 4 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
@@ -24,6 +24,14 @@ function fixture(rows?: LegendAnalysisEntry[], pageSize = 2) {
     },
   }
   return { values, options, requested, actChecks: () => actChecks }
+}
+
+function adjacentFixture() {
+  return fixture(Array.from({ length: 6 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
+    characterId: index % 2 ? 'ken' : 'ryu', rank: index + 1, masterRating: 2400 - index, isLegend: index < 4 })))
+}
+function overlapWith(entry: LegendAnalysisEntry, original: LegendAnalysisEntry): void {
+  entry.accountKey = original.accountKey; entry.characterId = original.characterId
 }
 
 test('complete capture aggregates account-character entries and rechecks both endpoints', async () => {
@@ -49,7 +57,7 @@ test('complete capture aggregates account-character entries and rechecks both en
 
 test('opt-in player projection emits only accepted rows once after the final successful retry', async () => {
   const data = fixture()
-  data.values.forEach((entry, index) => { entry.playerName = `Synthetic ${index}` })
+  data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
   const read = data.options.fetchPage
   let reads = 0
   data.options.fetchPage = async (page, url) => {
@@ -62,8 +70,8 @@ test('opt-in player projection emits only accepted rows once after the final suc
   const result = await collectLegendAnalysisDataset(data.options)
   assert.equal(result.retryCount, 1)
   assert.deepEqual(callbacks, [[
-    { playerName: 'Synthetic 0', characterId: 'ryu', rank: 1, masterRating: 2400 },
-    { playerName: 'Synthetic 1', characterId: 'ken', rank: 2, masterRating: 2399 },
+    { playerName: 'Synthetic 0', playerId: '10000', region: '日本', platform: 'Steam', characterId: 'ryu', rank: 1, masterRating: 2400 },
+    { playerName: 'Synthetic 1', playerId: '10001', region: '日本', platform: 'Steam', characterId: 'ken', rank: 2, masterRating: 2399 },
   ]])
   assert.doesNotMatch(JSON.stringify(callbacks), /accountKey|Synthetic 2|Synthetic 3/)
   assert.doesNotMatch(JSON.stringify(result), /Synthetic|playerName|accountKey/)
@@ -72,7 +80,7 @@ test('opt-in player projection emits only accepted rows once after the final suc
 test('opt-in player projection rejects missing names before output and never runs on failed rechecks', async () => {
   for (const scenario of ['missing', 'changed'] as const) {
     const data = fixture()
-    data.values.forEach((entry, index) => { entry.playerName = `Synthetic ${index}` })
+    data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
     let callbacks = 0
     data.options.onVerifiedPlayers = () => { callbacks++ }
     if (scenario === 'missing') delete data.values[0].playerName
@@ -86,6 +94,24 @@ test('opt-in player projection rejects missing names before output and never run
     }
     await assert.rejects(collectLegendAnalysisDataset(data.options), LegendAnalysisCollectionError)
     assert.equal(callbacks, 0)
+  }
+})
+
+test('opt-in projection requires official player attributes without affecting aggregate-only collection', async () => {
+  for (const [field, value] of [['playerId', undefined], ['playerId', 'https://example.com/1'], ['playerId', '1'.repeat(21)],
+    ['region', undefined], ['region', ''], ['region', '日本\n'], ['platform', undefined], ['platform', 'Steam\u0000'], ['platform', 'x'.repeat(65)]] as const) {
+    const data = fixture()
+    data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
+    Object.assign(data.values[0], { [field]: value })
+    let callbacks = 0
+    data.options.onVerifiedPlayers = () => { callbacks++ }
+    await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError
+      && error.code === 'evidence-unconfirmed' && error.validationCheck === 'entry-values')
+    assert.equal(callbacks, 0)
+    delete data.options.onVerifiedPlayers
+    const aggregate = await collectLegendAnalysisDataset(data.options)
+    assert.equal(aggregate.dataset.totalCount, 2)
+    assert.doesNotMatch(JSON.stringify(aggregate), /playerId|Synthetic|accountKey|platform":"Steam/)
   }
 })
 
@@ -111,6 +137,125 @@ test('same account-character duplicate causes bounded capture retry and failure,
   await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError && error.code === 'duplicate-entry')
   assert.deepEqual(data.requested, [1, 1])
   assert.deepEqual(retries, [1])
+})
+
+test('adjacent recovery verifies the previous page and atomically replaces the candidate without losing or duplicating its valid prefix', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage
+  let secondReads = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    // The first row is valid and must not enter seen/accepted before the later overlap is detected.
+    if (page === 2 && ++secondReads === 1) overlapWith(value.entries[1], data.values[1])
+    return value
+  }
+  const events: string[] = []
+  data.options.onPageRecovery = state => { events.push(state); throw new Error('diagnostic callback failure') }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.deepEqual(events, ['started', 'succeeded'])
+  assert.deepEqual(data.requested, [1, 2, 1, 2, 3, 3, 1])
+  assert.equal(result.requestCount, 7); assert.equal(result.pagesRead, 3); assert.equal(result.retryCount, 0)
+  assert.equal(result.dataset.totalCount, 4)
+  assert.deepEqual(result.dataset.characters.map(row => row.count), [2, 2])
+  assert.equal(result.dataset.mr.min, 2397); assert.equal(result.dataset.mr.max, 2400)
+  assert.equal(data.actChecks(), 1)
+})
+
+test('changed adjacent evidence falls back to a complete attempt and never reports a successful local recovery', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage
+  let firstReads = 0, secondReads = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 2 && ++secondReads === 1) overlapWith(value.entries[1], data.values[1])
+    if (page === 1 && ++firstReads === 2) value.entries[0].masterRating++
+    return value
+  }
+  const events: string[] = [], failures: LegendAnalysisAttemptFailure[] = []
+  data.options.onPageRecovery = state => { events.push(state) }
+  data.options.onAttemptFailure = failure => { failures.push(failure) }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.retryCount, 1); assert.equal(result.dataset.totalCount, 4)
+  assert.deepEqual(events, ['started'])
+  assert.deepEqual(data.requested, [1, 2, 1, 1, 2, 3, 3, 1])
+  assert.deepEqual(failures, [{ attempt: 1, phase: 'listing', page: 1, code: 'source-changed',
+    validationCheck: 'adjacent-recheck', recheckChangeKinds: ['legend-entries'] }])
+})
+
+test('persistent overlap gets only one local recovery across complete attempts and never becomes a partial success', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage
+  data.options.fetchPage = async (page, url) => { const value = await read(page, url); if (page === 2) overlapWith(value.entries[1], data.values[1]); return value }
+  const events: string[] = []
+  data.options.onPageRecovery = state => { events.push(state) }
+  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError && error.code === 'duplicate-entry')
+  assert.deepEqual(events, ['started'])
+  assert.deepEqual(data.requested, [1, 2, 1, 2, 1, 2])
+  assert.equal(data.actChecks(), 0)
+})
+
+test('earlier-page and within-page overlaps are not eligible for adjacent recovery', async () => {
+  for (const kind of ['earlier-page', 'within-page'] as const) {
+    const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = []
+    data.options.onPageRecovery = state => { events.push(state) }
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (kind === 'earlier-page' && page === 3) overlapWith(value.entries[0], data.values[0])
+      if (kind === 'within-page' && page === 2) for (const entry of value.entries) overlapWith(entry, data.values[1])
+      return value
+    }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.code === 'duplicate-entry')
+    assert.deepEqual(events, [])
+    assert.deepEqual(data.requested, kind === 'earlier-page' ? [1, 2, 3] : [1, 2])
+  }
+})
+
+test('a recovered page must pass entry-count, ordering and Legend-contiguity checks before success is emitted', async () => {
+  for (const mutate of [
+    (page: LegendAnalysisPage) => { page.entries.pop() },
+    (page: LegendAnalysisPage) => { page.entries[1].masterRating = 9999 },
+    (page: LegendAnalysisPage) => { page.entries[0].isLegend = false },
+  ]) {
+    const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = []
+    let secondReads = 0
+    data.options.onPageRecovery = state => { events.push(state) }
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === 2) { if (++secondReads === 1) overlapWith(value.entries[1], data.values[1]); else mutate(value) }
+      return value
+    }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), LegendAnalysisCollectionError)
+    assert.deepEqual(events, ['started'])
+    assert.deepEqual(data.requested, [1, 2, 1, 2])
+  }
+})
+
+test('equal ranks and MR across pages remain valid for distinct account-character identities', async () => {
+  const data = adjacentFixture(), events: string[] = []
+  data.values.forEach(entry => { entry.rank = 1; entry.masterRating = 2400 })
+  data.values[2].accountKey = data.values[1].accountKey // Same account, a different character across pages.
+  data.options.onPageRecovery = state => { events.push(state) }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.dataset.totalCount, 4)
+  assert.deepEqual(events, []); assert.deepEqual(data.requested, [1, 2, 3, 3, 1])
+})
+
+test('local recovery preserves global request bounds and immediately propagates cancellation or denied transport', async () => {
+  for (const kind of ['budget', 'denied', 'cancelled'] as const) {
+    const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = [], controller = new AbortController()
+    const denied = new LegendAnalysisDomError('http-denied')
+    let firstReads = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === 2) overlapWith(value.entries[1], data.values[1])
+      if (page === 1 && ++firstReads === 2 && kind === 'denied') throw denied
+      return value
+    }
+    data.options.onPageRecovery = state => { events.push(state); if (kind === 'cancelled') controller.abort() }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, signal: controller.signal,
+      ...(kind === 'budget' ? { maxRequests: 3 } : {}) }), error => kind === 'denied' ? error === denied
+        : error instanceof LegendAnalysisCollectionError && error.code === (kind === 'budget' ? 'request-limit' : 'cancelled'))
+    assert.deepEqual(events, ['started'])
+    assert.deepEqual(data.requested, kind === 'cancelled' ? [1, 2] : [1, 2, 1])
+    assert.equal(data.actChecks(), 0)
+  }
 })
 
 test('attempt diagnostics preserve the first validation failure when the following attempt fails in transport', async () => {

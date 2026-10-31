@@ -215,7 +215,9 @@ function stoppedSelection(): SampleSurveyCheckpoint {
     attempts: 1, successfulPages: 1, uniqueAccountCount: 1, stopReason: 'cancelled', resumeAllowed: true })
   Object.assign(value.report.strata[0], { population: 20, selected: 10, processed: 1, succeeded: 1, mean: 25000, min: 25000, max: 25000 })
   Object.assign(value.report.observation!.strata[0], { status: 'collecting', startedAt: new Date(epoch).toISOString(),
-    totalCountBefore: 20, startBefore: 0, endBefore: 20 })
+    totalCountBefore: 20, startBefore: 0, endBefore: 20,
+    boundaryAcceptance: { mode: 'exact', referenceStart: 0, referenceEnd: 20, referenceCheckedAt: new Date(epoch).toISOString(),
+      start: 0, end: 20, startObservedAt: new Date(epoch).toISOString(), endObservedAt: new Date(epoch).toISOString() } })
   return parseSampleSurveyCheckpoint(value)
 }
 
@@ -241,6 +243,8 @@ test('resume reaches the actual runner with a stopped checkpoint, preserves sele
   assert.ok(result.report.attempts > previous.report.attempts)
   assert.equal(result.report.observation!.strata[0].status, 'checked')
   assert.equal(result.report.observation!.strata[0].boundaryChanged, false)
+  assert.equal(result.report.observation!.method, 'rank-position-tolerant-v1')
+  assert.deepEqual(result.report.observation!.strata[0].boundaryAcceptance, previous.report.observation!.strata[0].boundaryAcceptance)
   const status = (await invoke(service, 'status')).value
   assert.equal(status.runs[0].state, 'complete'); assert.equal(status.activeRunId, null)
   assert.doesNotMatch(JSON.stringify(status), /accountId|100000|observedAt|rowIndex/)

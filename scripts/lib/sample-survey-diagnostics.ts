@@ -5,6 +5,7 @@ import type { SampleSurveyTarget } from '../../src/types/sampleSurvey.ts'
 import { parseParallelFetchReadDiagnostics } from '../../src/lib/parallelFetch.ts'
 import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
 import { SampleSurveyReadError } from './sample-survey-reader.ts'
+import type { SampleSurveyReadRetryEvent } from './sample-survey-reader.ts'
 
 const MAX_EVENTS = 32
 const MAX_ELAPSED_MS = 7 * 86_400_000
@@ -14,6 +15,23 @@ const NETWORK_CODES = ['ERR_CONNECTION_RESET', 'ERR_CONNECTION_REFUSED', 'ERR_CO
 const SAFE_CODES = new Set<string>([...PARALLEL_FETCH_ERRORS, 'frame-changed', 'storage-error', 'interrupted'])
 const FAILURE_KINDS = ['timeout', 'network', 'undefined-helper', 'reference-error', 'type-error', 'browser-closed', 'other'] as const
 export const SAMPLE_SURVEY_DIAGNOSTIC_MAX_BYTES = 64 * 1024
+
+/** A separate bounded record so a recovered read does not consume the terminal diagnostic. */
+export function serializeSampleSurveyReadRetry(value: unknown): string | null {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    const { at, target, page, attempt, retryNumber, code, httpStatus, delayMs } = value as Record<string, unknown>
+    if (typeof at !== 'string' || at.length !== 24 || new Date(at).toISOString() !== at
+      || target !== 'lp' && target !== 'mr' || !Number.isSafeInteger(page) || Number(page) < 1
+      || !Number.isSafeInteger(attempt) || Number(attempt) < 1 || retryNumber !== 1 && retryNumber !== 2 && retryNumber !== 3
+      || code !== 'server-error' && code !== 'authentication-unconfirmed'
+      || httpStatus !== 200 && httpStatus !== 502 && httpStatus !== 503 && httpStatus !== 504
+      || httpStatus === 200 && code !== 'authentication-unconfirmed' || delayMs !== 30000) return null
+    const record: SampleSurveyReadRetryEvent = { at, target, page: Number(page), attempt: Number(attempt), retryNumber,
+      code, httpStatus, delayMs }
+    return JSON.stringify({ sampleSurveyReadRetry: record })
+  } catch { return null }
+}
 type NetworkCode = typeof NETWORK_CODES[number]
 export type SampleSurveyDiagnosticFailureKind = 'timeout' | 'network' | 'undefined-helper' | 'reference-error'
   | 'type-error' | 'browser-closed' | 'other'
