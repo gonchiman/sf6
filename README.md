@@ -419,6 +419,15 @@ npm run test:player-observations
 npm run validate:player-observations
 ```
 
+## Steam同時接続数
+
+`#steam-player-count` で、Steam版の世界全体・全モードの同時接続数を表示する。
+時間帯比較・観測推移・時間帯一覧を切り替え、期間と平日／土日で絞り込む。表示と集計は日本時間。
+Steam公式APIを毎時07・22・37・52分にGitHub Actionsで取得し、実際の取得時刻と人数を専用の履歴ブランチに保存する。
+時間帯平均は1時間の4枠がそろった日だけを同じ重みで集計する。取得失敗・欠測・未取得を0人として扱わない。
+ページは表示中5分ごととタブ復帰時に配信履歴を確認する。
+データ形式、単発取得、定期実行と検証方法は [Steam同時接続数の仕様](docs/steam-player-count/README.md) を参照。
+
 ## Bucklerの認証・閲覧検証
 
 Bucklerの手動ログイン後、同じ実行内の認証再利用を調べるローカル検証ツールは

@@ -16,6 +16,7 @@ import { BalanceAdjustmentAnalysisPage } from './components/BalanceAdjustmentAna
 import { RankDistributionPage } from './components/RankDistributionPage'
 import { LegendAnalysisPage } from './components/LegendAnalysisPage'
 import { LegendPlayersPage } from './components/LegendPlayersPage'
+import { SteamPlayerCountPage } from './components/SteamPlayerCountPage'
 import { NewAccountObservationPage } from './components/NewAccountObservationPage'
 import { ParallelFetchTestPage } from './components/ParallelFetchTestPage'
 import { SampleSurveyPage } from './components/SampleSurveyPage'
@@ -33,7 +34,7 @@ export default function App() {
   }, [])
 
   return (
-    <AppShell activePage={route.page === 'balance-adjustment-detail' ? 'balance-adjustments' : route.page} title={route.page === 'adjustment-analysis' ? 'バトル変更分析' : route.page === 'sample-survey' ? '標本調査' : route.page === 'parallel-fetch-test' ? '並列取得テスト' : route.page === 'legend-analysis-2' ? 'レジェンド帯分析2' : route.page === 'legend-analysis' ? 'レジェンド帯分析' : route.page === 'win-usage-correlation' ? '勝率と使用率' : route.page === 'balance-adjustment-detail' ? 'バトル変更詳細' : route.page === 'usage-rates' ? '使用率' : route.page === 'expected-matches' ? 'マスターまでの期待試合数' : route.page === 'character-releases' ? 'キャラ実装日' : route.page === 'characters' ? 'キャラ情報' : route.page === 'character-traits' ? 'キャラ分類' : route.page === 'win-rate-history' ? '勝率推移' : route.page === 'monthly-win-rate-statistics' ? '月別勝率統計' : route.page === 'monthly-usage-rate-statistics' ? '月別使用率統計' : route.page === 'control-type-ratio' ? '操作タイプ比率（推定）' : route.page === 'rank-distribution' ? 'ランク分布' : route.page === 'new-account-observation' ? '新規参入観測' : route.page === 'balance-adjustments' ? 'バトル変更一覧' : '勝率'}>
+    <AppShell activePage={route.page === 'balance-adjustment-detail' ? 'balance-adjustments' : route.page} title={route.page === 'steam-player-count' ? 'Steam同時接続数' : route.page === 'adjustment-analysis' ? 'バトル変更分析' : route.page === 'sample-survey' ? '標本調査' : route.page === 'parallel-fetch-test' ? '並列取得テスト' : route.page === 'legend-analysis-2' ? 'レジェンド帯分析2' : route.page === 'legend-analysis' ? 'レジェンド帯分析' : route.page === 'win-usage-correlation' ? '勝率と使用率' : route.page === 'balance-adjustment-detail' ? 'バトル変更詳細' : route.page === 'usage-rates' ? '使用率' : route.page === 'expected-matches' ? 'マスターまでの期待試合数' : route.page === 'character-releases' ? 'キャラ実装日' : route.page === 'characters' ? 'キャラ情報' : route.page === 'character-traits' ? 'キャラ分類' : route.page === 'win-rate-history' ? '勝率推移' : route.page === 'monthly-win-rate-statistics' ? '月別勝率統計' : route.page === 'monthly-usage-rate-statistics' ? '月別使用率統計' : route.page === 'control-type-ratio' ? '操作タイプ比率（推定）' : route.page === 'rank-distribution' ? 'ランク分布' : route.page === 'new-account-observation' ? '新規参入観測' : route.page === 'balance-adjustments' ? 'バトル変更一覧' : '勝率'}>
       {route.page === 'character-releases' ? <CharacterReleasesPage /> : route.page === 'characters'
         ? <CharactersPage characterId={route.characterId} onCharacterChange={(id) => { window.location.hash = characterHash(id) }} />
         : route.page === 'character-traits' ? <CharacterTraitsPage />
@@ -47,6 +48,7 @@ export default function App() {
                     : route.page === 'rank-distribution' ? <RankDistributionPage />
                       : route.page === 'legend-analysis' ? <LegendAnalysisPage />
                       : route.page === 'legend-analysis-2' ? <LegendPlayersPage />
+                      : route.page === 'steam-player-count' ? <SteamPlayerCountPage />
                       : route.page === 'new-account-observation' ? <NewAccountObservationPage />
                       : route.page === 'parallel-fetch-test' ? <ParallelFetchTestPage />
                       : route.page === 'sample-survey' ? <SampleSurveyPage />

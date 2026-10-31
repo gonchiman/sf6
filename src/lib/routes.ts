@@ -10,6 +10,7 @@ export type AppRoute =
   | { page: 'rank-distribution' }
   | { page: 'legend-analysis' }
   | { page: 'legend-analysis-2' }
+  | { page: 'steam-player-count' }
   | { page: 'new-account-observation' }
   | { page: 'parallel-fetch-test' }
   | { page: 'sample-survey' }
@@ -30,6 +31,9 @@ export function balanceAdjustmentDetailHash(adjustmentId: string, scope: string 
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#steam-player-count' || hash === '#steam-player-count/') {
+    return { page: 'steam-player-count' }
+  }
   if (hash === '#adjustment-analysis' || hash === '#adjustment-analysis/') {
     return { page: 'adjustment-analysis' }
   }
