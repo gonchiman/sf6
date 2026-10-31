@@ -1,0 +1,336 @@
+{
+  "schemaVersion": 1,
+  "id": "max-mr-estimate-2026-10-31T16-41-39-635Z",
+  "captureStartedAt": "2026-10-31T16:41:39.635Z",
+  "captureEndedAt": "2026-10-31T16:55:20.314Z",
+  "generatedAt": "2026-10-31T16:55:20.314Z",
+  "source": {
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/master",
+    "title": "Buckler MRランキング",
+    "population": "今Act・最大MR条件で掲載されたファイターアカウント",
+    "metric": "取得期間中に観測した100MR刻みの掲載アカウント数の概数",
+    "unit": "fighter-account",
+    "notes": [
+      "同じ人の別プラットフォームのアカウントを統合した実人数や、すべてのマスター到達者の人口ではない。"
+    ]
+  },
+  "conditions": {
+    "ranking": "master-rating",
+    "character": "max-mr",
+    "act": "current",
+    "region": "all",
+    "platform": "all"
+  },
+  "method": "boundary-search-estimate",
+  "binWidth": 100,
+  "totalCount": 327417,
+  "entries": [
+    {
+      "minimum": 0,
+      "maximum": 100,
+      "count": 0
+    },
+    {
+      "minimum": 100,
+      "maximum": 200,
+      "count": 0
+    },
+    {
+      "minimum": 200,
+      "maximum": 300,
+      "count": 0
+    },
+    {
+      "minimum": 300,
+      "maximum": 400,
+      "count": 0
+    },
+    {
+      "minimum": 400,
+      "maximum": 500,
+      "count": 0
+    },
+    {
+      "minimum": 500,
+      "maximum": 600,
+      "count": 0
+    },
+    {
+      "minimum": 600,
+      "maximum": 700,
+      "count": 14
+    },
+    {
+      "minimum": 700,
+      "maximum": 800,
+      "count": 11
+    },
+    {
+      "minimum": 800,
+      "maximum": 900,
+      "count": 59
+    },
+    {
+      "minimum": 900,
+      "maximum": 1000,
+      "count": 335
+    },
+    {
+      "minimum": 1000,
+      "maximum": 1100,
+      "count": 2102
+    },
+    {
+      "minimum": 1100,
+      "maximum": 1200,
+      "count": 7163
+    },
+    {
+      "minimum": 1200,
+      "maximum": 1300,
+      "count": 17807
+    },
+    {
+      "minimum": 1300,
+      "maximum": 1400,
+      "count": 37562
+    },
+    {
+      "minimum": 1400,
+      "maximum": 1500,
+      "count": 83131
+    },
+    {
+      "minimum": 1500,
+      "maximum": 1600,
+      "count": 102585
+    },
+    {
+      "minimum": 1600,
+      "maximum": 1700,
+      "count": 39858
+    },
+    {
+      "minimum": 1700,
+      "maximum": 1800,
+      "count": 18547
+    },
+    {
+      "minimum": 1800,
+      "maximum": 1900,
+      "count": 11655
+    },
+    {
+      "minimum": 1900,
+      "maximum": 2000,
+      "count": 3410
+    },
+    {
+      "minimum": 2000,
+      "maximum": 2100,
+      "count": 1899
+    },
+    {
+      "minimum": 2100,
+      "maximum": 2200,
+      "count": 691
+    },
+    {
+      "minimum": 2200,
+      "maximum": 2300,
+      "count": 370
+    },
+    {
+      "minimum": 2300,
+      "maximum": 2400,
+      "count": 152
+    },
+    {
+      "minimum": 2400,
+      "maximum": 2500,
+      "count": 64
+    },
+    {
+      "minimum": 2500,
+      "maximum": null,
+      "count": 2
+    }
+  ],
+  "validation": {
+    "status": "estimated",
+    "coverage": "all-mr-boundaries",
+    "checks": [
+      "conditions-confirmed",
+      "pagination-confirmed",
+      "final-page-confirmed",
+      "ordering-confirmed",
+      "max-mr-listing-confirmed",
+      "boundaries-rechecked",
+      "tail-confirmed",
+      "changes-recorded"
+    ],
+    "notes": [
+      "固定条件のレンダリング済みランキングについて全25閾値の前後を新規読取で確認した。読取回数: 164。",
+      "件数は表示順位ではなくページ番号と行位置から算出した。同じMRの掲載行もそれぞれ数える。",
+      "各境界を異なる時刻に観測した概数であり、単一時点の正確な分布ではない。総件数の変動から誤差上限や信頼区間は算出していない。"
+    ]
+  },
+  "observation": {
+    "totalAtStart": 327411,
+    "totalAtEnd": 327417,
+    "minTotal": 327411,
+    "maxTotal": 327417,
+    "boundaries": [
+      {
+        "minimumMr": 100,
+        "countAtOrAbove": 327417,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:55:20.314Z"
+      },
+      {
+        "minimumMr": 200,
+        "countAtOrAbove": 327417,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:55:20.314Z"
+      },
+      {
+        "minimumMr": 300,
+        "countAtOrAbove": 327417,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:55:20.314Z"
+      },
+      {
+        "minimumMr": 400,
+        "countAtOrAbove": 327417,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:55:20.314Z"
+      },
+      {
+        "minimumMr": 500,
+        "countAtOrAbove": 327417,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:55:20.314Z"
+      },
+      {
+        "minimumMr": 600,
+        "countAtOrAbove": 327417,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:55:20.314Z"
+      },
+      {
+        "minimumMr": 700,
+        "countAtOrAbove": 327403,
+        "totalCount": 327411,
+        "observedAt": "2026-10-31T16:42:21.328Z"
+      },
+      {
+        "minimumMr": 800,
+        "countAtOrAbove": 327392,
+        "totalCount": 327411,
+        "observedAt": "2026-10-31T16:43:37.467Z"
+      },
+      {
+        "minimumMr": 900,
+        "countAtOrAbove": 327333,
+        "totalCount": 327411,
+        "observedAt": "2026-10-31T16:43:42.243Z"
+      },
+      {
+        "minimumMr": 1000,
+        "countAtOrAbove": 326998,
+        "totalCount": 327412,
+        "observedAt": "2026-10-31T16:44:09.160Z"
+      },
+      {
+        "minimumMr": 1100,
+        "countAtOrAbove": 324896,
+        "totalCount": 327412,
+        "observedAt": "2026-10-31T16:44:42.904Z"
+      },
+      {
+        "minimumMr": 1200,
+        "countAtOrAbove": 317733,
+        "totalCount": 327412,
+        "observedAt": "2026-10-31T16:45:28.921Z"
+      },
+      {
+        "minimumMr": 1300,
+        "countAtOrAbove": 299926,
+        "totalCount": 327412,
+        "observedAt": "2026-10-31T16:46:26.487Z"
+      },
+      {
+        "minimumMr": 1400,
+        "countAtOrAbove": 262364,
+        "totalCount": 327412,
+        "observedAt": "2026-10-31T16:47:23.600Z"
+      },
+      {
+        "minimumMr": 1500,
+        "countAtOrAbove": 179233,
+        "totalCount": 327412,
+        "observedAt": "2026-10-31T16:48:29.529Z"
+      },
+      {
+        "minimumMr": 1600,
+        "countAtOrAbove": 76648,
+        "totalCount": 327413,
+        "observedAt": "2026-10-31T16:49:38.444Z"
+      },
+      {
+        "minimumMr": 1700,
+        "countAtOrAbove": 36790,
+        "totalCount": 327414,
+        "observedAt": "2026-10-31T16:50:40.645Z"
+      },
+      {
+        "minimumMr": 1800,
+        "countAtOrAbove": 18243,
+        "totalCount": 327414,
+        "observedAt": "2026-10-31T16:51:36.509Z"
+      },
+      {
+        "minimumMr": 1900,
+        "countAtOrAbove": 6588,
+        "totalCount": 327415,
+        "observedAt": "2026-10-31T16:52:27.845Z"
+      },
+      {
+        "minimumMr": 2000,
+        "countAtOrAbove": 3178,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:53:13.907Z"
+      },
+      {
+        "minimumMr": 2100,
+        "countAtOrAbove": 1279,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:53:51.422Z"
+      },
+      {
+        "minimumMr": 2200,
+        "countAtOrAbove": 588,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:54:22.397Z"
+      },
+      {
+        "minimumMr": 2300,
+        "countAtOrAbove": 218,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:54:46.797Z"
+      },
+      {
+        "minimumMr": 2400,
+        "countAtOrAbove": 66,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:55:07.129Z"
+      },
+      {
+        "minimumMr": 2500,
+        "countAtOrAbove": 2,
+        "totalCount": 327417,
+        "observedAt": "2026-10-31T16:55:12.016Z"
+      }
+    ]
+  }
+}
