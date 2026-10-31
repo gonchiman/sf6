@@ -1,0 +1,175 @@
+name: Collect production sample survey
+run-name: Sample survey production ${{ inputs.first_run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      first_run_id:
+        description: '開始済みのROOKIE・IRON各200件の実行ID（同じIDは再利用不可）'
+        required: true
+        type: string
+      first_run_sha:
+        description: '開始済み第1回の40桁コードSHA'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+# Separate from the child collection lock: holding that lock here would deadlock.
+concurrency:
+  group: sample-survey-production-gonchiman-sf6
+  cancel-in-progress: false
+
+jobs:
+  stage-1:
+    name: ROOKIE and IRON
+    if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      run_id: ${{ steps.stage.outputs.run_id }}
+      report_id: ${{ steps.stage.outputs.report_id }}
+    steps:
+      - name: Checkout this main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install dependencies without project scripts
+        run: npm ci --ignore-scripts
+      - name: Test production execution guards
+        run: node --test scripts/manage-sample-survey-production.test.ts
+      - name: Wait for the existing collection
+        id: stage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_STAGE: '1'
+          PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
+          PRODUCTION_FIRST_RUN_SHA: ${{ inputs.first_run_sha }}
+        run: node scripts/manage-sample-survey-production.ts
+  stage-2:
+    name: BRONZE and SILVER
+    needs: stage-1
+    if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      run_id: ${{ steps.stage.outputs.run_id }}
+      report_id: ${{ steps.stage.outputs.report_id }}
+    steps:
+      - name: Checkout this main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install dependencies without project scripts
+        run: npm ci --ignore-scripts
+      - name: Test production execution guards
+        run: node --test scripts/manage-sample-survey-production.test.ts
+      - name: Start and verify this collection
+        id: stage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_STAGE: '2'
+          PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
+        run: node scripts/manage-sample-survey-production.ts
+  stage-3:
+    name: GOLD and PLATINUM
+    needs: stage-2
+    if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      run_id: ${{ steps.stage.outputs.run_id }}
+      report_id: ${{ steps.stage.outputs.report_id }}
+    steps:
+      - name: Checkout this main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install dependencies without project scripts
+        run: npm ci --ignore-scripts
+      - name: Test production execution guards
+        run: node --test scripts/manage-sample-survey-production.test.ts
+      - name: Start and verify this collection
+        id: stage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_STAGE: '3'
+          PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
+        run: node scripts/manage-sample-survey-production.ts
+  stage-4:
+    name: DIAMOND and MASTER
+    needs: stage-3
+    if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      run_id: ${{ steps.stage.outputs.run_id }}
+      report_id: ${{ steps.stage.outputs.report_id }}
+    steps:
+      - name: Checkout this main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install dependencies without project scripts
+        run: npm ci --ignore-scripts
+      - name: Test production execution guards
+        run: node --test scripts/manage-sample-survey-production.test.ts
+      - name: Start and verify this collection
+        id: stage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_STAGE: '4'
+          PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
+        run: node scripts/manage-sample-survey-production.ts
+  stage-5:
+    name: Six MR bands
+    needs: stage-4
+    if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    outputs:
+      run_id: ${{ steps.stage.outputs.run_id }}
+      report_id: ${{ steps.stage.outputs.report_id }}
+    steps:
+      - name: Checkout this main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install dependencies without project scripts
+        run: npm ci --ignore-scripts
+      - name: Test production execution guards
+        run: node --test scripts/manage-sample-survey-production.test.ts
+      - name: Start and verify this collection
+        id: stage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_STAGE: '5'
+          PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
+        run: node scripts/manage-sample-survey-production.ts

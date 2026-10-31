@@ -7,7 +7,7 @@ import { disableRankDistributionDiagnostics } from './collect-rank-distribution.
 import { markRankDistributionArtifactReady, rankDistributionCloudBrowserEnvironment } from './collect-rank-distribution-cloud.ts'
 import { BUCKLER_WEEKLY_SESSION_SECRET, parseBucklerWeeklySession } from './lib/buckler-weekly-session.ts'
 import { createSampleSurveyReader } from './lib/sample-survey-browser.ts'
-import { serializeSampleSurveyFailureDiagnostic } from './lib/sample-survey-diagnostics.ts'
+import { serializeSampleSurveyFailureDiagnostic, serializeSampleSurveyReadRetry } from './lib/sample-survey-diagnostics.ts'
 import { SampleSurveyReadError } from './lib/sample-survey-reader.ts'
 import type { SampleSurveyReader } from './lib/sample-survey-reader.ts'
 import { runSampleSurvey } from './lib/sample-survey-runner.ts'
@@ -42,7 +42,8 @@ export function parseSampleSurveyCloudConfig(env: Environment): SampleSurveyConf
     const config = parseSampleSurveyConfig({ ranks: ranks === '' ? [] : ranks.split(',').map(rank => rank.trim()),
       rankSampleSize: number(env.SAMPLE_SURVEY_RANK_SAMPLE_SIZE, '10'), includeMr: mr === 'true',
       mrSampleSize: number(env.SAMPLE_SURVEY_MR_SAMPLE_SIZE, '10'), maxDurationMinutes: number(env.SAMPLE_SURVEY_MAX_DURATION_MINUTES, '10') })
-    if (config.maxDurationMinutes > 120) throw new Error()
+    const maximumMinutes = config.ranks.length === 0 && config.includeMr ? 180 : 120
+    if (config.maxDurationMinutes > maximumMinutes) throw new Error()
     return config
   } catch { throw new SampleSurveyCloudError('arguments') }
 }
@@ -52,6 +53,7 @@ export async function runSampleSurveyCloud(dependencies: {
   write?: typeof writeSampleSurveyResults; validate?: typeof validateSampleSurveyResultsDirectory
   artifactReady?: (env: Environment) => Promise<void>; logReport?: (report: SampleSurveyRun) => void
   logFailureDiagnostic?: (line: string) => void | Promise<void>
+  logReadRetry?: (line: string) => void
 } = {}): Promise<{ succeeded: boolean; report: SampleSurveyRun }> {
   const env = dependencies.env ?? process.env
   let raw = env[BUCKLER_WEEKLY_SESSION_SECRET]
@@ -77,6 +79,15 @@ export async function runSampleSurveyCloud(dependencies: {
       if (line !== null) await (dependencies.logFailureDiagnostic ?? (value => console.log(value)))(line)
     } catch { /* Logging cannot replace the original collection failure or trigger another read. */ }
   }
+  let retryRecorded = false
+  const onReadRetry = (event: unknown): void => {
+    if (retryRecorded) return
+    const line = serializeSampleSurveyReadRetry(event)
+    if (line === null) return
+    retryRecorded = true
+    try { (dependencies.logReadRetry ?? (value => console.log(value)))(line) }
+    catch { /* Reporting cannot affect the bounded retry or disclose an exception. */ }
+  }
   let reader: SampleSurveyReader | undefined, report: SampleSurveyRun
   try {
     if (signal.aborted) throw new SampleSurveyReadError('cancelled')
@@ -92,7 +103,7 @@ export async function runSampleSurveyCloud(dependencies: {
       },
     } })
     // The runner's IDs, sampled positions, and checkpoint remain in memory only.
-    report = parseSampleSurveyRun((await (dependencies.collect ?? runSampleSurvey)(plan, { reader, signal, now: () => now().getTime() })).report)
+    report = parseSampleSurveyRun((await (dependencies.collect ?? runSampleSurvey)(plan, { reader, signal, now: () => now().getTime(), onReadRetry })).report)
   } catch { throw new SampleSurveyCloudError('collection') }
   finally { clearTimeout(timer); await reader?.close().catch(() => {}); session = undefined }
   ;(dependencies.logReport ?? (value => console.log(JSON.stringify({ capture: value }))))(report)

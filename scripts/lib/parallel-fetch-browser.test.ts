@@ -75,7 +75,7 @@ function fixture() {
     setChallenge: () => { challenge = true }, setStatus: (value: number) => { status = value },
     setGotoError: (error: Error) => { gotoError = error },
     setReadDiagnostics: (value: Record<string, unknown> | null) => { readDiagnostics = value },
-    setReadError: (error: Error) => { readError = error },
+    setReadError: (error: Error | null) => { readError = error },
     enableObservations: () => { emitObservations = true },
     setAfterWait: (value: () => void) => { afterWait = value },
     setAfterNavigation: (value: () => Promise<void>) => { afterNavigation = value },
@@ -354,6 +354,42 @@ test('after auth failure only the failing page survives internal abort; passive 
     await first.close(); await session.close()
     assert.equal(f.pageCloses[0], 1)
   }
+})
+
+test('a new successful strict read clears prior auth stop state and closes normally on abort', async () => {
+  for (const target of ['lp', 'mr'] as const) {
+    const f = fixture(), run = new AbortController(), trial = new AbortController()
+    const session = await createParallelFetchBrowserSession({ intervalMs: 10000, signal: run.signal }, f.dependencies)
+    const reader = await session.createReader(1, target, trial.signal)
+    f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
+    f.setReadError(new RankDistributionDomError('authentication-unconfirmed'))
+    await assert.rejects(reader.readPage(2, navigateWithPacing), /authentication-unconfirmed/)
+    f.setReadError(null)
+    f.setReadDiagnostics({ lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
+    await reader.readPage(2, navigateWithPacing)
+    assert.equal(await reader.observeAfterStop!(run.signal), undefined, 'old auth failure must not open a passive observation window')
+    assert.equal(f.postReads(), 0); assert.equal(f.readTargets.length, 2)
+    trial.abort()
+    assert.equal(f.pageCloses[0], 1, 'the recovered page no longer survives an internal abort')
+    await session.close()
+  }
+})
+
+test('auth stop reset never clears sticky WAF protection before a caller retry', async () => {
+  const f = fixture(), run = new AbortController(), trial = new AbortController()
+  const session = await createParallelFetchBrowserSession({ intervalMs: 10000, signal: run.signal }, f.dependencies)
+  const reader = await session.createReader(1, 'lp', trial.signal)
+  f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
+  f.setReadError(new RankDistributionDomError('authentication-unconfirmed'))
+  await assert.rejects(reader.readPage(2, navigateWithPacing), /authentication-unconfirmed/)
+  const events = f.pages[0] as unknown as EventEmitter
+  const request = { url: () => 'https://www.streetfighter.com/6/buckler/ranking', resourceType: () => 'fetch' }
+  events.emit('request', request)
+  events.emit('response', { request: () => request, status: () => 405, headers: () => ({ 'x-amzn-waf-action': 'captcha' }) })
+  f.setReadError(null)
+  await assert.rejects(reader.readPage(2, navigateWithPacing), /human-verification/)
+  assert.equal(f.readTargets.length, 1)
+  await session.close()
 })
 
 test('passive observation is cancelled promptly and ends on challenge or page failure with fixed diagnostics', async () => {

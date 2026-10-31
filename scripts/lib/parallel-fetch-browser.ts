@@ -230,6 +230,7 @@ export async function createParallelFetchBrowserSession(options: { intervalMs: P
           if (wafStopped) throw new ParallelFetchReadError('human-verification')
           if (typeof navigateWithPacing !== 'function' || navigationGate) throw new ParallelFetchReadError('invalid-request')
           navigationGate = navigateWithPacing
+          pendingStop = null
           challenge = false; httpStatus = null; domObserved = false; identitySalt = null
           const protection = new Promise<never>((_, reject) => { rejectProtection = reject })
           try {

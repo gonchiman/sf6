@@ -6,7 +6,7 @@ import { ParallelFetchReadError } from './parallel-fetch-runner.ts'
 import type { ParallelFetchReader } from './parallel-fetch-runner.ts'
 import type { RankBoundaryPage } from './rank-distribution-boundaries.ts'
 import type { MrDistributionPage } from './mr-distribution-collector.ts'
-import { SampleSurveyReadError } from './sample-survey-reader.ts'
+import { SampleSurveyReadError, SampleSurveyRetryableReadError } from './sample-survey-reader.ts'
 import type { SampleSurveyPage, SampleSurveyReader } from './sample-survey-reader.ts'
 import { createRankDistributionPageReader } from './rank-distribution-dom.ts'
 import { createMrDistributionPageReader } from './mr-distribution-dom.ts'
@@ -102,6 +102,30 @@ function safeError(error: unknown, signal: AbortSignal): SampleSurveyReadError {
   return new SampleSurveyReadError('read-failed')
 }
 
+/** Eligibility permits a new strict read, never accepting the failed page. */
+function transientReadStatus(error: unknown, priorStrictSuccess: boolean): 502 | 503 | 504 | null {
+  if (!(error instanceof ParallelFetchReadError)) return null
+  const diagnostics = error.diagnostics, trace = diagnostics?.trace
+  if (!trace || trace.droppedObservations !== 0 || trace.droppedNetworkEvents !== 0 || trace.postStop
+    || diagnostics.loginRequiredHeading === true
+    || trace.observations.some(row => row.phase !== 'read' || row.humanVerification !== false || row.loginRequiredHeading === true)
+    || trace.network.some(row => row.phase !== 'read' || row.kind === 'waf-action'
+      || row.wafAction === 'captcha' || row.wafAction === 'challenge'
+      || row.status !== null && row.status >= 400 && row.status < 500
+      || row.kind === 'http-error' && row.wafAction !== null)) return null
+  const transient = (status: number | null): status is 502 | 503 | 504 => status === 502 || status === 503 || status === 504
+  // A failing main response is unambiguous even before the first authenticated page.
+  if (error.code === 'server-error' && transient(error.httpStatus)
+    && trace.network.some(row => row.kind === 'http-error' && row.site === 'buckler'
+      && row.resource === 'document' && row.status === error.httpStatus && row.wafAction === null)) return error.httpStatus
+  if (error.code !== 'authentication-unconfirmed' || !priorStrictSuccess || error.httpStatus !== 200
+    || diagnostics.authenticationEvidence !== 'login-control' || diagnostics.loginRequiredHeading !== false
+    || diagnostics.rankingReadable !== true || trace.observations.length === 0) return null
+  const event = trace.network.find(row => row.kind === 'http-error' && row.site === 'buckler'
+    && (row.resource === 'fetch' || row.resource === 'xhr') && transient(row.status) && row.wafAction === null)
+  return event && transient(event.status) ? event.status : null
+}
+
 async function readPrivateRows(page: Pick<Page, 'evaluate'>, target: SampleSurveyTarget, salt: string,
   signal: AbortSignal): Promise<PrivateRows | null> {
   if (signal.aborted) throw new ParallelFetchReadError('cancelled')
@@ -147,8 +171,14 @@ export async function createSampleSurveyReader(options: {
   onReadFailure?(diagnostic: SampleSurveyFailureDiagnostic): Promise<void> | void
 }, dependencies: SampleSurveyBrowserDependencies = {}): Promise<SampleSurveyReader> {
   const diagnostic = createSampleSurveyDiagnostics()
+  let failureEmitted = false, pendingFailure: SampleSurveyFailureDiagnostic | null = null
+  const emitFailure = async (value: SampleSurveyFailureDiagnostic) => {
+    if (failureEmitted) return
+    failureEmitted = true
+    try { await options.onReadFailure?.(value) } catch { /* Diagnostics never replace the original failure. */ }
+  }
   const recordFailure = async (error: unknown) => {
-    try { await options.onReadFailure?.(diagnostic.failure(error)) } catch { /* Diagnostics never replace the original failure. */ }
+    await emitFailure(diagnostic.failure(error))
   }
   let pendingCapture: SampleSurveyPage | null = null
   let readingTarget: SampleSurveyTarget | null = null
@@ -156,6 +186,7 @@ export async function createSampleSurveyReader(options: {
   const shutdown = new AbortController()
   const readSignal = AbortSignal.any([options.signal, shutdown.signal])
   const readers = new Map<SampleSurveyTarget, ParallelFetchReader>()
+  const strictTargets = new Set<SampleSurveyTarget>()
   const now = dependencies.now ?? Date.now
   let session: ParallelFetchBrowserSession
   try {
@@ -179,7 +210,13 @@ export async function createSampleSurveyReader(options: {
     closed = true; pendingCapture = null
     shutdown.abort()
     options.signal.removeEventListener('abort', abort)
-    closing = session.close().catch(() => {})
+    const retained = pendingFailure; pendingFailure = null
+    closing = (async () => {
+      // The runner may stop before a second read because of its time/read/retry
+      // budget. Preserve the original fixed evidence in that case as well.
+      if (retained) await emitFailure(retained)
+      await session.close().catch(() => {})
+    })()
     return closing
   }
   const abort = (): void => { void close() }
@@ -202,8 +239,18 @@ export async function createSampleSurveyReader(options: {
         const value = pendingCapture as SampleSurveyPage | null
         if (!value || value.target !== target || value.page !== pageNumber || value.totalCount !== summary.totalCount
           || value.totalPages !== summary.totalPages) throw new SampleSurveyReadError('read-failed')
+        strictTargets.add(target)
+        pendingFailure = null
         return value
       } catch (error) {
+        pendingCapture = null
+        const transient = !closed && !options.signal.aborted ? transientReadStatus(error, strictTargets.has(target)) : null
+        if (transient !== null && error instanceof ParallelFetchReadError
+          && (error.code === 'server-error' || error.code === 'authentication-unconfirmed')) {
+          pendingFailure = diagnostic.failure(error)
+          throw new SampleSurveyRetryableReadError(error.code, transient)
+        }
+        pendingFailure = null
         await recordFailure(error)
         await close()
         throw safeError(error, options.signal)

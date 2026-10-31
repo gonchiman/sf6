@@ -18,3 +18,26 @@ export class SampleSurveyReadError extends Error {
   readonly code: SampleSurveyError
   constructor(code: SampleSurveyError) { super(`sample-survey:${code}`); this.name = 'SampleSurveyReadError'; this.code = code }
 }
+
+/** A fresh strict read may be attempted; this never permits accepting the failed page. */
+export class SampleSurveyRetryableReadError extends SampleSurveyReadError {
+  readonly transientHttpStatus: 502 | 503 | 504
+  constructor(code: 'server-error' | 'authentication-unconfirmed', transientHttpStatus: 502 | 503 | 504) {
+    super(code)
+    if (!['server-error', 'authentication-unconfirmed'].includes(code) || ![502, 503, 504].includes(transientHttpStatus)) {
+      throw new SampleSurveyReadError('read-failed')
+    }
+    this.transientHttpStatus = transientHttpStatus
+  }
+}
+
+export interface SampleSurveyReadRetryEvent {
+  at: string
+  target: SampleSurveyTarget
+  page: number
+  attempt: number
+  retryNumber: 1
+  code: 'server-error' | 'authentication-unconfirmed'
+  httpStatus: 502 | 503 | 504
+  delayMs: 30000
+}
