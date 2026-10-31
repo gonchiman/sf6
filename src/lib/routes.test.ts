@@ -2,6 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { balanceAdjustmentDetailHash, characterHash, parseHashRoute } from './routes.ts'
 
+test('取得間隔テストの直接URLを既存の並列取得テストと区別する', () => {
+  assert.deepEqual(parseHashRoute('#fetch-interval-test'), { page: 'fetch-interval-test' })
+  assert.deepEqual(parseHashRoute('#fetch-interval-test/'), { page: 'fetch-interval-test' })
+  assert.deepEqual(parseHashRoute('#parallel-fetch-test'), { page: 'parallel-fetch-test' })
+  assert.deepEqual(parseHashRoute('#fetch-interval-test/unknown'), { page: 'win-rates' })
+})
+
 test('バトル変更分析の直接URLは一覧・詳細と区別し、余分なパスを受け入れない', () => {
   assert.deepEqual(parseHashRoute('#adjustment-analysis'), { page: 'adjustment-analysis' })
   assert.deepEqual(parseHashRoute('#adjustment-analysis/'), { page: 'adjustment-analysis' })

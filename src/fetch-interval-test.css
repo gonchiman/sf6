@@ -1,0 +1,27 @@
+.fetch-interval-page { max-width: 1000px; }
+.fetch-interval-fixed, .fetch-interval-details, .fetch-interval-source { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0; }
+.fetch-interval-page dt { color: var(--text-muted); font-size: 12px; }
+.fetch-interval-page dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.fetch-interval-fields { grid-template-columns: minmax(0, 1fr) auto; align-items: end; margin-top: 20px; }
+.fetch-interval-start { margin: 0; }
+.fetch-interval-start button { min-height: 36px; }
+.fetch-interval-plan { display: flex; gap: 8px 14px; flex-wrap: wrap; margin-top: 12px; color: var(--text-soft); font-size: 12px; }
+.fetch-interval-plan > :first-child, .fetch-interval-plan > :last-child { color: var(--text-muted); }
+.fetch-interval-execution { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 14px; }
+.fetch-interval-result-tools { display: grid; gap: 12px; margin-bottom: 16px; }
+.fetch-interval-result-tools .parallel-fetch-history { margin-bottom: 0; }
+.fetch-interval-source { border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 14px; font-size: 12px; }
+.fetch-interval-results { display: grid; gap: 14px; min-width: 0; }
+.fetch-interval-table { min-width: 430px; }
+.fetch-interval-table td.fetch-interval-state { text-align: left; }
+.fetch-interval-table tr.is-selected > * { background: var(--surface-hover); }
+.fetch-interval-page button.fetch-interval-record { border: 0; padding: 2px 4px; color: var(--link); background: transparent; text-decoration: underline; }
+.fetch-interval-detail { border-top: 1px solid var(--border); padding-top: 14px; }
+.fetch-interval-detail h3 { margin: 0 0 12px; font-size: 14px; font-weight: 500; }
+.fetch-interval-details { font-size: 13px; }
+.fetch-interval-detail-wide { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .fetch-interval-fixed, .fetch-interval-source { gap: 12px; }
+  .fetch-interval-fields, .fetch-interval-details { grid-template-columns: minmax(0, 1fr); }
+  .fetch-interval-start { justify-content: flex-start; }
+}

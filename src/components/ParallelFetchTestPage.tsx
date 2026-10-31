@@ -7,60 +7,31 @@ import {
 import { CLOUD_WORKFLOW_URL, DEFAULT_CLOUD_INTERVAL_OPTIONS, cloudConfig, cloudRunUrl, isCloudRunActive, parseParallelFetchResult } from '../lib/parallelFetchCloud'
 import { parallelFetchConditionStatus, parallelFetchConcurrencyDraft, parallelFetchConfigError, parallelFetchIntervalDraft, parallelFetchIntervalScopeLabel, parallelFetchIntervalScopeLabels, parallelFetchPlanRows } from '../lib/parallelFetchPresentation'
 import { useParallelFetchCloud } from '../lib/useParallelFetchCloud'
-import type { CloudError, CloudIntervalOptions, CloudMode, CloudRun, CloudServiceStatus, CloudState, ParallelFetchResult } from '../types/parallelFetchCloud'
+import { cloudModeLabels, cloudStateLabels, durationLabel, errorLabels, numberLabel } from '../lib/parallelFetchLabels'
+import type { CloudIntervalOptions, CloudMode, CloudRun, ParallelFetchResult } from '../types/parallelFetchCloud'
 import type {
-  ParallelFetchConfig, ParallelFetchErrorCode, ParallelFetchIntervalScope, ParallelFetchReport,
+  ParallelFetchConfig, ParallelFetchIntervalScope, ParallelFetchReport,
   ParallelFetchServiceStatus, ParallelFetchTrial, ParallelFetchWorker,
 } from '../types/parallelFetch'
 import { StatisticsPanel } from './StatisticsPanel'
+import { ParallelFetchCloudStatus } from './ParallelFetchCloudStatus'
+import { ParallelFetchIntervalInput } from './ParallelFetchIntervalInput'
 import '../table.css'
 import '../parallel-fetch.css'
 
 const MAX_REPORT_BYTES = 2 * 1024 * 1024
 const serviceUrl = `${import.meta.env.BASE_URL}__parallel-fetch`
-const numberLabel = (value: number) => new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 }).format(value)
-const durationLabel = (value: number | null) => value === null ? '—' : `${numberLabel(value / 1000)} 秒`
 const estimateLabel = (value: number | null) => value === null ? '算出不可'
   : value >= 86_400_000 ? `約 ${numberLabel(value / 86_400_000)} 日` : `約 ${numberLabel(value / 3_600_000)} 時間`
-const errorLabels: Record<ParallelFetchErrorCode, string> = {
-  cancelled: '停止しました', 'limit-reached': '取得回数・時間の上限', 'out-of-range': '対象ページが範囲外',
-  'http-denied': 'アクセス制限', 'server-error': '取得先のサーバーエラー', 'http-error': '取得先の応答エラー',
-  maintenance: 'メンテナンス中', 'login-required': 'ログインが必要',
-  'authentication-unconfirmed': 'ログイン状態を確認できません', 'human-verification': 'ロボット認証が必要',
-  'condition-mismatch': '取得条件が不一致', 'page-mismatch': 'ページ番号が不一致',
-  'unsupported-dom': 'ページを読み取れません', timeout: '取得がタイムアウト', 'read-failed': 'ページ取得に失敗',
-  'session-unavailable': '保存済みログイン情報を利用できません', 'browser-unavailable': '取得用ブラウザーを起動できません',
-  'invalid-request': '取得条件が不正',
-}
 const trialStateLabels: Record<ParallelFetchTrial['state'], string> = {
   preparing: '準備中', running: '測定中', complete: '完了', stopped: '停止', error: '失敗',
 }
-const cloudModeLabels: Record<CloudMode, string> = { serial: '直列を3回', compare: '並列1・2を比較', 'interval-compare': '取得間隔 × 並列数' }
 const conditionStateLabels = { ...trialStateLabels, 'not-run': '未実行', pending: '一部完了' }
 const workerStateLabels: Record<ParallelFetchWorker['state'], string> = {
   idle: '待機', waiting: '取得間隔の待機', reading: '取得中', complete: '完了', stopped: '停止',
 }
 const environmentLabels: Record<ParallelFetchResult['environment'], string> = {
   local: 'ローカル', 'github-actions': 'GitHub Actions', unknown: '実行先未記録',
-}
-const cloudStateLabels: Record<CloudState, string> = {
-  dispatching: '受付中', 'dispatch-unknown': '受付結果を確認中', queued: '待機中', preparing: '環境準備中',
-  collecting: '取得中', 'loading-result': '結果を読込中', complete: '完了', failed: '失敗',
-  'cancel-requested': '取消を要求済み', cancelled: '中止',
-}
-const cloudErrorLabels: Record<CloudError, string> = {
-  'dispatch-uncertain': '受付結果が未確認です。再送せず実行状況を確認します。',
-  'github-unavailable': 'GitHubとの接続を確認できません', 'workflow-unavailable': 'テスト用ワークフローが利用できません',
-  'workflow-failed': 'Actionsの実行に失敗しました', 'artifact-missing': '結果ファイルがありません',
-  'artifact-expired': '結果ファイルの保存期限が切れています', 'artifact-download-failed': '結果ファイルを取得できません',
-  'invalid-report': '結果ファイルの形式が不正です', 'state-save-failed': '実行記録を保存できません',
-  'state-invalid': '保存した実行記録を読み取れません', 'run-ambiguous': '対応するActionsの実行を特定できません',
-  'cancel-failed': '取消を確認できません', 'already-running': '実行中のテストがあります',
-  'invalid-request': '実行条件が不正です', forbidden: 'この画面から操作を送信できません', 'service-closed': '取得サービスは終了しています',
-}
-const readinessLabels: Record<CloudServiceStatus['readiness'], string> = {
-  checking: 'GitHub接続を確認中', ready: 'GitHub接続済み', 'gh-unavailable': 'GitHub CLIを利用できません',
-  'github-unavailable': 'GitHub認証・接続を確認できません', 'workflow-unavailable': 'テスト用ワークフローが利用できません',
 }
 
 type ResultChoice = { key: string; label: string; result: ParallelFetchResult | null; cloud: CloudRun | null }
@@ -69,42 +40,6 @@ function resultEnvelope(report: ParallelFetchReport, environment: 'local' | 'git
 }
 function resultLabel(result: ParallelFetchResult) {
   return `${environmentLabels[result.environment]}${result.cloud?.runId ? ` #${result.cloud.runId}` : ''} · ${timestampLabel(result.report.startedAt)} · ${parallelFetchIntervalScopeLabel(result.report.config)}`
-}
-
-function CloudStatus({ cloud, run }: { cloud: ReturnType<typeof useParallelFetchCloud>; run: CloudRun | null }) {
-  const connected = cloud.connection === 'connected'
-  const active = !!run && isCloudRunActive(run)
-  const runConfig = run ? run.report?.config ?? cloudConfig(run.mode, run.options, { historical: true }) : null
-  return <div className="parallel-fetch-status">
-    <p className="parallel-fetch-connection" role="status">{cloud.connection === 'static' ? 'GitHub上で実行 · 結果JSONを読み込み'
-      : cloud.connection === 'checking' ? '取得サービスを確認中' : !connected ? '取得サービスに接続できません'
-        : cloud.status ? readinessLabels[cloud.status.readiness] : 'GitHub接続を確認中'}</p>
-    <div className="parallel-fetch-progress-heading">
-      <strong role="status" aria-live="polite">{cloud.pending ? '操作の受付を確認中' : run ? cloudStateLabels[run.state] : '未実行'}</strong>
-      <div className="parallel-fetch-file-actions">
-        {run && connected && <button type="button" disabled={cloud.pending} onClick={() => { void cloud.command('retry', { requestId: run.requestId }) }}>結果を再確認</button>}
-        {active && run.runId && run.state !== 'cancel-requested' && connected && <button type="button" disabled={cloud.pending} onClick={() => { void cloud.command('stop', { requestId: run.requestId }) }}>実行を取り消す</button>}
-      </div>
-    </div>
-    {cloud.commandError && <p className="parallel-fetch-message" role="alert">{cloud.commandError}</p>}
-    {cloud.commandErrorCode && cloud.commandErrorCode !== cloud.status?.error && cloud.commandErrorCode !== run?.error && <p className="parallel-fetch-message" role="alert">{cloudErrorLabels[cloud.commandErrorCode]}</p>}
-    {cloud.status?.error && <p className="parallel-fetch-message" role="status">{cloudErrorLabels[cloud.status.error]}</p>}
-    {run?.error && run.error !== cloud.status?.error && <p className="parallel-fetch-message" role="status">{cloudErrorLabels[run.error]}</p>}
-    {run?.report?.errorCode && <p className="parallel-fetch-message" role="status">{errorLabels[run.report.errorCode]}</p>}
-    {run && <dl className="parallel-fetch-details">
-      <div><dt>テスト</dt><dd>{cloudModeLabels[run.mode]}</dd></div>
-      {runConfig && <>
-        <div><dt>取得開始間隔</dt><dd>{parallelFetchIntervals(runConfig).map(value => value / 1000).join('・')} 秒</dd></div>
-        <div><dt>間隔の適用範囲</dt><dd>{parallelFetchIntervalScopeLabel(runConfig)}</dd></div>
-      </>}
-      <div><dt>Actions実行</dt><dd>{run.runId ? `#${run.runId} · 試行 ${run.runAttempt}` : '実行番号を確認中'}</dd></div>
-      <div><dt>受付日時</dt><dd><RecordedTime value={run.createdAt} /></dd></div>
-      <div><dt>ジョブ開始</dt><dd><RecordedTime value={run.startedAt} /></dd></div>
-      <div><dt>ジョブ終了</dt><dd><RecordedTime value={run.finishedAt} /></dd></div>
-      <div><dt>ページ取得数</dt><dd>{run.report ? `${run.report.trials.reduce((total, trial) => total + trial.completedPages.length, 0)} ページ成功` : '結果ファイルの取得後に表示'}</dd></div>
-    </dl>}
-    <p className="parallel-fetch-source"><a href={run?.runId ? cloudRunUrl(run.runId) : CLOUD_WORKFLOW_URL} target="_blank" rel="noreferrer">GitHub Actionsで開く</a></p>
-  </div>
 }
 
 function parseServiceStatus(value: unknown): ParallelFetchServiceStatus {
@@ -216,13 +151,6 @@ function retryCount(trial: ParallelFetchTrial) {
 
 function RecordedTime({ value }: { value: string | null }) {
   return value ? <time dateTime={value}>{timestampLabel(value)}</time> : <>—</>
-}
-
-function IntervalInput({ value, onChange, error, errorId }: { value: string; onChange: (text: string) => void; error: string | null; errorId: string }) {
-  return <label><span>取得開始間隔（秒・カンマ区切り）</span>
-    <input type="text" aria-label="取得開始間隔" value={value} onChange={event => onChange(event.target.value)}
-      autoComplete="off" spellCheck={false} maxLength={128} aria-invalid={!!error} aria-describedby={error ? errorId : undefined} />
-  </label>
 }
 
 function IntervalScopeInput({ value, onChange, name }: { value: ParallelFetchIntervalScope; onChange: (value: ParallelFetchIntervalScope) => void; name: string }) {
@@ -438,7 +366,7 @@ export function ParallelFetchTestPage() {
             <label><span>測定ページ数</span><select aria-label="測定ページ数" value={config.pageCount} onChange={event => setConfig({ ...config, pageCount: Number(event.target.value) as 20 | 50 })}><option value={20}>20 ページ</option><option value={50}>50 ページ</option></select></label>
             <ConcurrencyInput value={concurrencyText} onChange={setConcurrencyText} error={concurrency.error} errorId="parallel-fetch-config-error" />
             <label><span>繰り返し</span><select aria-label="繰り返し" value={config.repetitions} onChange={event => setConfig({ ...config, repetitions: Number(event.target.value) as 1 | 3 })}><option value={1}>各 1 回</option><option value={3}>各 3 回</option></select></label>
-            <IntervalInput value={intervalText} onChange={setIntervalText} error={interval.error} errorId="parallel-fetch-config-error" />
+            <ParallelFetchIntervalInput value={intervalText} onChange={setIntervalText} error={interval.error} errorId="parallel-fetch-config-error" />
             <IntervalScopeInput value={parallelFetchIntervalScope(config)} onChange={intervalScope => setConfig({ ...config, intervalScope })} name="parallel-fetch-local-scope" />
           </fieldset>
           {!configError && <ExecutionPlan config={draft} />}
@@ -449,7 +377,7 @@ export function ParallelFetchTestPage() {
             <option value="interval-compare">取得間隔 × 並列数</option><option value="serial">直列を3回</option><option value="compare">並列1・2を比較</option>
           </select></label>
           {cloudMode === 'interval-compare' && <fieldset className="parallel-fetch-fields" disabled={busy} aria-label="Actionsの比較条件">
-            <IntervalInput value={cloudIntervalText} onChange={setCloudIntervalText} error={cloudInterval.error} errorId="parallel-fetch-cloud-config-error" />
+            <ParallelFetchIntervalInput value={cloudIntervalText} onChange={setCloudIntervalText} error={cloudInterval.error} errorId="parallel-fetch-cloud-config-error" />
             <ConcurrencyInput value={cloudConcurrencyText} onChange={setCloudConcurrencyText} error={cloudConcurrency.error} errorId="parallel-fetch-cloud-config-error" />
             <label><span>繰り返し</span><select aria-label="Actionsの繰り返し" value={cloudOptions.repetitions} onChange={event => setCloudOptions({ ...cloudOptions, repetitions: Number(event.target.value) as 1 | 3 })}><option value={1}>各 1 回</option><option value={3}>各 3 回</option></select></label>
             <IntervalScopeInput value={cloudOptions.intervalScope ?? 'global'} onChange={intervalScope => setCloudOptions({ ...cloudOptions, intervalScope })} name="parallel-fetch-cloud-scope" />
@@ -465,7 +393,7 @@ export function ParallelFetchTestPage() {
         </form>}
       </StatisticsPanel>
       <StatisticsPanel title="実行状況" headerContent={<span className="monthly-statistics-panel-summary">{environmentLabels[environment]}</span>}>
-        {environment === 'github-actions' ? <CloudStatus cloud={cloud} run={cloudRun} /> : <div className="parallel-fetch-status">
+        {environment === 'github-actions' ? <ParallelFetchCloudStatus cloud={cloud} run={cloudRun} /> : <div className="parallel-fetch-status">
           <p className="parallel-fetch-connection" role="status">{connectionLabel}</p>
           {service.status?.error === 'report-save-failed' && <p className="parallel-fetch-message" role="alert">結果の自動保存に失敗しました。JSONの保存は利用できます。</p>}
           {service.commandError && <p className="parallel-fetch-message" role="alert">{service.commandError}</p>}

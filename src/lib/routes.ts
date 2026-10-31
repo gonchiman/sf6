@@ -12,6 +12,7 @@ export type AppRoute =
   | { page: 'legend-analysis-2' }
   | { page: 'new-account-observation' }
   | { page: 'parallel-fetch-test' }
+  | { page: 'fetch-interval-test' }
   | { page: 'sample-survey' }
   | { page: 'characters'; characterId: string | null }
   | { page: 'character-releases' }
@@ -30,6 +31,9 @@ export function balanceAdjustmentDetailHash(adjustmentId: string, scope: string 
 }
 
 export function parseHashRoute(hash: string): AppRoute {
+  if (hash === '#fetch-interval-test' || hash === '#fetch-interval-test/') {
+    return { page: 'fetch-interval-test' }
+  }
   if (hash === '#adjustment-analysis' || hash === '#adjustment-analysis/') {
     return { page: 'adjustment-analysis' }
   }

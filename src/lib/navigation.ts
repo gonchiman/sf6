@@ -15,6 +15,7 @@ export const APP_NAV_ITEMS = [
   { id: 'legend-analysis-2', label: 'レジェンド帯分析2', href: '#legend-analysis-2' },
   { id: 'new-account-observation', label: '新規参入観測', href: '#new-account-observation' },
   { id: 'parallel-fetch-test', label: '並列取得テスト', href: '#parallel-fetch-test' },
+  { id: 'fetch-interval-test', label: '取得間隔テスト', href: '#fetch-interval-test' },
   { id: 'sample-survey', label: '標本調査', href: '#sample-survey' },
   { id: 'character-traits', label: 'キャラ分類', href: '#character-traits' },
   { id: 'balance-adjustments', label: 'バトル変更一覧', href: '#balance-adjustments' },
