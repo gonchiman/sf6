@@ -60,6 +60,57 @@ test('cloud inputs reuse rank/sample validation and cap wall time without accept
     assert.throws(() => parseSampleSurveyCloudConfig(patch), SampleSurveyCloudError)
   }
 })
+test('only MR-only cloud collection may use the extended 180-minute budget', () => {
+  const mrOnly = { SAMPLE_SURVEY_RANKS: '', SAMPLE_SURVEY_INCLUDE_MR: 'true' }
+  for (const minutes of [1, 120, 121, 180]) {
+    assert.equal(parseSampleSurveyCloudConfig({ ...mrOnly, SAMPLE_SURVEY_MAX_DURATION_MINUTES: String(minutes) }).maxDurationMinutes, minutes)
+  }
+  for (const inputs of [
+    {}, { SAMPLE_SURVEY_RANKS: 'ROOKIE,IRON' }, { SAMPLE_SURVEY_RANKS: 'MASTER', SAMPLE_SURVEY_INCLUDE_MR: 'true' },
+  ]) {
+    assert.equal(parseSampleSurveyCloudConfig({ ...inputs, SAMPLE_SURVEY_MAX_DURATION_MINUTES: '120' }).maxDurationMinutes, 120)
+    for (const minutes of [121, 180]) {
+      assert.throws(() => parseSampleSurveyCloudConfig({ ...inputs, SAMPLE_SURVEY_MAX_DURATION_MINUTES: String(minutes) }), SampleSurveyCloudError)
+    }
+  }
+  for (const patch of [
+    { SAMPLE_SURVEY_MAX_DURATION_MINUTES: '181' }, { SAMPLE_SURVEY_MAX_DURATION_MINUTES: '480' },
+    { SAMPLE_SURVEY_MAX_DURATION_MINUTES: '180', SAMPLE_SURVEY_INCLUDE_MR: 'false' },
+    { SAMPLE_SURVEY_MAX_DURATION_MINUTES: '180', SAMPLE_SURVEY_RANKS: ' ' },
+  ]) assert.throws(() => parseSampleSurveyCloudConfig({ ...mrOnly, ...patch }), SampleSurveyCloudError)
+})
+
+test('MR-only collection can pass 120 simulated minutes but still stops at its 180-minute limit', async () => {
+  for (const firstReadMinutes of [121, 181]) {
+    let clock = now.getTime(), reads = 0, closed = false, written = false, marked = false
+    const starts: number[] = []
+    const result = await runSampleSurveyCloud({
+      env: { ...environment(), SAMPLE_SURVEY_RANKS: '', SAMPLE_SURVEY_INCLUDE_MR: 'true', SAMPLE_SURVEY_MAX_DURATION_MINUTES: '180' },
+      now: () => new Date(clock),
+      createReader: async () => ({ readPage: async (target, page) => {
+        assert.equal(target, 'mr'); assert.equal(page, 1)
+        starts.push(clock)
+        if (reads++ === 0) clock += firstReadMinutes * 60000
+        return { target, page, pageSize: 20, totalCount: 20, totalPages: 1, observedAt: new Date(clock).toISOString(),
+          entries: Array.from({ length: 20 }, (_, i) => ({ accountId: String(100000 + i), value: 1500, rankId: null })) }
+      }, close: async () => { closed = true } }),
+      collect: (plan, options) => runSampleSurvey(plan, { ...options, wait: async ms => { clock += ms } }),
+      write: async () => { written = true; return { datasets: 1 } }, validate: async () => ({ datasets: 1 }),
+      artifactReady: async () => { marked = true }, logReport: () => {},
+    })
+    assert.equal(closed, true)
+    assert.equal(result.report.config.maxDurationMinutes, 180)
+    assert.equal(result.succeeded, firstReadMinutes === 121)
+    assert.equal(written, firstReadMinutes === 121); assert.equal(marked, firstReadMinutes === 121)
+    assert.equal(result.report.stopReason, firstReadMinutes === 121 ? null : 'limit-reached')
+    if (firstReadMinutes === 121) {
+      assert.equal(result.report.strata.length, 6)
+      assert.equal(result.report.uniqueAccountCount, 10)
+      assert.ok(result.report.elapsedMs > 120 * 60000 && result.report.elapsedMs < 180 * 60000)
+    } else assert.equal(reads, 1)
+    for (let i = 1; i < starts.length; i++) assert.ok(starts[i] - starts[i - 1] >= 10000)
+  }
+})
 test('real synthetic collection uses the existing serial runner, closes reader and publishes only aggregates', async () => {
   let clock = now.getTime(), closed = false, artifact = false
   const env = environment(), requests: number[] = [], written: unknown[] = [], logs: unknown[] = [], failures: string[] = []
@@ -266,6 +317,7 @@ test('workflow keeps secrets out of publishing and uploads no private state; col
   const [collect, publish] = workflow.split('  save-history:')
   assert.match(workflow, /workflow_dispatch:/); assert.doesNotMatch(workflow, /schedule:|cron:/)
   assert.match(workflow, /group: rank-distribution-weekly-gonchiman-sf6/)
+  assert.ok(collect.includes("timeout-minutes: ${{ inputs.ranks == '' && inputs.include_mr && 210 || 150 }}"))
   assert.match(collect, /contents: read/); assert.doesNotMatch(collect, /contents: write/)
   assert.match(collect, /secrets\.BUCKLER_WEEKLY_SESSION/); assert.doesNotMatch(publish, /BUCKLER_WEEKLY_SESSION/)
   assert.match(collect, /sample-survey\/runs\/\*\.json/); assert.doesNotMatch(collect, /checkpoint|sqlite|private-session|\.html/)

@@ -42,7 +42,8 @@ export function parseSampleSurveyCloudConfig(env: Environment): SampleSurveyConf
     const config = parseSampleSurveyConfig({ ranks: ranks === '' ? [] : ranks.split(',').map(rank => rank.trim()),
       rankSampleSize: number(env.SAMPLE_SURVEY_RANK_SAMPLE_SIZE, '10'), includeMr: mr === 'true',
       mrSampleSize: number(env.SAMPLE_SURVEY_MR_SAMPLE_SIZE, '10'), maxDurationMinutes: number(env.SAMPLE_SURVEY_MAX_DURATION_MINUTES, '10') })
-    if (config.maxDurationMinutes > 120) throw new Error()
+    const maximumMinutes = config.ranks.length === 0 && config.includeMr ? 180 : 120
+    if (config.maxDurationMinutes > maximumMinutes) throw new Error()
     return config
   } catch { throw new SampleSurveyCloudError('arguments') }
 }
