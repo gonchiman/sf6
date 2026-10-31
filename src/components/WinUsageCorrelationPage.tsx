@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { timestampLabel } from '../lib/dateTime'
 import { leagueLabel } from '../lib/winRateConditions'
 import { loadWinRateManifest } from '../lib/winRates'
@@ -19,6 +19,7 @@ import type {
   CorrelationExclusionReason, CorrelationHistoryResults, CorrelationPoint, CorrelationRow,
 } from '../types/winUsageCorrelation'
 import { DataLoadState } from './DataLoadState'
+import { ContentTabs } from './ContentTabs'
 import { MonthlyLineChart } from './MonthlyLineChart'
 import { StatisticsPanel } from './StatisticsPanel'
 import { WinUsageScatterChart } from './WinUsageScatterChart'
@@ -54,24 +55,9 @@ const coefficientReason = (row: CorrelationRow) => row.unavailableReason === 'in
   : row.unavailableReason === 'constant-win-rate' ? '勝率がすべて同じため相関係数を算出できません。'
     : row.unavailableReason === 'constant-usage-rate' ? '使用率がすべて同じため相関係数を算出できません。' : ''
 
-/** Reuse the two-tab keyboard pattern of ExpectedMatchLpReference. */
 function CorrelationTabs({ id, value, onChange }: { id: string; value: Tab; onChange: (value: Tab) => void }) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([])
-  function navigate(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? 1
-      : event.key === 'ArrowLeft' || event.key === 'ArrowRight' ? 1 - index : null
-    if (next === null) return
-    event.preventDefault()
-    onChange(next === 0 ? 'month' : 'history')
-    window.requestAnimationFrame(() => refs.current[next]?.focus({ preventScroll: true }))
-  }
-  return <div className="correlation-tabs" role="tablist" aria-label="相関の表示">
-    {(['month', 'history'] as const).map((tab, index) => <button key={tab} type="button" className="win-rates-button" role="tab"
-      id={`${id}-tab-${tab}`} aria-selected={value === tab} aria-controls={`${id}-panel-${tab}`} tabIndex={value === tab ? 0 : -1}
-      ref={element => { refs.current[index] = element }} onClick={() => onChange(tab)} onKeyDown={event => navigate(event, index)}>
-      {tab === 'month' ? '対象月' : '期間推移'}
-    </button>)}
-  </div>
+  return <ContentTabs id={id} label="相関の表示" className="correlation-tabs"
+    options={[[ 'month', '対象月' ], [ 'history', '期間推移' ]]} value={value} onChange={onChange} />
 }
 
 function ConditionInputs({ state, calendars, view, metric, onMetricChange, onChange }: {

@@ -1,4 +1,9 @@
 .legend-players-page { min-width: 0; display: grid; gap: 16px; }
+.legend-players-view-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.legend-players-view-tabs .win-rates-button { min-height: 44px; }
+.legend-players-view-tabs .win-rates-button[aria-selected='true'] { background: var(--text); color: var(--surface); border-color: var(--text); }
+.legend-players-view-panel { min-width: 0; }
+.legend-players-view-panel[hidden] { display: none; }
 .legend-players-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; font-size: 12px; color: var(--text-muted); }
 .legend-players-capture-select { display: grid; gap: 4px; min-width: 0; max-width: 100%; }
 .legend-players-capture-select select { max-width: 100%; padding: 7px 8px; border: 1px solid var(--border); border-radius: 0; color: var(--text); background: var(--surface); font: inherit; }
