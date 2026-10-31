@@ -10,16 +10,22 @@ const retry = { at: '2026-10-30T12:00:00.000Z', target: 'lp', page: 130877, atte
   retryNumber: 1, code: 'authentication-unconfirmed', httpStatus: 502, delayMs: 30000 }
 
 test('retry diagnostics whitelist bounded values without exporting failed rows or authentication details', () => {
-  for (const code of ['authentication-unconfirmed', 'server-error']) {
-    const line = serializeSampleSurveyReadRetry({ ...retry, code, accountId: secret, cookie: secret, url: secret, message: secret })!
-    assert.deepEqual(JSON.parse(line), { sampleSurveyReadRetry: { ...retry, code } })
-    assert.ok(!line.includes(secret)); assert.ok(Buffer.byteLength(line) < 1024)
+  for (const retryNumber of [1, 2, 3]) {
+    for (const code of ['authentication-unconfirmed', 'server-error']) {
+      for (const httpStatus of code === 'authentication-unconfirmed' ? [200, 502, 503, 504] : [502, 503, 504]) {
+        const line = serializeSampleSurveyReadRetry({ ...retry, code, retryNumber, httpStatus, accountId: secret, cookie: secret, url: secret, message: secret })!
+        assert.deepEqual(JSON.parse(line), { sampleSurveyReadRetry: { ...retry, code, retryNumber, httpStatus } })
+        assert.ok(!line.includes(secret)); assert.ok(Buffer.byteLength(line) < 1024)
+      }
+    }
   }
 })
 
 test('unsupported retry evidence and hostile getters cannot be written as a recovery event', () => {
   for (const patch of [{ at: '2026-02-30T00:00:00.000Z' }, { target: secret }, { page: -1 }, { page: 1.5 },
-    { attempt: 0 }, { retryNumber: 2 }, { code: 'human-verification' }, { httpStatus: 403 }, { delayMs: 0 }]) {
+    { attempt: 0 }, { retryNumber: 0 }, { retryNumber: 4 }, { retryNumber: 1.5 }, { retryNumber: '2' },
+    { code: 'human-verification' }, { httpStatus: 403 }, { httpStatus: 429 }, { httpStatus: 500 },
+    { code: 'server-error', httpStatus: 200 }, { delayMs: 0 }]) {
     assert.equal(serializeSampleSurveyReadRetry({ ...retry, ...patch }), null)
   }
   for (const value of [null, [], {}, { get at() { throw new Error(secret) } }]) {

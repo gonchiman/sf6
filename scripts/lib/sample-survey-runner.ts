@@ -235,9 +235,10 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
   let lastStart: number | null = null, current: SampleSurveyStratumDefinition | null = null
   const wait = options.wait ?? (async (milliseconds: number) => { await delay(milliseconds, undefined, { signal: options.signal }) })
   const definitions = sampleSurveyStratumDefinitions(plan.config), report = checkpoint.report, observation = report.observation!
-  // A failed or interrupted prior attempt conservatively consumes the run's
-  // single retry, including older checkpoints with no explicit retry metadata.
-  let readRetryUsed = report.attempts > report.successfulPages
+  // A resumed checkpoint cannot identify which failed pages were already retried.
+  // Conservatively exhaust the budget when any prior attempt was unsuccessful.
+  let readRetries = report.attempts > report.successfulPages ? 3 : 0
+  const retriedPages = new Set<string>()
   const latest = new Map<SampleSurveyTarget, { total: number; pageSize: number }>()
   const lastObservedAt = new Map<SampleSurveyTarget, string>()
   report.state = 'preparing'; report.phase = 'boundaries'; report.stopReason = null; report.finishedAt = null; report.resumeAllowed = false
@@ -270,16 +271,18 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       await publish(); check()
       try { raw = await options.reader.readPage(target, page); break }
       catch (error) {
-        if (!(error instanceof SampleSurveyRetryableReadError) || readRetryUsed) throw error
+        const retryKey = `${target}:${page}`
+        if (!(error instanceof SampleSurveyRetryableReadError) || readRetries >= 3 || retriedPages.has(retryKey)) throw error
         check()
         if (report.attempts - initialAttempts >= maxReads || now() - start + 30_000 >= timeoutMs) throw new SampleSurveyReadError('limit-reached')
-        readRetryUsed = true
+        readRetries++
+        retriedPages.add(retryKey)
         // Persist the failed attempt before waiting so cancellation/restart
         // cannot grant another retry. Storage errors are never retryable.
         await publish(); check()
         try {
           options.onReadRetry?.({ at: new Date(now()).toISOString(), target, page, attempt: report.attempts,
-            retryNumber: 1, code: error.code as SampleSurveyReadRetryEvent['code'], httpStatus: error.transientHttpStatus, delayMs: 30_000 })
+            retryNumber: readRetries as SampleSurveyReadRetryEvent['retryNumber'], code: error.code as SampleSurveyReadRetryEvent['code'], httpStatus: error.transientHttpStatus, delayMs: 30_000 })
         } catch { /* Optional diagnostics cannot alter collection decisions. */ }
         check()
         await wait(30_000)

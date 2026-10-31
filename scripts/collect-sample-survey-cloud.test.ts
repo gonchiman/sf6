@@ -167,7 +167,7 @@ test('cloud reports a bounded retry separately and can publish an actual runner 
   }
 })
 
-test('retry logging keeps the later terminal diagnostic and ignores invalid or duplicate retry events', async () => {
+for (const sinkThrows of [false, true]) test(`three bounded retry logs retain the terminal diagnostic, deduplicate numbers and isolate sink failure: ${sinkThrows}`, async () => {
   const retryLines: string[] = [], failures: string[] = []
   const result = await runSampleSurveyCloud({ env: environment(), now: () => now,
     createReader: async options => ({ readPage: async () => {
@@ -180,11 +180,22 @@ test('retry logging keeps the later terminal diagnostic and ignores invalid or d
       options.onReadRetry!({ ...event, code: PRIVATE } as never)
       options.onReadRetry!({ ...event, cookie: PRIVATE } as never)
       options.onReadRetry!(event as never)
+      options.onReadRetry!({ ...event, retryNumber: 2, code: 'server-error', httpStatus: 200 } as never)
+      options.onReadRetry!({ ...event, retryNumber: 2, code: 'authentication-unconfirmed', httpStatus: 200, page: 2, attempt: 3, url: PRIVATE } as never)
+      options.onReadRetry!({ ...event, retryNumber: 2, page: 99 } as never)
+      options.onReadRetry!({ ...event, retryNumber: 4 } as never)
+      let retryNumberReads = 0
+      options.onReadRetry!({ ...event, get retryNumber() { return ++retryNumberReads === 1 ? 3 : 4 }, page: 3, attempt: 5 } as never)
+      assert.equal(retryNumberReads, 1)
+      options.onReadRetry!({ ...event, retryNumber: 3 } as never)
+      options.onReadRetry!({ ...event, retryNumber: 4 } as never)
       return runSampleSurvey(plan, options)
-    }, logReport: () => {}, logReadRetry: line => { retryLines.push(line) }, logFailureDiagnostic: line => { failures.push(line) },
+    }, logReport: () => {}, logReadRetry: line => { retryLines.push(line); if (sinkThrows) throw new Error(PRIVATE) }, logFailureDiagnostic: line => { failures.push(line) },
   })
   assert.equal(result.succeeded, false); assert.equal(result.report.stopReason, 'http-denied')
-  assert.equal(retryLines.length, 1); assert.equal(failures.length, 1)
+  assert.equal(retryLines.length, 3); assert.equal(failures.length, 1)
+  assert.deepEqual(retryLines.map(line => JSON.parse(line).sampleSurveyReadRetry.retryNumber), [1, 2, 3])
+  assert.deepEqual(retryLines.map(line => JSON.parse(line).sampleSurveyReadRetry.httpStatus), [502, 200, 502])
   assert.equal(JSON.parse(failures[0]).sampleSurveyFailureDiagnostic.httpStatus, 403)
   assert.ok(!JSON.stringify({ retryLines, failures }).includes(PRIVATE))
 })

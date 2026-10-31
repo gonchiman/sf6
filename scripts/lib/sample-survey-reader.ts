@@ -21,10 +21,11 @@ export class SampleSurveyReadError extends Error {
 
 /** A fresh strict read may be attempted; this never permits accepting the failed page. */
 export class SampleSurveyRetryableReadError extends SampleSurveyReadError {
-  readonly transientHttpStatus: 502 | 503 | 504
-  constructor(code: 'server-error' | 'authentication-unconfirmed', transientHttpStatus: 502 | 503 | 504) {
+  readonly transientHttpStatus: 200 | 502 | 503 | 504
+  constructor(code: 'server-error' | 'authentication-unconfirmed', transientHttpStatus: 200 | 502 | 503 | 504) {
     super(code)
-    if (!['server-error', 'authentication-unconfirmed'].includes(code) || ![502, 503, 504].includes(transientHttpStatus)) {
+    if (!['server-error', 'authentication-unconfirmed'].includes(code) || ![200, 502, 503, 504].includes(transientHttpStatus)
+      || transientHttpStatus === 200 && code !== 'authentication-unconfirmed') {
       throw new SampleSurveyReadError('read-failed')
     }
     this.transientHttpStatus = transientHttpStatus
@@ -36,8 +37,8 @@ export interface SampleSurveyReadRetryEvent {
   target: SampleSurveyTarget
   page: number
   attempt: number
-  retryNumber: 1
+  retryNumber: 1 | 2 | 3
   code: 'server-error' | 'authentication-unconfirmed'
-  httpStatus: 502 | 503 | 504
+  httpStatus: 200 | 502 | 503 | 504
   delayMs: 30000
 }

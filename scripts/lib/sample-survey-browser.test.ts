@@ -20,7 +20,7 @@ function fixture() {
   let loaded = 0, launched = 0, contextClosed = 0, browserClosed = 0, captureCount = 0
   let challenge = false, readError: Error | null = null, status = 200
   let readDiagnostics: Record<string, unknown> | null = null
-  let network: { status: number; resource?: string; site?: string; headers?: Record<string, string> | null }[] = []
+  let network: { status?: number; failed?: boolean; resource?: string; site?: string; headers?: Record<string, string> | null }[] = []
   let mutate: ((capture: Capture) => void) | undefined
   let duringCapture: ((page: Page) => Promise<void>) | undefined
   const pages: Page[] = [], navigation: { target: Target; page: number }[] = [], factoryOptions: unknown[] = []
@@ -43,7 +43,8 @@ function fixture() {
             const request = { url: () => event.site ?? value, resourceType: () => event.resource ?? 'fetch' }
             const events = page as unknown as EventEmitter
             events.emit('request', request)
-            events.emit('response', { request: () => request, status: () => event.status,
+            if (event.failed) events.emit('requestfailed', request)
+            else events.emit('response', { request: () => request, status: () => event.status,
               ...(event.headers === null ? {} : { headers: () => event.headers ?? {} }) })
           }
           return { status: () => status }
@@ -209,10 +210,10 @@ test('fixed diagnostic evidence is delivered before closing without replacing th
   assert.equal(f.stats().browserClosed, 1)
 })
 
-function transientAuthentication(f: ReturnType<typeof fixture>, status: 502 | 503 | 504 = 502) {
+function transientAuthentication(f: ReturnType<typeof fixture>, status: 200 | 502 | 503 | 504 = 502) {
   f.setError(new RankDistributionDomError('authentication-unconfirmed'))
   f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
-  f.setNetwork([{ status }])
+  f.setNetwork(status === 200 ? [] : [{ status }])
 }
 const retryable = (code: string, status: number) => (error: unknown) => {
   errorCode(code)(error)
@@ -226,12 +227,17 @@ const terminal = (code: string) => (error: unknown) => {
   return true
 }
 
-for (const target of ['lp', 'mr'] as const) test(`${target} transient auth failure retains the strict reader until a caller-paced same-page recovery`, async () => {
+test('HTTP 200 retry evidence is reserved for an unconfirmed authentication read', () => {
+  assert.equal(new SampleSurveyRetryableReadError('authentication-unconfirmed', 200).transientHttpStatus, 200)
+  assert.throws(() => new SampleSurveyRetryableReadError('server-error', 200), terminal('read-failed'))
+})
+
+for (const target of ['lp', 'mr'] as const) for (const status of [200, 502] as const) test(`${target} auth failure (${status}) retains the strict reader until a caller-paced same-page recovery`, async () => {
   const f = fixture(), evidence: unknown[] = [], controller = new AbortController()
   const reader = await createSampleSurveyReader({ signal: controller.signal, onReadFailure(value) { evidence.push(value) } }, { browser: f.dependencies })
   await reader.readPage(target, 1)
-  transientAuthentication(f)
-  await assert.rejects(reader.readPage(target, 2), retryable('authentication-unconfirmed', 502))
+  transientAuthentication(f, status)
+  await assert.rejects(reader.readPage(target, 2), retryable('authentication-unconfirmed', status))
   assert.equal(f.navigation.length, 2, 'the adapter never starts its own retry')
   assert.equal(f.stats().captureCount, 1, 'failed authentication never enters private capture')
   assert.equal(f.stats().contextClosed, 0); assert.equal(evidence.length, 0)
@@ -244,6 +250,8 @@ for (const target of ['lp', 'mr'] as const) test(`${target} transient auth failu
   await reader.close()
   assert.equal(evidence.length, 0, 'successful strict recovery discards the pending failure')
   assert.equal(f.stats().contextClosed, 1)
+  assert.equal(f.stats().loaded, 1); assert.equal(f.stats().launched, 1)
+  assert.equal(f.pages.length, 1, 'recovery retains the same page and browser session')
   for (const options of f.factoryOptions as { allowReadablePagesAfterSignIn: boolean }[]) assert.equal(options.allowReadablePagesAfterSignIn, false)
 })
 
@@ -259,22 +267,22 @@ for (const status of [502, 503, 504] as const) test(`a verified main-document ${
   assert.deepEqual(f.navigation.map(value => value.page), [1, 1]); assert.equal(evidence.length, 0)
 })
 
-for (const target of ['lp', 'mr'] as const) test(`${target} authentication retry needs a prior strict success for that target`, async () => {
+for (const target of ['lp', 'mr'] as const) for (const status of [200, 502] as const) test(`${target} authentication retry (${status}) needs a prior strict success for that target`, async () => {
   const f = fixture(), reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies })
   if (target === 'mr') await reader.readPage('lp', 1)
-  transientAuthentication(f)
+  transientAuthentication(f, status)
   await assert.rejects(reader.readPage(target, 1), terminal('authentication-unconfirmed'))
   assert.equal(f.stats().contextClosed, 1)
 })
 
-test('continued unconfirmed login and a later fatal error replace pending evidence and close once', async () => {
+test('a later unconfirmed or fatal read replaces pending evidence and closes once when the caller stops', async () => {
   for (const code of ['authentication-unconfirmed', 'page-mismatch'] as const) {
     const f = fixture(), evidence: { innerCode: string | null; diagnostics?: ParallelFetchReadDiagnostics }[] = []
     const reader = await createSampleSurveyReader({ signal: new AbortController().signal, onReadFailure(value) { evidence.push(value) } }, { browser: f.dependencies })
     await reader.readPage('lp', 1); transientAuthentication(f)
     await assert.rejects(reader.readPage('lp', 2), retryable('authentication-unconfirmed', 502))
     f.setNetwork([]); f.setError(new RankDistributionDomError(code))
-    await assert.rejects(reader.readPage('lp', 2), terminal(code))
+    await assert.rejects(reader.readPage('lp', 2), code === 'authentication-unconfirmed' ? retryable(code, 200) : terminal(code))
     await reader.close()
     assert.equal(evidence.length, 1); assert.equal(evidence[0].innerCode, code)
     assert.equal(evidence[0].diagnostics?.trace?.network.length, 0, 'final evidence does not reuse the initial 502')
@@ -298,11 +306,20 @@ for (const finish of ['close', 'abort'] as const) test(`pending transient eviden
   assert.doesNotMatch(JSON.stringify(evidence), /synthetic-cookie|synthetic-private-log-failure|"accountId"|"accountKey"|"salt"|profile\//)
 })
 
-test('only complete current-read transient evidence permits an authentication retry', async () => {
+test('a complete ambiguous HTTP 200 page permits strict rereading without a Buckler 5xx', async () => {
+  const networks = [[], [{ failed: true, resource: 'fetch', site: 'https://example.com/unrelated' }, { failed: true, resource: 'other' }],
+    [{ status: 502, site: 'https://example.com/unrelated' }], [{ status: 502, resource: 'image' }]]
+  for (const network of networks) {
+    const f = fixture(), reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies })
+    await reader.readPage('lp', 1); transientAuthentication(f, 200); f.setNetwork(network)
+    await assert.rejects(reader.readPage('lp', 2), retryable('authentication-unconfirmed', 200))
+    assert.equal(f.stats().captureCount, 1)
+    await reader.close()
+  }
+})
+
+test('authentication retry requires complete current-read evidence without a denial or challenge', async () => {
   const scenarios: { name: string; change(f: ReturnType<typeof fixture>): void; code?: string }[] = [
-    { name: 'no transient response', change: f => f.setNetwork([]) },
-    { name: 'foreign response', change: f => f.setNetwork([{ status: 502, site: 'https://example.com/unrelated' }]) },
-    { name: 'image response', change: f => f.setNetwork([{ status: 502, resource: 'image' }]) },
     { name: 'unchecked protection headers', change: f => f.setNetwork([{ status: 502, headers: null }]) },
     { name: 'omitted events', change: f => f.setNetwork(Array.from({ length: 81 }, () => ({ status: 502 }))) },
     { name: 'login heading', change: f => f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: true, lastRankingReadable: true }) },
@@ -313,6 +330,7 @@ test('only complete current-read transient evidence permits an authentication re
     ...[401, 403, 429].map(status => ({ name: `main response ${status}`, change: (f: ReturnType<typeof fixture>) => f.setStatus(status), code: 'http-denied' })),
     { name: 'visible human verification', change: f => f.setChallenge(), code: 'human-verification' },
     { name: 'WAF CAPTCHA', change: f => f.setNetwork([{ status: 502 }, { status: 405, headers: { 'x-amzn-waf-action': 'captcha' } }]), code: 'human-verification' },
+    { name: 'WAF challenge', change: f => f.setNetwork([{ status: 202, headers: { 'x-amzn-waf-action': 'challenge' } }]), code: 'human-verification' },
     ...(['login-required', 'condition-mismatch', 'page-mismatch', 'read-failed', 'timeout'] as const).map(code => ({ name: code, change: (f: ReturnType<typeof fixture>) => f.setError(new RankDistributionDomError(code)), code })),
   ]
   for (const scenario of scenarios) {
@@ -375,6 +393,19 @@ test('private-row mismatches cannot be reclassified as transient even alongside 
   await reader.readPage('lp', 1)
   f.setNetwork([{ status: 502 }]); f.mutate(value => { value.rows[0].value++ })
   await assert.rejects(reader.readPage('lp', 2), terminal('condition-mismatch'))
+  assert.equal(f.stats().contextClosed, 1)
+})
+
+test('an HTTP 200 recovery still requires a fresh verified private capture', async () => {
+  const f = fixture(), reader = await createSampleSurveyReader({ signal: new AbortController().signal }, { browser: f.dependencies })
+  await reader.readPage('lp', 1); transientAuthentication(f, 200)
+  await assert.rejects(reader.readPage('lp', 2), retryable('authentication-unconfirmed', 200))
+  f.setError(null)
+  f.setReadDiagnostics({ lastAuthenticationEvidence: 'logout-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
+  f.mutate(value => { value.rows[0].value++ })
+  await assert.rejects(reader.readPage('lp', 2), terminal('condition-mismatch'))
+  assert.deepEqual(f.navigation.map(value => value.page), [1, 2, 2])
+  assert.equal(f.stats().captureCount, 2)
   assert.equal(f.stats().contextClosed, 1)
 })
 

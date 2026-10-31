@@ -23,9 +23,10 @@ export function serializeSampleSurveyReadRetry(value: unknown): string | null {
     const { at, target, page, attempt, retryNumber, code, httpStatus, delayMs } = value as Record<string, unknown>
     if (typeof at !== 'string' || at.length !== 24 || new Date(at).toISOString() !== at
       || target !== 'lp' && target !== 'mr' || !Number.isSafeInteger(page) || Number(page) < 1
-      || !Number.isSafeInteger(attempt) || Number(attempt) < 1 || retryNumber !== 1
+      || !Number.isSafeInteger(attempt) || Number(attempt) < 1 || retryNumber !== 1 && retryNumber !== 2 && retryNumber !== 3
       || code !== 'server-error' && code !== 'authentication-unconfirmed'
-      || httpStatus !== 502 && httpStatus !== 503 && httpStatus !== 504 || delayMs !== 30000) return null
+      || httpStatus !== 200 && httpStatus !== 502 && httpStatus !== 503 && httpStatus !== 504
+      || httpStatus === 200 && code !== 'authentication-unconfirmed' || delayMs !== 30000) return null
     const record: SampleSurveyReadRetryEvent = { at, target, page: Number(page), attempt: Number(attempt), retryNumber,
       code, httpStatus, delayMs }
     return JSON.stringify({ sampleSurveyReadRetry: record })

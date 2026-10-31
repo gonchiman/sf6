@@ -79,12 +79,15 @@ export async function runSampleSurveyCloud(dependencies: {
       if (line !== null) await (dependencies.logFailureDiagnostic ?? (value => console.log(value)))(line)
     } catch { /* Logging cannot replace the original collection failure or trigger another read. */ }
   }
-  let retryRecorded = false
+  const retriesRecorded = new Set<number>()
   const onReadRetry = (event: unknown): void => {
-    if (retryRecorded) return
+    if (retriesRecorded.size >= 3) return
     const line = serializeSampleSurveyReadRetry(event)
     if (line === null) return
-    retryRecorded = true
+    // Use the reconstructed event, never re-read caller properties after validation.
+    const retryNumber: number = JSON.parse(line).sampleSurveyReadRetry.retryNumber
+    if (retriesRecorded.has(retryNumber)) return
+    retriesRecorded.add(retryNumber)
     try { (dependencies.logReadRetry ?? (value => console.log(value)))(line) }
     catch { /* Reporting cannot affect the bounded retry or disclose an exception. */ }
   }

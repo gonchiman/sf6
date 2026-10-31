@@ -1095,12 +1095,74 @@ test('a failed retry preserves its latest failure and cannot retry again', async
   assert.equal(result.report.resumeAllowed, false); assert.equal(result.slots.length, 0)
 })
 
-test('a later page failure cannot spend a second retry after a successful recovery', async () => {
-  const f = retryFixture(attempt => [1, 5].includes(attempt) ? new SampleSurveyRetryableReadError('server-error', 503) : null)
+test('an earlier server recovery does not prevent a later strict authentication recheck', async () => {
+  const f = retryFixture(attempt => attempt === 1 ? new SampleSurveyRetryableReadError('server-error', 503)
+    : attempt === 5 ? new SampleSurveyRetryableReadError('authentication-unconfirmed', 200) : null)
   const events: SampleSurveyReadRetryEvent[] = []
   const result = await runCurrentSampleSurvey(plan(), { ...f, signal: new AbortController().signal, onReadRetry: event => events.push(event) })
-  assert.equal(f.attempted.length, 5); assert.equal(result.report.attempts, 5); assert.equal(result.report.successfulPages, 3)
-  assert.equal(events.length, 1); assert.equal(result.report.stopReason, 'server-error')
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.uniqueAccountCount, 80)
+  assert.equal(result.report.attempts - result.report.successfulPages, 2)
+  assert.deepEqual(events.map(event => [event.retryNumber, event.code, event.httpStatus]),
+    [[1, 'server-error', 503], [2, 'authentication-unconfirmed', 200]])
+  assert.deepEqual(f.attempted[5], { ...f.attempted[4], at: f.attempted[4].at + 30_100 })
+})
+
+test('a fourth distinct failing page stops after the three-retry run budget', async () => {
+  const f = fixture(), original = f.reader.readPage.bind(f.reader)
+  const failed = new Set<number>(), retried: number[] = [], events: SampleSurveyReadRetryEvent[] = []
+  f.reader.readPage = async (target, page) => {
+    if (!failed.has(page)) { failed.add(page); throw new SampleSurveyRetryableReadError('server-error', 502) }
+    retried.push(page)
+    return original(target, page)
+  }
+  const result = await runCurrentSampleSurvey(plan(), { ...f, signal: new AbortController().signal, onReadRetry: event => events.push(event) })
+  assert.equal(result.report.state, 'error'); assert.equal(result.report.stopReason, 'server-error')
+  assert.equal(failed.size, 4); assert.equal(new Set(retried).size, 3)
+  assert.deepEqual(events.map(event => event.retryNumber), [1, 2, 3])
+  assert.equal(result.report.attempts - result.report.successfulPages, 4)
+})
+
+test('a production-size fixed sample survives a server error followed by ambiguous authentication after 119 observations', async () => {
+  const f = fixture({ rowsPerStratum: 2000 }), original = f.reader.readPage.bind(f.reader)
+  const value = plan({ ranks: ['ROOKIE', 'IRON'], rankSampleSize: 200 })
+  const events: SampleSurveyReadRetryEvent[] = []
+  let serverFailed = false, authenticationFailed = false, collected = 0, sampling = false, previousCollected = 0
+  f.reader.readPage = async (target, page) => {
+    if (!serverFailed) { serverFailed = true; throw new SampleSurveyRetryableReadError('server-error', 502) }
+    if (sampling && collected >= 119 && !authenticationFailed) {
+      authenticationFailed = true
+      throw new SampleSurveyRetryableReadError('authentication-unconfirmed', 200)
+    }
+    return original(target, page)
+  }
+  const result = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal,
+    onReadRetry: event => events.push(event), onUpdate(checkpoint) {
+      sampling = checkpoint.report.phase === 'sampling'
+      collected = checkpoint.report.uniqueAccountCount
+      assert.ok(collected >= previousCollected)
+      previousCollected = collected
+    } })
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.uniqueAccountCount, 400)
+  assert.deepEqual(result.report.strata.map(row => [row.requested, row.processed, row.succeeded, row.missing, row.duplicates]),
+    [[200, 200, 200, 0, 0], [200, 200, 200, 0, 0]])
+  assert.deepEqual(events.map(event => [event.code, event.httpStatus]), [['server-error', 502], ['authentication-unconfirmed', 200]])
+  for (const [index, rank] of ['ROOKIE', 'IRON'].entries()) {
+    const start = 14000 - index * 2000
+    assert.deepEqual(result.slots.filter(slot => slot.stratumId === `lp-${rank}`).map(slot => slot.position),
+      sampleSurveyPositions(start, start + 2000, 200, `${value.seed}:lp-${rank}`))
+  }
+})
+
+test('a successfully recovered page cannot be retried again in a later boundary check', async () => {
+  const f = fixture(), original = f.reader.readPage.bind(f.reader), events: SampleSurveyReadRetryEvent[] = []
+  let pageOneAttempts = 0
+  f.reader.readPage = async (target, page) => {
+    if (page === 1 && ++pageOneAttempts !== 2) throw new SampleSurveyRetryableReadError('server-error', 503)
+    return original(target, page)
+  }
+  const result = await runCurrentSampleSurvey(plan(), { ...f, signal: new AbortController().signal, onReadRetry: event => events.push(event) })
+  assert.equal(result.report.stopReason, 'server-error'); assert.equal(pageOneAttempts, 3)
+  assert.equal(events.length, 1)
 })
 
 test('retry diagnostics exceptions do not change collection or fixed positions', async () => {
@@ -1202,7 +1264,7 @@ test('a sampling-page retry preserves the already selected slots and counts the 
   assert.deepEqual(result.slots.map(slot => [slot.id, slot.page, slot.rowIndex]), originalSlots!.map(slot => [slot.id, slot.page, slot.rowIndex]))
 })
 
-test('LP recovery consumes the single retry for later MR strata too', async () => {
+test('LP and MR page retry limits are independent while their total retry budget is shared', async () => {
   const f = fixture(), original = f.reader.readPage.bind(f.reader), events: SampleSurveyReadRetryEvent[] = []
   let lpFailed = false, mrAttempts = 0
   f.reader.readPage = async (target, page) => {
@@ -1213,6 +1275,7 @@ test('LP recovery consumes the single retry for later MR strata too', async () =
   const result = await runCurrentSampleSurvey(plan({ ranks: ['MASTER'], includeMr: true }), { ...f,
     signal: new AbortController().signal, onReadRetry: event => events.push(event) })
   assert.equal(result.report.stopReason, 'server-error'); assert.equal(result.report.uniqueAccountCount, 10)
-  assert.equal(events.length, 1); assert.equal(events[0].target, 'lp'); assert.equal(mrAttempts, 1)
-  assert.equal(result.report.attempts - result.report.successfulPages, 2)
+  assert.deepEqual(events.map(event => [event.target, event.page, event.retryNumber]), [['lp', 1, 1], ['mr', 1, 2]])
+  assert.equal(mrAttempts, 2)
+  assert.equal(result.report.attempts - result.report.successfulPages, 3)
 })

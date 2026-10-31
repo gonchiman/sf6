@@ -103,7 +103,7 @@ function safeError(error: unknown, signal: AbortSignal): SampleSurveyReadError {
 }
 
 /** Eligibility permits a new strict read, never accepting the failed page. */
-function transientReadStatus(error: unknown, priorStrictSuccess: boolean): 502 | 503 | 504 | null {
+function retryReadStatus(error: unknown, priorStrictSuccess: boolean): 200 | 502 | 503 | 504 | null {
   if (!(error instanceof ParallelFetchReadError)) return null
   const diagnostics = error.diagnostics, trace = diagnostics?.trace
   if (!trace || trace.droppedObservations !== 0 || trace.droppedNetworkEvents !== 0 || trace.postStop
@@ -118,12 +118,18 @@ function transientReadStatus(error: unknown, priorStrictSuccess: boolean): 502 |
   if (error.code === 'server-error' && transient(error.httpStatus)
     && trace.network.some(row => row.kind === 'http-error' && row.site === 'buckler'
       && row.resource === 'document' && row.status === error.httpStatus && row.wafAction === null)) return error.httpStatus
+  // The LP/MR reader sets rankingReadable only for this requested page's URL,
+  // selected filters/rank labels or Act, complete row range and validated entries.
+  // parallel-fetch-browser also rejects stale diagnostics from another navigation.
   if (error.code !== 'authentication-unconfirmed' || !priorStrictSuccess || error.httpStatus !== 200
     || diagnostics.authenticationEvidence !== 'login-control' || diagnostics.loginRequiredHeading !== false
     || diagnostics.rankingReadable !== true || trace.observations.length === 0) return null
   const event = trace.network.find(row => row.kind === 'http-error' && row.site === 'buckler'
     && (row.resource === 'fetch' || row.resource === 'xhr') && transient(row.status) && row.wafAction === null)
-  return event && transient(event.status) ? event.status : null
+  // An otherwise complete HTTP 200 page can lose its header's authentication
+  // evidence without a recorded 5xx. Only a new strict read may recover it;
+  // the failed page remains rejected and the session/target stay unchanged.
+  return event && transient(event.status) ? event.status : 200
 }
 
 async function readPrivateRows(page: Pick<Page, 'evaluate'>, target: SampleSurveyTarget, salt: string,
@@ -244,7 +250,7 @@ export async function createSampleSurveyReader(options: {
         return value
       } catch (error) {
         pendingCapture = null
-        const transient = !closed && !options.signal.aborted ? transientReadStatus(error, strictTargets.has(target)) : null
+        const transient = !closed && !options.signal.aborted ? retryReadStatus(error, strictTargets.has(target)) : null
         if (transient !== null && error instanceof ParallelFetchReadError
           && (error.code === 'server-error' || error.code === 'authentication-unconfirmed')) {
           pendingFailure = diagnostic.failure(error)
