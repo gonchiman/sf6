@@ -411,13 +411,14 @@ test('summaries expose unstarted interval conditions and use a serial baseline f
 test('interval text accepts zero and one decimal place, with numeric ordering and integer milliseconds', () => {
   assert.deepEqual(parseParallelFetchIntervalInput(' 0, 4.5, 60.0 '), [60000, 4500, 0])
   assert.deepEqual(parseParallelFetchIntervalInput('0.1,5,0.3'), [5000, 300, 100])
+  assert.deepEqual(parseParallelFetchIntervalInput('1,2,3,4'), [4000, 3000, 2000, 1000])
   assert.deepEqual(parseParallelFetchIntervalInput('5'.padEnd(128)), [5000])
   for (const value of [0, 100, 4500, 60000]) assert.equal(isParallelFetchInterval(value), true)
   for (const value of [-100, 1, 250, 60001, 60100, 0.1, NaN, Infinity, '5000', null]) assert.equal(isParallelFetchInterval(value), false)
 })
 
 test('interval text rejects ambiguous, unfinished, excessive and duplicate conditions', () => {
-  for (const value of ['', ' ', '5,', ',5', '5,,3', '5,5.0', '0,0.0', '1,2,3,4', '0.05', '-1', '+5',
+  for (const value of ['', ' ', '5,', ',5', '5,,3', '5,5.0', '0,0.0', '0.05', '-1', '+5',
     '1e1', '0x5', '.5', '5.', '05', 'NaN', 'Infinity', '60.1', '5 3', '５', '5'.padEnd(129)]) {
     assert.throws(() => parseParallelFetchIntervalInput(value), Error, value)
   }

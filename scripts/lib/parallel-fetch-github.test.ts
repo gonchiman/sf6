@@ -154,6 +154,21 @@ test('interval artifacts must match the exact selected intervals, concurrencies 
   await assert.rejects(f.github.readReport(remote(), 'interval-compare'))
 })
 
+test('nine selected intervals are dispatched and matched during artifact import without truncation', async () => {
+  const options = { intervalMsList: Array.from({ length: 9 }, (_, index) => (8 - index) * 100),
+    concurrencies: [1], repetitions: 1 as const, intervalScope: 'global' as const }
+  const name = 'parallel-fetch-cloud-123-1-interval-compare'
+  const value = { ...report(), runId: 'cloud-123-1-interval-compare', config: cloudConfig('interval-compare', options) }
+  const f = mocked(args => args[0] === 'workflow' ? Buffer.alloc(0)
+    : args.at(-1)!.endsWith('/zip') ? zip(`${name}.json`, JSON.stringify(value))
+    : { artifacts: [{ id: 456, name, size_in_bytes: 100, expired: false }] })
+  await f.github.dispatch('interval-compare', REQUEST, options)
+  assert.ok(f.calls[0].args.includes('interval_seconds=0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1,0'))
+  assert.deepEqual(await f.github.readReport(remote(), 'interval-compare', options), value)
+  await assert.rejects(f.github.readReport(remote(), 'interval-compare', { ...options, intervalMsList: options.intervalMsList.slice(0, 8) }),
+    error => error instanceof ParallelFetchCloudServiceError && error.code === 'invalid-report')
+})
+
 test('single concurrency dispatch and artifact import retain the exact repeated selection', async () => {
   const options = { intervalMsList: [10000], concurrencies: [4], repetitions: 3 as const, intervalScope: 'per-tab' as const }
   const name = 'parallel-fetch-cloud-123-1-interval-compare'

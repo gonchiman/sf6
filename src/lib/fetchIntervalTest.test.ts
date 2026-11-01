@@ -37,7 +37,7 @@ test('interval-only draft fixes all comparison variables and reuses the shared e
   assert.equal(minimumPlannedWaitMs(config), 305000)
   assert.deepEqual(fetchIntervalDraft('5, 10').config, config)
   assert.deepEqual(fetchIntervalDraft('2.5, 0').config?.intervalMsList, [2500, 0])
-  for (const input of ['', '5,', '5,5', '-1', '61', '0.05', '1,2,3,4']) {
+  for (const input of ['', '5,', '5,5', '-1', '61', '0.05']) {
     const value = fetchIntervalDraft(input)
     assert.equal(value.config, null, input)
     assert.equal(value.options, null, input)
@@ -68,7 +68,7 @@ test('range generation handles decimal endpoints and never appends an off-step u
   }
 })
 
-test('invalid ranges cannot dispatch and preserve the existing condition and time budgets', () => {
+test('invalid ranges cannot dispatch and preserve request and time budgets', () => {
   for (const field of ['min', 'max', 'step'] as const) {
     for (const value of ['', ' ', '-1', '61', '0.05', 'NaN', 'Infinity', '5,10', '1e1', '0xA', '5.'.repeat(100)]) {
       const draft = fetchIntervalRangeDraft({ ...DEFAULT_FETCH_INTERVAL_RANGE, [field]: value })
@@ -79,9 +79,32 @@ test('invalid ranges cannot dispatch and preserve the existing condition and tim
   }
   assert.match(fetchIntervalRangeDraft({ min: '5', max: '10', step: '0' }).error!, /刻み/)
   assert.match(fetchIntervalRangeDraft({ min: '10', max: '5', step: '5' }).error!, /最小間隔/)
-  assert.match(fetchIntervalRangeDraft({ min: '5', max: '10', step: '1' }).error!, /6条件.*最大3条件/)
-  assert.match(fetchIntervalRangeDraft({ min: '0', max: '60', step: '0.1' }).error!, /601条件/)
+  assert.match(fetchIntervalRangeDraft({ min: '5', max: '10', step: '1' }).error!, /10分/)
+  assert.match(fetchIntervalRangeDraft({ min: '0', max: '60', step: '0.1' }).error!, /予定取得数.*200/)
   assert.match(fetchIntervalRangeDraft({ min: '10', max: '20', step: '5' }).error!, /10分/)
+})
+
+test('more than three range conditions are allowed until the shared request budget is exhausted', () => {
+  const four = fetchIntervalRangeDraft({ min: '2', max: '5', step: '1' })
+  assert.equal(four.error, null)
+  assert.deepEqual(four.options?.intervalMsList, [5000, 4000, 3000, 2000])
+  assert.deepEqual(four, fetchIntervalDraft('2,3,4,5'))
+  assert.equal(plannedParallelFetchAttempts(four.config!), 84)
+  const nine = fetchIntervalRangeDraft({ min: '0', max: '0.8', step: '0.1' })
+  assert.equal(nine.error, null)
+  assert.equal(nine.options?.intervalMsList.length, 9)
+  assert.equal(plannedParallelFetchAttempts(nine.config!), 189)
+  for (const tooMany of [fetchIntervalRangeDraft({ min: '0', max: '0.9', step: '0.1' }),
+    fetchIntervalDraft('0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9')]) {
+    assert.equal(tooMany.config, null)
+    assert.equal(tooMany.options, null)
+    assert.match(tooMany.error!, /予定取得数.*200/)
+  }
+  const complete = report(four.options!.intervalMsList.map(value => trial(value)), { state: 'complete', config: four.config! })
+  assert.ok(isFetchIntervalConfig(complete.config))
+  const rows = fetchIntervalRows(complete.config, complete)
+  assert.equal(rows.length, 4)
+  assert.ok(rows.every(row => row.state === 'complete' && row.completedPages === 20))
 })
 
 test('compatible history keeps historical budgets and global legacy scope, but excludes different acquisition conditions', () => {

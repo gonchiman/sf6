@@ -11,7 +11,7 @@ on:
         options: ['serial', 'compare', 'interval-compare']
         default: 'serial'
       interval_seconds:
-        description: '取得開始間隔（秒、0〜60、0.1秒単位、最大3種類、カンマ区切り）'
+        description: '取得開始間隔（秒、0〜60、0.1秒単位、カンマ区切り。取得数・時間上限内）'
         required: true
         type: string
         default: '5,3'
