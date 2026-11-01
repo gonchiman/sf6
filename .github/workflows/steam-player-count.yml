@@ -1,8 +1,7 @@
 name: Collect Steam player count
 
 on:
-  schedule:
-    - cron: '7,22,37,52 * * * *' # Every 15 minutes, away from the busy start of the hour (UTC)
+  # The bounded dispatcher starts this workflow every 15 minutes.
   workflow_dispatch:
 
 permissions:

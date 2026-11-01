@@ -84,7 +84,8 @@ test('refuses an unexpected branch and rejects unauthorized execution before any
 
 test('workflow separates collection from queued publishing and retains the original artifact name on publisher reruns', async () => {
   const workflow = await readFile(new URL('../.github/workflows/steam-player-count.yml', import.meta.url), 'utf8')
-  assert.match(workflow, /cron: '7,22,37,52 \* \* \* \*'/)
+  assert.match(workflow, /workflow_dispatch:/)
+  assert.doesNotMatch(workflow, /\bschedule:|\bcron:/)
   assert.match(workflow, /queue: max/)
   assert.match(workflow, /needs\.collect\.outputs\.artifact_name/)
   assert.match(workflow, /artifact_name: \$\{\{ steps\.artifact-name\.outputs\.name \}\}/)

@@ -1,0 +1,41 @@
+name: Schedule Steam player count every 15 minutes
+
+on:
+  schedule:
+    - cron: '11 * * * *' # Start/replenish the bounded dispatcher, away from the top of the hour.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One active dispatcher and at most one replacement. New hourly triggers replace
+# the pending run, never the active clock. Do not queue an unlimited backlog.
+concurrency:
+  group: steam-player-count-dispatch-gonchiman-sf6
+  cancel-in-progress: false
+  queue: single
+
+jobs:
+  dispatch:
+    if: github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && github.event.repository.private == false && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout dispatcher code from this main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Test the clock and dispatch failures without network access
+        run: node --test scripts/dispatch-steam-player-count.test.ts
+      - name: Dispatch current observations every 15 minutes for up to 330 minutes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/dispatch-steam-player-count.ts

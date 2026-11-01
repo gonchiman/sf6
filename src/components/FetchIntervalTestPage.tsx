@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { timestampLabel } from '../lib/dateTime'
-import { DEFAULT_FETCH_INTERVAL_INPUT, fetchIntervalDraft, fetchIntervalRows, fetchIntervalStateLabels, isFetchIntervalConfig, isFetchIntervalRun } from '../lib/fetchIntervalTest'
+import { DEFAULT_FETCH_INTERVAL_RANGE, fetchIntervalRangeDraft, fetchIntervalRows, fetchIntervalStateLabels, isFetchIntervalConfig, isFetchIntervalRun } from '../lib/fetchIntervalTest'
 import { parallelFetchIntervals, plannedParallelFetchAttempts } from '../lib/parallelFetch'
 import { cloudConfig, cloudRunUrl, isCloudRunActive, parseParallelFetchResult } from '../lib/parallelFetchCloud'
 import { cloudStateLabels, durationLabel, errorLabels } from '../lib/parallelFetchLabels'
@@ -8,7 +8,6 @@ import { useParallelFetchCloud } from '../lib/useParallelFetchCloud'
 import type { CloudRun, ParallelFetchResult } from '../types/parallelFetchCloud'
 import type { ParallelFetchConfig, ParallelFetchReport } from '../types/parallelFetch'
 import { ParallelFetchCloudStatus } from './ParallelFetchCloudStatus'
-import { ParallelFetchIntervalInput } from './ParallelFetchIntervalInput'
 import { StatisticsPanel } from './StatisticsPanel'
 import '../table.css'
 import '../parallel-fetch.css'
@@ -59,7 +58,7 @@ export function FetchIntervalResults({ config, report, run }: { config: Parallel
 }
 
 export function FetchIntervalTestPage() {
-  const [intervalText, setIntervalText] = useState(DEFAULT_FETCH_INTERVAL_INPUT)
+  const [intervalRange, setIntervalRange] = useState({ ...DEFAULT_FETCH_INTERVAL_RANGE })
   const [imports, setImports] = useState<ParallelFetchResult[]>([])
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -67,7 +66,7 @@ export function FetchIntervalTestPage() {
   const fileInput = useRef<HTMLInputElement>(null)
   const importGeneration = useRef(0)
   const cloud = useParallelFetchCloud(true)
-  const draft = fetchIntervalDraft(intervalText)
+  const draft = fetchIntervalRangeDraft(intervalRange)
   const activeRun = cloud.status?.runs.find(isCloudRunActive) ?? null
   const busy = !!activeRun || cloud.pending || cloud.unconfirmed
   const invalidServiceState = cloud.status?.error === 'state-invalid' || cloud.status?.error === 'state-save-failed'
@@ -137,9 +136,14 @@ export function FetchIntervalTestPage() {
         <div><dt>取得対象</dt><dd>LPランキング 1〜20ページ</dd></div>
         <div><dt>試行回数</dt><dd>各1回</dd></div>
       </dl>
-      <form onSubmit={event => { void start(event) }}>
+      <form noValidate onSubmit={event => { void start(event) }}>
         <fieldset className="parallel-fetch-fields fetch-interval-fields" disabled={busy || importing}>
-          <ParallelFetchIntervalInput value={intervalText} onChange={setIntervalText} error={draft.error} errorId="fetch-interval-config-error" />
+          {(['min', 'max', 'step'] as const).map(field => <label key={field}>
+            <span>{{ min: '最小間隔（秒）', max: '最大間隔（秒）', step: '刻み（秒）' }[field]}</span>
+            <input type="number" min={field === 'step' ? 0.1 : 0} max={60} step={0.1} inputMode="decimal"
+              value={intervalRange[field]} onChange={event => setIntervalRange(previous => ({ ...previous, [field]: event.target.value }))}
+              autoComplete="off" aria-invalid={!!draft.error} aria-describedby={draft.error ? 'fetch-interval-config-error' : undefined} />
+          </label>)}
           {import.meta.env.DEV && <div className="parallel-fetch-actions fetch-interval-start"><button type="submit" disabled={!canRun}>比較を実行</button></div>}
         </fieldset>
         {draft.error ? <p id="fetch-interval-config-error" className="parallel-fetch-message" role="alert">{draft.error}</p>

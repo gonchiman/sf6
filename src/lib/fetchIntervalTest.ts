@@ -1,5 +1,6 @@
 import {
   parallelFetchIntervals, parallelFetchIntervalScope, parseHistoricalParallelFetchConfig,
+  isParallelFetchInterval, PARALLEL_FETCH_MAX_INTERVALS,
 } from './parallelFetch.ts'
 import { cloudConfig, sameParallelFetchConfig } from './parallelFetchCloud.ts'
 import { parallelFetchConfigError, parallelFetchIntervalDraft } from './parallelFetchPresentation.ts'
@@ -7,6 +8,30 @@ import type { ParallelFetchAttempt, ParallelFetchConfig, ParallelFetchErrorCode,
 import type { CloudIntervalOptions, CloudRun } from '../types/parallelFetchCloud.ts'
 
 export const DEFAULT_FETCH_INTERVAL_INPUT = '10, 5'
+export interface FetchIntervalRange { min: string; max: string; step: string }
+export const DEFAULT_FETCH_INTERVAL_RANGE: Readonly<FetchIntervalRange> = { min: '5', max: '10', step: '5' }
+
+/** Expand from the lower bound using integer milliseconds; do not append an off-step upper bound. */
+export function fetchIntervalRangeDraft(range: FetchIntervalRange): ReturnType<typeof fetchIntervalDraft> {
+  const invalid = (error: string): ReturnType<typeof fetchIntervalDraft> => ({ config: null, options: null, error })
+  const values = {} as Record<keyof FetchIntervalRange, number>
+  const labels = { min: '最小間隔', max: '最大間隔', step: '刻み' }
+  for (const field of ['min', 'max', 'step'] as const) {
+    const text = range[field].trim()
+    const value = Math.round(Number(text) * 1000)
+    if (text.length > 16 || !/^(?:0|[1-9]\d*)(?:\.\d)?$/.test(text) || !isParallelFetchInterval(value)
+      || field === 'step' && value === 0) {
+      return invalid(`${labels[field]}は${field === 'step' ? '0.1' : '0'}〜60秒・小数1桁までで指定してください。`)
+    }
+    values[field] = value
+  }
+  if (values.min > values.max) return invalid('最小間隔は最大間隔以下にしてください。')
+  const count = Math.floor((values.max - values.min) / values.step) + 1
+  if (count > PARALLEL_FETCH_MAX_INTERVALS) {
+    return invalid(`生成される間隔が${count}条件あります。最大${PARALLEL_FETCH_MAX_INTERVALS}条件になるよう、範囲を狭めるか刻みを大きくしてください。`)
+  }
+  return fetchIntervalDraft(Array.from({ length: count }, (_, index) => (values.min + index * values.step) / 1000).join(', '))
+}
 
 export function fetchIntervalDraft(text: string): {
   config: ParallelFetchConfig | null
