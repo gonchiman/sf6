@@ -12,14 +12,30 @@ Steam版Street Fighter 6（App ID `1364780`）の同時接続数を定期観測�
 
 ## 取得と配信
 
-`.github/workflows/steam-player-count.yml`をmainで動かす。cronは`7,22,37,52 * * * *`、1日96回の予定。毎時00分を避けるが、[GitHub Actionsのschedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)には遅延・取りこぼしがあり、15分間隔を保証しない。public repositoryで60日間repository activityがないとscheduleが停止する仕様もある。
+`.github/workflows/steam-player-count-dispatch.yml`をmainで動かし、起動役が毎時07・22・37・52分（UTC/JST共通の分）に、単発の`.github/workflows/steam-player-count.yml`を呼び出す。1日96観測が目標。取得workflow自身のcronは外し、二重の定期取得を避ける。
+
+起動役は最大330分（5時間半）だけ動く。毎時11分のcronで次の起動役を補充し、同時に動くのは1つ、交代待ちは最大1つとする。新しい予定起動は交代待ちだけを置き換え、動作中の起動役は中断しない。GitHub-hosted jobの6時間上限より前に通常終了する。起動役・取得処理とも固定リポジトリのmainだけを使う。
+
+[GitHub Actionsのschedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)には遅延・取りこぼしがある。2026-11-01の確認では、従来の15分cronで定期実行が4回しかなく、約3〜4時間間隔になっていた。新方式は起動役が動いている間の15分タイマーをcronから分離する。交代する起動役まで届かない場合、runner停止、取得jobの待ち行列、API失敗では欠測し得る。15分間隔を保証するものではなく、欠けた過去の人数を再取得したことにはしない。public repositoryで60日間repository activityがないとcronが停止する仕様もある。
+
+起動役だけに`actions: write`を与え、短命な`GITHUB_TOKEN`で固定の取得workflowを`workflow_dispatch`する。[このイベントはGITHUB_TOKENによる起動にも対応する](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。取得jobの`contents: read`、公開jobの`contents: write`とartifactによる受け渡しは既存のまま維持する。個人トークンや新しいSecretは追加しない。
+
+取得処理自体は短いが、起動役は待機中もrunnerを1枠使用する。連続稼働なら約1,440 runner分/日と取得・公開jobの分数がかかる。[公開リポジトリの標準GitHub-hosted runnerは無料](https://docs.github.com/en/billing/concepts/product-billing/github-actions)。非公開化による意図しない待機時間の課金を避けるため、起動役jobは公開リポジトリの場合だけ開始する。
 
 1. `collect`はNode 24の標準`fetch`で1観測を取得する。依存パッケージのインストールやブラウザー起動は不要。
 2. HTTPと本文読み取りの制限時間は1試行15秒。通信失敗・429・5xxのみ最大3試行。`Retry-After`は秒数・HTTP日付に対応し、5秒を超える待機を要求されたらその回は失敗として終える。サーバー指定より早く再試行しない。
 3. APIの成功状態と非負の安全な整数を検証する。確認済み0人は正常値。不正JSON・API失敗・取得失敗から0人を作らない。
 4. `contents: read`の取得jobが`observation.json`だけをartifactへ保存する。保持は30日。失敗時は公開履歴を書き換えず、Actionsのjobを失敗状態にする。
 5. `contents: write`の公開jobが専用ブランチ`codex/steam-player-count-history`だけへ履歴を保存する。mainやGitHub Pagesのビルド・デプロイはデータ取得ごとには実行しない。
-6. 取得jobは並列可能。公開jobだけを専用concurrencyで直列化し、[`queue: max`](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)を使う。上限100件であり、無制限の保管キューではない。
+6. 取得jobは並列可能。公開jobだけを専用concurrencyで直列化し、[`queue: max`](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)を使う。上限100件であり、無制限の保管キューではない。起動役の交代待ちは別のconcurrency groupで1件に限定する。
+
+### 起動・停止と確認
+
+- 有効化後はActionsの「Schedule Steam player count every 15 minutes」をmainで手動実行すると起動役が始まり、次の07・22・37・52分から取得する。起動役は長時間`in_progress`のままで正常。各観測の成否は「Collect Steam player count」の短いrunで確認する。
+- 起動役を停止するには同workflowを無効化する。動作中の起動役も最大約60秒の確認間隔で無効化を検知して終了する。直ちに止める場合は動作中・交代待ちのrunもキャンセルする。すでに起動済みの取得jobは別runなので必要なら個別に止める。
+- 再開は同workflowを有効化し、mainで手動実行する。取得workflowだけが無効化されている場合は、そちらも有効化する。
+- スロットは壁時計の固定時刻に合わせる。取得処理にかかった秒数を次の15分に足し込まず、遅れた過去スロットの連続実行もしない。同一スロットの既存起動や実行中の取得がある場合は重複起動を抑止する。
+- dispatch応答が失われた場合、実行が届いたか不明なので同じスロットではPOSTを再送しない。認証・権限・workflow不明のエラーは停止し、通信障害などは記録して次の予定時刻を待つ。取得成功の判断は起動役のPOST成功ではなく、取得run・公開runと履歴JSONで行う。
 
 履歴ブランチがまだ存在しない最初の公開では、そのmainコミットの`public/data/steam-player-count`をハッシュ・形式検証して初期履歴へコピーし、それから新しい観測を追加する。これにより同梱した初回実測が自動取得へ切り替わる際も残る。既存の履歴ブランチは同梱データで上書きしない。配信用JSONは`.gitattributes`でLFを固定し、checkout時の改行変換によるハッシュ不一致を防ぐ。
 
@@ -69,8 +85,9 @@ manifestは`{ schemaVersion, appId, sourceUrl, generatedAt, days }`。各日に�
 node scripts/collect-steam-player-count.ts --collect --output .local/steam-player-count/manual-001
 node scripts/publish-steam-player-count.ts --input .local/steam-player-count/manual-001/observation.json --output .local/steam-player-count/preview/public
 node --test scripts/collect-steam-player-count.test.ts scripts/publish-steam-player-count.test.ts scripts/publish-steam-player-count-history.test.ts
+node --test scripts/dispatch-steam-player-count.test.ts
 ```
 
-単発取得・ローカル取り込みは定期取得の有効化や履歴ブランチへのpushを行わない。ネットワークへの書き込みは固定mainのworkflowから呼ぶ`publish-steam-player-count-history.ts`に限定する。synthetic testでは実Steam APIへ接続しない。
+単発取得・ローカル取り込みは定期取得の有効化や履歴ブランチへのpushを行わない。取得データの公開・履歴ブランチへの書き込みは固定mainのworkflowから呼ぶ`publish-steam-player-count-history.ts`に限定する。起動役のPOSTも固定mainのworkflowから固定の取得workflowだけを対象にする。synthetic testでは実Steam APIやGitHub APIへ接続しない。
 
 既存のLegend取得workflowから、取得と公開の権限分離・artifact受け渡し・専用履歴ブランチの構成を再利用した。Steamの高頻度観測、日別ファイル、SHA-256照合、実時刻の時間帯集計は専用処理として実装する。`arknights_2`の取得コードはtimeout・限定retry・検証後保存の参照元とし、実行時の外部ローカルパス依存は追加しない。
