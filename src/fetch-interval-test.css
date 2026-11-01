@@ -2,7 +2,7 @@
 .fetch-interval-fixed, .fetch-interval-details, .fetch-interval-source { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0; }
 .fetch-interval-page dt { color: var(--text-muted); font-size: 12px; }
 .fetch-interval-page dd { margin: 3px 0 0; overflow-wrap: anywhere; }
-.fetch-interval-fields { grid-template-columns: minmax(0, 1fr) auto; align-items: end; margin-top: 20px; }
+.fetch-interval-fields { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; margin-top: 20px; }
 .fetch-interval-start { margin: 0; }
 .fetch-interval-start button { min-height: 36px; }
 .fetch-interval-plan { display: flex; gap: 8px 14px; flex-wrap: wrap; margin-top: 12px; color: var(--text-soft); font-size: 12px; }

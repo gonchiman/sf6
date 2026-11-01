@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DEFAULT_FETCH_INTERVAL_INPUT, fetchIntervalDraft, fetchIntervalRows, isFetchIntervalConfig, isFetchIntervalRun } from './fetchIntervalTest.ts'
+import { DEFAULT_FETCH_INTERVAL_INPUT, DEFAULT_FETCH_INTERVAL_RANGE, fetchIntervalDraft, fetchIntervalRangeDraft, fetchIntervalRows, isFetchIntervalConfig, isFetchIntervalRun } from './fetchIntervalTest.ts'
 import { cloudConfig } from './parallelFetchCloud.ts'
 import { minimumPlannedWaitMs, plannedParallelFetchAttempts } from './parallelFetch.ts'
 import type { ParallelFetchAttempt, ParallelFetchConfig, ParallelFetchReport, ParallelFetchTrial } from '../types/parallelFetch.ts'
@@ -44,6 +44,44 @@ test('interval-only draft fixes all comparison variables and reuses the shared e
     assert.ok(value.error, input)
   }
   assert.match(fetchIntervalDraft('60, 10').error!, /10分/)
+})
+
+test('range input preserves the previous default and sends only generated intervals to Actions', () => {
+  assert.deepEqual(fetchIntervalRangeDraft(DEFAULT_FETCH_INTERVAL_RANGE), fetchIntervalDraft(DEFAULT_FETCH_INTERVAL_INPUT))
+  const range = fetchIntervalRangeDraft({ min: '5', max: '10', step: '2.5' })
+  assert.deepEqual(range.options, { intervalMsList: [10000, 7500, 5000], concurrencies: [1], repetitions: 1, intervalScope: 'global' })
+  assert.deepEqual(cloudConfig('interval-compare', range.options!), range.config)
+  assert.equal(plannedParallelFetchAttempts(range.config!), 63)
+  assert.equal(minimumPlannedWaitMs(range.config!), 462500)
+})
+
+test('range generation handles decimal endpoints and never appends an off-step upper bound', () => {
+  for (const [min, max, step, expected] of [
+    ['0.1', '0.3', '0.1', [300, 200, 100]],
+    ['0', '0.2', '0.1', [200, 100, 0]],
+    ['5', '10', '2', [9000, 7000, 5000]],
+    ['5', '5', '0.1', [5000]],
+    ['5', '10', '60', [5000]],
+    [' 5 ', ' 10 ', ' 5 ', [10000, 5000]],
+  ] as const) {
+    assert.deepEqual(fetchIntervalRangeDraft({ min, max, step }).options?.intervalMsList, expected)
+  }
+})
+
+test('invalid ranges cannot dispatch and preserve the existing condition and time budgets', () => {
+  for (const field of ['min', 'max', 'step'] as const) {
+    for (const value of ['', ' ', '-1', '61', '0.05', 'NaN', 'Infinity', '5,10', '1e1', '0xA', '5.'.repeat(100)]) {
+      const draft = fetchIntervalRangeDraft({ ...DEFAULT_FETCH_INTERVAL_RANGE, [field]: value })
+      assert.equal(draft.options, null, `${field}=${value}`)
+      assert.equal(draft.config, null, `${field}=${value}`)
+      assert.ok(draft.error, `${field}=${value}`)
+    }
+  }
+  assert.match(fetchIntervalRangeDraft({ min: '5', max: '10', step: '0' }).error!, /刻み/)
+  assert.match(fetchIntervalRangeDraft({ min: '10', max: '5', step: '5' }).error!, /最小間隔/)
+  assert.match(fetchIntervalRangeDraft({ min: '5', max: '10', step: '1' }).error!, /6条件.*最大3条件/)
+  assert.match(fetchIntervalRangeDraft({ min: '0', max: '60', step: '0.1' }).error!, /601条件/)
+  assert.match(fetchIntervalRangeDraft({ min: '10', max: '20', step: '5' }).error!, /10分/)
 })
 
 test('compatible history keeps historical budgets and global legacy scope, but excludes different acquisition conditions', () => {
