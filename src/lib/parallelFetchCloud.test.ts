@@ -82,6 +82,26 @@ test('cloud options accept every integer through eight and keep the request and 
   assert.throws(() => parseCloudIntervalOptions({ ...options, intervalMsList: [5000, 3000] }))
 })
 
+test('multiple interval conditions round-trip through cloud history and exports within execution budgets', () => {
+  for (const intervalMsList of [[2000, 3000, 4000, 5000], Array.from({ length: 9 }, (_, index) => index * 100)]) {
+    const options = parseCloudIntervalOptions({ intervalMsList, concurrencies: [1], repetitions: 1 })
+    const config = cloudConfig('interval-compare', options)
+    assert.deepEqual(config.intervalMsList, [...intervalMsList].reverse())
+    assert.equal(plannedParallelFetchAttempts(config), intervalMsList.length * 21)
+    const value = { ...run(), mode: 'interval-compare', options, report: { ...run().report!,
+      runId: 'cloud-123-1-interval-compare', config } }
+    assert.deepEqual(parseCloudRun(value), value)
+    const envelope = { schemaVersion: 1, kind: 'parallel-fetch-result', environment: 'github-actions', cloud: value, report: value.report }
+    assert.deepEqual(parseParallelFetchResult(JSON.parse(JSON.stringify(envelope))), envelope)
+  }
+  for (const intervalMsList of [Array.from({ length: 10 }, (_, index) => index * 100), [5000, 6000, 7000, 8000, 9000, 10000]]) {
+    assert.throws(() => parseCloudIntervalOptions({ intervalMsList, concurrencies: [1], repetitions: 1 }))
+  }
+  const historical = parseCloudIntervalOptions({ intervalMsList: [5000, 6000, 7000, 8000, 9000, 10000], concurrencies: [1], repetitions: 1 }, { historical: true })
+  assert.equal(historical.intervalMsList.length, 6)
+  assert.throws(() => parseCloudIntervalOptions({ ...historical, intervalMsList: Array(602).fill(100) }, { historical: true }))
+})
+
 test('single concurrency repetitions retain their budgets and exact saved conditions', () => {
   const options = parseCloudIntervalOptions({ intervalMsList: [10000], concurrencies: [4], repetitions: 3, intervalScope: 'per-tab' })
   const config = cloudConfig('interval-compare', options)

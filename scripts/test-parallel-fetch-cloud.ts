@@ -29,7 +29,7 @@ node scripts/test-parallel-fetch-cloud.ts --interval-compare --interval-seconds=
 
 --serial: LPの1〜20ページを並列数1で3回（事前確認を含め63取得予定）
 --compare: 同じ20ページを並列数1・2で各1回（事前確認を含め43取得予定）
---interval-compare: 0〜60秒（0.1秒単位、最大3種類）と並列数1〜8（単独指定可）をカンマ区切りで指定し、長い間隔から比較
+--interval-compare: 0〜60秒（0.1秒単位）と並列数1〜8（単独指定可）をカンマ区切りで指定し、取得数・時間上限内で長い間隔から比較
 --interval-scope: globalは全タブ共通、per-tabはタブごとの取得開始間隔。省略時global。旧--intervalsはミリ秒入力。
 固定テストの開始間隔は5秒。全条件合計200取得以内、最大10分。認証・チャレンジ検出時は停止します。
 指定のmain上の手動workflow、または既存の検証ブランチ・GitHub hosted Windows専用です。
@@ -51,7 +51,7 @@ export function parseParallelFetchCloudArguments(args: string[]): { mode: Parall
     return { mode: args[0].slice(2) as ParallelFetchCloudMode | 'help' }
   }
   if ((args.length === 4 || args.length === 5) && args[0] === '--interval-compare'
-    && (args[1].startsWith('--interval-seconds=') || /^--intervals=\d+(?:,\d+){0,2}$/.test(args[1]))
+    && (args[1].startsWith('--interval-seconds=') || /^--intervals=\d+(?:,\d+)*$/.test(args[1]))
     && args[2].startsWith('--concurrencies=') && /^--repetitions=[13]$/.test(args[3])
     && (args.length === 4 || /^--interval-scope=(global|per-tab)$/.test(args[4]))) {
     try {

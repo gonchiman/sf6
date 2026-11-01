@@ -1,4 +1,4 @@
-import { isParallelFetchInterval, parallelFetchIntervalScope, PARALLEL_FETCH_MAX_INTERVALS,
+import { isParallelFetchInterval, parallelFetchIntervalScope, PARALLEL_FETCH_INTERVAL_VALUE_COUNT,
   parseHistoricalParallelFetchConfig, parseParallelFetchConfig, parseParallelFetchReport } from './parallelFetch.ts'
 import type { ParallelFetchConfig } from '../types/parallelFetch.ts'
 import { CLOUD_ERRORS, CLOUD_READINESS, CLOUD_STATES } from '../types/parallelFetchCloud.ts'
@@ -33,7 +33,7 @@ export function parseCloudIntervalOptions(value: unknown, validation: { historic
   const row = object(value)
   if (!Object.keys(row).every(key => ['intervalMsList', 'concurrencies', 'repetitions', 'intervalScope'].includes(key))
     || !['intervalMsList', 'concurrencies', 'repetitions'].every(key => key in row)
-    || !Array.isArray(row.intervalMsList) || row.intervalMsList.length < 1 || row.intervalMsList.length > PARALLEL_FETCH_MAX_INTERVALS
+    || !Array.isArray(row.intervalMsList) || row.intervalMsList.length < 1 || row.intervalMsList.length > PARALLEL_FETCH_INTERVAL_VALUE_COUNT
     || !row.intervalMsList.every(isParallelFetchInterval)
     || new Set(row.intervalMsList).size !== row.intervalMsList.length
     || !Array.isArray(row.concurrencies)

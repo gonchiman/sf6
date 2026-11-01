@@ -353,6 +353,46 @@ test('one cloud browser runs all interval conditions with the selected cadence a
   assert.equal(JSON.stringify(result).includes(SECRET), false)
 })
 
+test('nine interval conditions survive seconds and legacy CLI parsing, collection and artifact validation', async () => {
+  const intervals = Array.from({ length: 9 }, (_, index) => index * 100)
+  const tail = ['--concurrencies=1', '--repetitions=1', '--interval-scope=global']
+  const secondsArgs = ['--interval-compare', `--interval-seconds=${intervals.map(value => value / 1000).join(',')}`, ...tail]
+  const legacyArgs = ['--interval-compare', `--intervals=${intervals.join(',')}`, ...tail]
+  const options = { intervalMsList: [...intervals].reverse(), concurrencies: [1], repetitions: 1, intervalScope: 'global' }
+  assert.deepEqual(parseParallelFetchCloudArguments(secondsArgs), { mode: 'interval-compare', options })
+  assert.deepEqual(parseParallelFetchCloudArguments(legacyArgs), { mode: 'interval-compare', options })
+  const f = fixture(mainHosted())
+  const result = await runParallelFetchCloudTest(secondsArgs, f.deps)
+  assert.equal(result.succeeded, true)
+  assert.equal(plannedParallelFetchAttempts(result.report.config), 189)
+  assert.deepEqual(result.report.trials.map(trial => [trial.intervalMs, trial.completedPages.length]),
+    options.intervalMsList.map(intervalMs => [intervalMs, 20]))
+  assert.equal(f.reads.length, 189)
+  assert.equal(f.stats().readers, 9)
+  assert.equal(f.stats().closedReaders, 9)
+  assert.equal(f.stats().opens, 1)
+  assert.equal(f.stats().closes, 1)
+  assert.deepEqual(parseParallelFetchReport(JSON.parse(JSON.stringify(result.report))), result.report)
+  assert.deepEqual(f.saved, [result.report])
+  assert.equal(result.artifactReady, true)
+  assert.equal(JSON.stringify(result).includes(SECRET), false)
+})
+
+test('many interval conditions still reject request and duration budgets before browser startup', async () => {
+  for (const intervals of [
+    Array.from({ length: 10 }, (_, index) => index / 10).join(','), // 210 requests.
+    '5,10,15,20', // Four conditions require more than ten minutes of start spacing alone.
+  ]) {
+    const f = fixture(mainHosted())
+    await assert.rejects(runParallelFetchCloudTest(['--interval-compare', `--interval-seconds=${intervals}`,
+      '--concurrencies=1', '--repetitions=1'], f.deps),
+    error => error instanceof ParallelFetchCloudError && error.code === 'arguments')
+    assert.equal(f.stats().opens, 0)
+    assert.equal(f.reads.length, 0)
+    assert.equal(f.saved.length, 0)
+  }
+})
+
 test('cloud collection forwards and records new concurrency values across the same bounded runner', async () => {
   const f = fixture(mainHosted())
   const result = await runParallelFetchCloudTest(intervalArgs.map(arg => arg.replace('--concurrencies=1,2', '--concurrencies=8,1,3')), f.deps)
@@ -409,7 +449,9 @@ test('seconds CLI normalizes zero, decimal and whitespace values with an explici
     intervalMsList: [5100, 100, 0], concurrencies: [1, 2], repetitions: 1, intervalScope: 'per-tab',
   } })
   assert.equal(parseParallelFetchCloudArguments(args.slice(0, 4)).options?.intervalScope, 'global')
-  for (const value of ['', '1,', ',1', '1,,2', '-1', '60.1', '0.01', '5,5.0', '1,2,3,4',
+  assert.deepEqual(parseParallelFetchCloudArguments(args.map(arg => arg.startsWith('--interval-seconds=')
+    ? '--interval-seconds=1,2,3,4' : arg)).options?.intervalMsList, [4000, 3000, 2000, 1000])
+  for (const value of ['', '1,', ',1', '1,,2', '-1', '60.1', '0.01', '5,5.0',
     '1e0', '0x5', '1;Write-Output injected', '1,$(Write-Output injected)', '1,`whoami`']) {
     assert.throws(() => parseParallelFetchCloudArguments(args.map(arg => arg.startsWith('--interval-seconds=') ? `--interval-seconds=${value}` : arg)),
       error => error instanceof ParallelFetchCloudError && error.code === 'arguments')

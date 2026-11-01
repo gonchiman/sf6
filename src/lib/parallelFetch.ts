@@ -7,7 +7,8 @@ export const PARALLEL_FETCH_MAX_ATTEMPTS = 200
 export const PARALLEL_FETCH_MAX_CONCURRENCY = 8
 export const PARALLEL_FETCH_MAX_INTERVAL_MS = 60000
 export const PARALLEL_FETCH_INTERVAL_STEP_MS = 100
-export const PARALLEL_FETCH_MAX_INTERVALS = 3
+/** Size of the allowed numeric domain, not an execution condition limit. */
+export const PARALLEL_FETCH_INTERVAL_VALUE_COUNT = PARALLEL_FETCH_MAX_INTERVAL_MS / PARALLEL_FETCH_INTERVAL_STEP_MS + 1
 export const PARALLEL_FETCH_MAX_DURATION_MS = 10 * 60 * 1000
 export const PARALLEL_FETCH_MAX_TRACE_OBSERVATIONS = 80
 export const PARALLEL_FETCH_MAX_TRACE_NETWORK_EVENTS = 80
@@ -110,8 +111,7 @@ function interval(value: unknown): ParallelFetchInterval {
 }
 export function parseParallelFetchIntervalInput(text: string): ParallelFetchInterval[] {
   if (text.length > 128) throw new Error('取得開始間隔は128文字以内で入力してください。')
-  const tokens = text.split(',', PARALLEL_FETCH_MAX_INTERVALS + 1).map(token => token.trim())
-  if (tokens.length > PARALLEL_FETCH_MAX_INTERVALS) throw new Error(`取得開始間隔は${PARALLEL_FETCH_MAX_INTERVALS}個以内で入力してください。`)
+  const tokens = text.split(',').map(token => token.trim())
   const intervals = tokens.map(token => {
     const milliseconds = Math.round(Number(token) * 1000)
     if (!/^(?:0|[1-9]\d*)(?:\.\d)?$/.test(token) || !isParallelFetchInterval(milliseconds)) {
@@ -167,7 +167,7 @@ export function parseHistoricalParallelFetchConfig(value: unknown): ParallelFetc
   }
   if (input.intervalScope !== undefined) result.intervalScope = oneOf(input.intervalScope, ['global', 'per-tab'] as const)
   if (input.intervalMsList !== undefined) {
-    const intervals = Array.from(list(input.intervalMsList, PARALLEL_FETCH_MAX_INTERVALS), interval)
+    const intervals = Array.from(list(input.intervalMsList, PARALLEL_FETCH_INTERVAL_VALUE_COUNT), interval)
     if (!intervals.length || intervals[0] !== result.intervalMs || new Set(intervals).size !== intervals.length
       || intervals.some((item, index) => index > 0 && item > intervals[index - 1])) return invalid()
     result.intervalMsList = intervals

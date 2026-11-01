@@ -53,7 +53,8 @@ test('a targeted four-worker draft produces only the requested repeated conditio
 test('interval drafts keep zero and decimals while invalid drafts discard executable values', () => {
   assert.deepEqual(parallelFetchIntervalDraft('0, 2.5, 5'), { values: [5000, 2500, 0], error: null })
   assert.deepEqual(parallelFetchIntervalDraft('60'), { values: [60000], error: null })
-  for (const text of ['', '5,', '5,,3', '5,5', '-1', '61', '0.05', '1,2,3,4']) {
+  assert.deepEqual(parallelFetchIntervalDraft('1,2,3,4'), { values: [4000, 3000, 2000, 1000], error: null })
+  for (const text of ['', '5,', '5,,3', '5,5', '-1', '61', '0.05']) {
     const draft = parallelFetchIntervalDraft(text)
     assert.deepEqual(draft.values, [])
     assert.ok(draft.error, text)

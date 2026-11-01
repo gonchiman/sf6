@@ -1,6 +1,6 @@
 import {
   parallelFetchIntervals, parallelFetchIntervalScope, parseHistoricalParallelFetchConfig,
-  isParallelFetchInterval, PARALLEL_FETCH_MAX_INTERVALS,
+  isParallelFetchInterval,
 } from './parallelFetch.ts'
 import { cloudConfig, sameParallelFetchConfig } from './parallelFetchCloud.ts'
 import { parallelFetchConfigError, parallelFetchIntervalDraft } from './parallelFetchPresentation.ts'
@@ -27,10 +27,7 @@ export function fetchIntervalRangeDraft(range: FetchIntervalRange): ReturnType<t
   }
   if (values.min > values.max) return invalid('最小間隔は最大間隔以下にしてください。')
   const count = Math.floor((values.max - values.min) / values.step) + 1
-  if (count > PARALLEL_FETCH_MAX_INTERVALS) {
-    return invalid(`生成される間隔が${count}条件あります。最大${PARALLEL_FETCH_MAX_INTERVALS}条件になるよう、範囲を狭めるか刻みを大きくしてください。`)
-  }
-  return fetchIntervalDraft(Array.from({ length: count }, (_, index) => (values.min + index * values.step) / 1000).join(', '))
+  return intervalValuesDraft(Array.from({ length: count }, (_, index) => values.min + index * values.step).reverse())
 }
 
 export function fetchIntervalDraft(text: string): {
@@ -40,10 +37,14 @@ export function fetchIntervalDraft(text: string): {
 } {
   const parsed = parallelFetchIntervalDraft(text)
   if (parsed.error) return { config: null, options: null, error: parsed.error }
+  return intervalValuesDraft(parsed.values)
+}
+
+function intervalValuesDraft(values: number[]): ReturnType<typeof fetchIntervalDraft> {
   const options: CloudIntervalOptions = {
-    intervalMsList: parsed.values, concurrencies: [1], repetitions: 1, intervalScope: 'global',
+    intervalMsList: values, concurrencies: [1], repetitions: 1, intervalScope: 'global',
   }
-  const candidate = cloudConfig('interval-compare', options, { historical: true })
+  const candidate: ParallelFetchConfig = { target: 'lp', startPage: 1, pageCount: 20, intervalMs: values[0], ...options }
   const error = parallelFetchConfigError(candidate)
   if (error) return { config: null, options: null, error }
   return { config: cloudConfig('interval-compare', options), options, error: null }
