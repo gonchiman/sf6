@@ -164,25 +164,64 @@ function archiveMock(stage = 1, change?: { entries?: [string, string][]; metadat
 }
 
 test('GitHub adapter pins dispatch to main and bounded numeric plan inputs', async () => {
-  const f = mocked(() => ({ workflow_run_id: 123, run_url: 'https://api.github.com/repos/gonchiman/sf6/actions/runs/123',
-    html_url: 'https://github.com/gonchiman/sf6/actions/runs/123' }))
-  assert.equal(await f.github.dispatch(2), '123')
-  assert.equal(f.calls.length, 1)
-  const args = f.calls[0].args
+  const f = mocked(args => args.some(arg => arg.endsWith('/commits/main')) ? { sha: SHA }
+    : { workflow_run_id: 123, run_url: 'https://api.github.com/repos/gonchiman/sf6/actions/runs/123',
+      html_url: 'https://github.com/gonchiman/sf6/actions/runs/123' })
+  assert.equal(await f.github.dispatch(2, SHA), '123')
+  assert.equal(f.calls.length, 2)
+  const args = f.calls[1].args
   for (const value of ['github.com', 'repos/gonchiman/sf6/actions/workflows/sample-survey.yml/dispatches', 'POST', 'ref=main',
     'return_run_details=true', 'inputs[ranks]=BRONZE,SILVER', 'inputs[rank_sample_size]=200', 'inputs[include_mr]=false',
-    'inputs[mr_sample_size]=100', 'inputs[max_duration_minutes]=120']) assert.ok(args.includes(value))
+    'inputs[mr_sample_size]=100', 'inputs[max_duration_minutes]=120', `inputs[source_sha]=${SHA}`]) assert.ok(args.includes(value))
   assert.ok(f.calls[0].limit <= 1024 * 1024)
-  await assert.rejects(f.github.dispatch(6)); assert.equal(f.calls.length, 1)
+  await assert.rejects(f.github.dispatch(6, SHA)); assert.equal(f.calls.length, 2)
+  await assert.rejects(f.github.dispatch(2, 'refs/heads/feature')); assert.equal(f.calls.length, 2)
 })
 
 test('GitHub adapter does not repeat ambiguous dispatches or expose command errors', async () => {
   let calls = 0
-  const github = createProductionGitHub(async () => { calls++; throw new Error(PRIVATE) })
-  await assert.rejects(github.dispatch(2), (error: Error) => !error.message.includes(PRIVATE))
+  const github = createProductionGitHub(async args => {
+    if (args.some(arg => arg.endsWith('/commits/main'))) return Buffer.from(JSON.stringify({ sha: SHA }))
+    calls++; throw new Error(PRIVATE)
+  })
+  await assert.rejects(github.dispatch(2, SHA), (error: Error) => !error.message.includes(PRIVATE))
   assert.equal(calls, 1)
   const f = mocked(() => Buffer.alloc(0))
-  await assert.rejects(f.github.dispatch(2)); assert.equal(f.calls.length, 1)
+  await assert.rejects(f.github.dispatch(2, SHA)); assert.equal(f.calls.length, 1)
+})
+
+test('unrelated main changes preserve the source revision while changed launch workflows stop dispatch', async () => {
+  for (const changed of [false, true]) {
+    const f = mocked(args => {
+      const path = args.find(arg => arg.startsWith('repos/'))!
+      if (path.endsWith('/commits/main')) return { sha: FIRST_SHA }
+      if (path.includes('/contents/')) return { type: 'file', path: '.github/workflows/sample-survey.yml',
+        sha: changed && path.endsWith(FIRST_SHA) ? 'd'.repeat(40) : 'c'.repeat(40) }
+      return { workflow_run_id: 123, run_url: 'https://api.github.com/repos/gonchiman/sf6/actions/runs/123',
+        html_url: 'https://github.com/gonchiman/sf6/actions/runs/123' }
+    })
+    if (changed) await assert.rejects(f.github.dispatch(2, SHA), /ワークフロー/)
+    else assert.equal(await f.github.dispatch(2, SHA), '123')
+    assert.equal(f.calls.filter(call => call.args.includes('POST')).length, changed ? 0 : 1)
+    if (!changed) assert.ok(f.calls.at(-1)!.args.includes(`inputs[source_sha]=${SHA}`))
+  }
+})
+
+test('pinned-source child identity checks the source title and actual launch workflow across a dispatch race', async () => {
+  for (const changed of [false, true]) {
+    const f = mocked(args => {
+      const path = args.find(arg => arg.startsWith('repos/'))!
+      if (path.includes('/actions/runs/')) return { ...rawRun('123', FIRST_SHA), display_title: `Sample survey source ${SHA}` }
+      return { type: 'file', path: '.github/workflows/sample-survey.yml',
+        sha: changed && path.endsWith(FIRST_SHA) ? 'd'.repeat(40) : 'c'.repeat(40) }
+    })
+    if (changed) await assert.rejects(f.github.run('123', SHA, true), /ワークフロー/)
+    else assert.equal((await f.github.run('123', SHA, true)).id, '123')
+  }
+  const expected = { runId: '123', sha: SHA, pinnedSource: true }
+  for (const display_title of ['Collect sample survey', `Sample survey source ${FIRST_SHA}`, `${PRIVATE}`]) {
+    assert.throws(() => parseProductionRun({ ...rawRun('123', FIRST_SHA), display_title }, expected))
+  }
 })
 
 test('GitHub adapter validates current main and rejects wrong child revision', async () => {
@@ -267,14 +306,41 @@ test('first stage adopts only its supplied run and does not dispatch again', asy
   assert.doesNotMatch(JSON.stringify(f.logs), /synthetic-private|accountId|cookie|storageState/)
 })
 
-test('later stages dispatch once only after main matches the pinned parent revision', async () => {
+test('later stages keep the source pinned without rejecting unrelated changes to main', async () => {
   for (const stage of [2, 3, 4, 5]) {
     const f = stageFixture(stage)
     await runProductionStage({ stage, sha: SHA }, f.dependencies)
-    assert.deepEqual(f.calls, ['main', `dispatch:${stage}`, `run:123:${SHA}`, 'report'])
+    assert.deepEqual(f.calls, [`dispatch:${stage}`, `run:123:${SHA}`, 'report'])
   }
   const f = stageFixture(2, { mainSha: async () => FIRST_SHA })
-  await assert.rejects(runProductionStage({ stage: 2, sha: SHA }, f.dependencies)); assert.deepEqual(f.calls, [])
+  f.dependencies.github.dispatch = async (stage, source) => { assert.equal(stage, 2); assert.equal(source, SHA); return '123' }
+  f.dependencies.github.run = async (runId, source, pinned) => {
+    assert.equal(source, SHA); assert.equal(pinned, true)
+    return parseProductionRun({ ...rawRun(runId, FIRST_SHA), display_title: `Sample survey source ${source}` }, { runId, sha: source, pinnedSource: pinned })
+  }
+  await runProductionStage({ stage: 2, sha: SHA }, f.dependencies)
+  assert.deepEqual(f.calls, ['report'])
+})
+
+test('explicit resume revalidates an older completed first batch without recollecting it', async () => {
+  const old = '2026-10-29T03:00:00.000Z'
+  const f = stageFixture(1, { run: async (_runId, _sha, pinned) => {
+    assert.equal(pinned, false)
+    return { id: '123', attempt: 1, status: 'completed', conclusion: 'success', createdAt: old }
+  } })
+  const result = await runProductionStage({ stage: 1, sha: SHA, firstRunId: '123', firstRunSha: FIRST_SHA,
+    allowCompletedHistory: true }, f.dependencies)
+  assert.equal(result.report.strata.reduce((n, row) => n + row.processed, 0), 400)
+  assert.deepEqual(f.calls, ['report'])
+  for (const status of ['queued', 'in_progress', 'completed'] as const) {
+    const failed = stageFixture(1, { run: async () => ({ id: '123', attempt: 1, status, conclusion: status === 'completed' ? 'failure' : null, createdAt: old }) })
+    await assert.rejects(runProductionStage({ stage: 1, sha: SHA, firstRunId: '123', firstRunSha: FIRST_SHA,
+      allowCompletedHistory: true }, failed.dependencies))
+    assert.deepEqual(failed.calls, [])
+  }
+  const failedHistory = stageFixture(1, { report: async () => { throw new Error('unpublished') } })
+  await assert.rejects(runProductionStage({ stage: 1, sha: SHA, firstRunId: '123', firstRunSha: FIRST_SHA,
+    allowCompletedHistory: true }, failedHistory.dependencies))
 })
 
 test('invalid first-run options and stale or future runs stop before publication', async () => {
@@ -304,7 +370,7 @@ for (const conclusion of ['failure', 'cancelled', 'timed_out', 'action_required'
   test(`child ${conclusion} stops without reading or accepting its artifact`, async () => {
     const f = stageFixture(2, { run: async () => ({ id: '123', attempt: 1, createdAt: START, status: 'completed', conclusion }) })
     await assert.rejects(runProductionStage({ stage: 2, sha: SHA }, f.dependencies))
-    assert.deepEqual(f.calls, ['main', 'dispatch:2']); assert.deepEqual(f.waits, [])
+    assert.deepEqual(f.calls, ['dispatch:2']); assert.deepEqual(f.waits, [])
   })
 }
 
@@ -315,7 +381,7 @@ test('monitoring has finite per-stage time budgets and never redispatches stalle
     await assert.rejects(runProductionStage({ stage, sha: SHA }, f.dependencies))
     assert.equal(f.waits.length, productionStage(stage).waitMinutes)
     assert.ok(f.waits.every(ms => ms === 60000)); assert.equal(polls, productionStage(stage).waitMinutes + 1)
-    assert.deepEqual(f.calls, ['main', `dispatch:${stage}`])
+    assert.deepEqual(f.calls, [`dispatch:${stage}`])
   }
 })
 

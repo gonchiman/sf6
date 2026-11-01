@@ -1,16 +1,21 @@
 name: Collect production sample survey
-run-name: Sample survey production ${{ inputs.first_run_id }}
+run-name: ${{ inputs.resume_from_run_id && format('Sample survey production {0} resume {1}', inputs.first_run_id, inputs.resume_from_run_id) || format('Sample survey production {0}', inputs.first_run_id) }}
 
 on:
   workflow_dispatch:
     inputs:
       first_run_id:
-        description: '開始済みのROOKIE・IRON各200件の実行ID（同じIDは再利用不可）'
+        description: '開始済みのROOKIE・IRON各200枠の実行ID（再開時は保存済み第1回）'
         required: true
         type: string
       first_run_sha:
         description: '開始済み第1回の40桁コードSHA'
         required: true
+        type: string
+      resume_from_run_id:
+        description: '第1回保存後・第2回起動前に失敗した管理実行ID。未指定は新規管理。'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -44,12 +49,13 @@ jobs:
       - name: Install dependencies without project scripts
         run: npm ci --ignore-scripts
       - name: Test production execution guards
-        run: node --test scripts/manage-sample-survey-production.test.ts
+        run: node --test scripts/manage-sample-survey-production.test.ts scripts/lib/sample-survey-production-resume.test.ts
       - name: Wait for the existing collection
         id: stage
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCTION_STAGE: '1'
+          PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
           PRODUCTION_FIRST_RUN_SHA: ${{ inputs.first_run_sha }}
         run: node scripts/manage-sample-survey-production.ts
@@ -75,12 +81,13 @@ jobs:
       - name: Install dependencies without project scripts
         run: npm ci --ignore-scripts
       - name: Test production execution guards
-        run: node --test scripts/manage-sample-survey-production.test.ts
+        run: node --test scripts/manage-sample-survey-production.test.ts scripts/lib/sample-survey-production-resume.test.ts
       - name: Start and verify this collection
         id: stage
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCTION_STAGE: '2'
+          PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
         run: node scripts/manage-sample-survey-production.ts
   stage-3:
@@ -105,12 +112,13 @@ jobs:
       - name: Install dependencies without project scripts
         run: npm ci --ignore-scripts
       - name: Test production execution guards
-        run: node --test scripts/manage-sample-survey-production.test.ts
+        run: node --test scripts/manage-sample-survey-production.test.ts scripts/lib/sample-survey-production-resume.test.ts
       - name: Start and verify this collection
         id: stage
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCTION_STAGE: '3'
+          PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
         run: node scripts/manage-sample-survey-production.ts
   stage-4:
@@ -135,12 +143,13 @@ jobs:
       - name: Install dependencies without project scripts
         run: npm ci --ignore-scripts
       - name: Test production execution guards
-        run: node --test scripts/manage-sample-survey-production.test.ts
+        run: node --test scripts/manage-sample-survey-production.test.ts scripts/lib/sample-survey-production-resume.test.ts
       - name: Start and verify this collection
         id: stage
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCTION_STAGE: '4'
+          PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
         run: node scripts/manage-sample-survey-production.ts
   stage-5:
@@ -165,11 +174,12 @@ jobs:
       - name: Install dependencies without project scripts
         run: npm ci --ignore-scripts
       - name: Test production execution guards
-        run: node --test scripts/manage-sample-survey-production.test.ts
+        run: node --test scripts/manage-sample-survey-production.test.ts scripts/lib/sample-survey-production-resume.test.ts
       - name: Start and verify this collection
         id: stage
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCTION_STAGE: '5'
+          PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
         run: node scripts/manage-sample-survey-production.ts

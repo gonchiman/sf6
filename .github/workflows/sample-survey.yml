@@ -1,8 +1,14 @@
 name: Collect sample survey
+run-name: ${{ inputs.source_sha != '' && format('Sample survey source {0}', inputs.source_sha) || 'Collect sample survey' }}
 
 on:
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: '取得・保存コードを固定する40桁SHA（空欄は実行時のmain）'
+        required: false
+        type: string
+        default: ''
       ranks:
         description: 'LPランク（ROOKIE〜MASTER、カンマ区切り。MRのみなら空欄）'
         required: false
@@ -53,21 +59,54 @@ jobs:
       SAMPLE_SURVEY_MR_SAMPLE_SIZE: ${{ inputs.mr_sample_size }}
       SAMPLE_SURVEY_MAX_DURATION_MINUTES: ${{ inputs.max_duration_minutes }}
     steps:
-      - name: Checkout this main revision
+      - name: Validate collection source before checkout
+        shell: pwsh
+        env:
+          SAMPLE_SURVEY_SOURCE_INPUT: ${{ inputs.source_sha }}
+        run: |
+          if ($env:GITHUB_SHA -cnotmatch '^[a-f0-9]{40}$' -or ($env:SAMPLE_SURVEY_SOURCE_INPUT -and $env:SAMPLE_SURVEY_SOURCE_INPUT -cnotmatch '^[a-f0-9]{40}$')) { throw 'Invalid collection source SHA' }
+      - name: Checkout pinned collection source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      - name: Verify source trust from the running workflow
+        shell: node {0}
+        env:
+          SAMPLE_SURVEY_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          const { execFileSync } = require('node:child_process');
+          const source = process.env.SAMPLE_SURVEY_SOURCE_SHA, run = process.env.GITHUB_SHA;
+          if (!/^[a-f0-9]{40}$/.test(source || '') || !/^[a-f0-9]{40}$/.test(run || '')) throw new Error('Invalid collection source SHA');
+          const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never' };
+          for (const key of Object.keys(env)) if (/token|secret|password|^BUCKLER_/i.test(key)) delete env[key];
+          const git = (...args) => {
+            try { return execFileSync('git', ['-c', 'credential.helper=', '-c', 'core.askPass=', ...args], {
+              env, encoding: 'utf8', shell: false, windowsHide: true, timeout: 120000, maxBuffer: 65536, stdio: ['ignore', 'pipe', 'ignore'],
+            }).trim(); } catch { throw new Error('Collection source trust check failed'); }
+          };
+          if (git('rev-parse', '--verify', 'HEAD') !== source) throw new Error('Collection source checkout mismatch');
+          const file = '.github/workflows/sample-survey.yml';
+          const sourceBlob = git('rev-parse', '--verify', `${source}:${file}`);
+          if (source !== run) {
+            git('fetch', '--no-tags', '--filter=blob:none', '--depth=1000', 'https://github.com/gonchiman/sf6.git', run);
+            git('merge-base', '--is-ancestor', source, run);
+            if (git('rev-parse', '--verify', `${run}:${file}`) !== sourceBlob) throw new Error('Collection workflow changed');
+          }
+      - name: Verify pinned source and workflow before session use
+        env:
+          SAMPLE_SURVEY_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: node scripts/lib/sample-survey-production-source.ts
       - name: Install dependencies without project scripts
         run: npm ci --ignore-scripts
       - name: Validate bounded inputs without session
         run: node --input-type=module -e "import {parseSampleSurveyCloudConfig} from './scripts/collect-sample-survey-cloud.ts'; parseSampleSurveyCloudConfig(process.env);"
       - name: Test collection and aggregate publication with synthetic data
-        run: node --test scripts/collect-sample-survey-cloud.test.ts scripts/lib/sample-survey-publication.test.ts scripts/lib/sample-survey-runner.test.ts scripts/lib/sample-survey-browser.test.ts scripts/lib/sample-survey-diagnostics.test.ts
+        run: node --test scripts/collect-sample-survey-cloud.test.ts scripts/lib/sample-survey-publication.test.ts scripts/lib/sample-survey-runner.test.ts scripts/lib/sample-survey-browser.test.ts scripts/lib/sample-survey-diagnostics.test.ts scripts/lib/sample-survey-production-source.test.ts
       - name: Collect serial sample with saved session
         id: collect
         env:
@@ -93,15 +132,48 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout publisher from this main revision
+      - name: Validate publisher source before checkout
+        shell: pwsh
+        env:
+          SAMPLE_SURVEY_SOURCE_INPUT: ${{ inputs.source_sha }}
+        run: |
+          if ($env:GITHUB_SHA -cnotmatch '^[a-f0-9]{40}$' -or ($env:SAMPLE_SURVEY_SOURCE_INPUT -and $env:SAMPLE_SURVEY_SOURCE_INPUT -cnotmatch '^[a-f0-9]{40}$')) { throw 'Invalid collection source SHA' }
+      - name: Checkout publisher from pinned collection source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      - name: Verify source trust from the running workflow
+        shell: node {0}
+        env:
+          SAMPLE_SURVEY_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          const { execFileSync } = require('node:child_process');
+          const source = process.env.SAMPLE_SURVEY_SOURCE_SHA, run = process.env.GITHUB_SHA;
+          if (!/^[a-f0-9]{40}$/.test(source || '') || !/^[a-f0-9]{40}$/.test(run || '')) throw new Error('Invalid collection source SHA');
+          const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never' };
+          for (const key of Object.keys(env)) if (/token|secret|password|^BUCKLER_/i.test(key)) delete env[key];
+          const git = (...args) => {
+            try { return execFileSync('git', ['-c', 'credential.helper=', '-c', 'core.askPass=', ...args], {
+              env, encoding: 'utf8', shell: false, windowsHide: true, timeout: 120000, maxBuffer: 65536, stdio: ['ignore', 'pipe', 'ignore'],
+            }).trim(); } catch { throw new Error('Collection source trust check failed'); }
+          };
+          if (git('rev-parse', '--verify', 'HEAD') !== source) throw new Error('Collection source checkout mismatch');
+          const file = '.github/workflows/sample-survey.yml';
+          const sourceBlob = git('rev-parse', '--verify', `${source}:${file}`);
+          if (source !== run) {
+            git('fetch', '--no-tags', '--filter=blob:none', '--depth=1000', 'https://github.com/gonchiman/sf6.git', run);
+            git('merge-base', '--is-ancestor', source, run);
+            if (git('rev-parse', '--verify', `${run}:${file}`) !== sourceBlob) throw new Error('Collection workflow changed');
+          }
+      - name: Verify pinned source and workflow before history write
+        env:
+          SAMPLE_SURVEY_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: node scripts/lib/sample-survey-production-source.ts
       - name: Prepare isolated aggregate history branch
         shell: pwsh
         run: |

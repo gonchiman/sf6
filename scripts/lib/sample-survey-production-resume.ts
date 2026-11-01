@@ -1,0 +1,98 @@
+const REPO = 'gonchiman/sf6'
+const PARENT_WORKFLOW = '.github/workflows/sample-survey-production.yml'
+const CHILD_WORKFLOW = '.github/workflows/sample-survey.yml'
+const fail = (): never => { throw new Error('完了済み第1回と未着手の後続を確認できないため、再開しません。') }
+const object = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fail()
+  return value as Record<string, unknown>
+}
+const id = (value: unknown): string => {
+  const text = typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : value
+  if (typeof text !== 'string' || !/^[1-9]\d{0,14}$/.test(text)) return fail()
+  return text
+}
+const timestamp = (value: unknown): number => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) return fail()
+  const result = Date.parse(value)
+  if (!Number.isFinite(result) || new Date(result).toISOString().slice(0, 19) !== value.slice(0, 19)) return fail()
+  return result
+}
+const listing = (value: unknown, field: 'workflow_runs' | 'jobs'): Record<string, unknown>[] => {
+  const input = object(value), rows = input[field]
+  if (!Number.isSafeInteger(input.total_count) || Number(input.total_count) < 0 || Number(input.total_count) > 100
+    || !Array.isArray(rows) || rows.length !== input.total_count) return fail()
+  const result = rows.map(object), ids = result.map(row => id(row.id))
+  if (new Set(ids).size !== result.length) return fail()
+  return result
+}
+function workflowRun(value: Record<string, unknown>, path: string): void {
+  id(value.id)
+  if (value.event !== 'workflow_dispatch' || value.head_branch !== 'main'
+    || object(value.repository).full_name !== REPO || object(value.head_repository).full_name !== REPO
+    || ![path, `${path}@refs/heads/main`].includes(String(value.path))
+    || typeof value.head_sha !== 'string' || !/^[a-f0-9]{40}$/.test(value.head_sha)) return fail()
+  timestamp(value.created_at)
+}
+
+/** Resume only the proven pre-dispatch stop after the completed first 400 slots.
+ * No child is re-dispatched based merely on a failed parent job or missing log line.
+ * The first run's successful artifact and immutable history must still be checked by the caller.
+ */
+export function validateProductionResume(options: {
+  parents: unknown; previousParent: unknown; previousJobs: unknown; childRuns: unknown
+  parentRunId: string; firstRunId: string; previousParentRunId: string
+}): void {
+  try {
+    const currentId = id(options.parentRunId), firstId = id(options.firstRunId), previousId = id(options.previousParentRunId)
+    if (currentId === previousId || currentId === firstId || previousId === firstId) return fail()
+    const parents = listing(options.parents, 'workflow_runs'), previous = object(options.previousParent)
+    const baseTitle = `Sample survey production ${firstId}`
+    const matches = parents.filter(row => typeof row.display_title === 'string'
+      && (row.display_title === baseTitle || row.display_title.startsWith(`${baseTitle} `)))
+    if (matches.length !== 2) return fail()
+    const current = matches.find(row => id(row.id) === currentId), listedPrevious = matches.find(row => id(row.id) === previousId)
+    if (!current || !listedPrevious || id(previous.id) !== previousId) return fail()
+    for (const run of [current, listedPrevious, previous]) {
+      workflowRun(run, PARENT_WORKFLOW)
+      if (run.run_attempt !== 1) return fail()
+    }
+    if (current.display_title !== `${baseTitle} resume ${previousId}` || !['queued', 'in_progress'].includes(String(current.status))
+      || current.conclusion !== null || previous.display_title !== baseTitle
+      || previous.status !== 'completed' || previous.conclusion !== 'failure') return fail()
+    for (const key of ['head_sha', 'created_at', 'display_title', 'status', 'conclusion', 'updated_at']) {
+      if (previous[key] !== listedPrevious[key]) return fail()
+    }
+    const previousStart = timestamp(previous.created_at), previousEnd = timestamp(previous.updated_at), cutoff = timestamp(current.created_at)
+    if (previousEnd < previousStart || previousStart >= cutoff || previousEnd >= cutoff) return fail()
+
+    const jobs = listing(options.previousJobs, 'jobs')
+    const expected = [
+      ['ROOKIE and IRON', 'success', 'Wait for the existing collection'],
+      ['BRONZE and SILVER', 'failure', 'Start and verify this collection'],
+      ['GOLD and PLATINUM', 'skipped', null],
+      ['DIAMOND and MASTER', 'skipped', null],
+      ['Six MR bands', 'skipped', null],
+    ] as const
+    if (jobs.length !== expected.length) return fail()
+    for (const [name, conclusion, stepName] of expected) {
+      const matching = jobs.filter(job => job.name === name)
+      if (matching.length !== 1) return fail()
+      const job = matching[0]!
+      if (id(job.run_id) !== previousId || job.status !== 'completed' || job.conclusion !== conclusion) return fail()
+      if (stepName !== null) {
+        const start = timestamp(job.started_at), end = timestamp(job.completed_at)
+        if (start < previousStart || end < start || end > previousEnd || !Array.isArray(job.steps)) return fail()
+        const steps = job.steps.map(object), matchingSteps = steps.filter(step => step.name === stepName)
+        if (matchingSteps.length !== 1 || matchingSteps[0]!.status !== 'completed' || matchingSteps[0]!.conclusion !== conclusion) return fail()
+      } else if (job.steps !== null && (!Array.isArray(job.steps) || job.steps.length !== 0)) return fail()
+    }
+
+    // Use the new parent's creation time, not wall time: later stages must not
+    // reject the children that this same resumed chain has legitimately started.
+    for (const run of listing(options.childRuns, 'workflow_runs')) {
+      workflowRun(run, CHILD_WORKFLOW)
+      const created = timestamp(run.created_at)
+      if (id(run.id) !== firstId && created >= previousStart && created <= cutoff) return fail()
+    }
+  } catch { return fail() }
+}

@@ -9,10 +9,16 @@ import { parseSampleSurveyResultsManifest, parseSampleSurveyResultsRun, SAMPLE_S
 import type { SampleSurveyConfig, SampleSurveyRun } from '../src/types/sampleSurvey.ts'
 import { runCloudGhCommand, type CloudGhCommand } from './lib/parallel-fetch-github.ts'
 import { publishableSampleSurveyRun } from './lib/sample-survey-publication.ts'
+import { validateProductionResume } from './lib/sample-survey-production-resume.ts'
 
 const REPO = 'gonchiman/sf6', API = `repos/${REPO}`, WORKFLOW = 'sample-survey.yml'
 const META_LIMIT = 1024 * 1024, ZIP_LIMIT = 1024 * 1024
-const fail = (): never => { throw new Error('本取得の実行または保存結果を確認できないため、後続を開始しません。') }
+class ProductionManagementError extends Error {}
+const fail = (reason: 'verification' | 'workflow-changed' = 'verification'): never => {
+  throw new ProductionManagementError(reason === 'workflow-changed'
+    ? '取得用ワークフローが固定した版から変更されたため、後続を開始しません。'
+    : '本取得の実行または保存結果を確認できないため、後続を開始しません。')
+}
 const object = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fail()
   return value as Record<string, unknown>
@@ -33,9 +39,12 @@ export function productionStage(stage: number): { stage: number; label: string; 
     config: { ranks: [...pairs[stage - 1]!], rankSampleSize: 200, includeMr: stage === 5, mrSampleSize: 100, maxDurationMinutes: stage === 5 ? 180 : 120 } }
 }
 export interface ProductionRun { id: string; attempt: 1; status: 'queued' | 'in_progress' | 'completed'; conclusion: string | null; createdAt: string }
-export function parseProductionRun(value: unknown, expected: { runId: string; sha: string }): ProductionRun {
+export function parseProductionRun(value: unknown, expected: { runId: string; sha: string; pinnedSource?: boolean }): ProductionRun {
   const input = object(value)
-  if (id(input.id) !== id(expected.runId) || sha(input.head_sha) !== sha(expected.sha) || input.run_attempt !== 1
+  sha(input.head_sha); sha(expected.sha)
+  if (id(input.id) !== id(expected.runId)
+    || (expected.pinnedSource ? input.display_title !== `Sample survey source ${expected.sha}` : input.head_sha !== expected.sha)
+    || input.run_attempt !== 1
     || input.event !== 'workflow_dispatch' || input.head_branch !== 'main'
     || object(input.repository).full_name !== REPO || object(input.head_repository).full_name !== REPO
     || ![`.github/workflows/${WORKFLOW}`, `.github/workflows/${WORKFLOW}@refs/heads/main`].includes(String(input.path))
@@ -105,8 +114,8 @@ export function extractProductionArtifact(zip: Buffer): Map<string, Buffer> {
 }
 export interface ProductionGitHub {
   mainSha(): Promise<string>
-  dispatch(stage: number): Promise<string>
-  run(runId: string, expectedSha: string): Promise<ProductionRun>
+  dispatch(stage: number, sourceSha: string): Promise<string>
+  run(runId: string, expectedSha: string, pinnedSource?: boolean): Promise<ProductionRun>
   report(run: ProductionRun, stage: number): Promise<SampleSurveyRun>
 }
 /** A second manual parent must not silently reuse the same first collection and dispatch the remaining stages again. */
@@ -114,7 +123,9 @@ export function validateProductionParents(value: unknown, parentRunId: string, f
   const input = object(value), current = id(parentRunId), first = id(firstRunId)
   if (!Number.isSafeInteger(input.total_count) || Number(input.total_count) < 1 || Number(input.total_count) > 100
     || !Array.isArray(input.workflow_runs) || input.workflow_runs.length !== input.total_count) return fail()
-  const matches = input.workflow_runs.filter(value => object(value).display_title === `Sample survey production ${first}`)
+  const title = `Sample survey production ${first}`
+  const matches = input.workflow_runs.filter(value => object(value).display_title === title
+    || typeof object(value).display_title === 'string' && String(object(value).display_title).startsWith(`${title} resume `))
   if (matches.length !== 1) return fail()
   const run = object(matches[0])
   if (id(run.id) !== current || run.run_attempt !== 1 || run.event !== 'workflow_dispatch' || run.head_branch !== 'main'
@@ -125,17 +136,42 @@ export function createProductionGitHub(command: CloudGhCommand = runCloudGhComma
     try { return object(JSON.parse((await command(['api', '--hostname', 'github.com', '-H', 'X-GitHub-Api-Version: 2026-03-10', path, ...extra], META_LIMIT)).toString('utf8'))) }
     catch { return fail() }
   }
+  const workflowBlobs = new Map<string, string>()
+  async function workflowBlob(revision: string): Promise<string> {
+    const ref = sha(revision)
+    if (workflowBlobs.has(ref)) return workflowBlobs.get(ref)!
+    const path = `.github/workflows/${WORKFLOW}`
+    const value = await api(`${API}/contents/${path}?ref=${ref}`)
+    if (value.type !== 'file' || value.path !== path) return fail()
+    const blob = sha(value.sha)
+    workflowBlobs.set(ref, blob)
+    return blob
+  }
+  async function compatibleWorkflow(source: string, launch: string): Promise<void> {
+    if (sha(source) !== sha(launch) && await workflowBlob(source) !== await workflowBlob(launch)) return fail('workflow-changed')
+  }
   return {
     async mainSha() { return sha((await api(`${API}/commits/main`)).sha) },
-    async dispatch(stage) {
+    async dispatch(stage, sourceSha) {
       const { config } = productionStage(stage)
+      const source = sha(sourceSha), launch = sha((await api(`${API}/commits/main`)).sha)
+      await compatibleWorkflow(source, launch)
       // One POST only. Never resend a dispatch after an ambiguous response.
       return parseProductionDispatch(await api(`${API}/actions/workflows/${WORKFLOW}/dispatches`, ['--method', 'POST',
         '-f', 'ref=main', '-F', 'return_run_details=true', '-f', `inputs[ranks]=${config.ranks.join(',')}`,
         '-f', `inputs[rank_sample_size]=${config.rankSampleSize}`, '-f', `inputs[include_mr]=${config.includeMr}`,
-        '-f', `inputs[mr_sample_size]=${config.mrSampleSize}`, '-f', `inputs[max_duration_minutes]=${config.maxDurationMinutes}`]))
+        '-f', `inputs[mr_sample_size]=${config.mrSampleSize}`, '-f', `inputs[max_duration_minutes]=${config.maxDurationMinutes}`,
+        '-f', `inputs[source_sha]=${source}`]))
     },
-    async run(runId, expectedSha) { return parseProductionRun(await api(`${API}/actions/runs/${id(runId)}`), { runId, sha: expectedSha }) },
+    async run(runId, expectedSha, pinnedSource = false) {
+      sha(expectedSha)
+      const raw = await api(`${API}/actions/runs/${id(runId)}`)
+      const run = parseProductionRun(raw, { runId, sha: expectedSha, pinnedSource })
+      // main may have advanced between the compatibility check and dispatch.
+      // Check the actual launch workflow too; the child repeats this before secrets.
+      if (pinnedSource) await compatibleWorkflow(expectedSha, sha(raw.head_sha))
+      return run
+    },
     async report(run, stage) {
       if (run.status !== 'completed' || run.conclusion !== 'success' || run.attempt !== 1) return fail()
       const listing = await api(`${API}/actions/runs/${id(run.id)}/artifacts?per_page=100`)
@@ -170,7 +206,7 @@ export function createProductionGitHub(command: CloudGhCommand = runCloudGhComma
     },
   }
 }
-export async function runProductionStage(options: { stage: number; sha: string; firstRunId?: string; firstRunSha?: string }, dependencies: {
+export async function runProductionStage(options: { stage: number; sha: string; firstRunId?: string; firstRunSha?: string; allowCompletedHistory?: boolean }, dependencies: {
   github: ProductionGitHub; now?: () => number; sleep?: (ms: number) => Promise<void>; log?: (value: unknown) => void
 }): Promise<{ run: ProductionRun; report: SampleSurveyRun }> {
   const stage = productionStage(options.stage), expectedSha = sha(options.sha), { github } = dependencies
@@ -180,13 +216,14 @@ export async function runProductionStage(options: { stage: number; sha: string; 
   if (stage.stage === 1) {
     runId = id(options.firstRunId); runSha = sha(options.firstRunSha)
   } else {
-    if (options.firstRunId || options.firstRunSha || await github.mainSha() !== expectedSha) return fail()
-    runSha = expectedSha; runId = id(await github.dispatch(stage.stage))
+    if (options.firstRunId || options.firstRunSha || options.allowCompletedHistory) return fail()
+    runSha = expectedSha; runId = id(await github.dispatch(stage.stage, expectedSha))
   }
-  log({ stage: stage.stage, runId, state: 'waiting', url: `https://github.com/${REPO}/actions/runs/${runId}` })
+  log({ stage: stage.stage, runId, sourceSha: runSha, state: 'waiting', url: `https://github.com/${REPO}/actions/runs/${runId}` })
   while (now() <= deadline) {
-    const run = await github.run(runId, runSha)
-    if (Date.parse(run.createdAt) > now() || Date.parse(run.createdAt) < start - 24 * 60 * 60000) return fail()
+    const run = await github.run(runId, runSha, stage.stage > 1)
+    if (Date.parse(run.createdAt) > now() || Date.parse(run.createdAt) < start - 24 * 60 * 60000
+      && !(stage.stage === 1 && options.allowCompletedHistory === true && run.status === 'completed' && run.conclusion === 'success')) return fail()
     if (run.status === 'completed') {
       if (run.conclusion !== 'success') return fail()
       if (now() > deadline) return fail()
@@ -211,9 +248,20 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   const stage = Number(process.env.PRODUCTION_STAGE)
   const parentRuns = JSON.parse((await runCloudGhCommand(['api', '--hostname', 'github.com',
     `${API}/actions/workflows/sample-survey-production.yml/runs?event=workflow_dispatch&branch=main&per_page=100`], META_LIMIT)).toString('utf8'))
-  validateProductionParents(parentRuns, id(process.env.GITHUB_RUN_ID), id(process.env.PRODUCTION_FIRST_RUN_ID))
+  const parentRunId = id(process.env.GITHUB_RUN_ID), firstRunId = id(process.env.PRODUCTION_FIRST_RUN_ID)
+  const resumeFrom = process.env.PRODUCTION_RESUME_FROM_RUN_ID?.trim()
+  if (resumeFrom) {
+    const previousParentRunId = id(resumeFrom)
+    const read = async (path: string) => JSON.parse((await runCloudGhCommand(['api', '--hostname', 'github.com', `${API}/${path}`], META_LIMIT)).toString('utf8'))
+    const [previousParent, previousJobs, childRuns] = await Promise.all([
+      read(`actions/runs/${previousParentRunId}`),
+      read(`actions/runs/${previousParentRunId}/jobs?filter=latest&per_page=100`),
+      read(`actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&branch=main&per_page=100`),
+    ])
+    validateProductionResume({ parents: parentRuns, previousParent, previousJobs, childRuns, parentRunId, firstRunId, previousParentRunId })
+  } else validateProductionParents(parentRuns, parentRunId, firstRunId)
   const result = await runProductionStage({ stage, sha: sha(process.env.GITHUB_SHA),
-    ...(stage === 1 ? { firstRunId: process.env.PRODUCTION_FIRST_RUN_ID, firstRunSha: process.env.PRODUCTION_FIRST_RUN_SHA } : {}) },
+    ...(stage === 1 ? { firstRunId, firstRunSha: process.env.PRODUCTION_FIRST_RUN_SHA, allowCompletedHistory: !!resumeFrom } : {}) },
   { github: createProductionGitHub(), log: value => console.log(JSON.stringify({ production: value })) })
   if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `run_id=${result.run.id}\nreport_id=${result.report.id}\n`)
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,
@@ -221,4 +269,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     + '| 区分 | 予定 | 有効 | 欠測 | 重複 |\n| --- | ---: | ---: | ---: | ---: |\n'
     + result.report.strata.map(row => `| ${row.label} | ${row.requested} | ${row.succeeded} | ${row.missing} | ${row.duplicates} |`).join('\n') + '\n')
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().catch(() => { console.error('本取得の実行または保存結果を確認できないため、後続を開始しません。'); process.exitCode = 1 })
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().catch(error => {
+  console.error(error instanceof ProductionManagementError ? error.message : '本取得の実行または保存結果を確認できないため、後続を開始しません。')
+  process.exitCode = 1
+})
