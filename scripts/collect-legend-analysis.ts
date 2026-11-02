@@ -9,6 +9,8 @@ import { collectLegendAnalysisDataset, LEGEND_ANALYSIS_COLLECTION_ERROR_CODES, L
   LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS, LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
 import type { LegendAnalysisCollectionErrorCode, LegendAnalysisCollectionPhase, LegendAnalysisPage,
   LegendAnalysisRecheckChangeKind, LegendAnalysisValidationCheck, LegendAnalysisVerifiedPlayer, LegendAnalysisAttemptFailure } from './lib/legend-analysis-collector.ts'
+import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck } from './lib/legend-order-diagnostics.ts'
+import type { LegendOrderRecheck } from './lib/legend-order-diagnostics.ts'
 import { createLegendAnalysisPageReader, LEGEND_ANALYSIS_CONDITIONS, legendAnalysisPageUrl, LegendAnalysisDomError, sanitizeLegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import type { LegendAnalysisDomErrorCode, LegendAnalysisReaderStep, LegendClickFailure, LegendClickHit, LegendClickObservation, LegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import { checkLegendAnalysisParents, LEGEND_ANALYSIS_JSON_LIMIT, legendAnalysisFileInfo } from './lib/legend-analysis-files.ts'
@@ -24,6 +26,7 @@ export type LegendAnalysisStorageState = Exclude<NonNullable<BrowserContextOptio
 export interface LegendAnalysisTransport {
   initialize(): Promise<{ act: { id: string; label: string }; characterIds: string[]; characterNames: Record<string, string> }>
   fetchPage(page: number, url: string): Promise<LegendAnalysisPage>
+  recheckOrderFailure?(page: LegendAnalysisPage, rowIndex: number): Promise<LegendOrderRecheck>
   confirmAct(): Promise<void>
   fetchPlayerRankedMatches?(playerId: string, characterIds: readonly string[]): Promise<Record<string, number>>
   getDiagnostics(): { requestCount: number; lastStep?: LegendAnalysisReaderStep; lastErrorCode?: LegendAnalysisDomErrorCode | null;
@@ -109,7 +112,7 @@ export interface LegendAnalysisSafeCaptureReport {
   attemptFailures: LegendAnalysisAttemptFailure[]
   humanVerification: DistributionHumanVerificationDiagnostics
 }
-/** Bounded enum/scalar-only history; no error text, player values or URLs can cross this boundary. */
+/** Bounded enum/scalar-only history; no error text, player identities or URLs can cross this boundary. */
 function safeAttemptFailures(value: unknown): LegendAnalysisAttemptFailure[] {
   if (!Array.isArray(value)) return []
   return value.slice(0, 3).flatMap(candidate => {
@@ -118,6 +121,8 @@ function safeAttemptFailures(value: unknown): LegendAnalysisAttemptFailure[] {
     if (!Number.isSafeInteger(item.attempt) || Number(item.attempt) < 1 || Number(item.attempt) > 3
       || !LEGEND_ANALYSIS_COLLECTION_PHASES.includes(item.phase as LegendAnalysisCollectionPhase)
       || !LEGEND_ANALYSIS_COLLECTION_ERROR_CODES.includes(item.code as LegendAnalysisCollectionErrorCode)) return []
+    const orderDiagnostic = sanitizeLegendOrderDiagnostic(item.orderDiagnostic)
+    const orderRecheck = sanitizeLegendOrderRecheck(item.orderRecheck)
     return [{ attempt: item.attempt as number, phase: item.phase as LegendAnalysisCollectionPhase,
       page: Number.isSafeInteger(item.page) && Number(item.page) >= 1 && Number(item.page) <= 1000000 ? item.page as number : null,
       code: item.code as LegendAnalysisCollectionErrorCode,
@@ -125,7 +130,8 @@ function safeAttemptFailures(value: unknown): LegendAnalysisAttemptFailure[] {
       recheckChangeKinds: Array.isArray(item.recheckChangeKinds) && item.recheckChangeKinds.length >= 1 && item.recheckChangeKinds.length <= 3
         && new Set(item.recheckChangeKinds).size === item.recheckChangeKinds.length
         && item.recheckChangeKinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind as LegendAnalysisRecheckChangeKind))
-        ? [...item.recheckChangeKinds] as LegendAnalysisRecheckChangeKind[] : null }]
+        ? [...item.recheckChangeKinds] as LegendAnalysisRecheckChangeKind[] : null,
+      ...(orderDiagnostic ? { orderDiagnostic } : {}), ...(orderRecheck ? { orderRecheck } : {}) }]
   })
 }
 /** A second bounded enum/scalar-only boundary for stdout; never log an arbitrary collector result. */
@@ -251,6 +257,7 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
     const initial = await transport.initialize()
     const collected = await collectLegendAnalysisDataset({ sourceUrl: LEGEND_ANALYSIS_SOURCE.url, pageUrl: legendAnalysisPageUrl,
       fetchPage: (page, url) => transport!.fetchPage(page, url), confirmAct: () => transport!.confirmAct(), act: initial.act,
+      ...(transport.recheckOrderFailure ? { recheckOrderFailure: (page: LegendAnalysisPage, rowIndex: number) => transport!.recheckOrderFailure!(page, rowIndex) } : {}),
       conditions: LEGEND_ANALYSIS_CONDITIONS, characterIds: initial.characterIds, characterNames: initial.characterNames,
       membershipRule: 'official-legend-badge', membershipConfirmed: true, signal, now, maxRequests: 120, maxAttempts: 2,
       ...(options.includePlayers ? { onVerifiedPlayers: (players: readonly LegendAnalysisVerifiedPlayer[]) => { playerCapture.rows = players } } : {}),

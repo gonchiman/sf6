@@ -88,6 +88,34 @@ test('daily stdout emits only a sanitized capture report, including when collect
   for (const value of [PRIVATE, 'storageState', 'cookies', 'profileUrl', 'localPath', 'C:/Users']) assert.equal(text.includes(value), false)
 })
 
+test('daily stdout keeps safe order diagnostics and rechecks through its second sanitization', async t => {
+  const lines: unknown[] = []
+  t.mock.method(console, 'log', (...values: unknown[]) => { lines.push(...values) })
+  const supplied = result(false)
+  const orderDiagnostic = { boundary: 'between-pages', previous: { page: 1, rowIndex: 20, rank: 20, masterRating: 2381 },
+    current: { page: 2, rowIndex: 1, rank: 21, masterRating: 2382 }, sameEntry: false,
+    duplicateInAccepted: false, duplicateWithinCurrentPage: false }
+  const orderRecheck = { status: 'observed', elapsedMs: 1000, page: 2, from: 21, to: 40, totalCount: 800000,
+    sameEntries: true, sameRanksAndMr: false, previous: null, current: { rank: 21, masterRating: 2380 },
+    currentSameEntry: true, previousSameEntry: null, rankInversionWithinPage: false, mrInversionWithinPage: false }
+  const failure = { attempt: 1, phase: 'listing', page: 2, code: 'source-changed', validationCheck: 'mr-order', recheckChangeKinds: null }
+  Object.assign(supplied.report, { attemptFailures: [
+    { ...failure, orderDiagnostic: { ...orderDiagnostic, current: { ...orderDiagnostic.current, playerId: PRIVATE }, accountKey: PRIVATE },
+      orderRecheck: { ...orderRecheck, current: { ...orderRecheck.current, playerName: PRIVATE }, profileUrl: PRIVATE, raw: [PRIVATE] } },
+    { ...failure, attempt: 2, orderDiagnostic: { ...orderDiagnostic, current: { ...orderDiagnostic.current, masterRating: PRIVATE } },
+      orderRecheck: { status: 'failed', message: PRIVATE } },
+  ] })
+  await runLegendDaily({ env: environment(), now: () => now, collect: async () => supplied,
+    validate: async () => ({ datasets: 0, entries: 0 }), artifactReady: async () => {} })
+  assert.equal(lines.length, 1)
+  const text = String(lines[0]), emitted = JSON.parse(text).capture
+  assert.deepEqual(emitted.attemptFailures, [
+    { ...failure, orderDiagnostic, orderRecheck },
+    { ...failure, attempt: 2, orderRecheck: { status: 'failed' } },
+  ])
+  for (const value of [PRIVATE, 'playerId', 'playerName', 'accountKey', 'profileUrl', 'raw', 'message']) assert.equal(text.includes(value), false)
+})
+
 test('publisher uses fixed isolated bundle paths and the same workflow gate', async () => {
   let called = false
   await publishLegendDaily({ env: environment(), publish: async (input, output, includePlayers) => {

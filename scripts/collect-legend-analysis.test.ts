@@ -355,6 +355,18 @@ test('adjacent page recovery reports its result and never retries a denied reche
 test('collector MR-order failure propagates fixed diagnostics through the CLI and stdout summary', async t => {
   const data = await fixture(t), read = data.transport.fetchPage
   data.transport.fetchPage = async (page, url) => { const value = await read(page, url); value.entries[1].masterRating = 9999; return value }
+  const rechecks: { page: number; rowIndex: number }[] = []
+  const orderDiagnostic = { boundary: 'within-page', previous: { page: 1, rowIndex: 1, rank: 1, masterRating: 2400 },
+    current: { page: 1, rowIndex: 2, rank: 2, masterRating: 9999 }, sameEntry: false,
+    duplicateInAccepted: false, duplicateWithinCurrentPage: false }
+  const orderRecheck = { status: 'observed' as const, elapsedMs: 1000, page: 1, from: 1, to: 20, totalCount: 800001,
+    sameEntries: true, sameRanksAndMr: false, previous: { rank: 1, masterRating: 2400 }, current: { rank: 2, masterRating: 2399 },
+    currentSameEntry: true, previousSameEntry: true, rankInversionWithinPage: false, mrInversionWithinPage: false }
+  data.transport.recheckOrderFailure = async (page, rowIndex) => {
+    rechecks.push({ page: page.page, rowIndex })
+    assert.equal(page.entries[rowIndex - 1].masterRating, 9999)
+    return { ...orderRecheck, rawEntries: [{ playerName: SECRET, playerId: SECRET }], url: SECRET }
+  }
   const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
   assert.equal(result.report.reason, 'source-changed')
   assert.equal(result.report.collectionErrorCode, 'source-changed')
@@ -367,8 +379,32 @@ test('collector MR-order failure propagates fixed diagnostics through the CLI an
   assert.equal(safe.validationCheck, 'mr-order')
   assert.equal(safe.attemptFailures.length, 2)
   assert.deepEqual(safe.attemptFailures.map(item => [item.attempt, item.validationCheck]), [[1, 'mr-order'], [2, 'mr-order']])
-  assert.equal(JSON.stringify(safe).includes('accountKey'), false)
+  assert.deepEqual(rechecks, [{ page: 1, rowIndex: 2 }, { page: 1, rowIndex: 2 }])
+  assert.equal(data.calls.read, 2)
+  for (const failure of safe.attemptFailures) {
+    assert.deepEqual(failure.orderDiagnostic, orderDiagnostic)
+    assert.deepEqual(failure.orderRecheck, orderRecheck)
+  }
+  assert.deepEqual(safe.attemptFailures, result.report.attemptFailures)
+  for (const value of ['accountKey', 'playerName', 'playerId', 'rawEntries', SECRET]) assert.equal(JSON.stringify(result).includes(value), false)
   assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json'])
+  assert.doesNotMatch(await readFile(resolve(data.output, 'public/index.json'), 'utf8'), /orderDiagnostic|orderRecheck|masterRating/)
+})
+
+test('legacy transports retain numeric order diagnostics without requiring a DOM recheck method', async t => {
+  const data = await fixture(t), read = data.transport.fetchPage
+  data.transport.fetchPage = async (page, url) => { const value = await read(page, url); value.entries[2].rank = 1; return value }
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
+  const safe = summarizeLegendAnalysisCaptureReport(result.report)
+  assert.equal(result.succeeded, false)
+  assert.equal(safe.validationCheck, 'rank-order')
+  assert.equal(safe.attemptFailures.length, 2)
+  for (const failure of safe.attemptFailures) {
+    assert.deepEqual(failure.orderDiagnostic?.previous, { page: 1, rowIndex: 2, rank: 2, masterRating: 2399 })
+    assert.deepEqual(failure.orderDiagnostic?.current, { page: 1, rowIndex: 3, rank: 1, masterRating: 2398 })
+    assert.equal(Object.hasOwn(failure, 'orderRecheck'), false)
+  }
+  assert.equal(data.calls.read, 2)
 })
 
 test('stdout sanitizes bounded attempt history and distinguishes unobserved challenge evidence', () => {
@@ -385,4 +421,31 @@ test('stdout sanitizes bounded attempt history and distinguishes unobserved chal
   assert.equal(JSON.stringify(safe).includes(SECRET), false)
   assert.deepEqual(summarizeLegendAnalysisCaptureReport({ humanVerification: { wafHeaderChecked: true, wafAction: null, domDetected: false } }).humanVerification,
     { wafHeaderChecked: true, wafAction: null, domDetected: false })
+})
+
+test('stdout retains only allowlisted order values and drops malicious nested diagnostics', () => {
+  const orderDiagnostic = { boundary: 'between-pages', previous: { page: 1, rowIndex: 20, rank: 20, masterRating: 2381 },
+    current: { page: 2, rowIndex: 1, rank: 21, masterRating: 2382 }, sameEntry: false,
+    duplicateInAccepted: false, duplicateWithinCurrentPage: false }
+  const orderRecheck = { status: 'observed', elapsedMs: 1000, page: 2, from: 21, to: 40, totalCount: 800000,
+    sameEntries: false, sameRanksAndMr: true, previous: null, current: { rank: 21, masterRating: 2382 },
+    currentSameEntry: false, previousSameEntry: null, rankInversionWithinPage: false, mrInversionWithinPage: false }
+  const failure = { attempt: 1, phase: 'listing', page: 2, code: 'source-changed', validationCheck: 'mr-order', recheckChangeKinds: null }
+  const safe = summarizeLegendAnalysisCaptureReport({ attemptFailures: [
+    { ...failure,
+      orderDiagnostic: { ...orderDiagnostic, previous: { ...orderDiagnostic.previous, accountKey: SECRET },
+        current: { ...orderDiagnostic.current, playerName: SECRET, playerId: SECRET }, message: SECRET },
+      orderRecheck: { ...orderRecheck, current: { ...orderRecheck.current, profileUrl: SECRET }, body: SECRET, entries: [SECRET] } },
+    { ...failure, attempt: 2, orderDiagnostic: { ...orderDiagnostic, previous: { ...orderDiagnostic.previous, rank: SECRET } },
+      orderRecheck: { ...orderRecheck, sameEntries: SECRET } },
+    { ...failure, attempt: 3, orderDiagnostic: { ...orderDiagnostic, boundary: SECRET },
+      orderRecheck: { status: 'failed', message: SECRET, url: SECRET, elapsedMs: SECRET } },
+  ] })
+  assert.deepEqual(safe.attemptFailures, [
+    { ...failure, orderDiagnostic, orderRecheck },
+    { ...failure, attempt: 2 },
+    { ...failure, attempt: 3, orderRecheck: { status: 'failed' } },
+  ])
+  for (const value of [SECRET, 'accountKey', 'playerName', 'playerId', 'profileUrl', 'message', 'body', 'entries']) assert.equal(JSON.stringify(safe).includes(value), false)
+  assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).attemptFailures, safe.attemptFailures)
 })

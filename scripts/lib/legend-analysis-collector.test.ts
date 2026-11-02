@@ -4,6 +4,7 @@ import { LEGEND_ANALYSIS_SOURCE } from '../../src/lib/legendAnalysis.ts'
 import { collectLegendAnalysisDataset, LegendAnalysisCollectionError } from './legend-analysis-collector.ts'
 import type { CollectLegendAnalysisOptions, LegendAnalysisAttemptFailure, LegendAnalysisEntry, LegendAnalysisPage } from './legend-analysis-collector.ts'
 import { LEGEND_ANALYSIS_CONDITIONS, LegendAnalysisDomError, legendAnalysisPageUrl } from './legend-analysis-dom.ts'
+import type { LegendOrderRecheck } from './legend-order-diagnostics.ts'
 
 function fixture(rows?: LegendAnalysisEntry[], pageSize = 2) {
   const values = rows ?? Array.from({ length: 4 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
@@ -311,7 +312,10 @@ test('successful retry retains failure evidence and a diagnostic callback cannot
   const result = await collectLegendAnalysisDataset(data.options)
   assert.equal(result.retryCount, 1)
   assert.deepEqual(failures, [{ attempt: 1, phase: 'listing', page: 1, code: 'source-changed',
-    validationCheck: 'mr-order', recheckChangeKinds: null }])
+    validationCheck: 'mr-order', recheckChangeKinds: null, orderDiagnostic: { boundary: 'within-page',
+      previous: { page: 1, rowIndex: 1, rank: 1, masterRating: 2400 },
+      current: { page: 1, rowIndex: 2, rank: 2, masterRating: 9999 },
+      sameEntry: false, duplicateInAccepted: false, duplicateWithinCurrentPage: false } }])
   assert.equal(result.dataset.totalCount, 2)
 })
 
@@ -342,6 +346,133 @@ test('fixed checks distinguish first rank, row position, rank order and MR order
     data.options.fetchPage = async (page, url) => { const value = await read(page, url); if (page === item.page) item.mutate(value); return value }
     await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error =>
       error instanceof LegendAnalysisCollectionError && error.code === 'source-changed' && error.validationCheck === item.check && error.recheckChangeKinds === undefined)
+  }
+})
+
+test('order diagnostics report the first violating pair and duplicate identity flags without private data', async () => {
+  for (const check of ['rank-order', 'mr-order'] as const) {
+    for (const boundary of ['within-page', 'between-pages'] as const) {
+      const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = []
+      const failingPage = boundary === 'within-page' ? 2 : 3
+      data.options.onAttemptFailure = value => { failures.push(value) }
+      data.options.fetchPage = async (page, url) => {
+        const value = await read(page, url)
+        if (page === failingPage) {
+          const index = boundary === 'within-page' ? 1 : 0
+          const previous = boundary === 'within-page' ? value.entries[0] : data.values[3]
+          const current = value.entries[index]
+          overlapWith(current, previous)
+          current.playerName = 'secret-player-name'; current.playerId = 'secret-player-id'
+          if (check === 'rank-order') current.rank = previous.rank - 1
+          else current.masterRating = previous.masterRating + 1
+          // A later row would also fail, but the first pair must remain the recorded one.
+          if (index === 0) value.entries[1].masterRating = 9999
+        }
+        return value
+      }
+      await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error =>
+        error instanceof LegendAnalysisCollectionError && error.validationCheck === check)
+      assert.equal(failures.length, 1)
+      const previous = data.values[boundary === 'within-page' ? 2 : 3]
+      assert.deepEqual(failures[0].orderDiagnostic, {
+        boundary,
+        previous: { page: 2, rowIndex: boundary === 'within-page' ? 1 : 2, rank: previous.rank, masterRating: previous.masterRating },
+        current: { page: failingPage, rowIndex: boundary === 'within-page' ? 2 : 1,
+          rank: check === 'rank-order' ? previous.rank - 1 : boundary === 'within-page' ? 4 : 5,
+          masterRating: check === 'mr-order' ? previous.masterRating + 1 : boundary === 'within-page' ? 2397 : 2396 },
+        sameEntry: true, duplicateInAccepted: boundary === 'between-pages', duplicateWithinCurrentPage: boundary === 'within-page',
+      })
+      assert.doesNotMatch(JSON.stringify(failures), /accountKey|characterId|playerName|playerId|secret|https?:/)
+      assert.equal(JSON.stringify(failures).includes(previous.accountKey), false)
+    }
+  }
+})
+
+test('rank and MR ties inside and across pages require no order recheck', async () => {
+  const data = adjacentFixture()
+  data.values.forEach(entry => { entry.rank = 1; entry.masterRating = 2400 })
+  let rechecks = 0
+  data.options.recheckOrderFailure = async () => { rechecks++; return { status: 'unavailable', elapsedMs: 1000 } }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.dataset.totalCount, 4)
+  assert.equal(rechecks, 0)
+})
+
+test('a resolved order reread is diagnostic only and the entire capture still retries', async () => {
+  const data = fixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = []
+  data.options.fetchPage = async (page, url) => {
+    events.push(`read-${page}`)
+    const value = await read(page, url)
+    if (data.requested.length === 1) value.entries[1].masterRating = 2401
+    return value
+  }
+  const recheck: LegendOrderRecheck = { status: 'observed', elapsedMs: 1000, page: 1, from: 1, to: 2, totalCount: 4,
+    sameEntries: true, sameRanksAndMr: false, previous: { rank: 1, masterRating: 2400 }, current: { rank: 2, masterRating: 2399 },
+    currentSameEntry: true, previousSameEntry: true, rankInversionWithinPage: false, mrInversionWithinPage: false }
+  data.options.recheckOrderFailure = async (page, rowIndex) => {
+    events.push('reread')
+    assert.equal(page.page, 1); assert.equal(rowIndex, 2); assert.equal(page.entries[1].masterRating, 2401)
+    return recheck
+  }
+  data.options.onAttemptFailure = value => { failures.push(value); events.push('failure') }
+  data.options.onRetry = () => { events.push('retry') }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.retryCount, 1)
+  assert.equal(result.requestCount, 5)
+  assert.deepEqual(events, ['read-1', 'reread', 'failure', 'retry', 'read-1', 'read-2', 'read-2', 'read-1'])
+  assert.deepEqual(failures[0].orderRecheck, recheck)
+  assert.equal(failures[0].orderDiagnostic?.current.masterRating, 2401)
+  assert.equal(result.dataset.mr.max, 2400)
+})
+
+test('persistent inversions reread once per attempt with a maximum of three attempts', async () => {
+  const data = fixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = []
+  let rechecks = 0
+  data.options.fetchPage = async (page, url) => { const value = await read(page, url); value.entries[1].masterRating = 2401; return value }
+  data.options.recheckOrderFailure = async () => { rechecks++; return { status: 'unavailable', elapsedMs: 1000 } }
+  data.options.onAttemptFailure = value => { failures.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 3 }), error =>
+    error instanceof LegendAnalysisCollectionError && error.validationCheck === 'mr-order')
+  assert.equal(rechecks, 3)
+  assert.deepEqual(data.requested, [1, 1, 1])
+  assert.deepEqual(failures.map(value => [value.attempt, value.orderRecheck]), [1, 2, 3].map(attempt => [attempt, { status: 'unavailable', elapsedMs: 1000 }]))
+})
+
+test('order reread access failures preserve the original diagnostic and abort without masking the exact error', async () => {
+  for (const error of [new LegendAnalysisDomError('http-denied'), new Error('secret-auth-response'),
+    new LegendAnalysisCollectionError('cancelled', 'cancellation')]) {
+    const data = fixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], retries: number[] = []
+    let rechecks = 0
+    data.options.fetchPage = async (page, url) => { const value = await read(page, url); value.entries[1].masterRating = 2401; return value }
+    data.options.recheckOrderFailure = async () => { rechecks++; throw error }
+    data.options.onAttemptFailure = value => { failures.push(value) }
+    data.options.onRetry = value => { retries.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset(data.options), actual => actual === error)
+    assert.equal(rechecks, 1); assert.deepEqual(retries, []); assert.deepEqual(data.requested, [1])
+    assert.equal(failures.length, 1)
+    assert.equal(failures[0].validationCheck, 'mr-order')
+    assert.equal(failures[0].orderDiagnostic?.current.masterRating, 2401)
+    assert.deepEqual(failures[0].orderRecheck, { status: 'failed' })
+    assert.doesNotMatch(JSON.stringify(failures), /secret|http-denied|cancelled/)
+  }
+})
+
+test('unrelated validation failures never perform an order reread or gain order diagnostic fields', async () => {
+  for (const mutate of [
+    (page: LegendAnalysisPage) => { page.conditionsConfirmed = false },
+    (page: LegendAnalysisPage) => { page.entries[0].rank = 2 },
+    (page: LegendAnalysisPage) => { page.entries[1].rank = 3 },
+    (page: LegendAnalysisPage) => { overlapWith(page.entries[1], page.entries[0]) },
+  ]) {
+    const data = fixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = []
+    let rechecks = 0
+    data.options.fetchPage = async (page, url) => { const value = await read(page, url); mutate(value); return value }
+    data.options.recheckOrderFailure = async () => { rechecks++; return { status: 'failed' } }
+    data.options.onAttemptFailure = value => { failures.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), LegendAnalysisCollectionError)
+    assert.equal(rechecks, 0)
+    assert.equal('orderDiagnostic' in failures[0], false)
+    assert.equal('orderRecheck' in failures[0], false)
   }
 })
 

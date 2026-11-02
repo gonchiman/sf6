@@ -1,5 +1,7 @@
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS, parseLegendAnalysisDataset, summarizeLegendMr } from '../../src/lib/legendAnalysis.ts'
 import type { LegendAnalysisConditions, LegendAnalysisDataset, LegendMembershipRule } from '../../src/types/legendAnalysis.ts'
+import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck } from './legend-order-diagnostics.ts'
+import type { LegendOrderDiagnostic, LegendOrderRecheck } from './legend-order-diagnostics.ts'
 
 /** Private transient row. Salted account keys are never persisted. */
 export interface LegendAnalysisEntry {
@@ -82,6 +84,8 @@ export interface CollectLegendAnalysisOptions {
   sourceUrl: string
   pageUrl(page: number): string
   fetchPage(page: number, url: string): Promise<LegendAnalysisPage>
+  /** One DOM-only observation per failed attempt; rowIndex is one-based and never used to recover acceptance. */
+  recheckOrderFailure?: (page: LegendAnalysisPage, rowIndex: number) => Promise<LegendOrderRecheck>
   /** Live reader reopens its original PLAY page before the final ranking rechecks. */
   confirmAct?: () => Promise<void>
   act: { id: string; label: string }
@@ -114,11 +118,13 @@ export interface LegendAnalysisCollectionProgress {
   attempt: number
   page: number | null
 }
-/** No errors, URLs, identities, names, or observed row values cross this boundary. */
+/** No errors, URLs, identities, or names cross this boundary. Order details contain only allowlisted numbers and booleans. */
 export interface LegendAnalysisAttemptFailure extends LegendAnalysisCollectionProgress {
   code: LegendAnalysisCollectionErrorCode
   validationCheck: LegendAnalysisValidationCheck
   recheckChangeKinds: LegendAnalysisRecheckChangeKind[] | null
+  orderDiagnostic?: LegendOrderDiagnostic
+  orderRecheck?: LegendOrderRecheck
 }
 export interface LegendAnalysisCollectionResult {
   dataset: LegendAnalysisDataset
@@ -149,8 +155,9 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
     currentPage = page
     options.onProgress?.({ phase, attempt: captureAttempt, page })
   }
-  const attemptFailed = (error: LegendAnalysisCollectionError): void => {
+  const attemptFailed = (error: LegendAnalysisCollectionError, diagnostic?: LegendOrderDiagnostic, recheck?: LegendOrderRecheck): void => {
     const kinds = error.recheckChangeKinds
+    const orderDiagnostic = sanitizeLegendOrderDiagnostic(diagnostic), orderRecheck = sanitizeLegendOrderRecheck(recheck)
     const failure: LegendAnalysisAttemptFailure = {
       attempt: captureAttempt, phase: currentPhase,
       page: integer(currentPage, 1) && currentPage <= 1000000 ? currentPage : null,
@@ -158,6 +165,7 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       validationCheck: LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS.includes(error.validationCheck) ? error.validationCheck : 'unclassified',
       recheckChangeKinds: Array.isArray(kinds) && kinds.length >= 1 && kinds.length <= LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.length
         && new Set(kinds).size === kinds.length && kinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind)) ? [...kinds] : null,
+      ...(orderDiagnostic ? { orderDiagnostic } : {}), ...(orderRecheck ? { orderRecheck } : {}),
     }
     // Diagnostics must not change the collection's retry decision or replace its original error.
     try { options.onAttemptFailure?.(failure) } catch {}
@@ -204,6 +212,7 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
     currentPhase = 'preparation'; currentPage = null
     if (attempt > 0) options.onRetry?.(attempt)
     const startedAt = clock()
+    let orderFailure: { error: LegendAnalysisCollectionError; page: LegendAnalysisPage; rowIndex: number; diagnostic: LegendOrderDiagnostic } | undefined
     try {
       const first = await read(1)
       const accepted: LegendAnalysisEntry[] = []
@@ -220,9 +229,22 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
         for (const [index, entry] of page.entries.entries()) {
           if (page.page === 1 && index === 0 && entry.rank !== 1) fail('source-changed', 'first-rank')
           if (entry.rank > page.from + index) fail('source-changed', 'rank-position')
-          if (nextPrevious && entry.rank < nextPrevious.rank) fail('source-changed', 'rank-order')
-          if (nextPrevious && entry.masterRating > nextPrevious.masterRating) fail('source-changed', 'mr-order')
           const key = `${entry.accountKey}:${entry.characterId}`
+          const orderCheck = nextPrevious && (entry.rank < nextPrevious.rank ? 'rank-order'
+            : entry.masterRating > nextPrevious.masterRating ? 'mr-order' : null)
+          if (nextPrevious && orderCheck) {
+            const error = new LegendAnalysisCollectionError('source-changed', orderCheck)
+            orderFailure = { error, page, rowIndex: index + 1, diagnostic: {
+              boundary: index === 0 ? 'between-pages' : 'within-page',
+              previous: { page: index === 0 ? previousPage!.page : page.page,
+                rowIndex: index === 0 ? previousPage!.entries.length : index,
+                rank: nextPrevious.rank, masterRating: nextPrevious.masterRating },
+              current: { page: page.page, rowIndex: index + 1, rank: entry.rank, masterRating: entry.masterRating },
+              sameEntry: key === `${nextPrevious.accountKey}:${nextPrevious.characterId}`,
+              duplicateInAccepted: seen.has(key), duplicateWithinCurrentPage: keys.has(key),
+            } }
+            throw error
+          }
           if (keys.has(key)) { duplicate = true; withinPageDuplicate = true }
           if (seen.has(key)) { duplicate = true; if (!precedingKeys.has(key)) earlierPageDuplicate = true }
           keys.add(key)
@@ -294,8 +316,23 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       progress('complete', null)
       return { dataset, requestCount, retryCount: attempt, pagesRead }
     } catch (error) {
-      if (options.signal?.aborted) fail('cancelled', 'cancellation')
-      if (error instanceof LegendAnalysisCollectionError) attemptFailed(error)
+      if (orderFailure && error === orderFailure.error) {
+        let recheck: LegendOrderRecheck | undefined
+        if (options.recheckOrderFailure) {
+          try {
+            cancelled()
+            recheck = sanitizeLegendOrderRecheck(await options.recheckOrderFailure(orderFailure.page, orderFailure.rowIndex)) ?? { status: 'failed' }
+            cancelled()
+          } catch (recheckError) {
+            attemptFailed(orderFailure.error, orderFailure.diagnostic, { status: 'failed' })
+            throw recheckError
+          }
+        }
+        attemptFailed(orderFailure.error, orderFailure.diagnostic, recheck)
+      } else {
+        if (options.signal?.aborted) fail('cancelled', 'cancellation')
+        if (error instanceof LegendAnalysisCollectionError) attemptFailed(error)
+      }
       if (!(error instanceof LegendAnalysisCollectionError)
         || !['source-changed', 'duplicate-entry'].includes(error.code) || attempt + 1 >= maxAttempts) throw error
     }

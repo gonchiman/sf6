@@ -4,6 +4,7 @@ import type { Page, Request } from 'playwright'
 import { LEGEND_ANALYSIS_SOURCE } from '../../src/lib/legendAnalysis.ts'
 import type { LegendAnalysisConditions } from '../../src/types/legendAnalysis.ts'
 import type { LegendAnalysisEntry, LegendAnalysisPage } from './legend-analysis-collector.ts'
+import type { LegendOrderRecheck } from './legend-order-diagnostics.ts'
 import { emptyDistributionHumanVerification, observeDistributionHumanVerification, readDistributionHumanVerificationResponse } from './distribution-human-verification.ts'
 import { matchesLegendRankedMatchRequest, observeLegendPlayerProfile, settleLegendPlayerRender, type LegendPlayerProfileObservation } from './legend-player-profile-dom.ts'
 
@@ -51,8 +52,8 @@ export interface LegendAnalysisDomObservation {
 }
 
 /** Rendered ranking controls and row assets only; account IDs are hashed with one capture-wide salt. */
-export async function observeLegendAnalysisDom(input: { salt: string; characterIds: string[]; includePlayers?: boolean }): Promise<LegendAnalysisDomObservation> {
-  window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
+export async function observeLegendAnalysisDom(input: { salt: string; characterIds: string[]; includePlayers?: boolean; readOnly?: boolean }): Promise<LegendAnalysisDomObservation> {
+  if (!input.readOnly) window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
   const visible = (element: Element): boolean => {
     const rect = element.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return false
@@ -65,14 +66,16 @@ export async function observeLegendAnalysisDom(input: { salt: string; characterI
   const text = (element: Element): string => (element as HTMLElement).innerText?.trim() ?? ''
   // Ordinary scrolling prepares lazy assets before taking a new, synchronous snapshot.
   // These nodes are deliberately discarded: React may replace them during an await.
-  const preparationLists = [...document.querySelectorAll('ul[class*="ranking_ranking_list"]:not([class*="ranking__my__list"])')].filter(visible)
-  if (preparationLists.length === 1) for (const row of [...preparationLists[0].querySelectorAll('a[href*="/profile/"]')].filter(visible)) {
-    row.scrollIntoView({ block: 'center', inline: 'nearest' })
-    await new Promise<void>(resolve => setTimeout(resolve, 20))
+  if (!input.readOnly) {
+    const preparationLists = [...document.querySelectorAll('ul[class*="ranking_ranking_list"]:not([class*="ranking__my__list"])')].filter(visible)
+    if (preparationLists.length === 1) for (const row of [...preparationLists[0].querySelectorAll('a[href*="/profile/"]')].filter(visible)) {
+      row.scrollIntoView({ block: 'center', inline: 'nearest' })
+      await new Promise<void>(resolve => setTimeout(resolve, 20))
+    }
+    // Scrolling can hide the ordinary header controls; restore them before freezing auth and ranking together.
+    window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
+    await new Promise<void>(resolve => setTimeout(resolve, 30))
   }
-  // Scrolling can hide the ordinary header controls; restore them before freezing auth and ranking together.
-  window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
-  await new Promise<void>(resolve => setTimeout(resolve, 30))
   // No DOM reads or awaits may be interleaved between this point and the completed raw-row snapshot.
   const observedUrl = location.href
   const controls = [...document.querySelectorAll('a,button')].filter(visible)
@@ -584,6 +587,85 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
           conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries: value.entries! }
       } catch (error) { lastErrorCode = error instanceof LegendAnalysisDomError ? error.code : 'read-failed'; throw new LegendAnalysisDomError(lastErrorCode) }
       finally { running = false }
+    },
+    /** Observe the same document once; never navigate, accept a replacement page, or reset a stop condition. */
+    async recheckOrderFailure(original: LegendAnalysisPage, rowIndex: number): Promise<LegendOrderRecheck> {
+      if (running) throw new LegendAnalysisDomError('concurrent-read')
+      if (!act || !ready || lastAccepted?.page !== original.page || !legendAnalysisPageUrlMatches(page.url(), original.page)
+        || !Number.isSafeInteger(rowIndex) || rowIndex < 1 || rowIndex > original.entries.length || rowIndex > 20) {
+        throw new LegendAnalysisDomError('invalid-request')
+      }
+      running = true
+      let timer: ReturnType<typeof setTimeout> | undefined, abort: (() => void) | undefined, finished = false
+      const startedAt = now()
+      const elapsed = () => Math.min(10000, Math.max(0, Math.round(now() - startedAt)))
+      const diagnosticCheck = () => { check(); if (finished) throw new LegendAnalysisDomError('read-failed') }
+      const verificationDetected = () => Boolean(humanVerification.wafAction) || humanVerification.domDetected === true
+      const diagnosticVerification = async () => {
+        let detected: boolean | null = null
+        try {
+          const value = await page.evaluate(observeDistributionHumanVerification)
+          detected = typeof value === 'boolean' ? value : null
+        } catch { /* Unavailable observation stays distinct from non-detection. */ }
+        diagnosticCheck()
+        humanVerification.domDetected = detected
+      }
+      try {
+        check()
+        const stopped = new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => { finished = true; reject(new LegendAnalysisDomError('read-failed')) }, 5000)
+          abort = () => { finished = true; reject(new LegendAnalysisDomError('cancelled')) }
+          options.signal?.addEventListener('abort', abort, { once: true })
+          if (options.signal?.aborted) abort()
+        })
+        return await Promise.race([stopped, (async (): Promise<LegendOrderRecheck> => {
+          await wait(1000); diagnosticCheck()
+          lastStep = 'ranking-observation'
+          await diagnosticVerification(); diagnosticCheck()
+          if (verificationDetected()) throw new LegendAnalysisDomError('http-denied')
+          const value = await page.evaluate(observeLegendAnalysisDom, { salt, characterIds, readOnly: true,
+            ...(options.includePlayers ? { includePlayers: true } : {}) })
+          diagnosticCheck()
+          await diagnosticVerification(); diagnosticCheck()
+          if (verificationDetected() || value.accessChallenge) throw new LegendAnalysisDomError('http-denied')
+          if (value.maintenance) throw new LegendAnalysisDomError('maintenance')
+          if (value.loginRequired) { lastLoginRequired = true; lastSignedIn = value.signedIn; throw new LegendAnalysisDomError('authentication-required') }
+          const range = value.range, entries = value.entries
+          if (!legendAnalysisPageUrlMatches(page.url(), original.page) || !legendAnalysisPageUrlMatches(value.observedUrl, original.page)
+            || value.selectedPage !== original.page || !value.conditionsConfirmed || !value.currentActConfirmed
+            || !range || range.from !== original.from || !Number.isSafeInteger(range.total) || range.total < range.from
+            || range.to !== Math.min(original.page * original.pageSize, range.total)
+            || !entries || entries.length !== range.to - range.from + 1 || entries.length > 20
+            || entries.some(entry => !Number.isSafeInteger(entry.rank) || entry.rank < 1 || !Number.isSafeInteger(entry.masterRating) || entry.masterRating < 0
+              || typeof entry.accountKey !== 'string' || !/^[a-f0-9]{64}$/.test(entry.accountKey) || !characterIds.includes(entry.characterId))) {
+            return { status: 'unavailable', elapsedMs: elapsed() }
+          }
+          const current = entries[rowIndex - 1], previous = rowIndex > 1 ? entries[rowIndex - 2] : null
+          const sameEntry = (left: LegendAnalysisEntry | undefined | null, right: LegendAnalysisEntry | undefined | null) =>
+            Boolean(left && right && left.accountKey === right.accountKey && left.characterId === right.characterId)
+          const numeric = (entry: LegendAnalysisEntry | undefined | null) => entry ? { rank: entry.rank, masterRating: entry.masterRating } : null
+          return { status: 'observed', elapsedMs: elapsed(), page: original.page, from: range.from, to: range.to, totalCount: range.total,
+            sameEntries: entries.length === original.entries.length && entries.every((entry, index) => sameEntry(entry, original.entries[index])),
+            sameRanksAndMr: entries.length === original.entries.length && entries.every((entry, index) => entry.rank === original.entries[index].rank && entry.masterRating === original.entries[index].masterRating),
+            previous: numeric(previous), current: numeric(current), currentSameEntry: sameEntry(current, original.entries[rowIndex - 1]),
+            previousSameEntry: rowIndex > 1 ? sameEntry(previous, original.entries[rowIndex - 2]) : null,
+            rankInversionWithinPage: entries.some((entry, index) => index > 0 && entry.rank < entries[index - 1].rank),
+            mrInversionWithinPage: entries.some((entry, index) => index > 0 && entry.masterRating > entries[index - 1].masterRating) }
+        })()])
+      } catch (error) {
+        const code = options.signal?.aborted ? 'cancelled' : error instanceof LegendAnalysisDomError ? error.code : 'read-failed'
+        if (['http-denied', 'authentication-required', 'maintenance', 'cancelled'].includes(code)) {
+          lastErrorCode = code
+          throw new LegendAnalysisDomError(code)
+        }
+        // A diagnostic failure must not replace the original order failure or consume its normal retry.
+        return { status: 'failed' }
+      } finally {
+        finished = true
+        if (timer !== undefined) clearTimeout(timer)
+        if (abort) options.signal?.removeEventListener('abort', abort)
+        running = false
+      }
     },
     async fetchPlayerRankedMatches(playerId: string, requestedCharacters: readonly string[]): Promise<Record<string, number>> {
       if (running) throw new LegendAnalysisDomError('concurrent-read')

@@ -3,12 +3,15 @@ import test from 'node:test'
 import type { Page, Request, Response } from 'playwright'
 import { classifyLegendClickFailure, createLegendAnalysisPageReader, LegendAnalysisDomError, legendAnalysisPageUrl, legendAnalysisPageUrlMatches, observeLegendAnalysisDom, observeLegendAnalysisRoster, sanitizeLegendRosterDiagnostics, type LegendAnalysisPageReaderOptions } from './legend-analysis-dom.ts'
 import { matchesLegendRankedMatchRequest, observeLegendPlayerProfile } from './legend-player-profile-dom.ts'
+import type { LegendAnalysisDomObservation } from './legend-analysis-dom.ts'
 
 function fixture(options: Partial<LegendAnalysisPageReaderOptions> = {}) {
   let url = '', clock = 0, actId = 13, status = 200, redirected = false, readyOnAttempt = 1, controlReads = 0, cookieOverlay = false, autoOpen = false
   let signedIn = true, loginRequired = false, authenticationEvidence = 'logout-control'
   let bodyPage: number | null = null, staleReads = 0, duplicateReads = 0, identicalRanks = false, rankingReads = 0, challenge = false
   let sharedChallenge = false, unavailableChallengeDom = false
+  let snapshotMutator: ((value: LegendAnalysisDomObservation) => void) | null = null, passiveHang = false
+  const passiveInputs: boolean[] = []
   let profileMode = '1', profileStatus = 200, profilePlayerId: string | null = null, profileMatches: number | null = 42, profileStaleReads = 0
   let profileFinished = false, renderSettled = false, wrongRequest = false, actAfterProfileResponse: number | null = null
   const profileHeaders: Record<string, string> = {}, listeners = new Set<(request: Request) => void>(), starts: number[] = []
@@ -19,7 +22,7 @@ function fixture(options: Partial<LegendAnalysisPageReaderOptions> = {}) {
   const page = {
     goto: async (value: string) => { url = redirected ? 'https://example.com/unconfirmed' : value; navigations.push(value); starts.push(clock); profileMode = '1'; profileFinished = false; renderSettled = false; const actual = statuses.shift() ?? status; return { status: () => actual, url: () => url, headers: () => ({ ...headers }) } },
     url: () => url,
-    evaluate: async (operation: { name: string }, input?: { salt: string }) => {
+    evaluate: async (operation: { name: string }, input?: { salt: string; readOnly?: boolean }) => {
       if (!operation.name || operation.name === 'observeDistributionHumanVerification') {
         if (unavailableChallengeDom) throw new Error('private-dom-failure-text')
         return operation.name ? sharedChallenge : challenge
@@ -34,15 +37,19 @@ function fixture(options: Partial<LegendAnalysisPageReaderOptions> = {}) {
       if (operation.name === 'observeLegendAnalysisRosterControl') return { characterFilter: ++controlReads >= readyOnAttempt ? '4' : '1', visibleRosterButtonCount: controlReads >= readyOnAttempt ? 1 : 0, rosterModalVisible: autoOpen && controlReads >= readyOnAttempt }
       if (operation.name === 'observeLegendAnalysisClickTarget') return { hitKind: cookieOverlay ? 'cookie-consent' : 'ranking-control', hitTag: cookieOverlay ? 'div' : 'span', parentParagraph: true, pointerEventsNone: false }
       salts.push(input!.salt)
+      passiveInputs.push(input?.readOnly === true)
+      if (input?.readOnly && passiveHang) return await new Promise<never>(() => {})
       const selectedPage = Number(new URL(url).searchParams.get('page'))
       const contentPage = bodyPage !== null && staleReads-- > 0 ? bodyPage : selectedPage
       const duplicate = duplicateReads-- > 0
       rankingReads++
-      return { observedUrl: url, maintenance: false, accessChallenge: challenge, signedIn, authenticationEvidence, loginRequired, conditionsConfirmed: true, currentActConfirmed: true,
+      const snapshot = { observedUrl: url, maintenance: false, accessChallenge: challenge, signedIn, authenticationEvidence, loginRequired, conditionsConfirmed: true, currentActConfirmed: true,
         selectedPage, range: { from: (selectedPage - 1) * 20 + 1, to: selectedPage * 20, total: 800000 },
         firstPlayUrl: 'https://www.streetfighter.com/6/buckler/ja-jp/profile/12345/play',
         entries: Array.from({ length: 20 }, (_, index) => ({ accountKey: String((contentPage - 1) * 20 + (duplicate && index === 1 ? 0 : index)).padStart(64, '0'), characterId: 'ryu', rank: identicalRanks ? 1 : (contentPage - 1) * 20 + index + 1,
-          masterRating: identicalRanks ? 2400 : 2400 - ((contentPage - 1) * 20 + index), isLegend: true })) }
+          masterRating: identicalRanks ? 2400 : 2400 - ((contentPage - 1) * 20 + index), isLegend: true })) } as LegendAnalysisDomObservation
+      snapshotMutator?.(snapshot)
+      return snapshot
     },
     on: (_name: string, callback: (request: Request) => void) => { listeners.add(callback) },
     off: (_name: string, callback: (request: Request) => void) => { listeners.delete(callback) },
@@ -68,7 +75,10 @@ function fixture(options: Partial<LegendAnalysisPageReaderOptions> = {}) {
       } }),
   } as unknown as Page
   const reader = createLegendAnalysisPageReader(page, { now: () => clock, wait: async milliseconds => { waits.push(milliseconds); clock += milliseconds }, ...options })
-  return { reader, navigations, salts, waits, controls, changeAct: () => { actId++ }, deny: () => { status = 403 }, redirect: () => { redirected = true }, hydrateAfter: (attempts: number) => { readyOnAttempt = attempts }, showCookieOverlay: () => { cookieOverlay = true }, autoOpenRoster: () => { autoOpen = true },
+  return { reader, navigations, salts, waits, controls, passiveInputs,
+    mutateSnapshot: (callback: ((value: LegendAnalysisDomObservation) => void) | null) => { snapshotMutator = callback },
+    hangPassive: () => { passiveHang = true },
+    changeAct: () => { actId++ }, deny: () => { status = 403 }, redirect: () => { redirected = true }, hydrateAfter: (attempts: number) => { readyOnAttempt = attempts }, showCookieOverlay: () => { cookieOverlay = true }, autoOpenRoster: () => { autoOpen = true },
     staleBody: (page: number, reads: number) => { bodyPage = page; staleReads = reads }, duplicateBody: (reads: number) => { duplicateReads = reads }, tieAllRows: () => { identicalRanks = true }, readCount: () => rankingReads, showChallenge: () => { challenge = true },
     showLoginControl: () => { signedIn = false; authenticationEvidence = 'login-control' },
     showLoginHeading: () => { signedIn = false; authenticationEvidence = 'login-control'; loginRequired = true },
@@ -102,6 +112,97 @@ test('reader confirms Act and visible source roster, uses one salt, and spaces n
   assert.deepEqual(Object.keys(data.reader.getDiagnostics()), ['requestCount', 'profileRetryCount', 'lastStep', 'lastErrorCode', 'characterFilter', 'visibleRosterButtonCount', 'clickFailure', 'clickHitKind', 'clickHitTag', 'parentParagraph', 'pointerEventsNone', 'rosterDiagnostics', 'lastLoginRequired', 'lastSignedIn', 'lastRankingReadable', 'readableWithoutSignInReadCount', 'lastHttpStatus', 'lastAttemptedPage', 'successfulReadCount', 'humanVerification'])
   assert.equal(data.reader.getDiagnostics().lastAttemptedPage, 1)
   assert.equal(data.reader.getDiagnostics().successfulReadCount, 4)
+})
+
+test('order diagnostics sample the same document once after one second without navigation or accepted reads', async () => {
+  const data = fixture(); await data.reader.initialize()
+  data.mutateSnapshot(value => { if (value.selectedPage === 2) value.entries![5].rank = 23 })
+  const original = await data.reader.fetchPage(2, legendAnalysisPageUrl(2))
+  data.mutateSnapshot(null)
+  const before = data.reader.getDiagnostics(), reads = data.readCount(), navigations = data.navigations.length
+  const result = await data.reader.recheckOrderFailure(original, 6)
+  assert.deepEqual(result, { status: 'observed', elapsedMs: 1000, page: 2, from: 21, to: 40, totalCount: 800000,
+    sameEntries: true, sameRanksAndMr: false, previous: { rank: 25, masterRating: 2376 }, current: { rank: 26, masterRating: 2375 },
+    currentSameEntry: true, previousSameEntry: true, rankInversionWithinPage: false, mrInversionWithinPage: false })
+  assert.equal(original.entries[5].rank, 23)
+  assert.equal(data.readCount() - reads, 1)
+  assert.equal(data.navigations.length, navigations)
+  assert.equal(data.passiveInputs.at(-1), true)
+  assert.equal(data.reader.getDiagnostics().requestCount, before.requestCount)
+  assert.equal(data.reader.getDiagnostics().successfulReadCount, before.successfulReadCount)
+  assert.doesNotMatch(JSON.stringify(result), /accountKey|characterId|playerId|profile|salt/)
+})
+
+test('boundary diagnostics preserve an unknown previous page and observe changed row identities', async () => {
+  const data = fixture(); await data.reader.initialize()
+  const original = await data.reader.fetchPage(2, legendAnalysisPageUrl(2))
+  data.mutateSnapshot(value => { value.entries![0].accountKey = 'a'.repeat(64); value.entries![0].rank = 19 })
+  const result = await data.reader.recheckOrderFailure(original, 1)
+  assert.equal(result.status, 'observed')
+  if (result.status === 'observed') {
+    assert.equal(result.previous, null); assert.equal(result.previousSameEntry, null)
+    assert.equal(result.current?.rank, 19); assert.equal(result.currentSameEntry, false)
+    assert.equal(result.sameEntries, false); assert.equal(result.sameRanksAndMr, false)
+  }
+})
+
+test('malformed or mismatched same-document observations remain unavailable, never accepted', async () => {
+  for (const mutate of [(value: LegendAnalysisDomObservation) => { value.entries = null },
+    (value: LegendAnalysisDomObservation) => { value.selectedPage = 99 },
+    (value: LegendAnalysisDomObservation) => { value.entries![0].rank = NaN }]) {
+    const data = fixture(); await data.reader.initialize()
+    const original = await data.reader.fetchPage(2, legendAnalysisPageUrl(2))
+    data.mutateSnapshot(mutate)
+    assert.deepEqual(await data.reader.recheckOrderFailure(original, 1), { status: 'unavailable', elapsedMs: 1000 })
+  }
+})
+
+test('diagnostic CAPTCHA and required login stop immediately without a new request', async () => {
+  for (const scenario of ['challenge-before', 'challenge-after', 'login'] as const) {
+    const data = fixture(); await data.reader.initialize()
+    const original = await data.reader.fetchPage(2, legendAnalysisPageUrl(2)), navigations = data.navigations.length
+    if (scenario === 'challenge-before') data.showSharedChallenge()
+    else if (scenario === 'challenge-after') data.mutateSnapshot(() => data.showSharedChallenge())
+    else data.showLoginHeading()
+    await assert.rejects(data.reader.recheckOrderFailure(original, 1), error => error instanceof LegendAnalysisDomError
+      && error.code === (scenario === 'login' ? 'authentication-required' : 'http-denied'))
+    assert.equal(data.navigations.length, navigations)
+    if (scenario !== 'login') assert.equal(data.reader.getDiagnostics().humanVerification.domDetected, true)
+  }
+})
+
+test('a hanging diagnostic observation has a five-second deadline and honors cancellation', async t => {
+  const data = fixture(); await data.reader.initialize()
+  const original = await data.reader.fetchPage(2, legendAnalysisPageUrl(2))
+  data.hangPassive()
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = data.reader.recheckOrderFailure(original, 1)
+  await new Promise<void>(resolve => setImmediate(resolve))
+  assert.equal(data.passiveInputs.at(-1), true)
+  t.mock.timers.tick(5000)
+  assert.deepEqual(await pending, { status: 'failed' })
+  t.mock.timers.reset()
+
+  const controller = new AbortController(), cancelled = fixture({ signal: controller.signal })
+  await cancelled.reader.initialize()
+  const page = await cancelled.reader.fetchPage(2, legendAnalysisPageUrl(2)); cancelled.hangPassive()
+  const aborting = assert.rejects(cancelled.reader.recheckOrderFailure(page, 1), error => error instanceof LegendAnalysisDomError && error.code === 'cancelled')
+  await new Promise<void>(resolve => setImmediate(resolve))
+  assert.equal(cancelled.passiveInputs.at(-1), true)
+  controller.abort(); await aborting
+})
+
+test('passive observer never scrolls or waits for lazy row preparation', async t => {
+  let scrolls = 0
+  const globals: Record<string, unknown> = { document: { querySelectorAll: () => [] },
+    window: { scrollTo: () => { scrolls++ }, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }) },
+    location: { href: legendAnalysisPageUrl(2) } }
+  const descriptors = Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const)
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value })
+  t.after(() => { for (const [key, descriptor] of descriptors) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key) } })
+  t.mock.method(globalThis, 'setTimeout', (() => { throw new Error('Passive observation must not wait for preparation') }) as unknown as typeof setTimeout)
+  const observed = await observeLegendAnalysisDom({ salt: 'test', characterIds: [], readOnly: true })
+  assert.equal(scrolls, 0); assert.equal(observed.entries, null)
 })
 
 test('profile collection waits for the matching mode response and stable ranked values using the same start gate', async () => {
