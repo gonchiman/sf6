@@ -573,3 +573,188 @@ test('invalid condition, Act, character and reversed ordering are rejected', asy
     await assert.rejects(collectLegendAnalysisDataset(data.options))
   }
 })
+
+test('boundary rank and MR recovery observes the failing document before rereading both pages and publishes only the verified replacement', async () => {
+  for (const check of ['rank-order', 'mr-order'] as const) {
+    const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = [], failures: LegendAnalysisAttemptFailure[] = []
+    data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
+    let secondReads = 0, outputs = 0
+    data.options.fetchPage = async (page, url) => {
+      events.push(`read-${page}`)
+      const value = await read(page, url)
+      if (page === 2 && ++secondReads === 1) {
+        if (check === 'rank-order') value.entries[0].rank = 1
+        else value.entries[0].masterRating = 2400
+      }
+      return value
+    }
+    data.options.recheckOrderFailure = async (page, rowIndex) => {
+      events.push('observe-2')
+      assert.equal(page.page, 2); assert.equal(rowIndex, 1)
+      assert.equal(data.requested.at(-1), 2)
+      return { status: 'unavailable', elapsedMs: 1000 }
+    }
+    data.options.onPageRecovery = state => { events.push(state) }
+    data.options.onAttemptFailure = value => { failures.push(value) }
+    data.options.onVerifiedPlayers = rows => {
+      outputs++
+      assert.deepEqual(rows.map(row => [row.playerId, row.rank, row.masterRating]),
+        data.values.slice(0, 4).map(row => [row.playerId, row.rank, row.masterRating]))
+    }
+    const result = await collectLegendAnalysisDataset(data.options)
+    assert.deepEqual(events, ['read-1', 'read-2', 'observe-2', 'started', 'read-1', 'read-2', 'succeeded', 'read-3', 'read-3', 'read-1'])
+    assert.equal(result.retryCount, 0); assert.equal(result.pagesRead, 3); assert.equal(result.requestCount, 7)
+    assert.equal(result.dataset.totalCount, 4); assert.equal(outputs, 1); assert.deepEqual(failures, [])
+  }
+})
+
+test('persistent boundary inversion shares a single recovery budget across whole attempts and records the first pair once per attempt', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = []
+  let rechecks = 0
+  data.options.fetchPage = async (page, url) => { const value = await read(page, url); if (page === 2) value.entries[0].rank = 1; return value }
+  data.options.recheckOrderFailure = async page => {
+    rechecks++; assert.equal(data.requested.at(-1), page.page)
+    return { status: 'unavailable', elapsedMs: 1000 }
+  }
+  data.options.onPageRecovery = value => { events.push(value) }
+  data.options.onAttemptFailure = value => { failures.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'rank-order')
+  assert.deepEqual(events, ['started']); assert.deepEqual(data.requested, [1, 2, 1, 2, 1, 2]); assert.equal(rechecks, 2)
+  assert.equal(failures.length, 2)
+  for (const failure of failures) {
+    assert.equal(failure.orderDiagnostic?.current.rank, 1); assert.equal(failure.orderDiagnostic?.previous.rank, 2)
+    assert.deepEqual(failure.orderRecheck, { status: 'unavailable', elapsedMs: 1000 })
+  }
+})
+
+test('a changed preceding page preserves original order evidence with the actual adjacent-recheck failure', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = []
+  let firstReads = 0, rechecks = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 2) value.entries[0].rank = 1
+    if (page === 1 && ++firstReads === 2) value.entries[0].masterRating++
+    return value
+  }
+  data.options.recheckOrderFailure = async () => { rechecks++; return { status: 'unavailable', elapsedMs: 1000 } }
+  data.options.onAttemptFailure = value => { failures.push(value) }
+  data.options.onPageRecovery = value => { events.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'adjacent-recheck')
+  assert.deepEqual(data.requested, [1, 2, 1]); assert.deepEqual(events, ['started']); assert.equal(rechecks, 1)
+  assert.equal(failures[0].page, 1); assert.equal(failures[0].validationCheck, 'adjacent-recheck')
+  assert.deepEqual(failures[0].recheckChangeKinds, ['legend-entries'])
+  assert.equal(failures[0].orderDiagnostic?.current.page, 2); assert.equal(failures[0].orderDiagnostic?.current.rank, 1)
+  assert.deepEqual(failures[0].orderRecheck, { status: 'unavailable', elapsedMs: 1000 })
+})
+
+test('page-internal inversions and nonadjacent duplicates remain ineligible even when a boundary also inverts', async () => {
+  for (const kind of ['within-only', 'within-rank', 'within-mr', 'within-duplicate', 'earlier-duplicate'] as const) {
+    const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = []
+    const failingPage = kind === 'earlier-duplicate' || kind === 'within-rank' ? 3 : 2
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === failingPage) {
+        if (kind === 'within-only') value.entries[1].rank = 2
+        else {
+          value.entries[0].rank = kind === 'within-rank' ? 3 : 1
+          if (kind === 'within-rank') value.entries[1].rank = 2
+          if (kind === 'within-mr') value.entries[1].masterRating = value.entries[0].masterRating + 1
+          if (kind === 'within-duplicate') overlapWith(value.entries[1], value.entries[0])
+          if (kind === 'earlier-duplicate') overlapWith(value.entries[0], data.values[0])
+        }
+      }
+      return value
+    }
+    data.options.onPageRecovery = value => { events.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), LegendAnalysisCollectionError)
+    assert.deepEqual(events, [])
+    assert.deepEqual(data.requested, failingPage === 3 ? [1, 2, 3] : [1, 2])
+  }
+})
+
+test('order and duplicate recovery consume the same local recovery allowance', async () => {
+  for (const firstFailure of ['order', 'duplicate'] as const) {
+    const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = []
+    let secondReads = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === 2 && ++secondReads === 1) {
+        if (firstFailure === 'order') value.entries[0].rank = 1
+        else overlapWith(value.entries[0], data.values[1])
+      }
+      if (page === 3) {
+        if (firstFailure === 'order') overlapWith(value.entries[0], data.values[3])
+        else value.entries[0].rank = 1
+      }
+      return value
+    }
+    data.options.onPageRecovery = value => { events.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError
+      && error.code === (firstFailure === 'order' ? 'duplicate-entry' : 'source-changed'))
+    assert.deepEqual(events, ['started', 'succeeded']); assert.deepEqual(data.requested, [1, 2, 1, 2, 3])
+  }
+})
+
+test('boundary recovery preserves original diagnostics on request limits, cancellation and terminal transport errors', async () => {
+  for (const kind of ['budget', 'cancelled', 'http-denied', 'authentication-required', 'maintenance', 'other'] as const) {
+    const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = [], retries: number[] = []
+    const controller = new AbortController(), transportError = kind === 'http-denied' || kind === 'authentication-required' || kind === 'maintenance'
+      ? new LegendAnalysisDomError(kind) : new Error('private terminal response')
+    let firstReads = 0, rechecks = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === 2) value.entries[0].rank = 1
+      if (page === 1 && ++firstReads === 2 && !['budget', 'cancelled'].includes(kind)) throw transportError
+      return value
+    }
+    data.options.recheckOrderFailure = async () => { rechecks++; return { status: 'unavailable', elapsedMs: 1000 } }
+    data.options.onAttemptFailure = value => { failures.push(value) }
+    data.options.onRetry = value => { retries.push(value) }
+    data.options.onPageRecovery = value => { events.push(value); if (kind === 'cancelled') controller.abort() }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, signal: controller.signal,
+      ...(kind === 'budget' ? { maxRequests: 3 } : {}) }), error => kind === 'budget' || kind === 'cancelled'
+      ? error instanceof LegendAnalysisCollectionError && error.code === (kind === 'budget' ? 'request-limit' : 'cancelled') : error === transportError)
+    assert.deepEqual(events, ['started']); assert.deepEqual(retries, []); assert.equal(rechecks, 1)
+    assert.deepEqual(data.requested, kind === 'cancelled' ? [1, 2] : [1, 2, 1])
+    assert.equal(failures.length, 1); assert.equal(failures[0].orderDiagnostic?.current.rank, 1)
+    assert.deepEqual(failures[0].orderRecheck, { status: 'unavailable', elapsedMs: 1000 })
+    assert.doesNotMatch(JSON.stringify(failures), /private terminal/)
+  }
+})
+
+test('failed recovery never replaces its original pair with a new recovered-page violation or emits players', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = []
+  data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
+  let secondReads = 0, outputs = 0, rechecks = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 2) {
+      if (++secondReads === 1) value.entries[0].rank = 1
+      else value.entries[1].masterRating = 9999
+    }
+    return value
+  }
+  data.options.onVerifiedPlayers = () => { outputs++ }
+  data.options.recheckOrderFailure = async () => { rechecks++; return { status: 'unavailable', elapsedMs: 1000 } }
+  data.options.onAttemptFailure = value => { failures.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'mr-order')
+  assert.equal(outputs, 0); assert.equal(rechecks, 1); assert.deepEqual(data.requested, [1, 2, 1, 2])
+  assert.equal(failures[0].validationCheck, 'mr-order'); assert.equal(failures[0].orderDiagnostic?.current.rank, 1)
+  assert.equal(failures[0].orderDiagnostic?.current.rowIndex, 1)
+})
+
+test('successful boundary recovery clears its diagnostics before an unrelated endpoint failure', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = []
+  let secondReads = 0, thirdReads = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 2 && ++secondReads === 1) value.entries[0].rank = 1
+    if (page === 3 && ++thirdReads === 2) value.entries[0].masterRating++
+    return value
+  }
+  data.options.onAttemptFailure = value => { failures.push(value) }
+  data.options.onPageRecovery = value => { events.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'end-recheck')
+  assert.deepEqual(events, ['started', 'succeeded']); assert.equal(failures.length, 1)
+  assert.equal('orderDiagnostic' in failures[0], false); assert.equal('orderRecheck' in failures[0], false)
+})

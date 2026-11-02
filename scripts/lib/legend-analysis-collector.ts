@@ -84,7 +84,7 @@ export interface CollectLegendAnalysisOptions {
   sourceUrl: string
   pageUrl(page: number): string
   fetchPage(page: number, url: string): Promise<LegendAnalysisPage>
-  /** One DOM-only observation per failed attempt; rowIndex is one-based and never used to recover acceptance. */
+  /** One DOM-only observation per order failure before recovery/navigation; never used to accept a page. */
   recheckOrderFailure?: (page: LegendAnalysisPage, rowIndex: number) => Promise<LegendOrderRecheck>
   /** Live reader reopens its original PLAY page before the final ranking rechecks. */
   confirmAct?: () => Promise<void>
@@ -212,7 +212,25 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
     currentPhase = 'preparation'; currentPage = null
     if (attempt > 0) options.onRetry?.(attempt)
     const startedAt = clock()
-    let orderFailure: { error: LegendAnalysisCollectionError; page: LegendAnalysisPage; rowIndex: number; diagnostic: LegendOrderDiagnostic } | undefined
+    let orderFailure: { error: LegendAnalysisCollectionError; page: LegendAnalysisPage; rowIndex: number; diagnostic: LegendOrderDiagnostic;
+      observed?: boolean; reported?: boolean; recheck?: LegendOrderRecheck } | undefined
+    const observeOrderFailure = async (): Promise<void> => {
+      const failure = orderFailure
+      if (!failure || failure.observed) return
+      // Mark before awaiting so the original document is never observed twice or after a recovery navigation.
+      failure.observed = true
+      if (!options.recheckOrderFailure) return
+      try {
+        cancelled()
+        failure.recheck = sanitizeLegendOrderRecheck(await options.recheckOrderFailure(failure.page, failure.rowIndex)) ?? { status: 'failed' }
+        cancelled()
+      } catch (error) {
+        failure.recheck = { status: 'failed' }
+        attemptFailed(failure.error, failure.diagnostic, failure.recheck)
+        failure.reported = true
+        throw error
+      }
+    }
     try {
       const first = await read(1)
       const accepted: LegendAnalysisEntry[] = []
@@ -234,7 +252,7 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
             : entry.masterRating > nextPrevious.masterRating ? 'mr-order' : null)
           if (nextPrevious && orderCheck) {
             const error = new LegendAnalysisCollectionError('source-changed', orderCheck)
-            orderFailure = { error, page, rowIndex: index + 1, diagnostic: {
+            orderFailure ??= { error, page, rowIndex: index + 1, diagnostic: {
               boundary: index === 0 ? 'between-pages' : 'within-page',
               previous: { page: index === 0 ? previousPage!.page : page.page,
                 rowIndex: index === 0 ? previousPage!.entries.length : index,
@@ -257,11 +275,28 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
         }
         return { keys, additions, nextPrevious, nextBoundary, duplicate, withinPageDuplicate, earlierPageDuplicate }
       }
+      const adjacentOrderOnly = (page: LegendAnalysisPage): boolean => {
+        const keys = new Set<string>()
+        const precedingKeys = new Set(previousPage?.entries.map(entry => `${entry.accountKey}:${entry.characterId}`) ?? [])
+        return page.entries.every((entry, index) => {
+          const key = `${entry.accountKey}:${entry.characterId}`, prior = page.entries[index - 1]
+          if (prior && (entry.rank < prior.rank || entry.masterRating > prior.masterRating)
+            || keys.has(key) || seen.has(key) && !precedingKeys.has(key)) return false
+          keys.add(key)
+          return true
+        })
+      }
       while (true) {
         pagesRead++
-        let candidate = inspect(current)
-        if (candidate.duplicate) {
-          if (pageRecoveryUsed || !previousPage || previousPage.page + 1 !== current.page || candidate.withinPageDuplicate || candidate.earlierPageDuplicate) {
+        let candidate: ReturnType<typeof inspect> | undefined
+        try { candidate = inspect(current) } catch (error) {
+          if (!orderFailure || error !== orderFailure.error || orderFailure.diagnostic.boundary !== 'between-pages'
+            || pageRecoveryUsed || !previousPage || previousPage.page + 1 !== current.page || !adjacentOrderOnly(current)) throw error
+          // Preserve the failed boundary while the current page is still displayed. Recovery reads use the normal transport.
+          await observeOrderFailure()
+        }
+        if (!candidate || candidate.duplicate) {
+          if (pageRecoveryUsed || !previousPage || previousPage.page + 1 !== current.page || candidate?.withinPageDuplicate || candidate?.earlierPageDuplicate) {
             fail('duplicate-entry', 'duplicate-entry')
           }
           pageRecoveryUsed = true
@@ -272,6 +307,7 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
           candidate = inspect(current)
           if (candidate.duplicate) fail('duplicate-entry', 'duplicate-entry')
           pageRecovery('succeeded')
+          orderFailure = undefined
         }
         for (const key of candidate.keys) seen.add(key)
         accepted.push(...candidate.additions)
@@ -316,19 +352,12 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       progress('complete', null)
       return { dataset, requestCount, retryCount: attempt, pagesRead }
     } catch (error) {
-      if (orderFailure && error === orderFailure.error) {
-        let recheck: LegendOrderRecheck | undefined
-        if (options.recheckOrderFailure) {
-          try {
-            cancelled()
-            recheck = sanitizeLegendOrderRecheck(await options.recheckOrderFailure(orderFailure.page, orderFailure.rowIndex)) ?? { status: 'failed' }
-            cancelled()
-          } catch (recheckError) {
-            attemptFailed(orderFailure.error, orderFailure.diagnostic, { status: 'failed' })
-            throw recheckError
-          }
+      if (orderFailure) {
+        if (!orderFailure.reported) {
+          if (error === orderFailure.error) await observeOrderFailure()
+          attemptFailed(error instanceof LegendAnalysisCollectionError ? error : orderFailure.error,
+            orderFailure.diagnostic, orderFailure.recheck)
         }
-        attemptFailed(orderFailure.error, orderFailure.diagnostic, recheck)
       } else {
         if (options.signal?.aborted) fail('cancelled', 'cancellation')
         if (error instanceof LegendAnalysisCollectionError) attemptFailed(error)

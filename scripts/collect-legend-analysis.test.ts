@@ -352,6 +352,52 @@ test('adjacent page recovery reports its result and never retries a denied reche
   }
 })
 
+test('order recovery publishes only the fully verified player list and preserves denied-recovery diagnostics', async t => {
+  for (const denied of [false, true]) {
+    const data = await fixture(t), pages: number[] = []
+    let rechecks = 0, profiles = 0
+    data.transport.fetchPage = async (page, sourceUrl) => {
+      pages.push(page); data.calls.read++
+      if (denied && pages.length === 3) throw new LegendAnalysisDomError('http-denied')
+      const offset = (page - 1) * 20
+      const entries = Array.from({ length: 20 }, (_, index) => ({
+        accountKey: (offset + index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
+        rank: offset + index + 1, masterRating: 2400 - offset - index, isLegend: offset + index < 22,
+        playerName: `Synthetic player ${offset + index + 1}`, playerId: String(offset + index + 1), region: '日本', platform: 'Steam',
+      }))
+      if (pages.length === 2) entries[0].rank = 19
+      return { sourceUrl, page, pageSize: 20, totalCount: 800000, from: offset + 1, to: offset + 20,
+        nextPage: page + 1, actId: 'act-13', conditions: { ...LEGEND_ANALYSIS_CONDITIONS },
+        conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries }
+    }
+    data.transport.recheckOrderFailure = async (page, rowIndex) => {
+      rechecks++; assert.equal(pages.length, 2); assert.equal(page.page, 2); assert.equal(rowIndex, 1)
+      return { status: 'unavailable', elapsedMs: 1000 }
+    }
+    data.transport.fetchPlayerRankedMatches = async () => { profiles++; return { ryu: 123 } }
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+    const safe = summarizeLegendAnalysisCaptureReport(result.report)
+    assert.equal(result.succeeded, !denied)
+    assert.equal(safe.pageRecoveryAttemptCount, 1); assert.equal(safe.pageRecoverySuccessCount, denied ? 0 : 1)
+    assert.equal(safe.retryCount, 0); assert.equal(rechecks, 1); assert.equal(profiles, denied ? 0 : 22)
+    assert.deepEqual(pages, denied ? [1, 2, 1] : [1, 2, 1, 2, 2, 1])
+    if (denied) {
+      assert.equal(safe.reason, 'access-unavailable')
+      assert.equal(safe.attemptFailures[0].orderDiagnostic?.current.rank, 19)
+      assert.deepEqual(safe.attemptFailures[0].orderRecheck, { status: 'unavailable', elapsedMs: 1000 })
+      assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+    } else {
+      assert.deepEqual(safe.attemptFailures, [])
+      const players = JSON.parse(await readFile(resolve(data.output, 'public/players', `${result.report.datasetId}.json`), 'utf8'))
+      assert.equal(players.totalCount, 22)
+      assert.deepEqual(players.players.map((row: { rank: number }) => row.rank), Array.from({ length: 22 }, (_, index) => index + 1))
+      assert.equal(new Set(players.players.map((row: { playerId: string }) => row.playerId)).size, 22)
+      assert.doesNotMatch(JSON.stringify(players), /orderDiagnostic|orderRecheck|accountKey/)
+    }
+    assert.doesNotMatch(JSON.stringify(safe), /Synthetic player|playerId|accountKey/)
+  }
+})
+
 test('collector MR-order failure propagates fixed diagnostics through the CLI and stdout summary', async t => {
   const data = await fixture(t), read = data.transport.fetchPage
   data.transport.fetchPage = async (page, url) => { const value = await read(page, url); value.entries[1].masterRating = 9999; return value }
