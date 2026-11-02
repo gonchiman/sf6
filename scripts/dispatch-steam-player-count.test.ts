@@ -1,24 +1,43 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isAllowedSteamDispatcher, nextSteamDispatchBoundary, runSteamPlayerCountDispatcher,
-  STEAM_DISPATCH_DURATION_MS, STEAM_DISPATCH_INTERVAL_MS } from './dispatch-steam-player-count.ts'
+import { readFile } from 'node:fs/promises'
+import { isAllowedSteamDispatcher, nextSteamDispatchBoundary, resolveSteamDispatchDuration, runSteamPlayerCountDispatcher,
+  STEAM_DISPATCH_DURATION_MS, STEAM_DISPATCH_HANDOFF_CHECK_MS, STEAM_DISPATCH_HANDOFF_MS,
+  STEAM_DISPATCH_HANDOFF_PROOF_STEP, STEAM_DISPATCH_INTERVAL_MS } from './dispatch-steam-player-count.ts'
 
 const start = Date.parse('2026-11-01T00:07:00.000Z')
 const env = { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Linux', GITHUB_REPOSITORY: 'gonchiman/sf6',
   GITHUB_REF: 'refs/heads/main', GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/steam-player-count-dispatch.yml@refs/heads/main',
-  GITHUB_EVENT_NAME: 'schedule', GH_TOKEN: 'secret-test-token' }
+  GITHUB_EVENT_NAME: 'schedule', GITHUB_RUN_ID: '100', GITHUB_RUN_ATTEMPT: '1', GH_TOKEN: 'secret-test-token' }
+
+function driverRun(id: string | number = '100', status = 'in_progress', conclusion: string | null = null, attempt = 1) {
+  return { id, status, conclusion, run_attempt: attempt, event: 'workflow_dispatch', head_branch: 'main',
+    path: '.github/workflows/steam-player-count-dispatch.yml', repository: { full_name: 'gonchiman/sf6' },
+    head_repository: { full_name: 'gonchiman/sf6' }, created_at: '2026-11-01T00:00:00Z' }
+}
+
+function proofJobs(id: string | number, conclusion = 'success') {
+  return { total_count: 1, jobs: [{ name: 'dispatch', run_id: id, status: 'completed', conclusion,
+    steps: [{ name: STEAM_DISPATCH_HANDOFF_PROOF_STEP, status: 'completed', conclusion: 'success' }] }] }
+}
 type RequestRecord = { url: string; method: string; time: number; options: RequestInit | undefined }
 
 function fixture(options: { start?: number; request?: (request: RequestRecord) => Promise<Response | void> | Response | void;
   afterWait?: (ms: number) => void } = {}) {
   const state = { wall: options.start ?? start, elapsed: 0, requests: [] as RequestRecord[], waits: [] as number[], logs: [] as string[],
-    dispatcher: 'active', collector: 'active', latest: null as null | { created_at: string; head_branch: string; status: string } }
+    dispatcher: 'active', collector: 'active', latest: null as null | { created_at: string; head_branch: string; status: string },
+    currentRun: driverRun(), successors: [] as ReturnType<typeof driverRun>[], predecessor: driverRun('90', 'completed', 'success'),
+    predecessorJobs: proofJobs('90') }
   const fetchData: typeof fetch = async (input, init) => {
     const request = { url: String(input), method: init?.method ?? 'GET', time: state.wall, options: init }
     state.requests.push(request)
     const override = await options.request?.(request)
     if (override) return override
     if (request.method === 'POST') {
+      if (request.url.endsWith('steam-player-count-dispatch.yml/dispatches')) {
+        state.successors.push(driverRun(String(BigInt(state.currentRun.id) + 1n), 'pending'))
+        return new Response(null, { status: 204 })
+      }
       // GitHub records creation after the request; this must not lose alternate slots.
       state.latest = { created_at: new Date(state.wall + 1000).toISOString(), head_branch: 'main', status: 'completed' }
       return new Response(null, { status: 204 })
@@ -26,15 +45,23 @@ function fixture(options: { start?: number; request?: (request: RequestRecord) =
     if (request.url.endsWith('steam-player-count-dispatch.yml')) return Response.json({ state: state.dispatcher })
     if (request.url.endsWith('steam-player-count.yml')) return Response.json({ state: state.collector })
     if (request.url.endsWith('/runs?branch=main&per_page=1')) return Response.json({ workflow_runs: state.latest ? [state.latest] : [] })
+    if (request.url.endsWith('steam-player-count-dispatch.yml/runs?branch=main&per_page=20')) {
+      return Response.json({ workflow_runs: [state.currentRun, ...state.successors] })
+    }
+    if (request.url.endsWith(`/actions/runs/${state.currentRun.id}`)) return Response.json(state.currentRun)
+    if (request.url.endsWith(`/actions/runs/${state.predecessor.id}`)) return Response.json(state.predecessor)
+    if (request.url.endsWith(`/actions/runs/${state.predecessor.id}/attempts/${state.predecessor.run_attempt}/jobs?per_page=100`)) return Response.json(state.predecessorJobs)
     assert.fail(`unexpected URL: ${request.url}`)
   }
   const run = (extra: Parameters<typeof runSteamPlayerCountDispatcher>[0] = {}) => runSteamPlayerCountDispatcher({
-    env, now: () => state.wall, monotonicNow: () => state.elapsed,
+    env, handoff: false, now: () => state.wall, monotonicNow: () => state.elapsed,
     wait: async ms => { state.waits.push(ms); state.wall += ms; state.elapsed += ms; options.afterWait?.(ms) },
     fetch: fetchData, write: message => state.logs.push(message), ...extra,
   })
   const posts = () => state.requests.filter(item => item.method === 'POST')
-  return { state, run, posts }
+  const handoffPosts = () => posts().filter(item => item.url.endsWith('steam-player-count-dispatch.yml/dispatches'))
+  const collectorPosts = () => posts().filter(item => item.url.endsWith('steam-player-count.yml/dispatches'))
+  return { state, run, posts, handoffPosts, collectorPosts }
 }
 
 test('bounds one generation to 330 minutes and dispatches 22 aligned observations without drift', async () => {
@@ -224,4 +251,227 @@ test('an overlarge API response is rejected before it can authorize a dispatch',
   const result = await f.run({ durationMs: 60_000 })
   assert.equal(result.failed, 1)
   assert.equal(f.posts().length, 0)
+})
+
+test('normal 330-minute completion reserves and verifies exactly one standard successor', async () => {
+  const f = fixture()
+  const result = await f.run({ handoff: true })
+  assert.equal(result.reason, 'duration')
+  assert.equal(result.handoff, 'confirmed')
+  assert.equal(result.successorRunId, '101')
+  assert.equal(f.collectorPosts().length, 22)
+  assert.equal(f.handoffPosts().length, 1)
+  assert.deepEqual(JSON.parse(String(f.handoffPosts()[0].options?.body)), {
+    ref: 'main', inputs: { mode: 'standard', predecessor_run_id: '100', predecessor_run_attempt: '1' },
+  })
+  assert.ok(f.state.elapsed >= STEAM_DISPATCH_DURATION_MS && f.state.elapsed <= STEAM_DISPATCH_DURATION_MS + STEAM_DISPATCH_HANDOFF_MS)
+  assert.ok(f.state.logs.some(line => JSON.parse(line).event === 'handoff-requested'))
+  assert.ok(f.state.logs.some(line => JSON.parse(line).event === 'handoff-confirmed'))
+  assert.ok(f.state.logs.every(line => !line.includes(env.GH_TOKEN)))
+})
+
+test('handoff-check is manual-only, lasts two minutes, and never propagates its short mode', async () => {
+  assert.equal(resolveSteamDispatchDuration({}), STEAM_DISPATCH_DURATION_MS)
+  assert.equal(resolveSteamDispatchDuration({ STEAM_DISPATCH_MODE: 'standard' }), STEAM_DISPATCH_DURATION_MS)
+  assert.equal(resolveSteamDispatchDuration({ STEAM_DISPATCH_MODE: 'handoff-check', GITHUB_EVENT_NAME: 'workflow_dispatch' }), STEAM_DISPATCH_HANDOFF_CHECK_MS)
+  assert.throws(() => resolveSteamDispatchDuration({ STEAM_DISPATCH_MODE: 'handoff-check', GITHUB_EVENT_NAME: 'schedule' }))
+  assert.throws(() => resolveSteamDispatchDuration({ STEAM_DISPATCH_MODE: 'unexpected' }))
+  const f = fixture()
+  const result = await f.run({ handoff: true, env: { ...env, GITHUB_EVENT_NAME: 'workflow_dispatch', STEAM_DISPATCH_MODE: 'handoff-check' } })
+  assert.equal(result.handoff, 'confirmed')
+  assert.equal(f.collectorPosts().length, 1)
+  assert.equal(f.handoffPosts()[0].time, start + 2 * 60_000)
+  assert.equal(JSON.parse(String(f.handoffPosts()[0].options?.body)).inputs.mode, 'standard')
+})
+
+test('reuses a newer pending successor by exact ID and ignores timestamp anomalies, completed and current runs', async () => {
+  for (const status of ['queued', 'waiting', 'requested', 'pending']) {
+    const f = fixture()
+    f.state.successors = [driverRun('99', 'pending'), driverRun('102', 'completed', 'success'),
+      { ...driverRun('101', status), created_at: '2099-01-01T00:00:00Z' }]
+    const result = await f.run({ handoff: true, durationMs: 60_000 })
+    assert.equal(result.successorRunId, '101')
+    assert.equal(f.handoffPosts().length, 0)
+  }
+})
+
+test('handoff compares large string IDs without unsafe-number rounding', async () => {
+  const f = fixture()
+  f.state.currentRun = driverRun('9007199254740993')
+  f.state.successors = [driverRun('9007199254740994', 'pending')]
+  const result = await f.run({ handoff: true, durationMs: 60_000, env: { ...env, GITHUB_RUN_ID: '9007199254740993' } })
+  assert.equal(result.successorRunId, '9007199254740994')
+  assert.equal(f.handoffPosts().length, 0)
+})
+
+test('an ambiguous successor POST is never repeated but the queued run can be confirmed', async () => {
+  const f = fixture({ request: request => {
+    if (request.url.endsWith('steam-player-count-dispatch.yml/dispatches')) {
+      f.state.successors.push(driverRun('101', 'pending'))
+      throw new Error(`lost response ${env.GH_TOKEN}`)
+    }
+  } })
+  const result = await f.run({ handoff: true, durationMs: 60_000 })
+  assert.equal(result.handoff, 'confirmed')
+  assert.equal(f.handoffPosts().length, 1)
+  assert.ok(f.state.logs.every(line => !line.includes(env.GH_TOKEN)))
+})
+
+test('successor acknowledgement 200 is accepted without following its response URL', async () => {
+  const f = fixture({ request: request => {
+    if (request.url.endsWith('steam-player-count-dispatch.yml/dispatches')) {
+      f.state.successors.push(driverRun('101', 'pending'))
+      return Response.json({ html_url: 'https://untrusted.invalid/private', workflow_run_id: 101 })
+    }
+  } })
+  const result = await f.run({ handoff: true, durationMs: 60_000 })
+  assert.equal(result.handoff, 'confirmed')
+  assert.ok(f.state.requests.every(item => item.url.startsWith('https://api.github.com/repos/gonchiman/sf6/actions/')))
+  assert.ok(f.state.logs.every(line => !line.includes('untrusted.invalid')))
+})
+
+test('unconfirmed or ambiguous handoff fails within its separate budget and sends only one POST', async () => {
+  for (const ambiguous of [false, true]) {
+    const f = fixture({ request: request => {
+      if (request.url.endsWith('steam-player-count-dispatch.yml/dispatches')) {
+        if (ambiguous) throw new Error('lost acknowledgement')
+        return new Response(null, { status: 204 })
+      }
+    } })
+    const result = await f.run({ handoff: true, durationMs: 60_000 })
+    assert.equal(result.handoff, 'failed')
+    assert.equal(result.failed, 1)
+    assert.equal(f.handoffPosts().length, 1)
+    assert.ok(f.state.elapsed <= 60_000 + STEAM_DISPATCH_HANDOFF_MS)
+    assert.ok(f.state.requests.filter(item => item.url.includes('per_page=20')).length <= 12)
+  }
+})
+
+test('transient GET failures before and after successor dispatch use the bounded handshake retry', async () => {
+  for (const phase of ['initial-gate', 'initial-list', 'confirmation-gate', 'confirmation-list']) {
+    let failed = false
+    const f = fixture({ request: request => {
+      const afterPost = f.handoffPosts().length > 0
+      if (!failed && f.state.elapsed >= 60_000 && request.method === 'GET'
+        && (phase.startsWith('confirmation') ? afterPost : !afterPost)
+        && (phase.endsWith('gate') ? request.url.endsWith('steam-player-count-dispatch.yml') : request.url.includes('per_page=20'))) {
+        failed = true; return new Response(null, { status: 503 })
+      }
+    } })
+    const result = await f.run({ handoff: true, durationMs: 60_000 })
+    assert.equal(failed, true)
+    assert.equal(result.handoff, 'confirmed', phase)
+    assert.equal(f.handoffPosts().length, 1)
+  }
+})
+
+test('disabled workflows, cancelled current run, auth failure or rate limiting cannot reserve a successor', async () => {
+  for (const failure of ['driver', 'collector', 'cancelled', 'access', 'rate']) {
+    const f = fixture({ request: request => {
+      if (f.state.elapsed < 60_000) return
+      if (failure === 'access') return new Response(null, { status: 403 })
+      if (failure === 'rate') return new Response(null, { status: 429 })
+      if (failure === 'driver') f.state.dispatcher = 'disabled_manually'
+      if (failure === 'collector') f.state.collector = 'disabled_manually'
+      if (failure === 'cancelled') f.state.currentRun = driverRun('100', 'completed', 'cancelled')
+    } })
+    const result = await f.run({ handoff: true, durationMs: 60_000 })
+    assert.notEqual(result.handoff, 'confirmed')
+    assert.equal(f.handoffPosts().length, 0)
+  }
+})
+
+test('a normal generation with earlier missed observations still confirms handoff while retaining failure visibility', async () => {
+  let failed = false
+  const f = fixture({ request: request => {
+    if (!failed && request.url.endsWith('steam-player-count.yml/dispatches')) { failed = true; throw new Error('temporary transport error') }
+  } })
+  const result = await f.run({ handoff: true, durationMs: 60_000 })
+  assert.equal(result.reason, 'duration')
+  assert.equal(result.failed, 1)
+  assert.equal(result.handoff, 'confirmed')
+})
+
+test('handoff list permits real-sized payloads above 64KiB but rejects over its 1MiB bound', async () => {
+  for (const oversized of [false, true]) {
+    const f = fixture({ request: request => request.url.includes('per_page=20') ? Response.json({
+      workflow_runs: [{ ...driverRun('101', 'pending'), padding: 'x'.repeat(oversized ? 1024 * 1024 : 80 * 1024) }],
+    }) : undefined })
+    const result = await f.run({ handoff: true, durationMs: 60_000 })
+    assert.equal(result.handoff, oversized ? 'failed' : 'confirmed')
+    assert.equal(f.handoffPosts().length, 0)
+  }
+})
+
+test('linked successor starts only after a matching completed predecessor and exact proof step, including prior failed slots', async () => {
+  for (const conclusion of ['success', 'failure']) {
+    const f = fixture()
+    f.state.predecessor = driverRun('90', 'completed', conclusion, 2)
+    f.state.predecessorJobs = proofJobs('90', conclusion)
+    const result = await f.run({ handoff: true, durationMs: 60_000, env: { ...env,
+      STEAM_DISPATCH_PREDECESSOR_RUN_ID: '90', STEAM_DISPATCH_PREDECESSOR_RUN_ATTEMPT: '2' } })
+    assert.equal(result.handoff, 'confirmed')
+    assert.equal(f.collectorPosts().length, 1)
+    const proofIndex = f.state.requests.findIndex(item => item.url.endsWith('/90/attempts/2/jobs?per_page=100'))
+    const firstPost = f.state.requests.findIndex(item => item.method === 'POST')
+    assert.ok(proofIndex >= 0 && proofIndex < firstPost)
+  }
+})
+
+test('startup proof retries stale predecessor state within 120 seconds before starting a full generation', async () => {
+  let stale = true
+  const f = fixture({ request: request => {
+    if (request.url.endsWith('/actions/runs/90') && stale) { stale = false; return Response.json(driverRun('90', 'in_progress')) }
+  } })
+  const result = await f.run({ handoff: true, durationMs: 60_000, env: { ...env,
+    STEAM_DISPATCH_PREDECESSOR_RUN_ID: '90', STEAM_DISPATCH_PREDECESSOR_RUN_ATTEMPT: '1' } })
+  assert.equal(result.handoff, 'confirmed')
+  assert.equal(f.collectorPosts().length, 0) // The elapsed :07 boundary is not replayed at :07:10.
+  assert.equal(f.handoffPosts()[0].time, start + 70_000)
+  assert.equal(f.state.elapsed, 70_000)
+})
+
+test('cancelled, timed-out, unproven or mismatched predecessors cannot resurrect collection or handoff', async () => {
+  for (const failure of ['cancelled', 'timed_out', 'proof', 'attempt', 'branch', 'repo', 'workflow', 'same-id', 'future-id']) {
+    const f = fixture()
+    let predecessorId = '90'
+    if (failure === 'cancelled' || failure === 'timed_out') f.state.predecessor.conclusion = failure
+    if (failure === 'proof') f.state.predecessorJobs.jobs[0].steps[0].conclusion = 'skipped'
+    if (failure === 'attempt') f.state.predecessor.run_attempt = 2
+    if (failure === 'branch') f.state.predecessor.head_branch = 'other'
+    if (failure === 'repo') f.state.predecessor.repository.full_name = 'other/sf6'
+    if (failure === 'workflow') f.state.predecessor.path = '.github/workflows/other.yml'
+    if (failure === 'same-id') predecessorId = '100'
+    if (failure === 'future-id') predecessorId = '101'
+    const result = await f.run({ handoff: true, durationMs: 60_000, env: { ...env,
+      STEAM_DISPATCH_PREDECESSOR_RUN_ID: predecessorId, STEAM_DISPATCH_PREDECESSOR_RUN_ATTEMPT: '1' } })
+    assert.equal(result.reason, 'predecessor-rejected', failure)
+    assert.equal(result.handoff, 'not-attempted')
+    assert.equal(result.failed, 1)
+    assert.equal(f.posts().length, 0)
+    assert.ok(f.state.elapsed <= STEAM_DISPATCH_HANDOFF_MS)
+  }
+})
+
+test('unpaired predecessor metadata and invalid current identity are rejected before networking', async () => {
+  for (const extraEnv of [{ STEAM_DISPATCH_PREDECESSOR_RUN_ID: '90' }, { STEAM_DISPATCH_PREDECESSOR_RUN_ATTEMPT: '1' },
+    { GITHUB_RUN_ID: '0' }, { GITHUB_RUN_ID: 'unsafe/path' }, { GITHUB_RUN_ATTEMPT: '0' }]) {
+    const f = fixture()
+    await assert.rejects(f.run({ handoff: true, env: { ...env, ...extraEnv } }))
+    assert.equal(f.state.requests.length, 0)
+  }
+})
+
+test('workflow exposes standard and short modes, paired predecessor inputs and an uncancelled proof step', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/steam-player-count-dispatch.yml', import.meta.url), 'utf8')
+  assert.match(workflow, /handoff-check/)
+  assert.match(workflow, /predecessor_run_id:/)
+  assert.match(workflow, /predecessor_run_attempt:/)
+  assert.match(workflow, /STEAM_DISPATCH_MODE:/)
+  assert.match(workflow, /STEAM_DISPATCH_PREDECESSOR_RUN_ID:/)
+  assert.match(workflow, /STEAM_DISPATCH_PREDECESSOR_RUN_ATTEMPT:/)
+  assert.ok(workflow.includes(`name: ${STEAM_DISPATCH_HANDOFF_PROOF_STEP}`))
+  assert.match(workflow, /always\(\).*cancelled\(\).*steps\.dispatch\.outputs\.handoff == 'confirmed'/)
+  assert.match(workflow, /queue: single/)
+  assert.match(workflow, /cancel-in-progress: false/)
 })

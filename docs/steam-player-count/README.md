@@ -24,11 +24,15 @@ Steam版の格闘ゲーム5作品の同時接続数を定期観測し、ゲー�
 
 `.github/workflows/steam-player-count-dispatch.yml`をmainで動かし、起動役が毎時07・22・37・52分（UTC/JST共通の分）に、単発の`.github/workflows/steam-player-count.yml`を呼び出す。1回の実行で5作品を取得し、作品ごとに1日96観測が目標。通常は合計480 API要求/日となる。取得workflow自身のcronは外し、二重の定期取得を避ける。ゲーム追加で起動役やworkflowを増やさない。
 
-起動役は最大330分（5時間半）だけ動く。毎時11分のcronで次の起動役を補充し、同時に動くのは1つ、交代待ちは最大1つとする。新しい予定起動は交代待ちだけを置き換え、動作中の起動役は中断しない。GitHub-hosted jobの6時間上限より前に通常終了する。起動役・取得処理とも固定リポジトリのmainだけを使う。
+起動役は最大330分（5時間半）の取得起動を行い、通常終了時に次の起動役を予約する。引き継ぎ確認は別に最大120秒とし、GitHub-hosted jobの6時間上限より前に終了する。毎時11分のcronは、起動役や引き継ぎが停止した場合の復旧用として残す。起動役・取得処理とも固定リポジトリのmainだけを使う。
 
-[GitHub Actionsのschedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)には遅延・取りこぼしがある。2026-11-01の確認では、従来の15分cronで定期実行が4回しかなく、約3〜4時間間隔になっていた。新方式は起動役が動いている間の15分タイマーをcronから分離する。交代する起動役まで届かない場合、runner停止、取得jobの待ち行列、API失敗では欠測し得る。15分間隔を保証するものではなく、欠けた過去の人数を再取得したことにはしない。public repositoryで60日間repository activityがないとcronが停止する仕様もある。
+同時に動く起動役は1つ、交代待ちは最大1つ。通常終了時に両workflowの有効状態を確認し、既に後続が待機していれば利用する。なければ固定mainの同じ起動workflowを1回だけ`workflow_dispatch`し、後続runを確認する。POST応答が不明な場合も再送せず、run一覧で確認する。確認できなければ引き継ぎ失敗として記録し、Actionsを失敗状態にする。新しい定期起動が交代待ちを置き換えても、動作中の起動役は中断しない。
 
-起動役だけに`actions: write`を与え、短命な`GITHUB_TOKEN`で固定の取得workflowを`workflow_dispatch`する。[このイベントはGITHUB_TOKENによる起動にも対応する](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。取得jobの`contents: read`、公開jobの`contents: write`とartifactによる受け渡しは既存のまま維持する。個人トークンや新しいSecretは追加しない。
+[GitHub Actionsのschedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)には遅延・取りこぼしがある。2026-11-01の確認では、従来の15分cronで定期実行が4回しかなく、約3〜4時間間隔になっていた。15分タイマーを起動役に移した後も、2026-11-02には16:04の通常終了後に後続cronが届かず、16:07〜17:07の5枠が欠測した。自己引き継ぎにより、通常の世代交代をcronだけに依存させない。runner停止、引き継ぎ要求の失敗、待ち行列、API失敗では欠測し得る。15分間隔を保証するものではなく、欠けた過去の人数を再取得したことにはしない。public repositoryで60日間repository activityがないとcronが停止する仕様もある。
+
+起動役だけに`actions: write`を与え、短命な`GITHUB_TOKEN`で固定の取得workflowと後続の起動workflowを`workflow_dispatch`する。[このイベントはGITHUB_TOKENによる起動にも対応する](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。取得jobの`contents: read`、公開jobの`contents: write`とartifactによる受け渡しは既存のまま維持する。個人トークンや新しいSecretは追加しない。
+
+自己起動した後続には引き継ぎ元のrun ID・attemptを渡す。後続は開始時に固定リポジトリ・main・起動workflow・attempt・親の完了状態と`Confirm Steam successor reservation`ステップの成功を確認する。親がキャンセルやタイムアウトで終わった場合は、取得も次世代の予約も行わない。途中の観測起動に一時的な失敗があっても、通常時間を完走して引き継ぎ確認に成功した親からは継続できる。過去の取得失敗は引き続きActionsの失敗状態に残す。
 
 取得処理自体は短いが、起動役は待機中もrunnerを1枠使用する。連続稼働なら約1,440 runner分/日と取得・公開jobの分数がかかる。[公開リポジトリの標準GitHub-hosted runnerは無料](https://docs.github.com/en/billing/concepts/product-billing/github-actions)。非公開化による意図しない待機時間の課金を避けるため、起動役jobは公開リポジトリの場合だけ開始する。
 
@@ -41,11 +45,13 @@ Steam版の格闘ゲーム5作品の同時接続数を定期観測し、ゲー�
 
 ### 起動・停止と確認
 
-- 有効化後はActionsの「Schedule Steam player count every 15 minutes」をmainで手動実行すると起動役が始まり、次の07・22・37・52分から取得する。起動役は長時間`in_progress`のままで正常。各観測の成否は「Collect Steam player count」の短いrunで確認する。
+- 有効化後はActionsの「Schedule Steam player count every 15 minutes」をmain・`mode: standard`で手動実行すると起動役が始まり、次の07・22・37・52分から取得する。引き継ぎ元ID・attemptは手動起動では空欄にする。起動役は長時間`in_progress`のままで正常。各観測の成否は「Collect Steam player count」の短いrunで確認する。
 - 起動役を停止するには同workflowを無効化する。動作中の起動役も最大約60秒の確認間隔で無効化を検知して終了する。直ちに止める場合は動作中・交代待ちのrunもキャンセルする。すでに起動済みの取得jobは別runなので必要なら個別に止める。
 - 再開は同workflowを有効化し、mainで手動実行する。取得workflowだけが無効化されている場合は、そちらも有効化する。
 - スロットは壁時計の固定時刻に合わせる。取得処理にかかった秒数を次の15分に足し込まず、遅れた過去スロットの連続実行もしない。同一スロットの既存起動や実行中の取得がある場合は重複起動を抑止する。
 - dispatch応答が失われた場合、実行が届いたか不明なので同じスロットではPOSTを再送しない。認証・権限・workflow不明のエラーは停止し、通信障害などは記録して次の予定時刻を待つ。取得成功の判断は起動役のPOST成功ではなく、取得run・公開runと履歴JSONで行う。
+- 引き継ぎの単発検証はmainを`mode: handoff-check`で起動する。2分で通常終了して後続を予約し、後続は必ず通常の330分モードへ戻る。検証時間を次世代へ引き継がない。既に起動役が動いていれば検証runは待機する。切り替える場合は検証runの待機を確認してから旧runだけをキャンセルし、検証runの正常終了・後続の開始・次の取得と保存を順に確認する。
+- 起動役のログには引き継ぎ要求・確認・失敗と後続run IDを記録し、成功時のActionsサマリーにも後続IDを残す。無効化・認証拒否・レート制限などで通常時間より前に停止した場合や、親の確認に失敗した場合は後続を自動予約しない。
 
 作品ごとの履歴がまだ存在しない最初の公開では、そのmainコミットの同梱履歴をハッシュ・形式検証して初期履歴へコピーし、それから新しい観測を追加する。これにより同梱した初回実測が自動取得へ切り替わる際も残る。既存履歴は同梱データで上書きしない。追加作品の同梱manifestは初期状態では空であり、未取得を0人として扱わない。配信用JSONは`.gitattributes`でLFを固定し、checkout時の改行変換によるハッシュ不一致を防ぐ。
 
@@ -105,6 +111,6 @@ node --test scripts/collect-steam-player-count.test.ts scripts/publish-steam-pla
 node --test scripts/dispatch-steam-player-count.test.ts
 ```
 
-単発取得・ローカル取り込みは定期取得の有効化や履歴ブランチへのpushを行わない。取得データの公開・履歴ブランチへの書き込みは固定mainのworkflowから呼ぶ`publish-steam-player-count-history.ts`に限定する。起動役のPOSTも固定mainのworkflowから固定の取得workflowだけを対象にする。synthetic testでは実Steam APIやGitHub APIへ接続しない。
+単発取得・ローカル取り込みは定期取得の有効化や履歴ブランチへのpushを行わない。取得データの公開・履歴ブランチへの書き込みは固定mainのworkflowから呼ぶ`publish-steam-player-count-history.ts`に限定する。起動役のPOSTも固定mainのworkflowから固定の取得workflow・起動workflowだけを対象にする。synthetic testでは実Steam APIやGitHub APIへ接続しない。
 
 既存のLegend取得workflowから、取得と公開の権限分離・artifact受け渡し・専用履歴ブランチの構成を再利用した。Steamの高頻度観測、日別ファイル、SHA-256照合、実時刻の時間帯集計は専用処理として実装する。`arknights_2`の取得コードはtimeout・限定retry・検証後保存の参照元とし、実行時の外部ローカルパス依存は追加しない。
