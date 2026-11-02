@@ -189,7 +189,7 @@ export function parseSampleSurveyRun(value: unknown): SampleSurveyRun {
   const observation = item.schemaVersion === 2 ? parseObservation(item.observation, strata, startedAt, updatedAt) : undefined
   if (Date.parse(updatedAt) < Date.parse(startedAt) || finishedAt && (Date.parse(finishedAt) < Date.parse(startedAt) || Date.parse(finishedAt) > Date.parse(updatedAt))) fail()
   if (active !== (finishedAt === null) || (active || state === 'complete') && stopReason !== null) fail()
-  if (resumeAllowed && (active || state === 'complete' || !['cancelled', 'limit-reached', 'interrupted'].includes(stopReason ?? ''))) fail()
+  if (resumeAllowed && (active || state === 'complete' || !['cancelled', 'limit-reached', 'interrupted', 'server-error'].includes(stopReason ?? ''))) fail()
   if (item.schemaVersion === 1 && phase !== 'boundaries' && strata.some(row => row.population === null || row.selected !== Math.min(row.requested, row.population))) fail()
   if (resumeAllowed && strata.some(row => row.target === 'mr' && row.processed > 0)) fail()
   if (observation && (observation.strata.some(row => row.boundaryChanged) || strata.some(row => row.missing > 0 || row.duplicates > 0)) && !frameChanged) fail()

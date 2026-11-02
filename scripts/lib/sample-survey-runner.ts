@@ -31,12 +31,20 @@ export interface SampleSurveySlot {
 /** Private checkpoint. Only its `report` may cross the local service boundary. */
 export interface SampleSurveyCheckpoint {
   schemaVersion: 1 | 2; plan: SampleSurveyPlan; report: SampleSurveyRun; frames: SampleSurveyFrame[]; slots: SampleSurveySlot[]
+  /** Private evidence for a new invocation; never part of the published report. */
+  transientFailure?: { httpStatus: 502 | 503 | 504; at: string }
+}
+
+export function hasSampleSurveyTransientFailure(checkpoint: SampleSurveyCheckpoint): boolean {
+  return checkpoint.report.stopReason === 'server-error' && checkpoint.transientFailure !== undefined
+    && [502, 503, 504].includes(checkpoint.transientFailure.httpStatus)
+    && checkpoint.transientFailure.at === checkpoint.report.finishedAt
 }
 
 /** A concrete Act identity is not yet available, so observed MR rows cannot cross a restart. */
 export function canResumeSampleSurvey(checkpoint: SampleSurveyCheckpoint): boolean {
   return checkpoint.schemaVersion === 2 && checkpoint.report.schemaVersion === 2 && ['stopped', 'error'].includes(checkpoint.report.state)
-    && ['cancelled', 'limit-reached', 'interrupted'].includes(checkpoint.report.stopReason ?? '')
+    && (['cancelled', 'limit-reached', 'interrupted'].includes(checkpoint.report.stopReason ?? '') || hasSampleSurveyTransientFailure(checkpoint))
     && !checkpoint.slots.some(slot => slot.target === 'mr' && slot.status !== 'pending')
 }
 
@@ -105,7 +113,17 @@ export function parseSampleSurveyCheckpoint(value: unknown): SampleSurveyCheckpo
       accountId: slot.accountId as string | null, value: slot.value as number | null, rankId: slot.rankId as number | null,
       observedAt: slot.observedAt as string | null, reason: slot.reason as SampleSurveySlot['reason'] }
   })
-  const checkpoint: SampleSurveyCheckpoint = { schemaVersion: data.schemaVersion, plan, report, frames, slots }
+  let transientFailure: SampleSurveyCheckpoint['transientFailure']
+  if (data.transientFailure !== undefined) {
+    const evidence = object(data.transientFailure)
+    if (Object.keys(evidence).length !== 2 || ![502, 503, 504].includes(Number(evidence.httpStatus))
+      || typeof evidence.httpStatus !== 'number' || !utc(evidence.at) || evidence.at !== report.finishedAt
+      || report.state !== 'error' || report.stopReason !== 'server-error') fail()
+    transientFailure = { httpStatus: evidence.httpStatus as 502 | 503 | 504, at: evidence.at }
+  }
+  const checkpoint: SampleSurveyCheckpoint = { schemaVersion: data.schemaVersion, plan, report, frames, slots,
+    ...(transientFailure ? { transientFailure } : {}) }
+  if (report.resumeAllowed && report.stopReason === 'server-error' && !hasSampleSurveyTransientFailure(checkpoint)) fail()
   const recomputed = aggregate(checkpoint)
   if (data.schemaVersion === 1 && (slots.length || report.phase !== 'boundaries')) {
     if (definitions.some(definition => !knownRanges.has(definition.id))
@@ -194,6 +212,10 @@ export interface SampleSurveyRunnerOptions {
   reader: SampleSurveyReader
   signal: AbortSignal
   checkpoint?: SampleSurveyCheckpoint
+  /** Only the cloud continuation controller may renew a verified transient failure's per-invocation budget. */
+  resetReadRetryBudget?: boolean
+  /** An invocation may be shorter than its immutable sampling plan, never longer. */
+  maxInvocationMinutes?: number
   onUpdate?(checkpoint: SampleSurveyCheckpoint): Promise<void> | void
   onReadRetry?(event: SampleSurveyReadRetryEvent): void
   now?(): number
@@ -229,19 +251,25 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
   const start = now(), base = options.checkpoint ? parseSampleSurveyCheckpoint(options.checkpoint) : null
   if (base && (base.schemaVersion !== 2 || JSON.stringify(base.plan) !== JSON.stringify(plan) || !(base.report.resumeAllowed && canResumeSampleSurvey(base))
     && !(base.report.state === 'preparing' && base.report.attempts === 0 && !base.frames.length && !base.slots.length))) fail()
+  if (options.resetReadRetryBudget !== undefined && typeof options.resetReadRetryBudget !== 'boolean'
+    || options.resetReadRetryBudget && (!base || !hasSampleSurveyTransientFailure(base))) fail()
+  const invocationMinutes = options.maxInvocationMinutes ?? plan.config.maxDurationMinutes
+  if (!integer(invocationMinutes, 1, plan.config.maxDurationMinutes)) fail()
   const checkpoint: SampleSurveyCheckpoint = base ?? createSampleSurveyCheckpoint(plan, start)
   const previousElapsed = checkpoint.report.elapsedMs, initialAttempts = checkpoint.report.attempts
-  const timeoutMs = plan.config.maxDurationMinutes * 60_000, maxReads = Math.floor(timeoutMs / SAMPLE_SURVEY_INTERVAL_MS) + 1
+  const timeoutMs = invocationMinutes * 60_000, maxReads = Math.floor(timeoutMs / SAMPLE_SURVEY_INTERVAL_MS) + 1
   let lastStart: number | null = null, current: SampleSurveyStratumDefinition | null = null
   const wait = options.wait ?? (async (milliseconds: number) => { await delay(milliseconds, undefined, { signal: options.signal }) })
   const definitions = sampleSurveyStratumDefinitions(plan.config), report = checkpoint.report, observation = report.observation!
-  // A resumed checkpoint cannot identify which failed pages were already retried.
-  // Conservatively exhaust the budget when any prior attempt was unsuccessful.
-  let readRetries = report.attempts > report.successfulPages ? 3 : 0
+  // Ordinary resume cannot identify which failed pages were already retried.
+  // Only a separately bounded cloud continuation with transient failure evidence
+  // can explicitly grant a fresh invocation budget; other resumes are conservative.
+  let readRetries = options.resetReadRetryBudget ? 0 : report.attempts > report.successfulPages ? 3 : 0
   const retriedPages = new Set<string>()
   const latest = new Map<SampleSurveyTarget, { total: number; pageSize: number }>()
   const lastObservedAt = new Map<SampleSurveyTarget, string>()
   report.state = 'preparing'; report.phase = 'boundaries'; report.stopReason = null; report.finishedAt = null; report.resumeAllowed = false
+  delete checkpoint.transientFailure
   const check = () => {
     if (options.signal.aborted) throw new SampleSurveyReadError(options.signal.reason instanceof SampleSurveyReadError ? options.signal.reason.code : 'cancelled')
     if (now() - start >= timeoutMs) throw new SampleSurveyReadError('limit-reached')
@@ -537,10 +565,19 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       observed.status = 'collecting'; observed.startedAt ??= new Date(now()).toISOString()
       report.phase = 'boundaries'; report.state = 'preparing'
       const saved = checkpoint.frames.find(frame => frame.ranges.some(range => range.stratumId === definition.id))
+      const tolerantResume = !!saved && definition.target === 'lp' && observation.method === 'rank-position-tolerant-v1'
       if (saved && !latest.has(definition.target)) latest.set(definition.target, { total: saved.totalCount, pageSize: saved.pageSize })
       let frame: SampleSurveyFrame, acceptance: SampleSurveyBoundaryAcceptance | undefined
       try {
-        frame = await discover(definition, saved)
+        if (tolerantResume) {
+          // Positions were already drawn. Verify the live listing and page size,
+          // then keep those slots even when rank boundaries moved during the pause.
+          // Membership, duplicate and unavailable-row checks still apply to every
+          // pending slot; the final boundary observation remains mandatory.
+          await read(definition.target, 1)
+          frame = saved!
+          observed.boundaryChanged = true; report.frameChanged = true
+        } else frame = await discover(definition, saved)
         if (!saved) before(observed, frame)
         if (!saved && observation.method === 'rank-position-tolerant-v1') {
           // Freeze the first complete discovery, including its time, before any
@@ -568,7 +605,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
             }
           }
           if (acceptance.mode === 'approximate') { observed.boundaryChanged = true; report.frameChanged = true }
-        } else {
+        } else if (!tolerantResume) {
           const candidates = { start: frame.ranges[0].start, end: frame.ranges[0].end }
           const recordCandidate = (kind: 'boundary-start' | 'boundary-end', cut: number) => {
             const key = kind === 'boundary-start' ? 'start' : 'end'
@@ -598,7 +635,7 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
         review(observed); await publish(); continue
       }
       if (saved) {
-        after(observed, frame)
+        if (!tolerantResume) after(observed, frame)
         if (saved.pageSize !== frame.pageSize) { change('page-size', saved.pageSize, frame.pageSize); throw new SampleSurveyReadError('frame-changed') }
         if (saved.ranges[0].start !== frame.ranges[0].start || saved.ranges[0].end !== frame.ranges[0].end) throw new SampleSurveyReadError('frame-changed')
         frame = saved
@@ -678,9 +715,13 @@ export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSu
       : error instanceof SampleSurveyReadError ? error.code : 'read-failed'
     report.state = ['cancelled', 'limit-reached', 'interrupted'].includes(code) ? 'stopped' : 'error'
     report.stopReason = code; report.finishedAt = new Date(now()).toISOString()
+    if (!options.signal.aborted && error instanceof SampleSurveyRetryableReadError && error.code === 'server-error'
+      && [502, 503, 504].includes(error.transientHttpStatus)) {
+      checkpoint.transientFailure = { httpStatus: error.transientHttpStatus as 502 | 503 | 504, at: report.finishedAt }
+    }
     report.frameChanged ||= code === 'frame-changed'
     report.resumeAllowed = canResumeSampleSurvey(checkpoint)
-    try { await publish() } catch { report.state = 'error'; report.stopReason = 'storage-error'; report.resumeAllowed = false }
+    try { await publish() } catch { report.state = 'error'; report.stopReason = 'storage-error'; report.resumeAllowed = false; delete checkpoint.transientFailure }
   }
   return parseSampleSurveyCheckpoint(checkpoint)
 }

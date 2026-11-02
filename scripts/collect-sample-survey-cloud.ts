@@ -10,12 +10,18 @@ import { createSampleSurveyReader } from './lib/sample-survey-browser.ts'
 import { serializeSampleSurveyFailureDiagnostic, serializeSampleSurveyReadRetry } from './lib/sample-survey-diagnostics.ts'
 import { SampleSurveyReadError } from './lib/sample-survey-reader.ts'
 import type { SampleSurveyReader } from './lib/sample-survey-reader.ts'
-import { runSampleSurvey } from './lib/sample-survey-runner.ts'
+import { canResumeSampleSurvey, createSampleSurveyCheckpoint, runSampleSurvey } from './lib/sample-survey-runner.ts'
+import type { SampleSurveyCheckpoint } from './lib/sample-survey-runner.ts'
+import { SAMPLE_SURVEY_CHECKPOINT_KEY_SECRET, finalizeSampleSurveyCloudCheckpoint, loadSampleSurveyCloudCheckpointBundle, saveSampleSurveyCloudCheckpoint } from './lib/sample-survey-cloud-checkpoint.ts'
+import type { SampleSurveyCheckpointContext } from './lib/sample-survey-cloud-checkpoint.ts'
 import { publishableSampleSurveyRun, validateSampleSurveyResultsDirectory, writeSampleSurveyResults } from './lib/sample-survey-publication.ts'
 
 type Environment = Record<string, string | undefined>
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const SAMPLE_SURVEY_CLOUD_OUTPUT = resolve(ROOT, '.local/sample-survey-cloud/output/public/data/sample-survey')
+export const SAMPLE_SURVEY_CHECKPOINT_OUTPUT = resolve(ROOT, '.local/sample-survey-cloud/checkpoint-output/checkpoint.enc.json')
+export const SAMPLE_SURVEY_CHECKPOINT_MANIFEST = resolve(ROOT, '.local/sample-survey-cloud/checkpoint-output/manifest.json')
+export const SAMPLE_SURVEY_CHECKPOINT_INPUT = resolve(ROOT, '.local/sample-survey-cloud/checkpoint-input/checkpoint.enc.json')
 export class SampleSurveyCloudError extends Error {
   readonly code: 'arguments' | 'runner' | 'session' | 'collection' | 'output'
   constructor(code: SampleSurveyCloudError['code']) {
@@ -47,6 +53,12 @@ export function parseSampleSurveyCloudConfig(env: Environment): SampleSurveyConf
     return config
   } catch { throw new SampleSurveyCloudError('arguments') }
 }
+export function parseSampleSurveyExecutionBudget(env: Environment, config: SampleSurveyConfig): number {
+  const raw = env.SAMPLE_SURVEY_EXECUTION_BUDGET_MINUTES
+  if (!raw) return config.maxDurationMinutes
+  if (!/^[1-9]\d{0,2}$/.test(raw) || Number(raw) > config.maxDurationMinutes) throw new SampleSurveyCloudError('arguments')
+  return Number(raw)
+}
 export async function runSampleSurveyCloud(dependencies: {
   env?: Environment; now?: () => Date; signal?: AbortSignal
   createReader?: typeof createSampleSurveyReader; collect?: typeof runSampleSurvey
@@ -54,21 +66,49 @@ export async function runSampleSurveyCloud(dependencies: {
   artifactReady?: (env: Environment) => Promise<void>; logReport?: (report: SampleSurveyRun) => void
   logFailureDiagnostic?: (line: string) => void | Promise<void>
   logReadRetry?: (line: string) => void
+  saveCheckpoint?: (checkpoint: SampleSurveyCheckpoint, context: SampleSurveyCheckpointContext, key: string, path: string) => Promise<unknown>
+  loadCheckpoint?: typeof loadSampleSurveyCloudCheckpointBundle
 } = {}): Promise<{ succeeded: boolean; report: SampleSurveyRun }> {
   const env = dependencies.env ?? process.env
   let raw = env[BUCKLER_WEEKLY_SESSION_SECRET]
+  let checkpointKey = env[SAMPLE_SURVEY_CHECKPOINT_KEY_SECRET]
   delete env[BUCKLER_WEEKLY_SESSION_SECRET]
+  delete env[SAMPLE_SURVEY_CHECKPOINT_KEY_SECRET]
   disableRankDistributionDiagnostics(env)
   if (!isAllowedSampleSurveyCloudExecution(env)) throw new SampleSurveyCloudError('runner')
   const config = parseSampleSurveyCloudConfig(env), now = dependencies.now ?? (() => new Date())
+  const executionBudget = parseSampleSurveyExecutionBudget(env, config)
+  const sourceSha = env.SAMPLE_SURVEY_SOURCE_SHA || env.GITHUB_SHA, runId = env.GITHUB_RUN_ID
+  const resumeRunId = env.SAMPLE_SURVEY_RESUME_RUN_ID || ''
+  if (!sourceSha || !/^[a-f0-9]{40}$/.test(sourceSha) || !runId || !/^[1-9]\d{0,14}$/.test(runId)
+    || env.GITHUB_RUN_ATTEMPT !== '1' || resumeRunId && (!/^[1-9]\d{0,14}$/.test(resumeRunId) || resumeRunId === runId)
+    || !checkpointKey || !/^[A-Za-z0-9+/]{43}=$/.test(checkpointKey)
+    || Buffer.from(checkpointKey, 'base64').toString('base64') !== checkpointKey) throw new SampleSurveyCloudError('arguments')
+  let saved: SampleSurveyCheckpoint | undefined, resumeDepth = 0
+  if (resumeRunId) {
+    try {
+      const restored = await (dependencies.loadCheckpoint ?? loadSampleSurveyCloudCheckpointBundle)(SAMPLE_SURVEY_CHECKPOINT_INPUT, checkpointKey,
+        { sourceSha, runId: resumeRunId, runAttempt: 1, config })
+      const { manifest, checkpoint } = restored, time = now().getTime()
+      if (!checkpoint.report.resumeAllowed || !canResumeSampleSurvey(checkpoint) || manifest.resumeDepth >= 6
+        || Date.parse(manifest.startedAt) < time - 72 * 60 * 60_000
+        || Date.parse(manifest.checkpointAt) > time - 5 * 60_000) throw new Error()
+      saved = checkpoint; resumeDepth = manifest.resumeDepth + 1
+    } catch { throw new SampleSurveyCloudError('collection') }
+  }
   let session: ReturnType<typeof parseBucklerWeeklySession> | undefined
   try { session = parseBucklerWeeklySession(raw ?? '', now()) }
   catch { throw new SampleSurveyCloudError('session') }
   finally { raw = undefined }
-  const plan = parseSampleSurveyPlan({ schemaVersion: 1, id: randomUUID(), createdAt: now().toISOString(), seed: randomBytes(32).toString('hex'), config })
+  const plan = saved?.plan ?? parseSampleSurveyPlan({ schemaVersion: 1, id: randomUUID(), createdAt: now().toISOString(), seed: randomBytes(32).toString('hex'), config })
+  const context: SampleSurveyCheckpointContext = { sourceSha, runId, runAttempt: 1, resumeDepth }
+  const onUpdate = async (checkpoint: SampleSurveyCheckpoint): Promise<void> => {
+    if (!checkpointKey) throw new SampleSurveyCloudError('output')
+    await (dependencies.saveCheckpoint ?? saveSampleSurveyCloudCheckpoint)(checkpoint, context, checkpointKey, SAMPLE_SURVEY_CHECKPOINT_OUTPUT)
+  }
   const controller = new AbortController()
   const signal = dependencies.signal ? AbortSignal.any([dependencies.signal, controller.signal]) : controller.signal
-  const timer = setTimeout(() => controller.abort(new SampleSurveyReadError('limit-reached')), config.maxDurationMinutes * 60_000)
+  const timer = setTimeout(() => controller.abort(new SampleSurveyReadError('limit-reached')), executionBudget * 60_000)
   timer.unref()
   let failureRecorded = false
   const onReadFailure = async (diagnostic: unknown): Promise<void> => {
@@ -94,6 +134,12 @@ export async function runSampleSurveyCloud(dependencies: {
   let reader: SampleSurveyReader | undefined, report: SampleSurveyRun
   try {
     if (signal.aborted) throw new SampleSurveyReadError('cancelled')
+    const initial = saved ? structuredClone(saved) : createSampleSurveyCheckpoint(plan, now().getTime())
+    if (saved) {
+      Object.assign(initial.report, { state: 'preparing', phase: 'boundaries', updatedAt: now().toISOString(), finishedAt: null, stopReason: null, resumeAllowed: false })
+      delete initial.transientFailure
+    }
+    await onUpdate(initial)
     const browserEnvironment = rankDistributionCloudBrowserEnvironment(env)
     reader = await (dependencies.createReader ?? createSampleSurveyReader)({ signal, onReadFailure }, { browser: {
       loadSession: async () => {
@@ -105,10 +151,12 @@ export async function runSampleSurveyCloud(dependencies: {
         return chromium.launch({ channel: 'msedge', headless: false, timeout: 30000, env: browserEnvironment })
       },
     } })
-    // The runner's IDs, sampled positions, and checkpoint remain in memory only.
-    report = parseSampleSurveyRun((await (dependencies.collect ?? runSampleSurvey)(plan, { reader, signal, now: () => now().getTime(), onReadRetry })).report)
+    // Persist the fixed sample and progress encrypted; public output remains aggregate-only.
+    report = parseSampleSurveyRun((await (dependencies.collect ?? runSampleSurvey)(plan, { reader, signal, now: () => now().getTime(), onReadRetry,
+      onUpdate, checkpoint: saved, maxInvocationMinutes: executionBudget,
+      resetReadRetryBudget: !!saved?.transientFailure })).report)
   } catch { throw new SampleSurveyCloudError('collection') }
-  finally { clearTimeout(timer); await reader?.close().catch(() => {}); session = undefined }
+  finally { clearTimeout(timer); await reader?.close().catch(() => {}); session = undefined; checkpointKey = undefined }
   ;(dependencies.logReport ?? (value => console.log(JSON.stringify({ capture: value }))))(report)
   try { publishableSampleSurveyRun(report) } catch { return { succeeded: false, report } }
   try {
@@ -119,13 +167,22 @@ export async function runSampleSurveyCloud(dependencies: {
   return { succeeded: true, report }
 }
 export async function main(args = process.argv.slice(2)): Promise<void> {
+  if (args.length === 1 && args[0] === '--finalize-checkpoint') {
+    delete process.env[BUCKLER_WEEKLY_SESSION_SECRET]; delete process.env[SAMPLE_SURVEY_CHECKPOINT_KEY_SECRET]
+    if (!isAllowedSampleSurveyCloudExecution(process.env)) throw new SampleSurveyCloudError('runner')
+    await finalizeSampleSurveyCloudCheckpoint(SAMPLE_SURVEY_CHECKPOINT_OUTPUT, SAMPLE_SURVEY_CHECKPOINT_MANIFEST)
+    console.log('暗号化した途中記録の保存準備が完了しました。')
+    return
+  }
   if (args.length === 1 && args[0] === '--help') {
     delete process.env[BUCKLER_WEEKLY_SESSION_SECRET]
-    console.log('標本調査の手動Actions取得。--collect で実行。認証と個別データはメモリ内、取得手順が完了した集計JSONを品質状態とともに公開します。')
+    delete process.env[SAMPLE_SURVEY_CHECKPOINT_KEY_SECRET]
+    console.log('標本調査の手動Actions取得。--collect で実行。途中記録は暗号化して保存し、完了した集計JSONを公開します。')
     return
   }
   if (args.length !== 1 || args[0] !== '--collect') {
     delete process.env[BUCKLER_WEEKLY_SESSION_SECRET]
+    delete process.env[SAMPLE_SURVEY_CHECKPOINT_KEY_SECRET]
     throw new SampleSurveyCloudError('arguments')
   }
   const controller = new AbortController(), stop = () => controller.abort(new SampleSurveyReadError('cancelled'))

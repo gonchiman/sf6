@@ -5,7 +5,7 @@ import type { SampleSurveyPlan, SampleSurveyTarget } from '../../src/types/sampl
 import { SampleSurveyReadError, SampleSurveyRetryableReadError } from './sample-survey-reader.ts'
 import type { SampleSurveyPage, SampleSurveyReader, SampleSurveyReadRetryEvent } from './sample-survey-reader.ts'
 import type { SampleSurveyCheckpoint, SampleSurveyRunnerOptions } from './sample-survey-runner.ts'
-import { canResumeSampleSurvey, createSampleSurveyCheckpoint, markSampleSurveyInterrupted, parseSampleSurveyCheckpoint, runSampleSurvey as runCurrentSampleSurvey, sampleSurveyPositions } from './sample-survey-runner.ts'
+import { canResumeSampleSurvey, createSampleSurveyCheckpoint, hasSampleSurveyTransientFailure, markSampleSurveyInterrupted, parseSampleSurveyCheckpoint, runSampleSurvey as runCurrentSampleSurvey, sampleSurveyPositions } from './sample-survey-runner.ts'
 
 const startTime = Date.parse('2026-10-27T00:00:00.000Z')
 // Keep the existing strict-method regressions explicit after changing the
@@ -976,15 +976,18 @@ test('tolerant resumed slots and acceptance remain fixed while old checkpoints r
   assert.equal(legacy.report.observation!.strata[0].boundaryAcceptance, undefined)
 })
 
-test('tolerant resume never accepts even a small movement of already selected slots', async () => {
+test('tolerant resume retains selected positions when boundaries move and marks the period for review', async () => {
   const f = shiftingLpFixture(), value = plan({ ranks: ['IRON'] }), controller = new AbortController()
   const first = await runCurrentSampleSurvey(value, { ...f, signal: controller.signal,
     onUpdate(checkpoint) { if (checkpoint.slots.length) controller.abort() } })
   const slots = structuredClone(first.slots), acceptance = structuredClone(first.report.observation!.strata[0].boundaryAcceptance)
   f.state.shift = 1
   const result = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal, checkpoint: first })
-  assert.equal(result.report.stopReason, 'frame-changed'); assert.equal(result.report.resumeAllowed, false)
-  assert.deepEqual(result.slots, slots); assert.deepEqual(result.report.observation!.strata[0].boundaryAcceptance, acceptance)
+  assert.equal(result.report.state, 'complete'); assert.equal(result.report.resumeAllowed, false)
+  assert.deepEqual(result.slots.map(slot => slot.id), slots.map(slot => slot.id))
+  assert.deepEqual(result.report.observation!.strata[0].boundaryAcceptance, acceptance)
+  assert.equal(result.report.observation!.strata[0].status, 'review-required')
+  assert.equal(result.report.strata[0].processed, slots.length)
 })
 
 for (const code of ['authentication-unconfirmed', 'human-verification', 'http-denied', 'read-failed'] as const) {
@@ -1278,4 +1281,115 @@ test('LP and MR page retry limits are independent while their total retry budget
   assert.deepEqual(events.map(event => [event.target, event.page, event.retryNumber]), [['lp', 1, 1], ['mr', 1, 2]])
   assert.equal(mrAttempts, 2)
   assert.equal(result.report.attempts - result.report.successfulPages, 3)
+})
+
+test('a transient server failure can resume a production sample without redrawing or replacing observed slots', async () => {
+  const f = fixture({ rowsPerStratum: 2000 }), original = f.reader.readPage.bind(f.reader)
+  const value = plan({ ranks: ['BRONZE', 'SILVER'], rankSampleSize: 200 })
+  let collected = 0, failReads = true
+  f.reader.readPage = async (target, page) => {
+    if (failReads && collected >= 92) throw new SampleSurveyRetryableReadError('server-error', 502)
+    return original(target, page)
+  }
+  const first = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) { collected = checkpoint.report.uniqueAccountCount } })
+  assert.equal(first.report.stopReason, 'server-error'); assert.equal(first.report.resumeAllowed, true)
+  assert.equal(hasSampleSurveyTransientFailure(first), true)
+  assert.deepEqual(first.transientFailure, { httpStatus: 502, at: first.report.finishedAt })
+  const prior = structuredClone(first.slots), previousFinished = first.report.finishedAt
+  assert.ok(prior.filter(slot => slot.status === 'collected').length >= 92)
+  assert.ok(!JSON.stringify(first.report).includes('transientFailure'))
+  failReads = false; f.resetFirst()
+  // A changed listing after a pause does not redraw the fixed random positions.
+  f.lp.unshift({ accountId: '999999', value: 99999, rankId: 36 })
+  const second = await runCurrentSampleSurvey(value, { ...f, checkpoint: first, resetReadRetryBudget: true,
+    signal: new AbortController().signal })
+  assert.equal(second.report.state, 'complete'); assert.equal(second.transientFailure, undefined)
+  assert.equal(second.report.strata.reduce((sum, row) => sum + row.processed, 0), 400)
+  assert.deepEqual(second.slots.filter(slot => slot.stratumId === 'lp-BRONZE').map(slot => slot.id), prior.map(slot => slot.id))
+  for (const slot of prior.filter(slot => slot.status !== 'pending')) assert.deepEqual(second.slots.find(row => row.id === slot.id), slot)
+  assert.equal(second.report.observation!.strata[0].status, 'review-required')
+  assert.equal(second.report.startedAt, first.report.startedAt)
+  assert.ok(second.report.finishedAt! > previousFinished!)
+  assert.deepEqual(parseSampleSurveyCheckpoint(second), second)
+})
+
+test('only private transient evidence enables an explicit new invocation retry budget', async () => {
+  const failed = retryFixture(() => new SampleSurveyRetryableReadError('server-error', 503))
+  const value = plan({ ranks: ['MASTER'] })
+  const first = await runCurrentSampleSurvey(value, { ...failed, signal: new AbortController().signal })
+  assert.equal(first.report.resumeAllowed, true)
+  const f = retryFixture(attempt => attempt === 1 ? new SampleSurveyRetryableReadError('server-error', 502) : null)
+  const events: SampleSurveyReadRetryEvent[] = []
+  const second = await runCurrentSampleSurvey(value, { ...f, checkpoint: first, resetReadRetryBudget: true,
+    signal: new AbortController().signal, onReadRetry: event => events.push(event) })
+  assert.equal(second.report.state, 'complete'); assert.equal(events.length, 1)
+  assert.equal(events[0].retryNumber, 1)
+  const retained = retryFixture(() => new SampleSurveyRetryableReadError('server-error', 502))
+  const conservative = await runCurrentSampleSurvey(value, { ...retained, checkpoint: first, signal: new AbortController().signal })
+  assert.equal(conservative.report.stopReason, 'server-error'); assert.equal(retained.attempted.length, 1)
+  const absent = structuredClone(first); delete absent.transientFailure
+  assert.throws(() => parseSampleSurveyCheckpoint(absent))
+  assert.equal(canResumeSampleSurvey(absent), false)
+  for (const evidence of [{ httpStatus: 500, at: first.report.finishedAt }, { httpStatus: 502, at: first.report.startedAt },
+    { httpStatus: '502', at: first.report.finishedAt }, { httpStatus: 503, at: first.report.finishedAt, raw: 'private' }]) {
+    assert.throws(() => parseSampleSurveyCheckpoint({ ...first, transientFailure: evidence }))
+  }
+  const controller = new AbortController(); controller.abort()
+  const cancelled = await runCurrentSampleSurvey(value, { ...fixture(), signal: controller.signal })
+  const noRead = fixture()
+  await assert.rejects(runCurrentSampleSurvey(value, { ...noRead, checkpoint: cancelled, resetReadRetryBudget: true,
+    signal: new AbortController().signal }))
+  await assert.rejects(runCurrentSampleSurvey(value, { ...noRead, resetReadRetryBudget: true,
+    signal: new AbortController().signal }))
+  assert.equal(noRead.calls.length, 0)
+})
+
+test('tolerant continuation still rejects a changed page size before consuming a saved slot', async () => {
+  const f = fixture(), value = plan({ ranks: ['MASTER'] }), controller = new AbortController()
+  const first = await runCurrentSampleSurvey(value, { ...f, signal: controller.signal,
+    onUpdate(checkpoint) { if (checkpoint.slots.length) controller.abort() } })
+  const original = f.reader.readPage.bind(f.reader)
+  f.reader.readPage = async (target, page) => ({ ...await original(target, page), pageSize: 10 })
+  f.resetFirst()
+  const second = await runCurrentSampleSurvey(value, { ...f, checkpoint: first, signal: new AbortController().signal })
+  assert.equal(second.report.stopReason, 'frame-changed'); assert.equal(second.report.resumeAllowed, false)
+  assert.deepEqual(second.slots, first.slots)
+})
+
+test('MR transient checkpoints preserve observations but cannot resume without a concrete Act identity', async () => {
+  const f = fixture(), value = plan({ ranks: [], includeMr: true }), original = f.reader.readPage.bind(f.reader)
+  let sampled = false
+  f.reader.readPage = async (target, page) => {
+    if (sampled) throw new SampleSurveyRetryableReadError('server-error', 504)
+    return original(target, page)
+  }
+  const first = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) { sampled = checkpoint.report.uniqueAccountCount > 0 } })
+  assert.equal(first.report.stopReason, 'server-error'); assert.ok(first.transientFailure)
+  assert.equal(first.report.resumeAllowed, false); assert.equal(canResumeSampleSurvey(first), false)
+  await assert.rejects(runCurrentSampleSurvey(value, { ...f, checkpoint: first, resetReadRetryBudget: true,
+    signal: new AbortController().signal }))
+})
+
+test('shorter invocation budgets preserve the immutable plan and continue only pending slots', async () => {
+  const f = fixture({ rowsPerStratum: 200 }), value = plan({ ranks: ['MASTER'], rankSampleSize: 200 })
+  const first = await runCurrentSampleSurvey(value, { ...f, maxInvocationMinutes: 3, signal: new AbortController().signal })
+  assert.equal(first.report.stopReason, 'limit-reached'); assert.equal(first.report.resumeAllowed, true)
+  assert.ok(first.report.elapsedMs <= 3 * 60_000)
+  assert.ok(first.slots.some(slot => slot.status === 'collected'))
+  assert.ok(first.slots.some(slot => slot.status === 'pending'))
+  assert.deepEqual(first.plan, value); assert.deepEqual(first.report.config, value.config)
+  f.resetFirst()
+  const second = await runCurrentSampleSurvey(value, { ...f, checkpoint: first, maxInvocationMinutes: 3,
+    signal: new AbortController().signal })
+  assert.equal(second.report.state, 'complete')
+  assert.equal(second.report.strata[0].processed, 200)
+  assert.deepEqual(second.plan, value); assert.deepEqual(second.report.config, value.config)
+  for (const slot of first.slots.filter(slot => slot.status !== 'pending')) assert.deepEqual(second.slots.find(row => row.id === slot.id), slot)
+  const invalid = fixture()
+  for (const maxInvocationMinutes of [0, -1, 0.5, 121, NaN, Infinity]) {
+    await assert.rejects(runCurrentSampleSurvey(value, { ...invalid, maxInvocationMinutes, signal: new AbortController().signal }))
+  }
+  assert.equal(invalid.calls.length, 0)
 })

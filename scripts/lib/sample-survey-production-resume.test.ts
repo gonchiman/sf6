@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
-import { validateProductionResume } from './sample-survey-production-resume.ts'
+import { validateProductionRestart, validateProductionResume } from './sample-survey-production-resume.ts'
 
 const OLD_START = '2026-10-31T09:19:05Z', OLD_END = '2026-10-31T10:39:55Z', NEW_START = '2026-11-02T01:00:00Z'
 const PRIVATE = 'synthetic-secret-never-log'
@@ -146,4 +146,62 @@ test('parent workflow makes resume explicit and passes the same source to every 
   }
   assert.match(workflow, /cancel-in-progress: false/)
   assert.doesNotMatch(workflow, /secrets\.|BUCKLER_WEEKLY_SESSION|continue-on-error:/)
+})
+
+function restartFixture() {
+  const old = fixture(), previousStart = '2026-11-01T03:37:55Z', previousEnd = '2026-11-01T04:02:30Z'
+  const previous = { ...old.parents.workflow_runs[1], created_at: previousStart, updated_at: previousEnd, status: 'completed', conclusion: 'failure' }
+  const current = { ...run(666, NEW_START), updated_at: NEW_START, head_sha: 'c'.repeat(40),
+    display_title: 'Sample survey production 111 resume 333 restart 555', status: 'in_progress', conclusion: null }
+  const failed = { ...run(555, '2026-11-01T03:38:25Z', '.github/workflows/sample-survey.yml'),
+    updated_at: '2026-11-01T04:02:15Z', head_sha: previous.head_sha, display_title: `Sample survey source ${previous.head_sha}` }
+  const previousJobs = { total_count: 5, jobs: old.previousJobs.jobs.map((job, index) => ({ ...structuredClone(job),
+    id: 1000 + index, run_id: 333, started_at: previousStart, completed_at: previousEnd })) }
+  return { parentRunId: '666', firstRunId: '111', previousParentRunId: '333', restartFailedRunId: '555',
+    parents: { total_count: 3, workflow_runs: [structuredClone(old.previousParent), structuredClone(previous), current] },
+    previousParent: previous, previousJobs, ancestorParent: old.previousParent, ancestorJobs: old.previousJobs,
+    failedChild: failed, failedChildArtifacts: { total_count: 0, artifacts: [] as unknown[] },
+    failedChildJobs: { total_count: 2, jobs: [
+      { id: 2000, run_id: 555, name: 'collect', status: 'completed', conclusion: 'failure', steps: [
+        { name: 'Collect serial sample with saved session', status: 'completed', conclusion: 'failure' }] },
+      { id: 2001, run_id: 555, name: 'save-history', status: 'completed', conclusion: 'skipped', steps: null },
+    ] }, childRuns: { total_count: 2, workflow_runs: [...old.childRuns.workflow_runs, structuredClone(failed)] } }
+}
+
+test('explicit legacy restart preserves the original 400 slots after a failed child without artifacts', () => {
+  const input = restartFixture()
+  assert.doesNotThrow(() => validateProductionRestart(input))
+  input.childRuns.workflow_runs.push({ ...run(777, '2026-11-02T01:00:01Z', '.github/workflows/sample-survey.yml'), conclusion: 'success' })
+  input.childRuns.total_count++
+  assert.doesNotThrow(() => validateProductionRestart(input))
+})
+
+test('a dispatched child may finish after its parent metadata check failed, but must finish before the new parent', () => {
+  const input = restartFixture()
+  input.failedChild.updated_at = '2026-11-01T05:00:00Z'
+  input.childRuns.workflow_runs[1].updated_at = input.failedChild.updated_at
+  assert.doesNotThrow(() => validateProductionRestart(input))
+  input.failedChild.updated_at = NEW_START
+  input.childRuns.workflow_runs[1].updated_at = NEW_START
+  assert.throws(() => validateProductionRestart(input))
+})
+
+test('legacy restart refuses a checkpoint, a published artifact, active work, altered lineage or extra child', () => {
+  const changes: ((input: ReturnType<typeof restartFixture>) => void)[] = [
+    x => { x.failedChildArtifacts.total_count = 1; x.failedChildArtifacts.artifacts = [{ name: 'sample-survey-checkpoint-555-1' }] },
+    x => { x.failedChildArtifacts.artifacts = [{ name: 'sample-survey-555-1' }] },
+    x => { x.failedChild.conclusion = 'success'; x.childRuns.workflow_runs[1].conclusion = 'success' },
+    x => { x.failedChild.status = 'in_progress'; x.childRuns.workflow_runs[1].status = 'in_progress' },
+    x => { x.failedChild.run_attempt = 2; x.childRuns.workflow_runs[1].run_attempt = 2 },
+    x => { x.failedChild.head_sha = 'c'.repeat(40); x.childRuns.workflow_runs[1].head_sha = 'c'.repeat(40) },
+    x => { x.previousParent.display_title = 'Sample survey production 111 resume 999'; x.parents.workflow_runs[1].display_title = x.previousParent.display_title },
+    x => { x.parents.workflow_runs[2].display_title = 'Sample survey production 111 resume 333' },
+    x => { x.previousJobs.jobs[2].conclusion = 'success' },
+    x => { x.ancestorJobs.jobs[0].conclusion = 'failure' },
+    x => { x.failedChildJobs.jobs[1].conclusion = 'success' },
+    x => { x.failedChildJobs.jobs[0].steps![0].name = 'Unrelated failure' },
+    x => { x.childRuns.workflow_runs.push({ ...run(777, '2026-11-01T12:00:00Z', '.github/workflows/sample-survey.yml'), conclusion: 'success' }); x.childRuns.total_count++ },
+    x => { x.parents.workflow_runs.push({ ...run(777, NEW_START), display_title: x.parents.workflow_runs[2].display_title }); x.parents.total_count++ },
+  ]
+  for (const change of changes) { const input = restartFixture(); change(input); assert.throws(() => validateProductionRestart(input)) }
 })

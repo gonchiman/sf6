@@ -1,20 +1,24 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
-import { isAllowedSampleSurveyCloudExecution, parseSampleSurveyCloudConfig, runSampleSurveyCloud, SAMPLE_SURVEY_CLOUD_OUTPUT, SampleSurveyCloudError } from './collect-sample-survey-cloud.ts'
+import { isAllowedSampleSurveyCloudExecution, parseSampleSurveyCloudConfig, parseSampleSurveyExecutionBudget, runSampleSurveyCloud as actualRunSampleSurveyCloud, SAMPLE_SURVEY_CLOUD_OUTPUT, SampleSurveyCloudError } from './collect-sample-survey-cloud.ts'
 import { publishSampleSurveyCloud, SAMPLE_SURVEY_CLOUD_HISTORY, SAMPLE_SURVEY_CLOUD_INCOMING } from './publish-sample-survey-cloud.ts'
 import { createSampleSurveyCheckpoint, runSampleSurvey } from './lib/sample-survey-runner.ts'
 import type { SampleSurveyPlan } from '../src/types/sampleSurvey.ts'
 import { SampleSurveyReadError, SampleSurveyRetryableReadError } from './lib/sample-survey-reader.ts'
 
 const PRIVATE = 'synthetic-private-cookie-do-not-publish'
+const KEY = Buffer.alloc(32, 17).toString('base64'), SOURCE_SHA = 'a'.repeat(40)
+// Existing publication tests isolate disk writes; checkpoint integration is exercised below.
+const runSampleSurveyCloud = (dependencies: Parameters<typeof actualRunSampleSurveyCloud>[0] = {}) => actualRunSampleSurveyCloud({ saveCheckpoint: async () => {}, ...dependencies })
 const now = new Date('2026-10-27T00:00:00.000Z')
 const session = JSON.stringify({ schemaVersion: 1, capturedAt: '2026-10-15T01:00:00.000Z', uploadedAt: '2026-10-15T01:01:00.000Z',
   storageState: { cookies: [{ name: 'session', value: PRIVATE, domain: '.streetfighter.com', path: '/', expires: -1, httpOnly: true, secure: true, sameSite: 'Lax' }], origins: [] } })
 function environment(): Record<string, string | undefined> {
   return { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows', GITHUB_REPOSITORY: 'gonchiman/sf6',
     GITHUB_REF: 'refs/heads/main', GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/sample-survey.yml@refs/heads/main',
-    GITHUB_EVENT_NAME: 'workflow_dispatch', BUCKLER_WEEKLY_SESSION: session, GH_TOKEN: 'private-github-token', PATH: 'test-path' }
+    GITHUB_EVENT_NAME: 'workflow_dispatch', BUCKLER_WEEKLY_SESSION: session, GH_TOKEN: 'private-github-token', PATH: 'test-path',
+    SAMPLE_SURVEY_CHECKPOINT_KEY: KEY, GITHUB_SHA: SOURCE_SHA, GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '1' }
 }
 function completed(plan: SampleSurveyPlan) {
   const checkpoint = createSampleSurveyCheckpoint(plan, now.getTime())
@@ -323,7 +327,7 @@ test('publisher fixes both aggregate paths and applies the workflow environment 
   assert.equal(called, true)
   await assert.rejects(publishSampleSurveyCloud({ env: {}, publish: async () => { throw new Error('must not publish') } }), SampleSurveyCloudError)
 })
-test('workflow keeps secrets out of publishing and uploads no private state; collection remains headed and serial', async () => {
+test('workflow saves only encrypted private progress even on failure and keeps keys out of publishing', async () => {
   const workflow = await readFile(new URL('../.github/workflows/sample-survey.yml', import.meta.url), 'utf8')
   const [collect, publish] = workflow.split('  save-history:')
   assert.match(workflow, /workflow_dispatch:/); assert.doesNotMatch(workflow, /schedule:|cron:/)
@@ -331,8 +335,32 @@ test('workflow keeps secrets out of publishing and uploads no private state; col
   assert.ok(collect.includes("timeout-minutes: ${{ inputs.ranks == '' && inputs.include_mr && 210 || 150 }}"))
   assert.match(collect, /contents: read/); assert.doesNotMatch(collect, /contents: write/)
   assert.match(collect, /secrets\.BUCKLER_WEEKLY_SESSION/); assert.doesNotMatch(publish, /BUCKLER_WEEKLY_SESSION/)
-  assert.match(collect, /sample-survey\/runs\/\*\.json/); assert.doesNotMatch(collect, /checkpoint|sqlite|private-session|\.html/)
+  assert.match(collect, /sample-survey\/runs\/\*\.json/); assert.doesNotMatch(collect, /sqlite|private-session|\.html/)
+  assert.match(collect, /checkpoint-output\/checkpoint\.enc\.json/)
+  assert.match(collect, /Finalize encrypted progress after collection\s+id: finalize_checkpoint\s+if: always\(\) && steps\.source_verified\.outcome == 'success'/)
+  assert.match(collect, /Save encrypted progress even when collection stopped\s+if: always\(\) && steps\.source_verified\.outcome == 'success' && steps\.finalize_checkpoint\.outcome == 'success'/)
+  assert.match(collect, /secrets\.SAMPLE_SURVEY_CHECKPOINT_KEY/); assert.doesNotMatch(publish, /SAMPLE_SURVEY_CHECKPOINT_KEY|checkpoint-output/)
   assert.match(publish, /git add -- public\/data\/sample-survey/); assert.doesNotMatch(publish, /--force/)
   const code = await readFile(new URL('./collect-sample-survey-cloud.ts', import.meta.url), 'utf8')
   assert.match(code, /headless: false/); assert.doesNotMatch(code, /createSampleSurveyStore|sample-survey-store/)
+})
+
+test('an invocation budget can be shortened without changing the sampling configuration', () => {
+  const config = parseSampleSurveyCloudConfig({ SAMPLE_SURVEY_MAX_DURATION_MINUTES: '120' })
+  assert.equal(parseSampleSurveyExecutionBudget({}, config), 120)
+  assert.equal(parseSampleSurveyExecutionBudget({ SAMPLE_SURVEY_EXECUTION_BUDGET_MINUTES: '17' }, config), 17)
+  for (const raw of ['0', '121', '1.5', '1e2', '$(secret)', '001']) {
+    assert.throws(() => parseSampleSurveyExecutionBudget({ SAMPLE_SURVEY_EXECUTION_BUDGET_MINUTES: raw }, config), SampleSurveyCloudError)
+  }
+  assert.equal(config.maxDurationMinutes, 120)
+})
+
+test('missing checkpoint keys and duplicate run attempts fail before launching a browser', async () => {
+  for (const patch of [{ SAMPLE_SURVEY_CHECKPOINT_KEY: undefined }, { SAMPLE_SURVEY_CHECKPOINT_KEY: PRIVATE },
+    { GITHUB_RUN_ATTEMPT: '2' }, { GITHUB_RUN_ID: '' }, { SAMPLE_SURVEY_RESUME_RUN_ID: '12345' }]) {
+    const env = { ...environment(), ...patch }
+    await assert.rejects(runSampleSurveyCloud({ env, now: () => now, createReader: async () => assert.fail('must not launch') }), SampleSurveyCloudError)
+    assert.equal(env.SAMPLE_SURVEY_CHECKPOINT_KEY, undefined)
+    assert.equal(env.BUCKLER_WEEKLY_SESSION, undefined)
+  }
 })

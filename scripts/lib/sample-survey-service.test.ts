@@ -241,8 +241,8 @@ test('resume reaches the actual runner with a stopped checkpoint, preserves sele
   assert.deepEqual(result.slots[0], previous.slots[0])
   assert.equal(result.report.uniqueAccountCount, 10)
   assert.ok(result.report.attempts > previous.report.attempts)
-  assert.equal(result.report.observation!.strata[0].status, 'checked')
-  assert.equal(result.report.observation!.strata[0].boundaryChanged, false)
+  assert.equal(result.report.observation!.strata[0].status, 'review-required')
+  assert.equal(result.report.observation!.strata[0].boundaryChanged, true)
   assert.equal(result.report.observation!.method, 'rank-position-tolerant-v1')
   assert.deepEqual(result.report.observation!.strata[0].boundaryAcceptance, previous.report.observation!.strata[0].boundaryAcceptance)
   const status = (await invoke(service, 'status')).value

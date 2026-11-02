@@ -4,11 +4,13 @@ import { createHash } from 'node:crypto'
 import { deflateRawSync } from 'node:zlib'
 import { readFile } from 'node:fs/promises'
 import { createSampleSurveyCheckpoint } from './lib/sample-survey-runner.ts'
+import { createSampleSurveyCheckpointManifest, encryptSampleSurveyCheckpoint } from './lib/sample-survey-cloud-checkpoint.ts'
+import type { SampleSurveyCheckpointManifest } from './lib/sample-survey-cloud-checkpoint.ts'
 import { SAMPLE_SURVEY_RESULTS_SOURCE } from '../src/lib/sampleSurveyResults.ts'
 import type { SampleSurveyRun } from '../src/types/sampleSurvey.ts'
 import { productionStage, parseProductionRun, parseProductionDispatch, validateProductionReport,
   createProductionGitHub, runProductionStage, isAllowedProductionExecution, extractProductionArtifact,
-  validateProductionParents } from './manage-sample-survey-production.ts'
+  validateProductionParents, PRODUCTION_RESUME_DELAY_MS, PRODUCTION_MAX_RESUMES, PRODUCTION_CLOCK_SKEW_MS, fetchSampleSurveyCheckpointArtifact } from './manage-sample-survey-production.ts'
 import type { ProductionGitHub } from './manage-sample-survey-production.ts'
 import type { CloudGhCommand } from './lib/parallel-fetch-github.ts'
 
@@ -146,7 +148,7 @@ function mocked(answer: (args: string[]) => unknown | Buffer) {
     calls.push({ args, limit }); const value = answer(args)
     return Buffer.isBuffer(value) ? value : Buffer.from(JSON.stringify(value))
   }
-  return { github: createProductionGitHub(command), calls }
+  return { github: createProductionGitHub(command, async () => {}), calls }
 }
 function archiveMock(stage = 1, change?: { entries?: [string, string][]; metadata?: Record<string, unknown>; history?: SampleSurveyRun; index?: unknown }) {
   const value = report(stage), entries = change?.entries ?? artifactEntries(value), bytes = zip(entries)
@@ -183,7 +185,7 @@ test('GitHub adapter does not repeat ambiguous dispatches or expose command erro
   const github = createProductionGitHub(async args => {
     if (args.some(arg => arg.endsWith('/commits/main'))) return Buffer.from(JSON.stringify({ sha: SHA }))
     calls++; throw new Error(PRIVATE)
-  })
+  }, async () => {})
   await assert.rejects(github.dispatch(2, SHA), (error: Error) => !error.message.includes(PRIVATE))
   assert.equal(calls, 1)
   const f = mocked(() => Buffer.alloc(0))
@@ -349,7 +351,7 @@ test('invalid first-run options and stale or future runs stop before publication
     const f = stageFixture(options.stage)
     await assert.rejects(runProductionStage(options, f.dependencies)); assert.deepEqual(f.calls, [])
   }
-  for (const time of ['2026-10-30T03:59:59.999Z', '2026-10-31T04:00:00.001Z']) {
+  for (const time of ['2026-10-30T03:59:59.999Z', '2026-10-31T04:00:05.001Z']) {
     const f = stageFixture(1, { run: async () => ({ id: '123', attempt: 1, status: 'completed', conclusion: 'success', createdAt: time }) })
     await assert.rejects(runProductionStage({ stage: 1, sha: SHA, firstRunId: '123', firstRunSha: FIRST_SHA }, f.dependencies))
     assert.ok(!f.calls.includes('report'))
@@ -452,5 +454,166 @@ test('workflow jobs wait in sequence and never hold the child collection lock or
     assert.ok(jobMinutes > productionStage(stage).waitMinutes && jobMinutes <= 360)
     assert.match(section, new RegExp(`PRODUCTION_STAGE: '${stage}'`))
     assert.match(section, /node --test scripts\/manage-sample-survey-production.test.ts/)
+  }
+})
+
+function savedManifest(runId = '123', resumeDepth = 0, processed = 92): SampleSurveyCheckpointManifest {
+  return { schemaVersion: 1, sourceSha: SHA, runId, runAttempt: 1, resumeDepth, config: productionStage(2).config,
+    reportId: 'synthetic-result', planId: 'synthetic-plan', startedAt: START, checkpointAt: END,
+    state: 'error', stopReason: 'server-error', resumeAllowed: true, processed, bytes: 100, sha256: 'f'.repeat(64) }
+}
+
+test('a transient failure resumes saved positions once after five minutes without replaying the first batch', async () => {
+  let dispatches = 0
+  const f = stageFixture(2, {
+    dispatch: async (stage, source, previous, budget) => {
+      assert.equal(stage, 2); assert.equal(source, SHA)
+      dispatches++
+      if (dispatches === 1) { assert.equal(previous, undefined); return '123' }
+      assert.equal(previous, '123'); assert.equal(budget, 120); return '124'
+    },
+    run: async runId => ({ id: runId, attempt: 1, status: 'completed', conclusion: runId === '123' ? 'failure' : 'success', createdAt: START }),
+    checkpoint: async () => savedManifest(),
+    report: async (_run, _stage, resumed) => { assert.equal(resumed?.processed, 92); return report(2) },
+  })
+  const result = await runProductionStage({ stage: 2, sha: SHA }, f.dependencies)
+  assert.equal(result.run.id, '124'); assert.equal(dispatches, 2); assert.deepEqual(f.waits, [PRODUCTION_RESUME_DELAY_MS])
+  assert.ok(f.logs.some(value => (value as { state: string }).state === 'checkpoint-saved'))
+  assert.doesNotMatch(JSON.stringify(f.logs), /accountId|seed|slots|ciphertext/)
+})
+
+test('authentication, access denial, MR non-resumability and malformed checkpoint metadata never redispatch', async () => {
+  for (const patch of [
+    { resumeAllowed: false }, { stopReason: 'human-verification' }, { stopReason: 'http-denied' },
+    { stopReason: 'login-required' }, { stopReason: 'authentication-unconfirmed' }, { stopReason: 'cancelled' },
+    { state: 'running', stopReason: null }, { sourceSha: FIRST_SHA }, { runId: '999' }, { resumeDepth: 1 },
+    { startedAt: '2026-10-27T03:00:00.000Z' }, { checkpointAt: '2026-10-31T04:00:00.001Z' },
+    { config: productionStage(3).config },
+  ]) {
+    const f = stageFixture(2, { run: async () => ({ id: '123', attempt: 1, status: 'completed', conclusion: 'failure', createdAt: START }),
+      checkpoint: async () => ({ ...savedManifest(), ...patch }) as SampleSurveyCheckpointManifest })
+    await assert.rejects(runProductionStage({ stage: 2, sha: SHA }, f.dependencies))
+    assert.deepEqual(f.calls, ['dispatch:2']); assert.deepEqual(f.waits, [])
+  }
+})
+
+test('checkpoint chains have finite depth and never accept changed identities or lost progress', async () => {
+  for (const mutation of ['none', 'report', 'plan', 'started', 'progress'] as const) {
+    let dispatched = 0
+    const f = stageFixture(2, {
+      dispatch: async () => String(123 + dispatched++),
+      run: async runId => ({ id: runId, attempt: 1, status: 'completed', conclusion: 'failure', createdAt: START }),
+      checkpoint: async run => {
+        const depth = Number(run.id) - 123, saved = savedManifest(run.id, depth, 92 + depth)
+        if (depth === 1) {
+          if (mutation === 'report') saved.reportId = 'another-result'
+          if (mutation === 'plan') saved.planId = 'another-plan'
+          if (mutation === 'started') saved.startedAt = '2026-10-31T03:00:01.000Z'
+          if (mutation === 'progress') saved.processed = 91
+        }
+        return saved
+      },
+    })
+    await assert.rejects(runProductionStage({ stage: 2, sha: SHA }, f.dependencies))
+    assert.equal(dispatched, mutation === 'none' ? PRODUCTION_MAX_RESUMES + 1 : 2)
+    assert.equal(f.waits.length, dispatched - 1)
+  }
+})
+
+test('resume uses the remaining invocation budget and refuses late or ambiguous restarts', async () => {
+  const f = stageFixture(2)
+  let calls = 0
+  f.dependencies.github.run = async runId => {
+    if (runId === '123') f.advance(180 * 60000)
+    return { id: runId, attempt: 1, status: 'completed', conclusion: runId === '123' ? 'failure' : 'success', createdAt: START }
+  }
+  f.dependencies.github.checkpoint = async () => savedManifest()
+  f.dependencies.github.dispatch = async (_stage, _source, previous, budget) => {
+    calls++
+    if (previous) { assert.equal(budget, 35); return '124' }
+    return '123'
+  }
+  await runProductionStage({ stage: 2, sha: SHA }, f.dependencies)
+  assert.equal(calls, 2)
+  const late = stageFixture(2, { checkpoint: async () => savedManifest() })
+  late.dependencies.github.run = async () => {
+    late.advance(220 * 60000)
+    return { id: '123', attempt: 1, status: 'completed', conclusion: 'failure', createdAt: START }
+  }
+  await assert.rejects(runProductionStage({ stage: 2, sha: SHA }, late.dependencies))
+  assert.deepEqual(late.waits, [])
+})
+
+function checkpointArtifact() {
+  const config = productionStage(2).config
+  const saved = createSampleSurveyCheckpoint({ schemaVersion: 1, id: 'synthetic-plan', createdAt: START, seed: '1'.repeat(64), config }, Date.parse(START))
+  Object.assign(saved.report, { id: 'synthetic-result', state: 'error', stopReason: 'server-error', resumeAllowed: true,
+    updatedAt: END, finishedAt: END, elapsedMs: 3600000 })
+  saved.transientFailure = { httpStatus: 502, at: END }
+  const encrypted = encryptSampleSurveyCheckpoint(saved, { sourceSha: SHA, runId: '123', runAttempt: 1, resumeDepth: 0 }, Buffer.alloc(32, 7).toString('base64'))
+  const manifest = createSampleSurveyCheckpointManifest(encrypted)
+  return { config, manifest, entries: [['manifest.json', JSON.stringify(manifest)], ['checkpoint.enc.json', encrypted.toString()]] as [string, string][] }
+}
+
+test('encrypted checkpoint artifacts require owner, archive and encrypted-file digests to match', async () => {
+  for (const change of ['none', 'digest', 'run', 'manifest', 'extra', 'ambiguous'] as const) {
+    const f = checkpointArtifact()
+    if (change === 'manifest') f.entries[0][1] = JSON.stringify({ ...f.manifest, processed: 1 })
+    if (change === 'extra') f.entries.push(['plain.json', PRIVATE])
+    const bytes = zip(f.entries), run = { id: '123', attempt: 1 as const, status: 'completed' as const, conclusion: 'failure', createdAt: START }
+    let commands = 0
+    const command: CloudGhCommand = async args => {
+      commands++
+      if (args.at(-1)?.endsWith('/zip')) return bytes
+      return Buffer.from(JSON.stringify({ total_count: change === 'ambiguous' ? 2 : 1, artifacts: [{ id: 456,
+        name: 'sample-survey-checkpoint-123-1', expired: false, size_in_bytes: bytes.length,
+        workflow_run: { id: change === 'run' ? 124 : 123 }, digest: `sha256:${change === 'digest' ? '0'.repeat(64) : createHash('sha256').update(bytes).digest('hex')}` }] }))
+    }
+    if (change === 'none') {
+      const got = await fetchSampleSurveyCheckpointArtifact({ run, sourceSha: SHA, config: f.config }, command)
+      assert.deepEqual(got.manifest, f.manifest); assert.equal(commands, 2)
+    } else await assert.rejects(fetchSampleSurveyCheckpointArtifact({ run, sourceSha: SHA, config: f.config }, command))
+  }
+})
+
+test('a resumed published report may retain the original start time only with matching checkpoint identity', async () => {
+  const f = archiveMock(2), later = rawRun(); later.created_at = '2026-10-31T03:30:00.000Z'
+  const child = parseProductionRun(later, { runId: '123', sha: SHA })
+  assert.deepEqual(await f.github.report(child, 2, savedManifest()), report(2))
+  for (const patch of [{ reportId: 'different' }, { planId: 'different' }, { startedAt: END }]) {
+    await assert.rejects(f.github.report(child, 2, { ...savedManifest(), ...patch }))
+  }
+})
+
+test('a monitor deadline cancels only the child that this stage started', async () => {
+  for (const stage of [1, 2]) {
+    const cancelled: string[] = []
+    const f = stageFixture(stage, { run: async runId => ({ id: runId, attempt: 1, status: 'queued', conclusion: null, createdAt: START }),
+      cancel: async runId => { cancelled.push(runId) } })
+    await assert.rejects(runProductionStage({ stage, sha: SHA, ...(stage === 1 ? { firstRunId: '123', firstRunSha: FIRST_SHA } : {}) }, f.dependencies))
+    assert.deepEqual(cancelled, stage === 1 ? [] : ['123'])
+  }
+})
+
+test('new-run metadata may settle after dispatch without resending a POST or accepting a wrong source', async () => {
+  const waits: number[] = []; let reads = 0
+  const github = createProductionGitHub(async args => {
+    assert.ok(!args.includes('POST')); reads++
+    if (reads === 1) throw new Error('temporary metadata unavailability')
+    return Buffer.from(JSON.stringify({ ...rawRun(), display_title: reads === 2 ? 'Collect sample survey' : `Sample survey source ${SHA}` }))
+  }, async ms => { waits.push(ms) })
+  assert.equal((await github.run('123', SHA, true)).id, '123')
+  assert.equal(reads, 3); assert.deepEqual(waits, [5000, 5000])
+  let invalidReads = 0
+  const invalid = createProductionGitHub(async () => { invalidReads++; return Buffer.from(JSON.stringify(rawRun('999'))) }, async () => {})
+  await assert.rejects(invalid.run('123', SHA)); assert.equal(invalidReads, 3)
+})
+
+test('GitHub and runner creation clocks may differ by at most five seconds', async () => {
+  for (const ahead of [1, PRODUCTION_CLOCK_SKEW_MS, PRODUCTION_CLOCK_SKEW_MS + 1]) {
+    const f = stageFixture(2, { run: async () => ({ id: '123', attempt: 1, status: 'completed', conclusion: 'success',
+      createdAt: new Date(Date.parse(END) + ahead).toISOString() }) })
+    if (ahead <= PRODUCTION_CLOCK_SKEW_MS) await runProductionStage({ stage: 2, sha: SHA }, f.dependencies)
+    else await assert.rejects(runProductionStage({ stage: 2, sha: SHA }, f.dependencies))
   }
 })

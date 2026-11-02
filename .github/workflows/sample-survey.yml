@@ -9,6 +9,16 @@ on:
         required: false
         type: string
         default: ''
+      resume_run_id:
+        description: '暗号化した途中記録を引き継ぐ失敗実行ID（空欄は新規）'
+        required: false
+        type: string
+        default: ''
+      execution_budget_minutes:
+        description: '今回の起動だけの取得時間上限（空欄は調査設定に従う）'
+        required: false
+        type: string
+        default: ''
       ranks:
         description: 'LPランク（ROOKIE〜MASTER、カンマ区切り。MRのみなら空欄）'
         required: false
@@ -50,9 +60,13 @@ jobs:
     timeout-minutes: ${{ inputs.ranks == '' && inputs.include_mr && 210 || 150 }}
     permissions:
       contents: read
+      actions: read
     outputs:
       artifact_ready: ${{ steps.collect.outputs.artifact_ready }}
     env:
+      SAMPLE_SURVEY_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+      SAMPLE_SURVEY_RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+      SAMPLE_SURVEY_EXECUTION_BUDGET_MINUTES: ${{ inputs.execution_budget_minutes }}
       SAMPLE_SURVEY_RANKS: ${{ inputs.ranks }}
       SAMPLE_SURVEY_RANK_SAMPLE_SIZE: ${{ inputs.rank_sample_size }}
       SAMPLE_SURVEY_INCLUDE_MR: ${{ inputs.include_mr }}
@@ -98,20 +112,42 @@ jobs:
             if (git('rev-parse', '--verify', `${run}:${file}`) !== sourceBlob) throw new Error('Collection workflow changed');
           }
       - name: Verify pinned source and workflow before session use
+        id: source_verified
         env:
           SAMPLE_SURVEY_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
         run: node scripts/lib/sample-survey-production-source.ts
       - name: Install dependencies without project scripts
         run: npm ci --ignore-scripts
       - name: Validate bounded inputs without session
-        run: node --input-type=module -e "import {parseSampleSurveyCloudConfig} from './scripts/collect-sample-survey-cloud.ts'; parseSampleSurveyCloudConfig(process.env);"
+        run: node --input-type=module -e "import {parseSampleSurveyCloudConfig,parseSampleSurveyExecutionBudget} from './scripts/collect-sample-survey-cloud.ts'; parseSampleSurveyExecutionBudget(process.env,parseSampleSurveyCloudConfig(process.env));"
       - name: Test collection and aggregate publication with synthetic data
-        run: node --test scripts/collect-sample-survey-cloud.test.ts scripts/lib/sample-survey-publication.test.ts scripts/lib/sample-survey-runner.test.ts scripts/lib/sample-survey-browser.test.ts scripts/lib/sample-survey-diagnostics.test.ts scripts/lib/sample-survey-production-source.test.ts
+        run: node --test scripts/collect-sample-survey-cloud.test.ts scripts/collect-sample-survey-resume.test.ts scripts/lib/sample-survey-publication.test.ts scripts/lib/sample-survey-runner.test.ts scripts/lib/sample-survey-browser.test.ts scripts/lib/sample-survey-diagnostics.test.ts scripts/lib/sample-survey-production-source.test.ts scripts/lib/sample-survey-cloud-checkpoint.test.ts scripts/prepare-sample-survey-checkpoint.test.ts
+      - name: Download and verify the previous encrypted checkpoint
+        if: inputs.resume_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/prepare-sample-survey-checkpoint.ts
       - name: Collect serial sample with saved session
         id: collect
         env:
           BUCKLER_WEEKLY_SESSION: ${{ secrets.BUCKLER_WEEKLY_SESSION }}
+          SAMPLE_SURVEY_CHECKPOINT_KEY: ${{ secrets.SAMPLE_SURVEY_CHECKPOINT_KEY }}
         run: node scripts/collect-sample-survey-cloud.ts --collect
+      - name: Finalize encrypted progress after collection
+        id: finalize_checkpoint
+        if: always() && steps.source_verified.outcome == 'success' && (steps.collect.outcome == 'success' || steps.collect.outcome == 'failure' || steps.collect.outcome == 'cancelled') && hashFiles('.local/sample-survey-cloud/checkpoint-output/checkpoint.enc.json') != ''
+        run: node scripts/collect-sample-survey-cloud.ts --finalize-checkpoint
+      - name: Save encrypted progress even when collection stopped
+        if: always() && steps.source_verified.outcome == 'success' && steps.finalize_checkpoint.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sample-survey-checkpoint-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .local/sample-survey-cloud/checkpoint-output/checkpoint.enc.json
+            .local/sample-survey-cloud/checkpoint-output/manifest.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload completed aggregate JSON only
         if: success() && steps.collect.outputs.artifact_ready == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
