@@ -2,3 +2,4 @@ instructions/shared/*.md text eol=lf
 scripts/sync-project-rules.mjs text eol=lf
 project-rules.lock.json text eol=lf
 public/data/steam-player-count/**/*.json text eol=lf
+public/data/steam-player-count-games/**/*.json text eol=lf

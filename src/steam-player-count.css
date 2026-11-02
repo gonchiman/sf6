@@ -1,6 +1,6 @@
 .steam-player-count-page { --steam-player-count-series: #657f99; min-width: 0; display: grid; gap: 20px; }
 .steam-player-count-context { display: flex; flex-wrap: wrap; gap: 5px 20px; margin: 0; color: var(--text-muted); font-size: 12px; }
-.steam-player-count-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border: 0; padding: 0; background: transparent; }
+.steam-player-count-filters { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(0, 1fr)); gap: 12px; border: 0; padding: 0; background: transparent; }
 .steam-player-count-filters input, .steam-player-count-filters select { min-width: 0; width: 100%; }
 .steam-player-count-filters input, .steam-player-count-selection select { min-height: 36px; border: 1px solid var(--border-strong); border-radius: 0; padding: 6px 10px; color: var(--text); background: var(--surface); }
 .steam-player-count-filters input:disabled, .steam-player-count-filters select:disabled { color: var(--text-muted); background: var(--surface-soft); }
@@ -46,6 +46,10 @@
 .steam-player-count-table tr > :first-child { white-space: nowrap; }
 .steam-player-count-table .is-unavailable { color: var(--text-muted); }
 .steam-player-count-basis { margin: 0; }
+@media (min-width: 641px) and (max-width: 1000px) {
+  .steam-player-count-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .steam-player-count-game-filter { grid-column: 1 / -1; }
+}
 @media (max-width: 640px) {
   .steam-player-count-page { gap: 14px; }
   .steam-player-count-filters { grid-template-columns: minmax(0, 1fr); }

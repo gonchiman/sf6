@@ -1,17 +1,22 @@
-import type { SteamPlayerCountDateRange, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
+import type { SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
 import { getDefaultSteamPlayerCountRange, getSteamPlayerCountJstDate, getSteamPlayerCountUtcDates,
   parseSteamPlayerCountDateRange, parseSteamPlayerCountDay, parseSteamPlayerCountDayDescriptor, parseSteamPlayerCountManifest } from './steamPlayerCount.ts'
 import type { PublishedDataFeedOptions, PublishedDataPublication } from './publishedDataFeed.ts'
+import { DEFAULT_STEAM_PLAYER_COUNT_GAME, getSteamPlayerCountGame } from './steamPlayerCountGames.ts'
 
 export type SteamPlayerCountPublication = PublishedDataPublication<SteamPlayerCountManifest>
 export const STEAM_PLAYER_COUNT_HISTORY_BASE_URL = 'https://raw.githubusercontent.com/gonchiman/sf6/refs/heads/codex/steam-player-count-history/public/'
+const historyBranchBaseUrl = 'https://raw.githubusercontent.com/gonchiman/sf6/refs/heads/codex/steam-player-count-history/'
 const trailingSlash = (value: string): string => value.endsWith('/') ? value : `${value}/`
 
-export function createSteamPlayerCountFeed(options: PublishedDataFeedOptions = {}) {
+export interface SteamPlayerCountFeedOptions extends PublishedDataFeedOptions { appId?: SteamPlayerCountAppId }
+
+export function createSteamPlayerCountFeed(options: SteamPlayerCountFeedOptions = {}) {
+  const game = getSteamPlayerCountGame(options.appId ?? DEFAULT_STEAM_PLAYER_COUNT_GAME.appId)
   const fetchData = options.fetch ?? ((...args: Parameters<typeof fetch>) => globalThis.fetch(...args))
   const bases = {
-    history: trailingSlash(options.historyBaseUrl ?? STEAM_PLAYER_COUNT_HISTORY_BASE_URL),
-    bundled: trailingSlash(options.localBaseUrl ?? `${trailingSlash(import.meta.env?.BASE_URL ?? '/')}data/steam-player-count/`),
+    history: trailingSlash(options.historyBaseUrl ?? `${historyBranchBaseUrl}${game.historyPath}`),
+    bundled: trailingSlash(options.localBaseUrl ?? `${trailingSlash(import.meta.env?.BASE_URL ?? '/')}${game.bundledPath}`),
   }
   const timeoutMs = options.timeoutMs ?? 10_000
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new Error('読込の制限時間が不正です。')
@@ -38,7 +43,7 @@ export function createSteamPlayerCountFeed(options: PublishedDataFeedOptions = {
 
   function validatePublication(publication: SteamPlayerCountPublication): SteamPlayerCountManifest {
     if (!['history', 'bundled'].includes(publication.source) || publication.baseUrl !== bases[publication.source]) throw new Error('Steam同時接続数の取得元が一致しません。')
-    return parseSteamPlayerCountManifest(publication.manifest)
+    return parseSteamPlayerCountManifest(publication.manifest, game.appId)
   }
 
   async function loadDay(publication: SteamPlayerCountPublication, descriptor: SteamPlayerCountDayDescriptor): Promise<SteamPlayerCountDay> {
@@ -52,7 +57,7 @@ export function createSteamPlayerCountFeed(options: PublishedDataFeedOptions = {
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))
       const sha256 = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
       if (sha256 !== expected.sha256) throw new Error('Steam同時接続数の日別ファイルのハッシュが一致しません。')
-      return parseSteamPlayerCountDay(JSON.parse(raw) as unknown, expected)
+      return parseSteamPlayerCountDay(JSON.parse(raw) as unknown, expected, game.appId)
     }).catch(error => {
       if (dayRequests.get(key) === request) dayRequests.delete(key)
       throw error
@@ -63,7 +68,7 @@ export function createSteamPlayerCountFeed(options: PublishedDataFeedOptions = {
 
   async function readPublication(source: SteamPlayerCountPublication['source']): Promise<SteamPlayerCountPublication> {
     const baseUrl = bases[source]
-    const manifest = parseSteamPlayerCountManifest(JSON.parse(await readText(`${baseUrl}index.json`, true)) as unknown)
+    const manifest = parseSteamPlayerCountManifest(JSON.parse(await readText(`${baseUrl}index.json`, true)) as unknown, game.appId)
     const publication = { manifest, source, baseUrl }
     const latest = [...manifest.days].sort((a, b) => b.date.localeCompare(a.date))[0]
     if (latest) await loadDay(publication, latest)
@@ -101,6 +106,7 @@ export type SteamPlayerCountFeed = Pick<ReturnType<typeof createSteamPlayerCount
 /** An older CDN response or bundled fallback must not erase successful observations. */
 export function shouldAcceptSteamPlayerCountPublication(previous: SteamPlayerCountPublication | null, next: SteamPlayerCountPublication): boolean {
   if (!previous) return true
+  if (previous.manifest.appId !== next.manifest.appId || previous.manifest.sourceUrl !== next.manifest.sourceUrl) return false
   if (previous.source === 'history' && next.source === 'bundled') return false
   if (previous.source === next.source && next.manifest.generatedAt < previous.manifest.generatedAt) return false
   const days = new Map(next.manifest.days.map(day => [day.date, day]))

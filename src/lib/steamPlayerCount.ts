@@ -1,7 +1,8 @@
 import type {
-  SteamPlayerCountDateRange, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountDayType,
+  SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountDayType,
   SteamPlayerCountHourlyRow, SteamPlayerCountManifest, SteamPlayerCountObservation,
 } from '../types/steamPlayerCount.ts'
+import { getSteamPlayerCountGame } from './steamPlayerCountGames.ts'
 
 export const STEAM_PLAYER_COUNT_APP_ID = 1364780
 export const STEAM_PLAYER_COUNT_SCHEMA_VERSION = 1
@@ -43,8 +44,10 @@ function array(value: unknown, field: string): unknown[] {
 function compareObservations(a: SteamPlayerCountObservation, b: SteamPlayerCountObservation): number {
   return a.observedAt.localeCompare(b.observedAt) || a.id.localeCompare(b.id)
 }
-function version(input: Record<string, unknown>): void {
-  if (input.schemaVersion !== STEAM_PLAYER_COUNT_SCHEMA_VERSION || input.appId !== STEAM_PLAYER_COUNT_APP_ID) invalid('schemaVersion/appId')
+function version(input: Record<string, unknown>, expectedAppId: SteamPlayerCountAppId) {
+  const game = getSteamPlayerCountGame(expectedAppId)
+  if (input.schemaVersion !== STEAM_PLAYER_COUNT_SCHEMA_VERSION || input.appId !== game.appId) invalid('schemaVersion/appId')
+  return game
 }
 
 export function parseSteamPlayerCountObservation(value: unknown): SteamPlayerCountObservation {
@@ -70,9 +73,10 @@ export function parseSteamPlayerCountDayDescriptor(value: unknown): SteamPlayerC
   return { date, path: input.path as string, sha256, observationCount: integer(input.observationCount, 'observationCount', 1), firstObservedAt, lastObservedAt }
 }
 
-export function parseSteamPlayerCountDay(value: unknown, expected?: SteamPlayerCountDayDescriptor): SteamPlayerCountDay {
+export function parseSteamPlayerCountDay(value: unknown, expected?: SteamPlayerCountDayDescriptor,
+  expectedAppId: SteamPlayerCountAppId = STEAM_PLAYER_COUNT_APP_ID): SteamPlayerCountDay {
   const input = record(value, ['schemaVersion', 'appId', 'date', 'observations'], 'day')
-  version(input)
+  const game = version(input, expectedAppId)
   const date = parseSteamPlayerCountDate(input.date)
   const observations = array(input.observations, 'observations').map(parseSteamPlayerCountObservation)
   if (!observations.length || observations.some(item => item.observedAt.slice(0, 10) !== date)
@@ -83,17 +87,17 @@ export function parseSteamPlayerCountDay(value: unknown, expected?: SteamPlayerC
     if (descriptor.date !== date || descriptor.observationCount !== observations.length
       || descriptor.firstObservedAt !== observations[0].observedAt || descriptor.lastObservedAt !== observations.at(-1)!.observedAt) invalid('day descriptor mismatch')
   }
-  return { schemaVersion: 1, appId: STEAM_PLAYER_COUNT_APP_ID, date, observations }
+  return { schemaVersion: 1, appId: game.appId, date, observations }
 }
 
-export function parseSteamPlayerCountManifest(value: unknown): SteamPlayerCountManifest {
+export function parseSteamPlayerCountManifest(value: unknown, expectedAppId: SteamPlayerCountAppId = STEAM_PLAYER_COUNT_APP_ID): SteamPlayerCountManifest {
   const input = record(value, ['schemaVersion', 'appId', 'sourceUrl', 'generatedAt', 'days'], 'manifest')
-  version(input)
-  if (input.sourceUrl !== STEAM_PLAYER_COUNT_SOURCE_URL) invalid('sourceUrl')
+  const game = version(input, expectedAppId)
+  if (input.sourceUrl !== game.sourceUrl) invalid('sourceUrl')
   const generatedAt = timestamp(input.generatedAt, 'generatedAt')
   const days = array(input.days, 'days').map(parseSteamPlayerCountDayDescriptor)
   if (new Set(days.map(day => day.date)).size !== days.length || days.some(day => day.lastObservedAt > generatedAt)) invalid('days: duplicate date or future observation')
-  return { schemaVersion: 1, appId: STEAM_PLAYER_COUNT_APP_ID, sourceUrl: STEAM_PLAYER_COUNT_SOURCE_URL, generatedAt, days }
+  return { schemaVersion: 1, appId: game.appId, sourceUrl: game.sourceUrl, generatedAt, days }
 }
 
 export function parseSteamPlayerCountDateRange(range: SteamPlayerCountDateRange): SteamPlayerCountDateRange {

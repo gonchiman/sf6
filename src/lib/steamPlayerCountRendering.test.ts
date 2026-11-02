@@ -4,17 +4,21 @@ import { fileURLToPath } from 'node:url'
 import { createElement, type ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer, type ViteDevServer } from 'vite'
-import type { SteamPlayerCountHourlyRow, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
+import { STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
+import type { SteamPlayerCountAppId, SteamPlayerCountHourlyRow, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
 
 let server: ViteDevServer
 let Hourly: ComponentType<{ rows: SteamPlayerCountHourlyRow[] }>
 let Trend: ComponentType<{ observations: SteamPlayerCountObservation[] }>
+let Page: ComponentType<{ initialAppId?: SteamPlayerCountAppId }>
 before(async () => {
   server = await createServer({ root: fileURLToPath(new URL('../../', import.meta.url)), configFile: false,
     server: { middlewareMode: true, watch: null }, appType: 'custom', logLevel: 'error', optimizeDeps: { noDiscovery: true, include: [] } })
   const charts = await server.ssrLoadModule('/src/components/SteamPlayerCountCharts.tsx')
   Hourly = charts.SteamPlayerCountHourlyChart
   Trend = charts.SteamPlayerCountTrendChart
+  const page = await server.ssrLoadModule('/src/components/SteamPlayerCountPage.tsx')
+  Page = page.SteamPlayerCountPage
 })
 after(async () => { await server?.close() })
 const observation = (minute: number, playerCount = 20000): SteamPlayerCountObservation => ({
@@ -22,6 +26,35 @@ const observation = (minute: number, playerCount = 20000): SteamPlayerCountObser
   requestStartedAt: new Date(Date.UTC(2026, 9, 31, 0, minute)).toISOString(), playerCount, runId: null, runAttempt: null,
 })
 const renderTrend = (observations: SteamPlayerCountObservation[]) => renderToStaticMarkup(createElement(Trend, { observations }))
+
+test('the page defaults to SF6 with all five game options available during loading', () => {
+  const html = renderToStaticMarkup(createElement(Page))
+  assert.match(html, /data-steam-app-id="1364780"/)
+  const selector = html.match(/<select[^>]*aria-label="ゲーム"[^>]*>[\s\S]*?<\/select>/)?.[0]
+  assert.ok(selector)
+  assert.doesNotMatch(selector, /disabled/)
+  assert.equal((selector.match(/<option /g) ?? []).length, 5)
+  assert.match(selector, /<option value="1364780" selected="">Street Fighter 6<\/option>/)
+  assert.match(html, /Street Fighter 6の観測データを読み込み中/)
+  assert.match(html, /aria-label="開始日"/)
+  assert.match(html, /aria-label="終了日"/)
+  assert.match(html, /aria-label="曜日"/)
+})
+
+test('every selected game has its own source and loading state without another game’s counts', () => {
+  for (const game of STEAM_PLAYER_COUNT_GAMES) {
+    const html = renderToStaticMarkup(createElement(Page, { initialAppId: game.appId }))
+    assert.ok(html.includes(`data-steam-app-id="${game.appId}"`))
+    assert.ok(html.includes(`href="${game.sourceUrl}"`))
+    assert.ok(html.includes(`ゲーム：${game.label}`))
+    assert.ok(html.includes(`${game.label}の観測データを読み込み中`))
+    assert.ok(html.includes(`<option value="${game.appId}" selected="">`))
+    assert.doesNotMatch(html, /<strong>\d[\d,]* 人<\/strong>|最終観測|公開日時/)
+    const selector = html.match(/<select[^>]*aria-label="ゲーム"[^>]*>/)?.[0]
+    assert.ok(selector)
+    assert.doesNotMatch(selector, /disabled/)
+  }
+})
 
 test('unavailable hourly means stay missing while a verified zero remains visible', () => {
   const rows = Array.from({ length: 24 }, (_, hour) => ({ hour, mean: null, validDays: 0,

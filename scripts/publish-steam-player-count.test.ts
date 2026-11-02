@@ -3,8 +3,11 @@ import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, readdir, rm, writeFile, symlink, mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { publishSteamPlayerCount, seedSteamPlayerCountHistory, replaceSteamPlayerCountFile } from './publish-steam-player-count.ts'
+import { publishSteamPlayerCount, publishSteamPlayerCountBatch, seedSteamPlayerCountHistory, replaceSteamPlayerCountFile,
+  validateSteamPlayerCountHistory } from './publish-steam-player-count.ts'
 import { steamSha256 } from './lib/steam-player-count-files.ts'
+import { collectSteamPlayerCounts } from './collect-steam-player-count.ts'
+import { getSteamPlayerCountGame } from '../src/lib/steamPlayerCountGames.ts'
 
 function observation(id = 'a', observedAt = '2026-10-31T10:07:12.000Z', playerCount = 10) {
   return { id, requestStartedAt: observedAt, observedAt, playerCount, runId: null, runAttempt: null }
@@ -152,4 +155,44 @@ test('bootstrap rejects a bundled hash mismatch before creating the new history'
   await writeFile(join(f.output, 'days/2026-10-31.json'), '{}')
   await assert.rejects(seedSteamPlayerCountHistory(f.output, join(f.root, 'history/public')), /ハッシュ/)
   assert.ok(!(await readdir(f.root)).includes('history'))
+})
+
+test('single-game publishing requires the matching capture and preserves existing legacy SF6 history', async t => {
+  const f = await fixture(t), game = getSteamPlayerCountGame(1778820)
+  await f.save(observation('legacy-sf6')); await f.publish()
+  const before = await readFile(join(f.output, 'index.json'), 'utf8'), target = join(f.root, game.historyPath)
+  await assert.rejects(publishSteamPlayerCount(f.input, target, generatedAt, { appId: game.appId }), /App ID/)
+  const capture = { schemaVersion: 1, appId: game.appId, sourceUrl: game.sourceUrl, observation: observation('tekken') }
+  await f.save(capture)
+  await assert.rejects(f.publish())
+  assert.equal(await readFile(join(f.output, 'index.json'), 'utf8'), before)
+  await publishSteamPlayerCount(f.input, target, generatedAt, { appId: game.appId })
+  assert.deepEqual(await validateSteamPlayerCountHistory(target, game.appId), { observations: 1, days: 1 })
+  await assert.rejects(validateSteamPlayerCountHistory(target))
+  await assert.rejects(seedSteamPlayerCountHistory(f.output, join(f.root, 'wrong-seed'), game.appId))
+})
+
+test('batch appends successful games independently, keeps a failed game byte-for-byte, and replays idempotently', async t => {
+  const f = await fixture(t), game = getSteamPlayerCountGame(1778820)
+  await f.save(observation('legacy-sf6')); await f.publish()
+  await f.save({ schemaVersion: 1, appId: game.appId, sourceUrl: game.sourceUrl, observation: observation('previous-tekken') })
+  await publishSteamPlayerCount(f.input, join(f.root, game.historyPath), generatedAt, { appId: game.appId })
+  const before = await readFile(join(f.root, game.historyPath, 'index.json'), 'utf8')
+  const batch = await collectSteamPlayerCounts({ env: {}, now: () => new Date('2026-11-01T12:00:00.000Z'),
+    fetch: async url => String(url).includes('appid=1778820') ? new Response('', { status: 403 }) : Response.json({ response: { result: 1, player_count: 0 } }) })
+  const batchPath = join(f.root, 'batch.json')
+  await writeFile(batchPath, JSON.stringify(batch))
+  const result = await publishSteamPlayerCountBatch(batchPath, f.root, generatedAt)
+  assert.deepEqual(result.failedGames, [1778820])
+  assert.equal(result.publishedGames.length, 4)
+  assert.equal(await readFile(join(f.root, game.historyPath, 'index.json'), 'utf8'), before)
+  assert.deepEqual(await validateSteamPlayerCountHistory(f.output), { observations: 2, days: 2 })
+  assert.deepEqual(await validateSteamPlayerCountHistory(join(f.root, 'games/ggst'), 1384160), { observations: 1, days: 1 })
+  await publishSteamPlayerCountBatch(batchPath, f.root, '2026-11-03T00:00:00.000Z')
+  assert.deepEqual(await validateSteamPlayerCountHistory(f.output), { observations: 2, days: 2 })
+  const mixed = structuredClone(batch)
+  mixed.results[0] = { ...mixed.results[0], appId: 1498570 }
+  await writeFile(batchPath, JSON.stringify(mixed))
+  await assert.rejects(publishSteamPlayerCountBatch(batchPath, f.root, generatedAt))
+  assert.deepEqual(await validateSteamPlayerCountHistory(f.output), { observations: 2, days: 2 })
 })

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { createSteamPlayerCountController, createSteamPlayerCountFeed, shouldAcceptSteamPlayerCountPublication, type SteamPlayerCountPublication } from './steamPlayerCountFeed.ts'
+import { createSteamPlayerCountController, createSteamPlayerCountFeed, shouldAcceptSteamPlayerCountPublication,
+  STEAM_PLAYER_COUNT_HISTORY_BASE_URL, type SteamPlayerCountPublication } from './steamPlayerCountFeed.ts'
 import { STEAM_PLAYER_COUNT_APP_ID, STEAM_PLAYER_COUNT_SOURCE_URL } from './steamPlayerCount.ts'
-import type { SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
+import { getSteamPlayerCountGame, STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
+import type { SteamPlayerCountAppId, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
 
 const historyBaseUrl = 'https://history.example/public/', localBaseUrl = '/sf6/data/steam-player-count/'
 const raw = (value: unknown): string => JSON.stringify(value)
@@ -26,6 +28,112 @@ function publication(days = [day()], source: 'history' | 'bundled' = 'history', 
   return { manifest: manifest(days, generatedAt), source, baseUrl: source === 'history' ? historyBaseUrl : localBaseUrl }
 }
 function createFeed(fetchData: typeof fetch, timeoutMs = 500) { return createSteamPlayerCountFeed({ fetch: fetchData, historyBaseUrl, localBaseUrl, timeoutMs }) }
+
+function gameDay(appId: SteamPlayerCountAppId): SteamPlayerCountDay { return { ...day(), appId } }
+function gameManifest(appId: SteamPlayerCountAppId, values = [gameDay(appId)]): SteamPlayerCountManifest {
+  return { ...manifest(values), appId, sourceUrl: getSteamPlayerCountGame(appId).sourceUrl }
+}
+
+test('default feed URLs preserve SF6 history and isolate the other four game directories', async () => {
+  for (const game of STEAM_PLAYER_COUNT_GAMES) {
+    const urls: string[] = [], value = gameDay(game.appId)
+    const expectedBase = `https://raw.githubusercontent.com/gonchiman/sf6/refs/heads/codex/steam-player-count-history/${game.historyPath}/`
+    const feed = createSteamPlayerCountFeed({ appId: game.appId, fetch: async input => {
+      const url = String(input); urls.push(url)
+      return json(url.endsWith('index.json') ? gameManifest(game.appId) : value)
+    } })
+    const result = await feed.loadPublication()
+    assert.equal(result.baseUrl, expectedBase)
+    assert.equal(result.manifest.appId, game.appId)
+    assert.equal(urls[0], `${expectedBase}index.json`)
+    assert.ok(urls[1].startsWith(`${expectedBase}days/`))
+    if (game.appId === STEAM_PLAYER_COUNT_APP_ID) assert.equal(result.baseUrl, STEAM_PLAYER_COUNT_HISTORY_BASE_URL)
+
+    const fallbackUrls: string[] = []
+    const fallback = createSteamPlayerCountFeed({ appId: game.appId, fetch: async input => {
+      const url = String(input); fallbackUrls.push(url)
+      return url.startsWith('https:') ? unavailable() : json(gameManifest(game.appId, []))
+    } })
+    assert.equal((await fallback.loadPublication()).baseUrl, `/${game.bundledPath}/`)
+    assert.equal(fallbackUrls[1], `/${game.bundledPath}/index.json`)
+  }
+})
+
+test('explicit feed bases are exact directory overrides and never receive extra game paths', async () => {
+  const appId = 1778820, urls: string[] = []
+  const feed = createSteamPlayerCountFeed({ appId, historyBaseUrl: 'https://fixtures.example/history', localBaseUrl: '/fixtures/bundle', fetch: async input => {
+    const url = String(input); urls.push(url)
+    return url.startsWith('https:') ? unavailable() : json(gameManifest(appId, []))
+  } })
+  assert.equal((await feed.loadPublication()).baseUrl, '/fixtures/bundle/')
+  assert.deepEqual(urls, ['https://fixtures.example/history/index.json', '/fixtures/bundle/index.json'])
+})
+
+test('separate game feeds never share pending publications, observations, or day caches even with identical fixture bases', async () => {
+  const calls = new Map<SteamPlayerCountAppId, number>()
+  const feeds = [1364780, 1778820] as const
+  const results = await Promise.all(feeds.map(async appId => {
+    const value = gameDay(appId)
+    value.observations = value.observations.map(item => ({ ...item, playerCount: appId === 1364780 ? 100 : 200 }))
+    const feed = createSteamPlayerCountFeed({ appId, historyBaseUrl, localBaseUrl, fetch: async input => {
+      calls.set(appId, (calls.get(appId) ?? 0) + 1)
+      return json(String(input).endsWith('index.json') ? gameManifest(appId, [value]) : value)
+    } })
+    const published = await feed.loadPublication()
+    const first = await feed.loadRange(published, { from: value.date, to: value.date })
+    const second = await feed.loadRange(published, { from: value.date, to: value.date })
+    assert.deepEqual(second, first)
+    assert.equal(calls.get(appId), 2)
+    return { feed, published, values: first }
+  }))
+  assert.equal(results[0].values[0].playerCount, 100)
+  assert.equal(results[1].values[0].playerCount, 200)
+  const before = [...calls.values()]
+  await assert.rejects(results[1].feed.loadRange(results[0].published, { from: '2026-10-31', to: '2026-10-31' }), /appId/)
+  assert.deepEqual([...calls.values()], before)
+})
+
+test('a wrong game manifest, source URL, or day payload fails rather than being relabeled', async () => {
+  const appId = 1778820
+  for (const failure of ['manifest-app', 'source', 'day-app'] as const) {
+    const sf6 = day(), index = gameManifest(appId)
+    if (failure === 'manifest-app') index.appId = STEAM_PLAYER_COUNT_APP_ID
+    if (failure === 'source') index.sourceUrl = STEAM_PLAYER_COUNT_SOURCE_URL
+    if (failure === 'day-app') index.days = [descriptor(sf6)]
+    const feed = createSteamPlayerCountFeed({ appId, historyBaseUrl, localBaseUrl, fetch: async input => {
+      const url = String(input)
+      if (url.startsWith(localBaseUrl)) return unavailable()
+      return json(url.endsWith('index.json') ? index : sf6)
+    } })
+    await assert.rejects(feed.loadPublication())
+  }
+})
+
+test('publication acceptance never treats a different title or source as an append', () => {
+  const previous = publication()
+  const next = { ...previous, manifest: gameManifest(1778820) }
+  assert.equal(shouldAcceptSteamPlayerCountPublication(previous, next), false)
+  assert.equal(shouldAcceptSteamPlayerCountPublication(previous, { ...previous,
+    manifest: { ...previous.manifest, sourceUrl: getSteamPlayerCountGame(1778820).sourceUrl } }), false)
+})
+
+test('disposing an in-flight game controller prevents its late data from replacing a newly selected game', async () => {
+  let release: () => void = () => {}
+  const pending = new Promise<void>(resolve => { release = resolve })
+  const received: SteamPlayerCountPublication[] = []
+  const sf6 = createSteamPlayerCountController({ loadPublication: async () => { await pending; return publication() },
+    loadRange: async () => day().observations }, state => { if (state.publication) received.push(state.publication) }, { from: '2026-10-31', to: '2026-10-31' })
+  const oldRequest = sf6.refresh()
+  sf6.dispose()
+  const tekkenPublication = { ...publication(), manifest: gameManifest(1778820) }
+  const tekken = createSteamPlayerCountController({ loadPublication: async () => tekkenPublication,
+    loadRange: async () => gameDay(1778820).observations }, state => { if (state.publication) received.push(state.publication) }, { from: '2026-10-31', to: '2026-10-31' })
+  await tekken.refresh()
+  release()
+  await oldRequest
+  assert.deepEqual(received.map(item => item.manifest.appId), [1778820])
+  assert.equal(tekken.getState().publication?.manifest.appId, 1778820)
+})
 
 test('history loads deduplicate requests, validate SHA bytes and retain immutable day caches', async () => {
   const value = day(), requests: { url: string; options?: RequestInit }[] = []

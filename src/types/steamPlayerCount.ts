@@ -1,3 +1,14 @@
+export type SteamPlayerCountAppId = 1364780 | 1778820 | 1384160 | 2157560 | 1498570
+
+export interface SteamPlayerCountGame {
+  readonly key: 'sf6' | 'tekken-8' | 'ggst' | 'gbvsr' | 'kof-xv'
+  readonly appId: SteamPlayerCountAppId
+  readonly label: string
+  readonly sourceUrl: string
+  readonly historyPath: string
+  readonly bundledPath: string
+}
+
 export interface SteamPlayerCountObservation {
   id: string
   requestStartedAt: string
@@ -9,7 +20,7 @@ export interface SteamPlayerCountObservation {
 
 export interface SteamPlayerCountDay {
   schemaVersion: 1
-  appId: 1364780
+  appId: SteamPlayerCountAppId
   date: string
   observations: SteamPlayerCountObservation[]
 }
@@ -25,7 +36,7 @@ export interface SteamPlayerCountDayDescriptor {
 
 export interface SteamPlayerCountManifest {
   schemaVersion: 1
-  appId: 1364780
+  appId: SteamPlayerCountAppId
   sourceUrl: string
   generatedAt: string
   days: SteamPlayerCountDayDescriptor[]

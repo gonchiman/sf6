@@ -5,9 +5,10 @@ import { pathToFileURL } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
   parseSteamPlayerCountObservation, parseSteamPlayerCountDay, parseSteamPlayerCountManifest,
-  STEAM_PLAYER_COUNT_APP_ID, STEAM_PLAYER_COUNT_SOURCE_URL,
 } from '../src/lib/steamPlayerCount.ts'
-import type { SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../src/types/steamPlayerCount.ts'
+import { DEFAULT_STEAM_PLAYER_COUNT_GAME, getSteamPlayerCountGame } from '../src/lib/steamPlayerCountGames.ts'
+import type { SteamPlayerCountAppId, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../src/types/steamPlayerCount.ts'
+import { parseSteamPlayerCountBatch, parseSteamPlayerCountCapture } from './collect-steam-player-count.ts'
 import { checkSteamParents, parseSteamJson, readSteamBytes, steamFileInfo, steamJson, steamPathWithin, steamSha256 } from './lib/steam-player-count-files.ts'
 
 interface History {
@@ -29,7 +30,8 @@ function register(history: History, observation: SteamPlayerCountObservation): b
   return !previous
 }
 
-async function loadHistory(directory: string): Promise<History> {
+async function loadHistory(directory: string, expectedAppId: SteamPlayerCountAppId = DEFAULT_STEAM_PLAYER_COUNT_GAME.appId): Promise<History> {
+  getSteamPlayerCountGame(expectedAppId)
   const history: History = { manifest: null, days: new Map(), byId: new Map(), byRun: new Map() }
   await checkSteamParents(directory)
   if (!(await steamFileInfo(directory))) return history
@@ -37,7 +39,7 @@ async function loadHistory(directory: string): Promise<History> {
   if (entries.length === 0) return history
   if (entries.some(entry => entry.isSymbolicLink() || (entry.name === 'index.json' ? !entry.isFile()
     : entry.name === 'days' ? !entry.isDirectory() : true))) throw new Error('Steam履歴に未許可のファイルがあります。')
-  history.manifest = parseSteamPlayerCountManifest(parseSteamJson(await readSteamBytes(resolve(directory, 'index.json'))))
+  history.manifest = parseSteamPlayerCountManifest(parseSteamJson(await readSteamBytes(resolve(directory, 'index.json'))), expectedAppId)
   const dayRoot = resolve(directory, 'days')
   const dayFiles = (await steamFileInfo(dayRoot)) ? await readdir(dayRoot, { withFileTypes: true }) : []
   const allowed = new Set(history.manifest.days.map(day => `${day.date}.json`))
@@ -47,7 +49,7 @@ async function loadHistory(directory: string): Promise<History> {
   for (const descriptor of history.manifest.days) {
     const bytes = await readSteamBytes(resolve(directory, descriptor.path))
     if (steamSha256(bytes) !== descriptor.sha256) throw new Error('Steam履歴のハッシュが一致しません。')
-    const day = parseSteamPlayerCountDay(parseSteamJson(bytes), descriptor)
+    const day = parseSteamPlayerCountDay(parseSteamJson(bytes), descriptor, expectedAppId)
     history.days.set(day.date, day)
     for (const observation of day.observations) {
       if (!register(history, observation)) throw new Error('Steam履歴に重複した観測があります。')
@@ -56,8 +58,9 @@ async function loadHistory(directory: string): Promise<History> {
   return history
 }
 
-export async function validateSteamPlayerCountHistory(directory: string): Promise<{ observations: number; days: number }> {
-  const history = await loadHistory(resolve(directory))
+export async function validateSteamPlayerCountHistory(directory: string,
+  expectedAppId: SteamPlayerCountAppId = DEFAULT_STEAM_PLAYER_COUNT_GAME.appId): Promise<{ observations: number; days: number }> {
+  const history = await loadHistory(resolve(directory), expectedAppId)
   if (!history.manifest) throw new Error('Steam履歴のindex.jsonがありません。')
   return { observations: history.byId.size, days: history.days.size }
 }
@@ -77,12 +80,13 @@ export async function replaceSteamPlayerCountFile(from: string, to: string): Pro
 /** Seed a new isolated history from this commit's validated bundled publication.
  * Existing history is never seeded again, and every byte/hash is preserved.
  */
-export async function seedSteamPlayerCountHistory(input: string, output: string): Promise<void> {
+export async function seedSteamPlayerCountHistory(input: string, output: string,
+  expectedAppId: SteamPlayerCountAppId = DEFAULT_STEAM_PLAYER_COUNT_GAME.appId): Promise<void> {
   const source = resolve(input), destination = resolve(output)
   if (source === destination || steamPathWithin(source, destination) || steamPathWithin(destination, source)) {
     throw new Error('Steam履歴の初期化先が不正です。')
   }
-  const bundled = await loadHistory(source)
+  const bundled = await loadHistory(source, expectedAppId)
   if (!bundled.manifest) throw new Error('同梱Steam履歴を確認できません。')
   await checkSteamParents(destination)
   if (await steamFileInfo(destination) && (await readdir(destination)).length) throw new Error('既存Steam履歴を初期化できません。')
@@ -91,7 +95,7 @@ export async function seedSteamPlayerCountHistory(input: string, output: string)
     await copyFile(resolve(source, descriptor.path), resolve(destination, descriptor.path), constants.COPYFILE_EXCL)
   }
   await copyFile(resolve(source, 'index.json'), resolve(destination, 'index.json'), constants.COPYFILE_EXCL)
-  await loadHistory(destination)
+  await loadHistory(destination, expectedAppId)
 }
 
 /** Append one immutable observation. Replace only the affected day, then the index.
@@ -99,10 +103,14 @@ export async function seedSteamPlayerCountHistory(input: string, output: string)
  * as a complete publication. A failed index replacement restores the old day.
  */
 export async function publishSteamPlayerCount(input: string, output: string, generatedAt = new Date().toISOString(),
-  options: { replace?: (from: string, to: string) => Promise<void> } = {}): Promise<{
+  options: { appId?: SteamPlayerCountAppId; replace?: (from: string, to: string) => Promise<void> } = {}): Promise<{
   changed: boolean; observations: number; days: number
 }> {
-  const observation = parseSteamPlayerCountObservation(parseSteamJson(await readSteamBytes(resolve(input))))
+  const game = getSteamPlayerCountGame(options.appId ?? DEFAULT_STEAM_PLAYER_COUNT_GAME.appId)
+  const value = parseSteamJson(await readSteamBytes(resolve(input)))
+  const isCapture = !!value && typeof value === 'object' && 'observation' in value
+  if (!isCapture && game.appId !== DEFAULT_STEAM_PLAYER_COUNT_GAME.appId) throw new Error('SF6以外の観測にはApp ID付き取得データが必要です。')
+  const observation = isCapture ? parseSteamPlayerCountCapture(value, game.appId).observation : parseSteamPlayerCountObservation(value)
   const directory = resolve(output), parent = dirname(directory)
   if (!steamPathWithin(parent, directory) || steamPathWithin(directory, resolve(input))) throw new Error('Steam履歴の入力・保存先が不正です。')
   await checkSteamParents(directory)
@@ -117,7 +125,7 @@ export async function publishSteamPlayerCount(input: string, output: string, gen
   try {
     hadDirectory = !!(await steamFileInfo(directory))
     hadDayRoot = !!(await steamFileInfo(dayRoot))
-    const history = await loadHistory(directory)
+    const history = await loadHistory(directory, game.appId)
     if (!register(history, observation)) return { changed: false, observations: history.byId.size, days: history.days.size }
     if (!Number.isFinite(Date.parse(generatedAt)) || new Date(generatedAt).toISOString() !== generatedAt
       || Date.parse(observation.observedAt) > Date.parse(generatedAt)
@@ -127,7 +135,7 @@ export async function publishSteamPlayerCount(input: string, output: string, gen
     const date = observation.observedAt.slice(0, 10)
     const observations = [...(history.days.get(date)?.observations ?? []), observation]
       .sort((a, b) => a.observedAt.localeCompare(b.observedAt) || a.id.localeCompare(b.id))
-    const day = parseSteamPlayerCountDay({ schemaVersion: 1, appId: STEAM_PLAYER_COUNT_APP_ID, date, observations })
+    const day = parseSteamPlayerCountDay({ schemaVersion: 1, appId: game.appId, date, observations }, undefined, game.appId)
     const text = steamJson(day)
     const descriptor: SteamPlayerCountDayDescriptor = {
       date, path: `days/${date}.json`, sha256: steamSha256(text), observationCount: observations.length,
@@ -135,8 +143,8 @@ export async function publishSteamPlayerCount(input: string, output: string, gen
     }
     const descriptors = [...(history.manifest?.days ?? []).filter(item => item.date !== date), descriptor]
       .sort((a, b) => a.date.localeCompare(b.date))
-    const manifest = parseSteamPlayerCountManifest({ schemaVersion: 1, appId: STEAM_PLAYER_COUNT_APP_ID,
-      sourceUrl: STEAM_PLAYER_COUNT_SOURCE_URL, generatedAt, days: descriptors })
+    const manifest = parseSteamPlayerCountManifest({ schemaVersion: 1, appId: game.appId,
+      sourceUrl: game.sourceUrl, generatedAt, days: descriptors }, game.appId)
     work = await mkdtemp(resolve(parent, '.steam-publication-'))
     const stagedDay = resolve(work, 'day.json'), stagedIndex = resolve(work, 'index.json')
     changedPath = resolve(directory, descriptor.path)
@@ -173,13 +181,45 @@ export async function publishSteamPlayerCount(input: string, output: string, gen
   }
 }
 
+/** Publish successful games to their fixed, separate history directories. API failures
+ * have no observation file and never erase or zero an existing game's history.
+ */
+export async function publishSteamPlayerCountBatch(input: string, historyRoot: string, generatedAt = new Date().toISOString()): Promise<{
+  publishedGames: SteamPlayerCountAppId[]; failedGames: SteamPlayerCountAppId[]
+}> {
+  const batch = parseSteamPlayerCountBatch(parseSteamJson(await readSteamBytes(resolve(input))))
+  const root = resolve(historyRoot), parent = dirname(root)
+  await checkSteamParents(root)
+  await mkdir(parent, { recursive: true })
+  const work = await mkdtemp(resolve(parent, '.steam-batch-input-'))
+  const publishedGames: SteamPlayerCountAppId[] = [], failedGames: SteamPlayerCountAppId[] = []
+  try {
+    for (const result of batch.results) {
+      if (result.status === 'failed') { failedGames.push(result.appId); continue }
+      const game = getSteamPlayerCountGame(result.appId), capturePath = resolve(work, `${game.appId}.json`)
+      await writeFile(capturePath, steamJson(result.capture), { flag: 'wx', mode: 0o600 })
+      await publishSteamPlayerCount(capturePath, resolve(root, game.historyPath), generatedAt, { appId: game.appId })
+      publishedGames.push(game.appId)
+    }
+    return { publishedGames, failedGames }
+  } finally {
+    if (steamPathWithin(parent, work)) await rm(work, { recursive: true, force: true })
+  }
+}
+
 export async function main(args = process.argv.slice(2)): Promise<void> {
   if (args.length === 1 && args[0] === '--help') {
-    console.log('node scripts/publish-steam-player-count.ts --input <observation.json> --output <履歴のpublicディレクトリ>')
+    console.log('node scripts/publish-steam-player-count.ts --input <observation.json> --output <ゲームの履歴ディレクトリ> [--app-id <登録済みApp ID>]\n全5作品: --batch <batch.json> --output <履歴ルート>')
     return
   }
-  if (args.length !== 4 || args[0] !== '--input' || !args[1] || args[2] !== '--output' || !args[3]) throw new Error('引数が不正です。')
-  console.log(JSON.stringify(await publishSteamPlayerCount(args[1], args[3])))
+  if (args.length === 4 && args[0] === '--batch' && args[1] && args[2] === '--output' && args[3]) {
+    console.log(JSON.stringify(await publishSteamPlayerCountBatch(args[1], args[3])))
+    return
+  }
+  if (![4, 6].includes(args.length) || args[0] !== '--input' || !args[1] || args[2] !== '--output' || !args[3]
+    || args.length === 6 && args[4] !== '--app-id') throw new Error('引数が不正です。')
+  const appId = getSteamPlayerCountGame(args.length === 6 ? Number(args[5]) as SteamPlayerCountAppId : DEFAULT_STEAM_PLAYER_COUNT_GAME.appId).appId
+  console.log(JSON.stringify(await publishSteamPlayerCount(args[1], args[3], undefined, { appId })))
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

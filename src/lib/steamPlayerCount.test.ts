@@ -4,7 +4,8 @@ import { buildSteamPlayerCountHourlyComparison, filterSteamPlayerCountObservatio
   getSteamPlayerCountJstDate, getSteamPlayerCountUtcDates, parseSteamPlayerCountDateRange, parseSteamPlayerCountDay,
   parseSteamPlayerCountDayDescriptor, parseSteamPlayerCountManifest, parseSteamPlayerCountObservation,
   STEAM_PLAYER_COUNT_APP_ID, STEAM_PLAYER_COUNT_SOURCE_URL } from './steamPlayerCount.ts'
-import type { SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
+import type { SteamPlayerCountAppId, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
+import { DEFAULT_STEAM_PLAYER_COUNT_GAME, getSteamPlayerCountGame, STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
 
 function observation(time: string, playerCount = 100, id = `obs-${time.replace(/[:.]/g, '-')}`): SteamPlayerCountObservation {
   return { id, requestStartedAt: time, observedAt: time, playerCount, runId: null, runAttempt: null }
@@ -18,6 +19,54 @@ function manifest(days: SteamPlayerCountDayDescriptor[] = []): SteamPlayerCountM
 function hour(date: string, value: number): SteamPlayerCountObservation[] {
   return ['00', '15', '30', '45'].map(minute => observation(`${date}T00:${minute}:00.000Z`, value))
 }
+
+test('game registry preserves SF6 paths and assigns independent sources and directories to all five titles', () => {
+  assert.deepEqual(STEAM_PLAYER_COUNT_GAMES.map(game => [game.key, game.appId]), [
+    ['sf6', 1364780], ['tekken-8', 1778820], ['ggst', 1384160], ['gbvsr', 2157560], ['kof-xv', 1498570],
+  ])
+  assert.equal(DEFAULT_STEAM_PLAYER_COUNT_GAME.appId, STEAM_PLAYER_COUNT_APP_ID)
+  assert.equal(DEFAULT_STEAM_PLAYER_COUNT_GAME.sourceUrl, STEAM_PLAYER_COUNT_SOURCE_URL)
+  assert.equal(DEFAULT_STEAM_PLAYER_COUNT_GAME.historyPath, 'public')
+  assert.equal(DEFAULT_STEAM_PLAYER_COUNT_GAME.bundledPath, 'data/steam-player-count')
+  for (const field of ['sourceUrl', 'historyPath', 'bundledPath'] as const) {
+    assert.equal(new Set(STEAM_PLAYER_COUNT_GAMES.map(game => game[field])).size, 5)
+  }
+  for (const game of STEAM_PLAYER_COUNT_GAMES) {
+    assert.equal(getSteamPlayerCountGame(game.appId), game)
+    assert.equal(new URL(game.sourceUrl).searchParams.get('appid'), String(game.appId))
+    assert.ok(Object.isFrozen(game))
+    if (game.key !== 'sf6') {
+      assert.equal(game.historyPath, `games/${game.key}`)
+      assert.equal(game.bundledPath, `data/steam-player-count-games/${game.key}`)
+    }
+  }
+  assert.ok(Object.isFrozen(STEAM_PLAYER_COUNT_GAMES))
+  for (const invalid of [0, 1364781, NaN, Infinity]) assert.throws(() => getSteamPlayerCountGame(invalid), /対象ゲーム/)
+})
+
+test('day and manifest parsers bind every game to the requested app ID and source while legacy calls remain SF6-only', () => {
+  const observations = hour('2026-10-31', 100)
+  for (const game of STEAM_PLAYER_COUNT_GAMES) {
+    const value: SteamPlayerCountDay = { schemaVersion: 1, appId: game.appId, date: '2026-10-31', observations }
+    const expected = { ...descriptor(value.date, observations[0].observedAt, observations.at(-1)!.observedAt), observationCount: 4 }
+    const index = { ...manifest([expected]), appId: game.appId, sourceUrl: game.sourceUrl }
+    assert.deepEqual(parseSteamPlayerCountDay(value, expected, game.appId), value)
+    assert.deepEqual(parseSteamPlayerCountManifest(index, game.appId), index)
+    if (game.appId === STEAM_PLAYER_COUNT_APP_ID) {
+      assert.deepEqual(parseSteamPlayerCountDay(value, expected), value)
+      assert.deepEqual(parseSteamPlayerCountManifest(index), index)
+    } else {
+      assert.throws(() => parseSteamPlayerCountDay(value, expected), /appId/)
+      assert.throws(() => parseSteamPlayerCountManifest(index), /appId/)
+    }
+    for (const other of STEAM_PLAYER_COUNT_GAMES.filter(item => item.appId !== game.appId)) {
+      assert.throws(() => parseSteamPlayerCountDay(value, expected, other.appId), /appId/)
+      assert.throws(() => parseSteamPlayerCountManifest(index, other.appId), /appId/)
+      assert.throws(() => parseSteamPlayerCountManifest({ ...index, sourceUrl: other.sourceUrl }, game.appId), /sourceUrl/)
+    }
+  }
+  assert.throws(() => parseSteamPlayerCountManifest(manifest(), 999 as SteamPlayerCountAppId), /対象ゲーム/)
+})
 
 test('strict observations distinguish a true zero from missing data and reject malformed provenance', () => {
   const valid = observation('2026-10-31T00:00:00.000Z', 0)
