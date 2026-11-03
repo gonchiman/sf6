@@ -89,39 +89,21 @@ export function LegendPlayersPage() {
   if (!manifest) return <DataLoadState message="取得記録の読込失敗" onRetry={retry} />
 
   return <section className="legend-players-page" aria-label="レジェンド帯分析2">
-    <div className="legend-players-toolbar">
-      {descriptors.length > 0 && <label className="legend-players-capture-select"><span>取得日</span>
+    {descriptors.length > 0 && <div className="legend-players-toolbar">
+      <label className="legend-players-capture-select"><span>取得日</span>
         <select aria-label="取得日" value={selectedId ?? ''} onChange={event => { setSelection(null); setSelectedId(event.target.value) }}>
           {descriptors.map(item => <option key={item.id} value={item.id}>{item.actId.replace(/^act-/, 'Act ')} · {timestampLabel(item.captureEndedAt)}</option>)}
         </select>
-      </label>}
-      <a href={manifest.source.url} target="_blank" rel="noreferrer">出典：Buckler</a>
-      <span>アカウント×キャラ</span>
-      {publication?.source === 'bundled' && descriptors.length > 0 && <span>同梱データ</span>}
-    </div>
-
-    {dataset && <dl className="legend-players-capture">
-      <div><dt>順位・MR取得区間</dt><dd><time dateTime={dataset.captureStartedAt}>{timestampLabel(dataset.captureStartedAt)}</time>
-        {' 〜 '}<time dateTime={dataset.captureEndedAt}>{timestampLabel(dataset.captureEndedAt)}</time></dd></div>
-      {dataset.rankedMatchScope && <div><dt>対戦数取得区間</dt><dd>
-        <time dateTime={dataset.rankedMatchScope.collectionStartedAt}>{timestampLabel(dataset.rankedMatchScope.collectionStartedAt)}</time>
-        {' 〜 '}<time dateTime={dataset.rankedMatchScope.collectionEndedAt}>{timestampLabel(dataset.rankedMatchScope.collectionEndedAt)}</time></dd></div>}
-      <div><dt>対象</dt><dd>{dataset.act.label} · {dataset.conditions.region === 'all' ? '全地域' : dataset.conditions.region}
-        {' · '}{dataset.conditions.platform === 'all' ? '全プラットフォーム' : dataset.conditions.platform}</dd></div>
-    </dl>}
-
-    {(refreshError || availability?.status === 'collection-failed' || availability?.status === 'verification-pending') && <div className="legend-players-status" role="status">
-      <span>{refreshError ? '更新確認失敗' : availabilityLabel}</span>
-      {availability && <time dateTime={availability.checkedAt}>{timestampLabel(availability.checkedAt)}</time>}
-      <button className="win-rates-button" type="button" onClick={retry}>更新を再確認</button>
-    </div>}
-    {dataset && namesError && <div className="legend-players-status" role="status">
-      <span>キャラ名未取得（ID表示）</span>
-      <button className="win-rates-button" type="button" onClick={() => setNamesVersion(value => value + 1)}>キャラ名を再読み込み</button>
+      </label>
     </div>}
 
     <ContentTabs id={viewId} label="レジェンド帯分析2の表示" className="legend-players-view-tabs"
       options={VIEWS} value={view} onChange={setView} />
+
+    {dataset && namesError && <div className="legend-players-status" role="status">
+      <span>キャラ名未取得（ID表示）</span>
+      <button className="win-rates-button" type="button" onClick={() => setNamesVersion(value => value + 1)}>キャラ名を再読み込み</button>
+    </div>}
 
     <div id={`${viewId}-panel-table`} className="legend-players-view-panel" role="tabpanel"
       aria-labelledby={`${viewId}-tab-table`} hidden={view !== 'table'}>
@@ -171,5 +153,27 @@ export function LegendPlayersPage() {
         </div>
       </StatisticsPanel>
     </div>
+    <footer className="legend-players-data-info" aria-label="取得情報">
+      <div className="legend-players-source">
+        <a href={manifest.source.url} target="_blank" rel="noreferrer">出典：Buckler</a>
+        <span>アカウント×キャラ</span>
+        {publication?.source === 'bundled' && descriptors.length > 0 && <span>同梱データ</span>}
+      </div>
+      {dataset && <dl className="legend-players-capture">
+        <div><dt>対象</dt><dd>{dataset.act.label} · {dataset.conditions.region === 'all' ? '全地域' : dataset.conditions.region}
+          {' · '}{dataset.conditions.platform === 'all' ? '全プラットフォーム' : dataset.conditions.platform}</dd></div>
+        <div><dt>順位・MR取得区間</dt><dd><time dateTime={dataset.captureStartedAt}>{timestampLabel(dataset.captureStartedAt)}</time>
+          {' 〜 '}<time dateTime={dataset.captureEndedAt}>{timestampLabel(dataset.captureEndedAt)}</time></dd></div>
+        {dataset.rankedMatchScope && <div><dt>対戦数取得区間</dt><dd>
+          <time dateTime={dataset.rankedMatchScope.collectionStartedAt}>{timestampLabel(dataset.rankedMatchScope.collectionStartedAt)}</time>
+          {' 〜 '}<time dateTime={dataset.rankedMatchScope.collectionEndedAt}>{timestampLabel(dataset.rankedMatchScope.collectionEndedAt)}</time></dd></div>}
+      </dl>}
+      {(refreshError || availability?.status === 'collection-failed' || availability?.status === 'verification-pending') && <div className="legend-players-status" role="status">
+        {refreshError && <span>更新確認失敗</span>}
+        {availability && <span>最新取得：{availabilityLabel}{' · '}
+          <time dateTime={availability.checkedAt}>{timestampLabel(availability.checkedAt)}</time></span>}
+        <button className="win-rates-button" type="button" onClick={retry}>更新を再確認</button>
+      </div>}
+    </footer>
   </section>
 }
