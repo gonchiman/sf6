@@ -4,7 +4,11 @@ import { LEGEND_ANALYSIS_SOURCE } from '../../src/lib/legendAnalysis.ts'
 import { collectLegendAnalysisDataset, LegendAnalysisCollectionError } from './legend-analysis-collector.ts'
 import type { CollectLegendAnalysisOptions, LegendAnalysisAttemptFailure, LegendAnalysisEntry, LegendAnalysisPage } from './legend-analysis-collector.ts'
 import { LEGEND_ANALYSIS_CONDITIONS, LegendAnalysisDomError, legendAnalysisPageUrl } from './legend-analysis-dom.ts'
-import type { LegendOrderRecheck, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
+import type { LegendMissingMemberDetail, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
+
+const absentMember = (firstSeen: LegendOrderPosition, firstSeenSource: LegendMissingMemberDetail['firstSeenSource'],
+  lastSeen = firstSeen, observations = 1): LegendMissingMemberDetail => ({ firstSeen, lastSeen, firstSeenSource, observations,
+  accountPresence: 'absent-from-range', sameAccountRowsCount: 0, sameAccountPositions: [] })
 
 function fixture(rows?: LegendAnalysisEntry[], pageSize = 2) {
   const values = rows ?? Array.from({ length: 4 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
@@ -1154,9 +1158,12 @@ test('range missing members, changed Legend membership and anchor changes are di
     if (kind === 'missing') {
       assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 1, toPage: 4, lastValidatedPage: 4, status: 'failed', issues: [
         { kind: 'missing-members', fromPage: 2, toPage: 4, missingCount: 1,
-          missingPositions: [{ page: 2, rowIndex: 1, rank: 3, masterRating: 2398 }], expansion: { fromPage: 1, toPage: 4 } },
+          missingPositions: [{ page: 2, rowIndex: 1, rank: 3, masterRating: 2398 }],
+          missingDetails: [absentMember({ page: 2, rowIndex: 1, rank: 3, masterRating: 2398 }, 'saved-page', { page: 4, rowIndex: 1, rank: 7, masterRating: 2394 }, 2)],
+          expansion: { fromPage: 1, toPage: 4 } },
         { kind: 'missing-members', fromPage: 1, toPage: 4, missingCount: 1,
-          missingPositions: [{ page: 4, rowIndex: 1, rank: 7, masterRating: 2394 }] },
+          missingPositions: [{ page: 4, rowIndex: 1, rank: 7, masterRating: 2394 }],
+          missingDetails: [absentMember({ page: 4, rowIndex: 1, rank: 7, masterRating: 2394 }, 'range-reread')] },
       ] })
       assert.deepEqual(data.requested, [1, 2, 3, 4, 2, 3, 4, 1, 2, 3, 4])
     } else {
@@ -1473,7 +1480,8 @@ test('missing members trigger both halo pages and future pages join the final en
   assert.deepEqual(data.requested, data.expectedRequests); assert.deepEqual(events, ['started', 'succeeded'])
   assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 2, toPage: 5, lastValidatedPage: 5, status: 'succeeded', issues: [
     { kind: 'missing-members', fromPage: 3, toPage: 4, missingCount: 1,
-      missingPositions: [{ page: 4, rowIndex: 2, rank: 8, masterRating: 2393 }], expansion: { fromPage: 2, toPage: 5 } },
+      missingPositions: [{ page: 4, rowIndex: 2, rank: 8, masterRating: 2393 }],
+      missingDetails: [absentMember({ page: 4, rowIndex: 2, rank: 8, masterRating: 2393 }, 'trigger-page')], expansion: { fromPage: 2, toPage: 5 } },
   ] })
   // Previously emitted records are snapshots, not objects later altered by the expansion.
   assert.deepEqual(ranges[0], { attempt: 1, fromPage: 3, toPage: 4, lastValidatedPage: null, status: 'started' })
@@ -1501,7 +1509,8 @@ test('the observed 381-to-380 inversion shape can retain a member moving from pa
   assert.equal(result.pagesRead, 22); assert.equal(result.dataset.totalCount, 439); assert.equal(projections, 1)
   assert.deepEqual(data.requested, [...Array.from({ length: 21 }, (_, index) => index + 1), 20, 21, 22, 19, 20, 21, 22, 18, 22, 1])
   assert.deepEqual(ranges.at(-1)?.issues?.[0], { kind: 'missing-members', fromPage: 20, toPage: 21, missingCount: 1,
-    missingPositions: [{ page: 21, rowIndex: 20, rank: 420, masterRating: 1785 }], expansion: { fromPage: 19, toPage: 22 } })
+    missingPositions: [{ page: 21, rowIndex: 20, rank: 420, masterRating: 1785 }],
+    missingDetails: [absentMember({ page: 21, rowIndex: 20, rank: 420, masterRating: 1785 }, 'trigger-page')], expansion: { fromPage: 19, toPage: 22 } })
 })
 
 test('members first seen in a failed candidate or right baseline cannot disappear in expanded passes', async () => {
@@ -1624,7 +1633,7 @@ test('invalid or denied new right baselines stop before recapturing the expanded
   }
 })
 
-test('a missing-member halo that would span seven pages is refused without choosing one side', async () => {
+test('a five-page range stays failed when neither checked edge contains its missing member', async () => {
   const rows = Array.from({ length: 18 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
     characterId: 'ryu', rank: index + 1, masterRating: 2400 - index, isLegend: true }))
   const data = fixture(rows), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = []
@@ -1639,9 +1648,13 @@ test('a missing-member halo that would span seven pages is refused without choos
   }
   data.options.onPageRecoveryRange = value => { ranges.push(value) }
   await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-missing-members')
-  assert.deepEqual(data.requested, [1, 2, 3, 4, 5, 6, 7, 3, 4, 5, 6, 7])
+  assert.deepEqual(data.requested, [1, 2, 3, 4, 5, 6, 7, 3, 4, 5, 6, 7, 2, 8])
   assert.deepEqual(ranges.at(-1)?.issues, [{ kind: 'missing-members', fromPage: 3, toPage: 7, missingCount: 1,
-    missingPositions: [{ page: 7, rowIndex: 2, rank: 14, masterRating: 2387 }] }])
+    missingPositions: [{ page: 7, rowIndex: 2, rank: 14, masterRating: 2387 }],
+    missingDetails: [absentMember({ page: 7, rowIndex: 2, rank: 14, masterRating: 2387 }, 'trigger-page')], edgeProbes: [
+      { side: 'left', page: 2, unchanged: true, missingFoundCount: 0, found: [] },
+      { side: 'right', page: 8, unchanged: null, missingFoundCount: 0, found: [] },
+    ] }])
 })
 
 test('the new left anchor and both final endpoints remain mandatory after expansion', async () => {
@@ -1683,5 +1696,227 @@ test('right halo availability follows the newly observed endpoint rather than it
       assert.deepEqual(data.requested, [1, 2, 3, 4, 3, 4, 2, 3, 4, 1, 2, 3, 4])
       assert.deepEqual(ranges.at(-1)?.issues?.map(issue => issue.expansion), [{ fromPage: 2, toPage: 4 }, { fromPage: 1, toPage: 4 }, undefined])
     }
+  }
+})
+
+function fivePageMissingFixture() {
+  const values = Array.from({ length: 16 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
+    characterId: 'ryu', rank: index + 1, masterRating: 2400 - index, isLegend: index < 15,
+    playerName: `Original ${index + 1}`, playerId: `${index + 1}`, region: '日本', platform: 'Steam' }))
+  const fresh = structuredClone(values)
+  for (const [target, source] of [[8, 14], [14, 8]]) Object.assign(fresh[target], {
+    accountKey: values[source].accountKey, playerId: values[source].playerId, playerName: `Moved ${values[source].playerId}` })
+  const data = fixture(values), read = data.options.fetchPage, counts = new Map<number, number>()
+  let changed = false
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url), count = (counts.get(page) ?? 0) + 1; counts.set(page, count)
+    if (page === 3 && count === 2) changed = true
+    if (changed) value.entries = structuredClone(fresh.slice((page - 1) * 2, page * 2))
+    if (page === 7 && count === 1) overlapWith(value.entries[0], values[4])
+    return value
+  }
+  return { ...data, fresh, expectedRequests: [1, 2, 3, 4, 5, 6, 7, 3, 4, 5, 6, 7, 2, 8, 3, 4, 5, 6, 7, 8, 2, 8, 1] }
+}
+
+test('a missing member found on the right after an unchanged left probe enables one six-page recapture', async () => {
+  const data = fivePageMissingFixture(), ranges: LegendPageRecoveryRange[] = [], events: string[] = []
+  let projections = 0
+  data.options.onPageRecovery = state => { events.push(state) }
+  data.options.onPageRecoveryRange = value => { ranges.push(value) }
+  data.options.onVerifiedPlayers = rows => {
+    projections++
+    assert.deepEqual(rows.map(row => [row.playerId, row.rank, row.masterRating]), data.fresh.filter(row => row.isLegend).map(row => [row.playerId, row.rank, row.masterRating]))
+    assert.equal(new Set(rows.map(row => row.playerId)).size, 15)
+  }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.pagesRead, 8); assert.equal(result.requestCount, 23); assert.equal(projections, 1)
+  assert.deepEqual(data.requested, data.expectedRequests); assert.deepEqual(events, ['started', 'succeeded'])
+  assert.deepEqual(ranges.at(-1)?.issues, [{ kind: 'missing-members', fromPage: 3, toPage: 7, missingCount: 1,
+    missingPositions: [{ page: 5, rowIndex: 1, rank: 9, masterRating: 2392 }],
+    missingDetails: [absentMember({ page: 5, rowIndex: 1, rank: 9, masterRating: 2392 }, 'saved-page')],
+    edgeProbes: [
+      { side: 'left', page: 2, unchanged: true, missingFoundCount: 0, found: [] },
+      { side: 'right', page: 8, unchanged: null, missingFoundCount: 1, found: [
+        { previous: { page: 5, rowIndex: 1, rank: 9, masterRating: 2392 }, current: { page: 8, rowIndex: 1, rank: 15, masterRating: 2386 } },
+      ] },
+    ], expansion: { fromPage: 3, toPage: 8 },
+  }])
+  const beforeProbe = ranges.find(range => range.issues?.[0].edgeProbes?.length === 1)!
+  assert.equal(beforeProbe.issues![0].edgeProbes!.length, 1); assert.equal(beforeProbe.issues![0].expansion, undefined)
+})
+
+test('an old page 16 row 2 member can be located on page 19 without widening beyond six pages', async () => {
+  const rows = Array.from({ length: 400 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
+    rank: index >= 297 && index <= 302 ? 298 : index + 1,
+    masterRating: index < 297 ? 2111 - index : index <= 302 ? 1814 : 1813 - (index - 303), isLegend: index < 399,
+    playerName: `Synthetic ${index}`, playerId: `${index + 1}`, region: '日本', platform: 'Steam' }))
+  const fresh = structuredClone(rows)
+  for (const [target, source] of [[301, 360], [360, 301]]) Object.assign(fresh[target], { accountKey: rows[source].accountKey, playerName: rows[source].playerName, playerId: rows[source].playerId })
+  const data = fixture(rows, 20), read = data.options.fetchPage, counts = new Map<number, number>(), ranges: LegendPageRecoveryRange[] = []
+  let changed = false, projections = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url), count = (counts.get(page) ?? 0) + 1; counts.set(page, count)
+    if (page === 14 && count === 2) changed = true
+    if (changed) value.entries = structuredClone(fresh.slice((page - 1) * 20, page * 20))
+    if (page === 18 && count === 1) overlapWith(value.entries[19], rows[279])
+    return value
+  }
+  data.options.onPageRecoveryRange = value => { ranges.push(value) }
+  data.options.onVerifiedPlayers = rows => { projections++; assert.deepEqual(rows.map(row => row.playerId), fresh.slice(0, 399).map(row => row.playerId)) }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(projections, 1); assert.equal(result.pagesRead, 20); assert.equal(result.dataset.totalCount, 399)
+  assert.deepEqual(data.requested, [...Array.from({ length: 18 }, (_, index) => index + 1), 14, 15, 16, 17, 18, 13, 19, 14, 15, 16, 17, 18, 19, 13, 20, 20, 1])
+  const issue = ranges.at(-1)!.issues![0]
+  assert.deepEqual(issue.missingPositions, [{ page: 16, rowIndex: 2, rank: 298, masterRating: 1814 }])
+  assert.deepEqual(issue.expansion, { fromPage: 14, toPage: 19 })
+  assert.deepEqual(issue.edgeProbes?.[1].found, [{ previous: { page: 16, rowIndex: 2, rank: 298, masterRating: 1814 },
+    current: { page: 19, rowIndex: 1, rank: 361, masterRating: 1756 } }])
+})
+
+test('a left probe finding the member cannot drop displaced members or begin a recapture that exceeds row capacity', async () => {
+  const data = fivePageMissingFixture(), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = []
+  let projections = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 2 && data.requested.length >= 13) {
+      const target = value.entries[1]
+      Object.assign(target, { accountKey: data.values[8].accountKey, playerName: data.values[8].playerName, playerId: data.values[8].playerId })
+    }
+    return value
+  }
+  data.options.onPageRecoveryRange = value => { ranges.push(value) }
+  data.options.onVerifiedPlayers = () => { projections++ }
+  await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-missing-members')
+  assert.equal(projections, 0)
+  assert.deepEqual(data.requested, [1, 2, 3, 4, 5, 6, 7, 3, 4, 5, 6, 7, 2])
+  assert.equal(ranges.at(-1)?.issues?.[0].expansion, undefined)
+  assert.equal(ranges.at(-1)?.issues?.[0].edgeProbes?.length, 1)
+  assert.equal(ranges.at(-1)?.issues?.[0].edgeProbes?.[0].missingFoundCount, 1)
+  assert.equal(ranges.at(-1)?.issues?.length, 1)
+})
+
+test('the full nine-read probe reserve is required before either edge is read', async () => {
+  for (const budget of [23, 21, 20]) {
+    const data = fivePageMissingFixture(), ranges: LegendPageRecoveryRange[] = []
+    let projections = 0
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    data.options.onVerifiedPlayers = () => { projections++ }
+    const collect = collectLegendAnalysisDataset({ ...data.options, maxRequests: budget })
+    if (budget === 23) assert.equal((await collect).requestCount, 23)
+    else await assert.rejects(collect, error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'request-budget')
+    assert.equal(projections, budget === 23 ? 1 : 0)
+    assert.deepEqual(data.requested, data.expectedRequests.slice(0, budget === 20 ? 12 : budget))
+    const issue = ranges.at(-1)?.issues?.[0]
+    assert.equal(issue?.edgeProbes?.length, budget === 20 ? undefined : 2)
+    assert.equal(issue?.expansion?.toPage, budget === 20 ? undefined : 8)
+  }
+})
+
+test('changed left probes and partially matching edge probes never authorize a recapture', async () => {
+  for (const kind of ['changed', 'partial', 'right-partial'] as const) {
+    const data = fivePageMissingFixture(), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = []
+    if (kind !== 'changed') Object.assign(data.fresh[9], { accountKey: 'f'.repeat(64), playerId: '999', playerName: 'Other' })
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === 13) {
+        if (kind === 'changed') value.entries[0].playerName = 'Changed left anchor'
+        else if (kind === 'partial') overlapWith(value.entries[1], data.values[8])
+      }
+      return value
+    }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-missing-members')
+    assert.deepEqual(data.requested, data.expectedRequests.slice(0, kind === 'right-partial' ? 14 : 13))
+    const issue = ranges.at(-1)!.issues![0]
+    assert.equal(issue.expansion, undefined); assert.equal(issue.edgeProbes?.length, kind === 'right-partial' ? 2 : 1)
+    assert.equal(issue.edgeProbes?.[0].unchanged, kind === 'right-partial')
+    assert.equal(issue.edgeProbes?.at(-1)?.missingFoundCount, kind === 'changed' ? 0 : 1)
+    assert.equal(issue.missingCount, kind === 'changed' ? 1 : 2)
+  }
+})
+
+test('every observed right-baseline member stays mandatory and baseline reuse is counted only once', async () => {
+  const data = fivePageMissingFixture(), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = []
+  data.values.forEach(entry => { entry.isLegend = true }); data.fresh.forEach(entry => { entry.isLegend = true })
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (data.requested.length === 14) Object.assign(value.entries[1], { accountKey: 'f'.repeat(64), playerId: '999', playerName: 'Baseline member' })
+    return value
+  }
+  data.options.onPageRecoveryRange = value => { ranges.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-missing-members')
+  assert.deepEqual(data.requested, data.expectedRequests.slice(0, 20))
+  assert.deepEqual(ranges.at(-1)?.issues?.[1].missingDetails, [absentMember({ page: 8, rowIndex: 2, rank: 16, masterRating: 2385 }, 'right-baseline')])
+  assert.equal(ranges.at(-1)?.issues?.[1].edgeProbes, undefined)
+})
+
+test('terminal access denial and malformed edge probes stop immediately with no recapture or retry', async () => {
+  for (const kind of ['left-denied', 'right-denied', 'right-cancelled', 'left-metadata', 'right-duplicate', 'left-order'] as const) {
+    const data = fivePageMissingFixture(), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = [], retries: number[] = []
+    const denied = new LegendAnalysisDomError('http-denied'), controller = new AbortController()
+    const failureRead = kind.startsWith('left') ? 13 : 14
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === failureRead) {
+        if (kind.endsWith('denied')) throw denied
+        if (kind.endsWith('cancelled')) controller.abort()
+        if (kind === 'left-metadata') { value.pageSize = 1; value.from = 2; value.to = 2; value.entries = value.entries.slice(0, 1) }
+        if (kind === 'right-duplicate') overlapWith(value.entries[1], value.entries[0])
+        if (kind === 'left-order') value.entries[1].rank = 1
+      }
+      return value
+    }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    data.options.onRetry = value => { retries.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: kind.endsWith('denied') || kind.endsWith('cancelled') ? 2 : 1, signal: controller.signal }), error => kind.endsWith('denied')
+      ? error === denied : error instanceof LegendAnalysisCollectionError)
+    assert.deepEqual(retries, []); assert.deepEqual(data.requested, data.expectedRequests.slice(0, failureRead))
+    assert.equal(ranges.at(-1)?.issues?.[0].expansion, undefined)
+    assert.equal(ranges.at(-1)?.issues?.[0].edgeProbes?.length, failureRead === 13 ? undefined : 1)
+  }
+})
+
+test('missing diagnostics distinguish another character of the same account without accepting it as the missing entry', async () => {
+  for (const sameAccount of [false, true]) {
+    const data = fivePageMissingFixture(), ranges: LegendPageRecoveryRange[] = []
+    if (sameAccount) Object.assign(data.fresh[8], { accountKey: data.values[8].accountKey, characterId: 'ken' })
+    // Keep the original identity absent even from the right edge, so the diagnostic remains a failure.
+    Object.assign(data.fresh[14], { accountKey: 'e'.repeat(64), playerId: '998', playerName: 'Unrelated' })
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-missing-members')
+    const detail = ranges.at(-1)!.issues![0].missingDetails![0]
+    assert.deepEqual(detail.firstSeen, { page: 5, rowIndex: 1, rank: 9, masterRating: 2392 })
+    assert.deepEqual(detail.lastSeen, detail.firstSeen); assert.equal(detail.firstSeenSource, 'saved-page'); assert.equal(detail.observations, 1)
+    assert.equal(detail.accountPresence, sameAccount ? 'other-character-in-range' : 'absent-from-range')
+    assert.equal(detail.sameAccountRowsCount, sameAccount ? 1 : 0)
+    assert.deepEqual(detail.sameAccountPositions, sameAccount ? [{ page: 5, rowIndex: 1, rank: 9, masterRating: 2392 }] : [])
+    assert.doesNotMatch(JSON.stringify(ranges), /accountKey|characterId|playerId|playerName|Unrelated|Original|Moved/)
+  }
+})
+
+test('a missing member observed as non-Legend in either edge is recorded and rejected before expansion selection', async () => {
+  for (const side of ['left', 'right'] as const) {
+    const data = fivePageMissingFixture(), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = [], failures: LegendAnalysisAttemptFailure[] = []
+    const failureRead = side === 'left' ? 13 : 14
+    let projections = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === failureRead) {
+        const entry = value.entries[side === 'left' ? 1 : 0]
+        if (side === 'left') overlapWith(entry, data.values[8])
+        entry.isLegend = false // Both probes remain internally contiguous: Legend/non-Legend or non-Legend/non-Legend.
+      }
+      return value
+    }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    data.options.onAttemptFailure = value => { failures.push(value) }
+    data.options.onVerifiedPlayers = () => { projections++ }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-legend-changed')
+    assert.equal(projections, 0); assert.deepEqual(data.requested, data.expectedRequests.slice(0, failureRead))
+    assert.equal(failures[0].validationCheck, 'range-legend-changed')
+    const issue = ranges.at(-1)!.issues![0], probe = issue.edgeProbes!.at(-1)!
+    assert.equal(issue.expansion, undefined); assert.equal(probe.side, side); assert.equal(probe.missingFoundCount, 1)
+    assert.deepEqual(probe.found[0].previous, { page: 5, rowIndex: 1, rank: 9, masterRating: 2392 })
+    assert.equal(probe.found[0].current.page, side === 'left' ? 2 : 8)
   }
 })

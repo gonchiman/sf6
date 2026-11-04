@@ -28,7 +28,7 @@ export function legendAnalysisPageUrlMatches(value: string, page: number): boole
 }
 export type LegendAnalysisDomErrorCode = 'invalid-request' | 'request-limit' | 'cancelled' | 'concurrent-read' | 'http-denied'
   | 'http-error' | 'server-error' | 'maintenance' | 'authentication-required' | 'unsupported-dom' | 'condition-mismatch'
-  | 'act-unconfirmed' | 'act-changed' | 'read-failed'
+  | 'act-unconfirmed' | 'act-changed' | 'read-failed' | 'ranking-asset-conflict'
 export class LegendAnalysisDomError extends Error {
   readonly code: LegendAnalysisDomErrorCode
   constructor(code: LegendAnalysisDomErrorCode) { super(`レジェンド分析の画面取得を中止しました (${code})。`); this.name = 'LegendAnalysisDomError'; this.code = code }
@@ -39,6 +39,8 @@ export interface LegendAnalysisDomObservation {
   observedUrl: string
   maintenance: boolean
   accessChallenge?: boolean
+  /** Conflicting semantic asset identities only; no URLs or player fields leave this observation. */
+  assetConflict?: boolean
   signedIn: boolean
   authenticationEvidence: 'logout-control' | 'login-control' | 'conflicting-controls' | 'no-control'
   loginRequired: boolean
@@ -109,26 +111,58 @@ export async function observeLegendAnalysisDom(input: { salt: string; characterI
   const rawEntries: Readonly<{ profilePath: string; characterId: string; rank: number; masterRating: number; isLegend: boolean;
     playerName?: string; playerId?: string; region?: string; platform?: string }>[] = []
   let firstPlayUrl: string | null = null
-  // Next.js images may still have a GIF placeholder: its DOM noscript fallback is restricted to official assets.
+  let assetConflict = false
+  // All observed image references must agree on the semantic identity, regardless of display size.
   const assetPath = (container: Element): string | null => {
-    const loaded = [...container.querySelectorAll('img')].filter(visible) as HTMLImageElement[]
-    const candidates = loaded.filter(image => image.complete && image.naturalWidth > 0 && image.currentSrc && !image.currentSrc.startsWith('data:') && !/\.gif(?:\?|$)/i.test(image.currentSrc)).map(image => image.currentSrc)
-    if (!candidates.length) for (const node of container.querySelectorAll('noscript')) {
-      const parsed = new DOMParser().parseFromString(node.textContent || node.innerHTML || '', 'text/html')
-      const images = [...node.querySelectorAll('img'), ...parsed.querySelectorAll('img')]
-      if (images.length === 1 && images[0].getAttribute('src')) candidates.push(images[0].getAttribute('src')!)
+    const paths = new Set<string>()
+    let hasLoadedOrFallback = false
+    const normalize = (reference: string): string | null => {
+      try {
+        let url = new URL(reference, location.origin)
+        if (url.origin !== 'https://www.streetfighter.com' || url.username || url.password || url.hash) return null
+        if (url.pathname === '/_next/image' || url.pathname === '/6/buckler/_next/image') {
+          if (url.searchParams.getAll('url').length !== 1 || [...url.searchParams.keys()].some(key => !['url', 'w', 'q'].includes(key))) return null
+          url = new URL(url.searchParams.get('url')!, location.origin)
+        }
+        return url.origin === 'https://www.streetfighter.com' && !url.search && !url.hash && !url.username && !url.password ? url.pathname : null
+      } catch { return null }
     }
-    const uniqueCandidates = [...new Set(candidates)]
-    if (uniqueCandidates.length !== 1) return null
-    try {
-      let url = new URL(uniqueCandidates[0], location.origin)
-      if (url.origin !== 'https://www.streetfighter.com' || url.username || url.password || url.hash) return null
-      if (url.pathname === '/_next/image' || url.pathname === '/6/buckler/_next/image') {
-        if (url.searchParams.getAll('url').length !== 1 || [...url.searchParams.keys()].some(key => !['url', 'w', 'q'].includes(key))) return null
-        url = new URL(url.searchParams.get('url')!, location.origin)
+    const add = (reference: string | null, usable: boolean): boolean => {
+      if (!reference || reference.startsWith('data:') || /\.gif(?:[?#]|$)/i.test(reference)) return true
+      const path = normalize(reference)
+      if (!path) return false
+      paths.add(path)
+      if (paths.size > 1) { assetConflict = true; return false }
+      if (usable) hasLoadedOrFallback = true
+      return true
+    }
+    const addSrcset = (source: string | null): boolean => {
+      if (!source?.trim()) return true
+      // A lone base64 image placeholder contains a comma but supplies no official asset identity.
+      if (/^data:image\/(?:gif|png|jpe?g|webp);base64,[a-z0-9+/=]+(?:\s+[1-9]\d*(?:\.\d+)?x)?$/i.test(source.trim())) return true
+      for (const candidate of source.split(',')) {
+        const match = /^(\S+)(?:\s+(\d+(?:\.\d+)?)(w|x))?$/.exec(candidate.trim())
+        if (!match || match[2] && (!(Number(match[2]) > 0) || match[3] === 'w' && !Number.isInteger(Number(match[2])))) return false
+        if (!add(match[1], false)) return false
       }
-      return url.origin === 'https://www.streetfighter.com' && !url.search && !url.hash && !url.username && !url.password ? url.pathname : null
-    } catch { return null }
+      return true
+    }
+    const images = [...container.querySelectorAll('img')].filter(image => visible(image) && !image.closest('noscript')) as HTMLImageElement[]
+    for (const image of images) {
+      if (image.complete && image.naturalWidth > 0 && !add(image.currentSrc, true)) return null
+      if (!add(image.getAttribute('src'), false) || !addSrcset(image.getAttribute('srcset'))) return null
+    }
+    // With JavaScript enabled, noscript is inactive and may retain SSR data after the active image changes.
+    if (hasLoadedOrFallback) return paths.size === 1 ? [...paths][0] : null
+    // Only lazy/unloaded images need the fallback, which must agree with every active declaration.
+    for (const node of container.querySelectorAll('noscript')) {
+      const direct = [...node.querySelectorAll('img')]
+      const fallbackImages = direct.length ? direct : [...new DOMParser().parseFromString(node.textContent || node.innerHTML || '', 'text/html').querySelectorAll('img')]
+      if (fallbackImages.length !== 1) return null
+      const fallback = fallbackImages[0]
+      if (!fallback.getAttribute('src') || !add(fallback.getAttribute('src'), true) || !addSrcset(fallback.getAttribute('srcset'))) return null
+    }
+    return hasLoadedOrFallback && paths.size === 1 ? [...paths][0] : null
   }
   for (const row of rows) {
     const data = row.querySelectorAll('div[class*="ranking_page_data"]')
@@ -142,7 +176,8 @@ export async function observeLegendAnalysisDom(input: { salt: string; characterI
     if (!/^\d+位$/.test(rankText) || !/^\d+MR$/.test(mrText)) return { ...base, firstPlayUrl: null, entries: null }
     const character = assetPath(characters[0])?.match(/^\/6\/buckler\/assets\/images\/material\/character\/character_([a-z0-9]+)_l\.png$/)?.[1]
     const badge = assetPath(badges[0])?.match(/^\/6\/buckler\/assets\/images\/material\/rank\/rank(\d+)_l\.png$/)?.[1]
-    if (!character || input.characterIds.length > 0 && !input.characterIds.includes(character) || !badge || !['37', '38', '39', '40', '41', '42'].includes(badge)) return { ...base, firstPlayUrl: null, entries: null }
+    if (!character || input.characterIds.length > 0 && !input.characterIds.includes(character) || !badge || !['37', '38', '39', '40', '41', '42'].includes(badge)) return {
+      ...base, ...(assetConflict ? { assetConflict: true } : {}), firstPlayUrl: null, entries: null }
     // Confirmed visible ranking fighter label; the adjacent ranking_comment title is not a player name.
     const nameNodes = input.includePlayers ? [...row.querySelectorAll('p[class*="ranking_fighter__"] span[class*="ranking_name__"]')].filter(visible) : []
     const playerName = nameNodes.length === 1 ? text(nameNodes[0]) : null
@@ -458,7 +493,8 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
         successfulReadCount++
         return value
       }
-      if (now() >= deadline) throw new LegendAnalysisDomError(value.loginRequired || !value.signedIn ? 'authentication-required' : 'unsupported-dom')
+      if (now() >= deadline) throw new LegendAnalysisDomError(value.loginRequired || !value.signedIn ? 'authentication-required'
+        : value.assetConflict === true ? 'ranking-asset-conflict' : 'unsupported-dom')
       await wait(250)
     }
   }

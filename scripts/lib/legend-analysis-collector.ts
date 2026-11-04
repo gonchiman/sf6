@@ -1,7 +1,7 @@
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS, parseLegendAnalysisDataset, summarizeLegendMr } from '../../src/lib/legendAnalysis.ts'
 import type { LegendAnalysisConditions, LegendAnalysisDataset, LegendMembershipRule } from '../../src/types/legendAnalysis.ts'
 import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './legend-order-diagnostics.ts'
-import type { LegendOrderDiagnostic, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryDecision, LegendPageRecoveryIssue, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
+import type { LegendMissingMemberDetail, LegendOrderDiagnostic, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryDecision, LegendPageRecoveryIssue, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
 
 /** Private transient row. Salted account keys are never persisted. */
 export interface LegendAnalysisEntry {
@@ -391,34 +391,40 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
             const oldPages = new Map<number, LegendAnalysisPage>()
             const requiredMembers = new Map<string, boolean>()
             const requiredPositions = new Map<string, LegendOrderPosition>()
-            const rememberMembers = (page: LegendAnalysisPage): void => {
+            const observations = new Map<string, Pick<LegendMissingMemberDetail, 'firstSeen' | 'lastSeen' | 'firstSeenSource' | 'observations'> & { accountKey: string }>()
+            const rememberMembers = (page: LegendAnalysisPage, source: LegendMissingMemberDetail['firstSeenSource']): void => {
               for (const [index, entry] of page.entries.entries()) {
                 const key = entryKey(entry)
                 if (requiredMembers.has(key) && requiredMembers.get(key) !== entry.isLegend) fail('source-changed', 'range-legend-changed')
                 requiredMembers.set(key, entry.isLegend)
-                if (!requiredPositions.has(key)) requiredPositions.set(key, entryPosition(page.page, index, entry))
+                const position = entryPosition(page.page, index, entry), prior = observations.get(key)
+                if (!requiredPositions.has(key)) requiredPositions.set(key, position)
+                observations.set(key, prior ? { ...prior, lastSeen: position, observations: prior.observations + 1 }
+                  : { accountKey: entry.accountKey, firstSeen: position, lastSeen: position, firstSeenSource: source, observations: 1 })
               }
             }
-            const rememberSource = (page: LegendAnalysisPage): void => {
-              rememberMembers(page)
+            const rememberSource = (page: LegendAnalysisPage, source: LegendMissingMemberDetail['firstSeenSource']): void => {
+              rememberMembers(page, source)
               oldPages.set(page.page, page)
             }
             for (let number = fromPage; number <= toPage; number++) {
               const oldPage = number === toPage ? current : savedPages.get(number)
               if (!oldPage) fail('source-changed', 'range-recheck')
-              rememberSource(oldPage)
+              rememberSource(oldPage, number === toPage ? 'trigger-page' : 'saved-page')
             }
             const recordIssue = (issue: LegendPageRecoveryIssue): void => {
               range.issues ??= []
-              range.issues.push(issue)
+              if (!range.issues.includes(issue)) range.issues.push(issue)
             }
-            const expand = async (issue: LegendPageRecoveryIssue, nextFrom: number, nextTo: number): Promise<void> => {
+            const expand = async (issue: LegendPageRecoveryIssue, nextFrom: number, nextTo: number,
+              preobserved: ReadonlyMap<number, LegendAnalysisPage> = new Map()): Promise<void> => {
               recordIssue(issue)
               const missing = issue.kind === 'missing-members'
               if (nextFrom > fromPage || nextTo < toPage || nextFrom === fromPage && nextTo === toPage || nextTo - nextFrom + 1 > 6) {
                 fail(missing ? 'source-changed' : 'duplicate-entry', missing ? 'range-missing-members' : 'duplicate-entry')
               }
-              const extraReads = nextTo - toPage + (nextTo - nextFrom + 1) + (nextFrom > 1 ? 1 : 0)
+              const newBaselines = Array.from({ length: nextTo - toPage }, (_, index) => toPage + index + 1)
+              const extraReads = newBaselines.filter(number => !preobserved.has(number)).length + (nextTo - nextFrom + 1) + (nextFrom > 1 ? 1 : 0)
               if (requestCount + extraReads > maxRequests) fail('request-limit', 'request-budget')
               // The expansion is approved only after reserving its new baselines, full recapture and left anchor.
               issue.expansion = { fromPage: nextFrom, toPage: nextTo }
@@ -429,17 +435,19 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
               for (let number = fromPage; number < oldFrom; number++) {
                 const original = savedPages.get(number)
                 if (!original) fail('source-changed', 'range-recheck')
-                rememberSource(original)
+                rememberSource(original, 'saved-page')
+                const probe = preobserved.get(number)
+                if (probe) rememberMembers(probe, 'left-probe')
               }
               // Future pages have no accepted snapshot. Retain every row from their first observation before recapturing.
               for (let number = oldTo + 1; number <= toPage; number++) {
-                const baseline = await read(number)
+                const baseline = preobserved.get(number) ?? await read(number)
                 const internal = inspect(baseline, prefixes.get(0)!)
                 if (internal.withinPageDuplicate) {
                   recordIssue({ kind: 'within-page-duplicate', fromPage, toPage, conflict: internal.withinPageDuplicateConflict! })
                   fail('duplicate-entry', 'duplicate-entry')
                 }
-                rememberSource(baseline)
+                rememberSource(baseline, 'right-baseline')
               }
             }
             while (true) {
@@ -453,7 +461,7 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
                 const replacement = await read(number)
                 if (!samePageMetadata(oldPage, replacement)) fail('source-changed', 'range-recheck', recheckChanges(oldPage, replacement))
                 // Rows seen in an unsuccessful pass must not silently disappear during a later expansion.
-                rememberMembers(replacement)
+                rememberMembers(replacement, 'range-reread')
                 const internal = inspect(replacement, prefixes.get(0)!)
                 if (internal.withinPageDuplicate) {
                   recordIssue({ kind: 'within-page-duplicate', fromPage, toPage, conflict: internal.withinPageDuplicateConflict! })
@@ -485,10 +493,66 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
               if (expanded) continue
               const missing = [...requiredMembers.keys()].filter(key => !newMembers.has(key))
               if (missing.length) {
-                // Missing positions do not reveal which way players moved. Expand both available sides, never guess one.
+                const issue: LegendPageRecoveryIssue = { kind: 'missing-members', fromPage, toPage, missingCount: missing.length,
+                  missingPositions: missing.slice(0, 3).map(key => requiredPositions.get(key)!),
+                  missingDetails: missing.slice(0, 3).map(key => {
+                    const { accountKey, ...detail } = observations.get(key)!
+                    const sameAccount: LegendOrderPosition[] = []
+                    for (const { page } of replacements.values()) for (const [index, entry] of page.entries.entries()) {
+                      if (entry.accountKey === accountKey) sameAccount.push(entryPosition(page.page, index, entry))
+                    }
+                    return { ...detail, accountPresence: sameAccount.length ? 'other-character-in-range' : 'absent-from-range',
+                      sameAccountRowsCount: sameAccount.length, sameAccountPositions: sameAccount.slice(0, 3) }
+                  }) }
                 const last = replacements.get(toPage)!.page
-                await expand({ kind: 'missing-members', fromPage, toPage, missingCount: missing.length,
-                  missingPositions: missing.slice(0, 3).map(key => requiredPositions.get(key)!) }, Math.max(1, fromPage - 1), last.nextPage ?? toPage)
+                if (toPage - fromPage + 1 === 5 && fromPage > 1 && last.nextPage !== null) {
+                  recordIssue(issue)
+                  // Reserve both probes, the full six-page recapture and its anchor before observing either edge.
+                  if (requestCount + 9 > maxRequests) fail('request-limit', 'request-budget')
+                  const probe = async (side: 'left' | 'right', number: number): Promise<{ page: LegendAnalysisPage; found: number; unchanged: boolean | null }> => {
+                    const page = await read(number)
+                    const original = side === 'left' ? savedPages.get(number) : undefined
+                    if (side === 'left' && (!original || !samePageMetadata(original, page))) fail('source-changed', 'range-anchor-recheck')
+                    const internal = inspect(page, prefixes.get(0)!)
+                    if (internal.withinPageDuplicate) fail('duplicate-entry', 'duplicate-entry')
+                    const positions = new Map(page.entries.map((entry, index) => [entryKey(entry), entryPosition(number, index, entry)]))
+                    const found = missing.filter(key => positions.has(key))
+                    const unchanged = original ? equal(stablePage(original), stablePage(page)) : null
+                    issue.edgeProbes ??= []
+                    issue.edgeProbes.push({ side, page: number, unchanged, missingFoundCount: found.length,
+                      found: found.slice(0, 3).map(key => ({ previous: requiredPositions.get(key)!, current: positions.get(key)! })) })
+                    reportRecoveryRange(range)
+                    if (page.entries.some(entry => requiredMembers.has(entryKey(entry))
+                      && requiredMembers.get(entryKey(entry)) !== entry.isLegend)) fail('source-changed', 'range-legend-changed')
+                    return { page, found: found.length, unchanged }
+                  }
+                  const expandToProbe = async (page: LegendAnalysisPage, nextFrom: number, nextTo: number): Promise<void> => {
+                    const required = new Set(requiredMembers.keys())
+                    let capacity = 0
+                    for (let number = nextFrom; number <= nextTo; number++) {
+                      const original = oldPages.get(number) ?? savedPages.get(number) ?? (page.page === number ? page : undefined)
+                      if (!original) fail('source-changed', 'range-recheck')
+                      capacity += original.entries.length
+                      for (const entry of original.entries) required.add(entryKey(entry))
+                    }
+                    for (const entry of page.entries) required.add(entryKey(entry))
+                    // Finding a member does not authorize dropping a displaced member of an already accepted left page.
+                    if (required.size > capacity) fail('source-changed', 'range-missing-members')
+                    await expand(issue, nextFrom, nextTo, new Map([[page.page, page]]))
+                  }
+                  const left = await probe('left', fromPage - 1)
+                  if (left.found === missing.length) {
+                    await expandToProbe(left.page, fromPage - 1, toPage)
+                  } else {
+                    if (left.found !== 0 || left.unchanged !== true) fail('source-changed', 'range-missing-members')
+                    const right = await probe('right', toPage + 1)
+                    if (right.found !== missing.length) fail('source-changed', 'range-missing-members')
+                    await expandToProbe(right.page, fromPage, toPage + 1)
+                  }
+                } else {
+                  // When both sides fit, retain the symmetric halo rather than inferring direction from an old MR.
+                  await expand(issue, Math.max(1, fromPage - 1), last.nextPage ?? toPage)
+                }
                 continue
               }
               if (fromPage > 1) {

@@ -26,6 +26,22 @@ export interface LegendPageRecoveryDecision {
   recoveryUsed: boolean
   conflict?: { previous: LegendOrderPosition; current: LegendOrderPosition }
 }
+export interface LegendMissingMemberDetail {
+  firstSeen: LegendOrderPosition
+  lastSeen: LegendOrderPosition
+  firstSeenSource: 'saved-page' | 'trigger-page' | 'range-reread' | 'right-baseline' | 'left-probe'
+  observations: number
+  accountPresence: 'other-character-in-range' | 'absent-from-range'
+  sameAccountRowsCount: number
+  sameAccountPositions: LegendOrderPosition[]
+}
+export interface LegendMissingEdgeProbe {
+  side: 'left' | 'right'
+  page: number
+  unchanged: boolean | null
+  missingFoundCount: number
+  found: { previous: LegendOrderPosition; current: LegendOrderPosition }[]
+}
 export interface LegendPageRecoveryIssue {
   kind: 'fixed-prefix-duplicate' | 'recovery-range-duplicate' | 'within-page-duplicate' | 'missing-members'
   fromPage: number
@@ -33,6 +49,8 @@ export interface LegendPageRecoveryIssue {
   conflict?: { previous: LegendOrderPosition; current: LegendOrderPosition }
   missingCount?: number
   missingPositions?: LegendOrderPosition[]
+  missingDetails?: LegendMissingMemberDetail[]
+  edgeProbes?: LegendMissingEdgeProbe[]
   expansion?: { fromPage: number; toPage: number }
 }
 export interface LegendPageRecoveryRange {
@@ -101,7 +119,7 @@ export function sanitizeLegendPageRecoveryDecision(value: unknown): LegendPageRe
 
 function recoveryIssue(value: unknown): LegendPageRecoveryIssue | undefined {
   if (!record(value)) return undefined
-  const { kind, fromPage, toPage, conflict, missingCount, missingPositions, expansion } = value
+  const { kind, fromPage, toPage, conflict, missingCount, missingPositions, missingDetails, edgeProbes, expansion } = value
   if (!['fixed-prefix-duplicate', 'recovery-range-duplicate', 'within-page-duplicate', 'missing-members'].includes(kind as string)
     || !integer(fromPage, 1, 1000000) || !integer(toPage, fromPage + 1, 1000000) || toPage - fromPage + 1 > 6) return undefined
   const issue: LegendPageRecoveryIssue = { kind: kind as LegendPageRecoveryIssue['kind'], fromPage, toPage }
@@ -120,8 +138,68 @@ function recoveryIssue(value: unknown): LegendPageRecoveryIssue | undefined {
       }
       issue.missingPositions = positions
     }
+    if (missingDetails !== undefined) {
+      if (!Array.isArray(missingDetails)) return undefined
+      const length = missingDetails.length
+      if (!integer(length, 0, 3) || length > missingCount) return undefined
+      const details: LegendMissingMemberDetail[] = []
+      for (let index = 0; index < length; index++) {
+        const item = missingDetails[index]
+        if (!record(item)) return undefined
+        const firstSeen = position(item.firstSeen), lastSeen = position(item.lastSeen)
+        const { firstSeenSource, observations, accountPresence, sameAccountRowsCount, sameAccountPositions } = item
+        if (!firstSeen || !lastSeen || firstSeen.page < fromPage || firstSeen.page > toPage
+          || lastSeen.page < fromPage || lastSeen.page > toPage
+          || !['saved-page', 'trigger-page', 'range-reread', 'right-baseline', 'left-probe'].includes(firstSeenSource as string)
+          || !integer(observations, 1, 20000) || !integer(sameAccountRowsCount, 0, 120)
+          || !['other-character-in-range', 'absent-from-range'].includes(accountPresence as string)
+          || (accountPresence === 'absent-from-range') !== (sameAccountRowsCount === 0)
+          || !Array.isArray(sameAccountPositions)) return undefined
+        const positionsLength = sameAccountPositions.length
+        if (!integer(positionsLength, 0, 3) || positionsLength > sameAccountRowsCount) return undefined
+        const positions: LegendOrderPosition[] = []
+        for (let offset = 0; offset < positionsLength; offset++) {
+          const observed = position(sameAccountPositions[offset])
+          if (!observed || observed.page < fromPage || observed.page > toPage) return undefined
+          positions.push(observed)
+        }
+        details.push({ firstSeen, lastSeen, firstSeenSource: firstSeenSource as LegendMissingMemberDetail['firstSeenSource'],
+          observations, accountPresence: accountPresence as LegendMissingMemberDetail['accountPresence'], sameAccountRowsCount,
+          sameAccountPositions: positions })
+      }
+      issue.missingDetails = details
+    }
+    if (edgeProbes !== undefined) {
+      if (!Array.isArray(edgeProbes)) return undefined
+      const length = edgeProbes.length
+      if (!integer(length, 0, 2)) return undefined
+      const probes: LegendMissingEdgeProbe[] = []
+      for (let index = 0; index < length; index++) {
+        const item = edgeProbes[index]
+        if (!record(item)) return undefined
+        const { side, page, unchanged, missingFoundCount, found } = item
+        if (!['left', 'right'].includes(side as string) || !integer(page, 1, 1000000)
+          || page !== (side === 'left' ? fromPage - 1 : toPage + 1)
+          || !(side === 'left' ? bool(unchanged) : unchanged === null)
+          || !integer(missingFoundCount, 0, missingCount) || !Array.isArray(found)
+          || probes.some(probe => probe.side === side)) return undefined
+        const foundLength = found.length
+        if (!integer(foundLength, 0, 3) || foundLength > missingFoundCount) return undefined
+        const pairs: LegendMissingEdgeProbe['found'] = []
+        for (let offset = 0; offset < foundLength; offset++) {
+          const pair = found[offset]
+          if (!record(pair)) return undefined
+          const previous = position(pair.previous), current = position(pair.current)
+          if (!previous || !current || previous.page < fromPage || previous.page > toPage || current.page !== page) return undefined
+          pairs.push({ previous, current })
+        }
+        probes.push({ side: side as LegendMissingEdgeProbe['side'], page, unchanged: unchanged as boolean | null, missingFoundCount, found: pairs })
+      }
+      issue.edgeProbes = probes
+    }
   } else {
-    if (!record(conflict) || missingCount !== undefined || missingPositions !== undefined) return undefined
+    if (!record(conflict) || missingCount !== undefined || missingPositions !== undefined
+      || missingDetails !== undefined || edgeProbes !== undefined) return undefined
     const previous = position(conflict.previous), current = position(conflict.current)
     if (!previous || !current || current.page < fromPage || current.page > toPage) return undefined
     if (kind === 'fixed-prefix-duplicate' && previous.page >= fromPage) return undefined

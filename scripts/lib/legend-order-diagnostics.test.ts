@@ -178,3 +178,100 @@ test('issue and position arrays ignore custom iterators and reject throwing inde
   assert.equal(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: [{ ...recoveryIssues[0],
     expansion: { get fromPage(): never { throw new Error('private') } } }] }), undefined)
 })
+
+const missingDetail = { firstSeen: position(16, 2), lastSeen: position(17, 3), firstSeenSource: 'saved-page', observations: 4,
+  accountPresence: 'other-character-in-range', sameAccountRowsCount: 2, sameAccountPositions: [position(18), position(18)] }
+const missingProbe = { side: 'left', page: 13, unchanged: false, missingFoundCount: 1,
+  found: [{ previous: position(16, 2), current: position(13, 20) }] }
+const detailedMissing = { kind: 'missing-members', fromPage: 14, toPage: 18, missingCount: 2,
+  missingDetails: [missingDetail], edgeProbes: [missingProbe,
+    { side: 'right', page: 19, unchanged: null, missingFoundCount: 0, found: [] }] }
+const detailedRange = { attempt: 1, fromPage: 14, toPage: 18, lastValidatedPage: 18, status: 'failed', issues: [detailedMissing] }
+
+test('missing provenance and completed edge probes retain only numeric observations and fixed classifications', () => {
+  const secret = 'private-player-identity', toJSON = () => secret
+  const dirty = { ...detailedMissing, missingDetails: [{ ...missingDetail, playerId: secret, characterId: secret, toJSON,
+    firstSeen: { ...missingDetail.firstSeen, accountKey: secret, toJSON }, lastSeen: { ...missingDetail.lastSeen, raw: secret },
+    sameAccountPositions: missingDetail.sameAccountPositions.map(item => ({ ...item, playerName: secret, toJSON })) }],
+    edgeProbes: detailedMissing.edgeProbes.map(probe => ({ ...probe, sourceUrl: secret, toJSON,
+      found: probe.found.map(pair => ({ previous: { ...pair.previous, characterId: secret },
+        current: { ...pair.current, playerId: secret, toJSON }, accountKey: secret, toJSON })) })) }
+  const safe = sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [dirty] })
+  assert.deepEqual(safe, detailedRange)
+  assert.deepEqual(sanitizeLegendPageRecoveryRange(safe), safe)
+  assert.doesNotMatch(JSON.stringify(safe), /private-player|playerId|playerName|accountKey|characterId|sourceUrl|raw|toJSON/)
+  assert.notEqual(safe!.issues![0].missingDetails![0].firstSeen, dirty.missingDetails[0].firstSeen)
+  assert.notEqual(safe!.issues![0].edgeProbes![0].found[0].current, dirty.edgeProbes[0].found[0].current)
+  for (const firstSeenSource of ['saved-page', 'trigger-page', 'range-reread', 'right-baseline', 'left-probe']) {
+    const detail = { ...missingDetail, firstSeenSource, observations: 20000,
+      accountPresence: 'absent-from-range', sameAccountRowsCount: 0, sameAccountPositions: [] }
+    const issue = { ...detailedMissing, missingDetails: [detail], edgeProbes: [] }
+    assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [issue] })?.issues, [issue])
+  }
+  const old = { kind: 'missing-members', fromPage: 14, toPage: 18, missingCount: 1 }
+  assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [old] })?.issues, [old])
+})
+
+test('missing detail and probe bounds reject inconsistent counts, classifications and page scopes', () => {
+  const invalidDetails = [null, {}, { ...missingDetail, firstSeen: position(13) }, { ...missingDetail, lastSeen: position(19) },
+    { ...missingDetail, firstSeenSource: 'private' }, { ...missingDetail, observations: 0 }, { ...missingDetail, observations: 20001 },
+    { ...missingDetail, observations: Infinity }, { ...missingDetail, accountPresence: 'private' },
+    { ...missingDetail, accountPresence: 'absent-from-range' }, { ...missingDetail, sameAccountRowsCount: 0 },
+    { ...missingDetail, sameAccountRowsCount: 121 }, { ...missingDetail, sameAccountRowsCount: 1 },
+    { ...missingDetail, sameAccountPositions: [position(13)] }, { ...missingDetail, sameAccountPositions: null },
+    { ...missingDetail, sameAccountRowsCount: 4, sameAccountPositions: Array(4).fill(position(16)) }]
+  for (const item of invalidDetails) {
+    assert.equal(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [{ ...detailedMissing, missingDetails: [item] }] }), undefined)
+  }
+  for (const missingDetails of [null, {}, Array(4).fill(missingDetail), Array(3).fill(missingDetail)]) {
+    assert.equal(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [{ ...detailedMissing, missingDetails }] }), undefined)
+  }
+  const invalidProbes = [null, {}, { ...missingProbe, side: 'private' }, { ...missingProbe, page: 12 },
+    { ...missingProbe, unchanged: null }, { ...missingProbe, unchanged: 'private' },
+    { ...missingProbe, side: 'right', page: 19, unchanged: true },
+    { ...missingProbe, missingFoundCount: -1 }, { ...missingProbe, missingFoundCount: 3 }, { ...missingProbe, missingFoundCount: 0 },
+    { ...missingProbe, found: null }, { ...missingProbe, found: [{ previous: position(13), current: position(13) }] },
+    { ...missingProbe, found: [{ previous: position(16), current: position(14) }] }]
+  for (const item of invalidProbes) {
+    assert.equal(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [{ ...detailedMissing, edgeProbes: [item] }] }), undefined)
+  }
+  for (const edgeProbes of [null, {}, Array(3).fill(missingProbe), [missingProbe, missingProbe]]) {
+    assert.equal(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [{ ...detailedMissing, edgeProbes }] }), undefined)
+  }
+  assert.equal(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [{ ...detailedMissing, missingCount: 4,
+    edgeProbes: [{ ...missingProbe, missingFoundCount: 4, found: Array(4).fill(missingProbe.found[0]) }] }] }), undefined)
+  for (const patch of [{ missingDetails: [] }, { edgeProbes: [] }]) {
+    assert.equal(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [{ ...recoveryIssues[0], ...patch }] }), undefined)
+  }
+})
+
+test('missing detail and edge-probe arrays ignore custom iterators and contain hostile nested access', () => {
+  let iteratorCalls = 0
+  const boundedArray = <T>(items: T[]): T[] => {
+    Object.defineProperty(items, Symbol.iterator, { value: function* () { iteratorCalls++; for (let index = 0; index < 100; index++) yield items[0] } })
+    return items
+  }
+  const issue = { ...detailedMissing,
+    missingDetails: boundedArray([{ ...missingDetail, sameAccountPositions: boundedArray([...missingDetail.sameAccountPositions]) }]),
+    edgeProbes: boundedArray([{ ...missingProbe, found: boundedArray([...missingProbe.found]) }]) }
+  assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [issue] })?.issues,
+    [{ ...detailedMissing, edgeProbes: [missingProbe] }])
+  assert.equal(iteratorCalls, 0)
+  const throwing = <T>(items: T[], property: string): T[] => new Proxy(items, { get(target, key, receiver) {
+    if (key === property) throw new Error('private'); return Reflect.get(target, key, receiver)
+  } })
+  for (const property of ['0', 'length']) {
+    for (const patch of [
+      { missingDetails: throwing([missingDetail], property) },
+      { missingDetails: [{ ...missingDetail, sameAccountPositions: throwing([position(16)], property) }] },
+      { edgeProbes: throwing([missingProbe], property) },
+      { edgeProbes: [{ ...missingProbe, found: throwing(missingProbe.found, property) }] },
+    ]) assert.equal(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [{ ...detailedMissing, ...patch }] }), undefined)
+  }
+  for (const patch of [
+    { missingDetails: [{ ...missingDetail, get firstSeen(): never { throw new Error('private') } }] },
+    { missingDetails: [{ ...missingDetail, get observations(): never { throw new Error('private') } }] },
+    { edgeProbes: [{ ...missingProbe, get unchanged(): never { throw new Error('private') } }] },
+    { edgeProbes: [{ ...missingProbe, found: [{ previous: position(16), get current(): never { throw new Error('private') } }] }] },
+  ]) assert.equal(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [{ ...detailedMissing, ...patch }] }), undefined)
+})

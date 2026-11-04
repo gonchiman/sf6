@@ -101,6 +101,27 @@ test('incomplete player capture writes only failure manifests and no fabricated 
   assert.equal(manifest.availability.status, 'verification-pending')
 })
 
+test('a ranking asset conflict remains source-unconfirmed through capture and safe report roundtrips', async t => {
+  const data = await fixture(t)
+  data.transport.initialize = async () => { throw new LegendAnalysisDomError('ranking-asset-conflict') }
+  data.transport.getDiagnostics = () => ({ requestCount: 1, successfulReadCount: 0, lastAttemptedPage: 1,
+    lastStep: 'ranking-observation', lastErrorCode: 'ranking-asset-conflict' })
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
+  assert.equal(result.succeeded, false)
+  assert.equal(result.report.reason, 'source-unconfirmed')
+  assert.equal(result.report.domErrorCode, 'ranking-asset-conflict')
+  const safe = summarizeLegendAnalysisCaptureReport(result.report)
+  assert.equal(safe.domErrorCode, 'ranking-asset-conflict')
+  assert.equal(safe.reason, 'source-unconfirmed')
+  assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe), safe)
+  assert.equal(data.calls.read, 0); assert.equal(data.calls.close, 1)
+  assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json'])
+  const manifest = JSON.parse(await readFile(resolve(data.output, 'public/index.json'), 'utf8'))
+  assert.deepEqual(manifest.datasets, [])
+  assert.equal(manifest.availability.status, 'verification-pending')
+  assert.doesNotMatch(JSON.stringify(safe), /synthetic-secret|accountKey|playerId|characterId|playerName|raw|profileUrl/)
+})
+
 test('player opt-in cannot publish a completed projection when browser closure fails', async t => {
   const data = await fixture(t)
   withPlayers(data.transport)
@@ -811,6 +832,43 @@ test('stdout allowlists recovery decisions and preserves legacy failures without
   assert.deepEqual(safe.attemptFailures, [{ ...failure, pageRecoveryDecision: decision }, { ...failure, attempt: 2 }, { ...failure, attempt: 3 }])
   for (const value of [SECRET, 'accountKey', 'playerName', 'playerId', 'profileUrl', 'message', 'rawEntries', 'url']) assert.equal(JSON.stringify(safe).includes(value), false)
   assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).attemptFailures, safe.attemptFailures)
+})
+
+test('stdout retains missing-member provenance and edge evidence through both sanitizers without private values', () => {
+  const original = { page: 16, rowIndex: 2, rank: 298, masterRating: 1814 }
+  const seenAgain = { page: 17, rowIndex: 3, rank: 321, masterRating: 1812 }
+  const otherCharacter = { page: 18, rowIndex: 1, rank: 340, masterRating: 1810 }
+  const found = { previous: original, current: { page: 13, rowIndex: 20, rank: 260, masterRating: 1820 } }
+  const detail = { firstSeen: original, lastSeen: seenAgain, firstSeenSource: 'range-reread', observations: 3,
+    accountPresence: 'other-character-in-range', sameAccountRowsCount: 1, sameAccountPositions: [otherCharacter] }
+  const probe = { side: 'left', page: 13, unchanged: false, missingFoundCount: 1, found: [found] }
+  const issue = { kind: 'missing-members', fromPage: 14, toPage: 18, missingCount: 1,
+    missingDetails: [detail], edgeProbes: [probe] }
+  const range = { attempt: 1, fromPage: 13, toPage: 18, lastValidatedPage: 18, status: 'succeeded', issues: [issue] }
+  const dirtyIssue = { ...issue, missingDetails: [{ ...detail, playerId: SECRET, characterId: SECRET, toJSON: () => SECRET,
+    firstSeen: { ...original, accountKey: SECRET }, lastSeen: { ...seenAgain, profileUrl: SECRET },
+    sameAccountPositions: [{ ...otherCharacter, playerName: SECRET, toJSON: () => SECRET }] }],
+    edgeProbes: [{ ...probe, raw: [SECRET], found: [{ previous: { ...original, characterId: SECRET },
+      current: { ...found.current, playerId: SECRET, toJSON: () => SECRET }, accountKey: SECRET }] }] }
+  const dirty = { ...range, issues: [dirtyIssue] }
+  const safe = summarizeLegendAnalysisCaptureReport({ pageRecoveryAttemptCount: 1, pageRecoverySuccessCount: 1,
+    pageRecoveryRange: dirty, pageRecoveryRanges: [dirty] })
+  assert.deepEqual(safe.pageRecoveryRange, range)
+  assert.deepEqual(safe.pageRecoveryRanges, [range])
+  assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe), safe)
+  assert.doesNotMatch(JSON.stringify(safe), /playerId|playerName|accountKey|characterId|profileUrl|raw|toJSON|synthetic-secret/)
+  for (const patch of [{ missingDetails: Array(4).fill(detail) }, { missingDetails: [{ ...detail, observations: 0 }] },
+    { edgeProbes: [{ ...probe, page: 12 }] }, { edgeProbes: [{ ...probe, unchanged: null }] },
+    { edgeProbes: [{ ...probe, found: [{ ...found, get current(): never { throw new Error(SECRET) } }] }] }]) {
+    const invalid = { ...range, issues: [{ ...issue, ...patch }] }
+    const report = summarizeLegendAnalysisCaptureReport({ pageRecoveryRange: invalid, pageRecoveryRanges: [invalid] })
+    assert.equal(Object.hasOwn(report, 'pageRecoveryRange'), false)
+    assert.equal(Object.hasOwn(report, 'pageRecoveryRanges'), false)
+    assert.equal(JSON.stringify(report).includes(SECRET), false)
+  }
+  const legacyIssue = { kind: 'missing-members', fromPage: 14, toPage: 18, missingCount: 1 }
+  const legacy = summarizeLegendAnalysisCaptureReport({ pageRecoveryRange: { ...range, issues: [legacyIssue] } })
+  assert.deepEqual(legacy.pageRecoveryRange?.issues, [legacyIssue])
 })
 
 test('legacy transports retain numeric order diagnostics without requiring a DOM recheck method', async t => {

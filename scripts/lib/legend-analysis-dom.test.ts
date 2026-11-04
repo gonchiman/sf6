@@ -586,6 +586,32 @@ test('a duplicate within one observed page waits for hydration and fails closed 
   await assert.rejects(data.reader.fetchPage(1, legendAnalysisPageUrl(1)), /unsupported-dom/)
 })
 
+test('asset conflicts wait in the same document and use a specific error only when still present at the normal timeout', async () => {
+  const transient = fixture(); await transient.reader.initialize()
+  let observations = 0
+  transient.mutateSnapshot(value => { if (++observations <= 2) { value.entries = null; value.assetConflict = true } })
+  const before = transient.navigations.length
+  const captured = await transient.reader.fetchPage(1, legendAnalysisPageUrl(1))
+  assert.equal(captured.entries.length, 20)
+  assert.equal(observations, 3)
+  assert.equal(transient.navigations.length, before + 1)
+  for (const conflict of [true, false]) {
+    const persistent = fixture(); await persistent.reader.initialize()
+    persistent.mutateSnapshot(value => { value.entries = null; value.assetConflict = conflict })
+    const navigations = persistent.navigations.length
+    const code = conflict ? 'ranking-asset-conflict' : 'unsupported-dom'
+    await assert.rejects(persistent.reader.fetchPage(1, legendAnalysisPageUrl(1)),
+      error => error instanceof LegendAnalysisDomError && error.code === code)
+    assert.equal(persistent.reader.getDiagnostics().lastErrorCode, code)
+    assert.equal(persistent.navigations.length, navigations + 1)
+  }
+  const settledToMissing = fixture(); await settledToMissing.reader.initialize()
+  let samples = 0
+  settledToMissing.mutateSnapshot(value => { value.entries = null; value.assetConflict = ++samples <= 2 })
+  await assert.rejects(settledToMissing.reader.fetchPage(1, legendAnalysisPageUrl(1)),
+    error => error instanceof LegendAnalysisDomError && error.code === 'unsupported-dom')
+})
+
 test('consecutive goto keeps one server retry and stops client faults or redirects', async () => {
   const recovered = fixture(); await recovered.reader.initialize(); await recovered.reader.fetchPage(1, legendAnalysisPageUrl(1)); recovered.respond(503, 200)
   const before = recovered.reader.getDiagnostics().requestCount
@@ -695,6 +721,124 @@ test('source roster scroll loads every catalog portrait and diagnoses only catal
   assert.deepEqual(sanitizeLegendRosterDiagnostics(observed.diagnostics), observed.diagnostics)
   assert.equal(sanitizeLegendRosterDiagnostics({ ...observed.diagnostics, items: [{ ...observed.diagnostics.items[0], label: '<private HTML>' }] }), null)
   assert.equal(JSON.stringify(observed.diagnostics).includes('https://'), false)
+})
+
+function rankingAssetFixture(t: test.TestContext) {
+  const origin = 'https://www.streetfighter.com'
+  const character = (id: string) => `/6/buckler/assets/images/material/character/character_${id}_l.png`
+  const rank = (id: number) => `/6/buckler/assets/images/material/rank/rank${id}_l.png`
+  const optimized = (path: string, width: number) => `${origin}/6/buckler/_next/image?url=${encodeURIComponent(path)}&w=${width}&q=75`
+  function element(value = '', children: Record<string, unknown[]> = {}, attributes: Record<string, string> = {}) {
+    return { innerText: value, textContent: value, innerHTML: value, parentElement: null,
+      getBoundingClientRect: () => ({ width: 100, height: 20 }), hasAttribute: () => false,
+      getAttribute: (key: string) => attributes[key] ?? null, closest: () => null,
+      querySelectorAll: (key: string) => children[key] ?? [], scrollIntoView: () => {} }
+  }
+  const portraitAttributes = { src: `${origin}${character('ryu')}`, srcset: '' }
+  const badgeAttributes = { src: `${origin}${rank(37)}`, srcset: '' }
+  const portrait = Object.assign(element('', {}, portraitAttributes), { complete: true, naturalWidth: 100, currentSrc: portraitAttributes.src })
+  const badge = Object.assign(element('', {}, badgeAttributes), { complete: true, naturalWidth: 100, currentSrc: badgeAttributes.src })
+  const portraitFallback = element(`<img src="${character('ryu')}">`), badgeFallback = element(`<img src="${rank(37)}">`)
+  const portraitAssets = { img: [portrait], noscript: [portraitFallback] }
+  const row = element('', {
+    'div[class*="ranking_page_data"]': [element()],
+    '[class*="ranking_time"]': [element('', { 'dl dt': [element('1位')], 'dl dd': [element('2400MR')] })],
+    'div[class*="ranking_character"]': [element('', portraitAssets)],
+    'div[class*="ranking_league_rank_icon"] p[class*="ranking_master_rating_icon"]': [element('', { img: [badge], noscript: [badgeFallback] })],
+  }, { href: '/6/buckler/ja-jp/profile/123456' })
+  const select = (value: string, label: string) => Object.assign(element(), { value, options: [element(label)], selectedOptions: [element(label)] })
+  const nodes: Record<string, unknown[]> = {
+    'a,button': [element('ログアウト')], 'h1,h2': [],
+    select: [select('1', '総合'), select('0', 'すべて'), select('1', 'すべて'), select('1', '1')],
+    'aside[class*="ranking_act_nav"] li[class*="active"]': [element('今Act')],
+    'p[class*="ranking_ranking_now"]': [element('1 - 1/ 800000')],
+    'ul[class*="ranking_ranking_list"]:not([class*="ranking__my__list"])': [element('', { 'a[href*="/profile/"]': [row] })],
+  }
+  const globals: Record<string, unknown> = {
+    document: { querySelectorAll: (key: string) => nodes[key] ?? [] },
+    window: { getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }) },
+    location: { origin, href: legendAnalysisPageUrl(1) },
+    DOMParser: class { parseFromString(value: string) {
+      const images = [...value.matchAll(/<img\b([^>]*)>/g)].map(match => element('', {}, Object.fromEntries(
+        [...match[1].matchAll(/\b(src|srcset)="([^"]*)"/g)].map(attribute => [attribute[1], attribute[2].replace(/&amp;/g, '&')]))))
+      return { querySelectorAll: () => images }
+    } },
+  }
+  const previous = Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const)
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value })
+  t.after(() => { for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key) } })
+  return { origin, character, rank, optimized, portrait, portraitAttributes, portraitFallback, portraitAssets, badge, badgeAttributes, badgeFallback,
+    read: () => observeLegendAnalysisDom({ salt: 'synthetic-asset-consistency', characterIds: ['ryu', 'ken'], readOnly: true }) }
+}
+
+test('loaded character identity must match active declarations while inactive noscript cannot override it', async t => {
+  // This contradictory-DOM fixture does not establish that a normal pending-image transition or the live failure had this shape.
+  const data = rankingAssetFixture(t), first = await data.read()
+  assert.equal(first.entries?.[0].characterId, 'ryu')
+  data.portraitAttributes.src = `${data.origin}${data.character('ken')}`
+  data.portraitAttributes.srcset = `${data.optimized(data.character('ken'), 96)} 1x, ${data.optimized(data.character('ken'), 192)} 2x`
+  data.portraitFallback.textContent = `<img src="${data.character('ken')}">`
+  const contradicted = await data.read()
+  assert.equal(contradicted.entries, null)
+  assert.equal(contradicted.assetConflict, true)
+  data.portrait.currentSrc = data.optimized(data.character('ken'), 192)
+  const coherent = await data.read()
+  assert.equal(coherent.entries?.[0].characterId, 'ken')
+  assert.notEqual(coherent.assetConflict, true)
+  assert.equal(coherent.entries?.[0].accountKey, first.entries?.[0].accountKey)
+  data.portraitFallback.textContent = `<img src="${data.character('ryu')}">`
+  assert.equal((await data.read()).entries?.[0].characterId, 'ken')
+  data.portraitAttributes.src = `${data.origin}${data.character('ryu')}`
+  assert.equal((await data.read()).entries, null)
+})
+
+test('loaded rank badges must match active declarations and take precedence over inactive fallback', async t => {
+  const data = rankingAssetFixture(t)
+  data.badgeAttributes.src = `${data.origin}${data.rank(42)}`
+  data.badgeFallback.textContent = `<img src="${data.rank(42)}">`
+  assert.equal((await data.read()).entries, null)
+  data.badge.currentSrc = data.optimized(data.rank(42), 96)
+  assert.equal((await data.read()).entries?.[0].isLegend, false)
+  data.badgeFallback.textContent = `<img src="${data.rank(37)}">`
+  assert.equal((await data.read()).entries?.[0].isLegend, false)
+})
+
+test('official image size variants normalize to one identity while mixed or nonofficial declarations are rejected', async t => {
+  const data = rankingAssetFixture(t), path = data.character('ryu')
+  data.portrait.currentSrc = data.optimized(path, 96)
+  data.portraitAttributes.src = data.optimized(path, 192)
+  data.portraitAttributes.srcset = `${data.optimized(path, 48)} 48w, ${data.optimized(path, 96)} 96w, ${data.optimized(path, 192)} 192w`
+  data.portraitFallback.textContent = `<img src="${path}" srcset="${data.optimized(path, 96)} 1x, ${data.optimized(path, 192)} 2x">`
+  data.portraitAssets.img.push({ ...data.portrait, currentSrc: data.optimized(path, 48) })
+  assert.equal((await data.read()).entries?.[0].characterId, 'ryu')
+  const originalSrcset = data.portraitAttributes.srcset
+  for (const srcset of [`${data.optimized(path, 96)} 1x, ${data.optimized(data.character('ken'), 192)} 2x`,
+    `${data.optimized(path, 96)} unexpected`, `${data.optimized(path, 96)} 0w`, `${data.optimized(path, 96)} 1.5w`]) {
+    data.portraitAttributes.srcset = srcset
+    assert.equal((await data.read()).entries, null)
+  }
+  data.portraitAttributes.srcset = originalSrcset
+  for (const src of [`https://example.com${path}`, `${data.origin}${path}?unknown=1`,
+    data.optimized(`https://example.com${path}`, 96), `${data.optimized(path, 96)}&unexpected=1`]) {
+    data.portraitAttributes.src = src
+    assert.equal((await data.read()).entries, null)
+  }
+})
+
+test('lazy placeholders still use coherent official fallback assets and never declared targets alone', async t => {
+  const data = rankingAssetFixture(t)
+  Object.assign(data.portrait, { complete: false, naturalWidth: 0, currentSrc: 'data:image/gif;base64,placeholder' })
+  data.portraitAttributes.src = 'data:image/gif;base64,placeholder'
+  data.portraitAttributes.srcset = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
+  assert.equal((await data.read()).entries?.[0].characterId, 'ryu')
+  data.portraitAttributes.srcset += ' 1x'
+  assert.equal((await data.read()).entries?.[0].characterId, 'ryu')
+  data.portraitAttributes.src = `${data.origin}${data.character('ken')}`
+  assert.equal((await data.read()).entries, null)
+  data.portraitFallback.textContent = `<img src="${data.character('ken')}">`
+  assert.equal((await data.read()).entries?.[0].characterId, 'ken')
+  data.portraitAssets.noscript.length = 0
+  assert.equal((await data.read()).entries, null)
 })
 
 test('ranking observation freezes both rows and header before asynchronous identity hashing', async t => {

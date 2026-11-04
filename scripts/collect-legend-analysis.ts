@@ -192,7 +192,7 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     datasetId: typeof input.datasetId === 'string' && /^legend-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/.test(input.datasetId) ? input.datasetId : null,
     browserClosed: input.browserClosed === true,
     lastStep: ['idle', 'ranking-navigation', 'ranking-observation', 'act-navigation', 'act-observation', 'roster-condition', 'roster-open', 'roster-observation', 'profile-navigation', 'profile-filter', 'profile-observation', 'complete'].includes(input.lastStep as string) ? input.lastStep as LegendAnalysisReaderStep : null,
-    domErrorCode: ['invalid-request', 'request-limit', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(input.domErrorCode as string) ? input.domErrorCode as LegendAnalysisDomErrorCode : null,
+    domErrorCode: ['invalid-request', 'request-limit', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'ranking-asset-conflict', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(input.domErrorCode as string) ? input.domErrorCode as LegendAnalysisDomErrorCode : null,
     lastHttpStatus: bounded(input.lastHttpStatus, 100, 599) ? input.lastHttpStatus : null,
     lastLoginRequired: typeof input.lastLoginRequired === 'boolean' ? input.lastLoginRequired : null,
     lastSignedIn: typeof input.lastSignedIn === 'boolean' ? input.lastSignedIn : null,
@@ -237,7 +237,7 @@ function reason(error: unknown, signal: AbortSignal): LegendAnalysisFailureReaso
   if (error instanceof LegendAnalysisDomError) {
     if (error.code === 'request-limit') return 'request-limit'
     if (error.code === 'authentication-required') return 'authentication-unavailable'
-    if (['act-unconfirmed', 'unsupported-dom', 'condition-mismatch'].includes(error.code)) return 'source-unconfirmed'
+    if (['act-unconfirmed', 'unsupported-dom', 'ranking-asset-conflict', 'condition-mismatch'].includes(error.code)) return 'source-unconfirmed'
     if (error.code === 'act-changed') return 'source-changed'
     if (['http-denied', 'http-error', 'server-error', 'maintenance'].includes(error.code)) return 'access-unavailable'
   }
@@ -359,7 +359,7 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
         if (Number.isSafeInteger(diagnostics.lastAttemptedPage) && diagnostics.lastAttemptedPage! >= 1 && diagnostics.lastAttemptedPage! <= 1000000) report.lastAttemptedPage = diagnostics.lastAttemptedPage
         if (Number.isSafeInteger(diagnostics.successfulReadCount) && diagnostics.successfulReadCount >= 0 && diagnostics.successfulReadCount <= report.requestCount) report.successfulReadCount = diagnostics.successfulReadCount
         if (['idle', 'ranking-navigation', 'ranking-observation', 'act-navigation', 'act-observation', 'roster-condition', 'roster-open', 'roster-observation', 'profile-navigation', 'profile-filter', 'profile-observation', 'complete'].includes(diagnostics.lastStep ?? '')) report.lastStep = diagnostics.lastStep!
-        if (['invalid-request', 'request-limit', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(diagnostics.lastErrorCode ?? '')) report.domErrorCode = diagnostics.lastErrorCode!
+        if (['invalid-request', 'request-limit', 'cancelled', 'concurrent-read', 'http-denied', 'http-error', 'server-error', 'maintenance', 'authentication-required', 'unsupported-dom', 'ranking-asset-conflict', 'condition-mismatch', 'act-unconfirmed', 'act-changed', 'read-failed'].includes(diagnostics.lastErrorCode ?? '')) report.domErrorCode = diagnostics.lastErrorCode!
         if (['1', '2', '3', '4'].includes(diagnostics.characterFilter ?? '')) report.characterFilter = diagnostics.characterFilter!
         if (Number.isSafeInteger(diagnostics.visibleRosterButtonCount) && diagnostics.visibleRosterButtonCount! >= 0 && diagnostics.visibleRosterButtonCount! <= 20) report.visibleRosterButtonCount = diagnostics.visibleRosterButtonCount!
         if (['intercepts-pointer-events', 'not-visible', 'not-stable', 'outside-viewport', 'strict-mode', 'other'].includes(diagnostics.clickFailure ?? '')) report.clickFailure = diagnostics.clickFailure!
