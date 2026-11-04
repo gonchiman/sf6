@@ -48,6 +48,14 @@ export function canResumeSampleSurvey(checkpoint: SampleSurveyCheckpoint): boole
     && !checkpoint.slots.some(slot => slot.target === 'mr' && slot.status !== 'pending')
 }
 
+/** Eligibility for an explicit manual request only. A fresh strict read is still required. */
+export function canRecoverSampleSurveyAuthentication(checkpoint: SampleSurveyCheckpoint): boolean {
+  return checkpoint.schemaVersion === 2 && checkpoint.report.schemaVersion === 2
+    && checkpoint.report.state === 'error' && checkpoint.report.stopReason === 'authentication-unconfirmed'
+    && checkpoint.report.resumeAllowed === false && !checkpoint.plan.config.includeMr
+    && checkpoint.plan.config.ranks.length > 0 && !checkpoint.slots.some(slot => slot.target === 'mr')
+}
+
 function integer(value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): value is number {
   return Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max
 }
@@ -214,6 +222,8 @@ export interface SampleSurveyRunnerOptions {
   checkpoint?: SampleSurveyCheckpoint
   /** Only the cloud continuation controller may renew a verified transient failure's per-invocation budget. */
   resetReadRetryBudget?: boolean
+  /** An explicit manual request; never inferred from the automatic resume flag. */
+  recoverAuthentication?: boolean
   /** An invocation may be shorter than its immutable sampling plan, never longer. */
   maxInvocationMinutes?: number
   onUpdate?(checkpoint: SampleSurveyCheckpoint): Promise<void> | void
@@ -249,27 +259,46 @@ export function markSampleSurveyInterrupted(value: SampleSurveyCheckpoint, time 
 export async function runSampleSurvey(value: SampleSurveyPlan, options: SampleSurveyRunnerOptions): Promise<SampleSurveyCheckpoint> {
   const plan = parseSampleSurveyPlan(value), now = options.now ?? Date.now
   const start = now(), base = options.checkpoint ? parseSampleSurveyCheckpoint(options.checkpoint) : null
+  if (options.recoverAuthentication !== undefined && typeof options.recoverAuthentication !== 'boolean') fail()
+  const authenticationRecovery = options.recoverAuthentication === true
+  if (authenticationRecovery && (!base || !canRecoverSampleSurveyAuthentication(base))) fail()
   if (base && (base.schemaVersion !== 2 || JSON.stringify(base.plan) !== JSON.stringify(plan) || !(base.report.resumeAllowed && canResumeSampleSurvey(base))
-    && !(base.report.state === 'preparing' && base.report.attempts === 0 && !base.frames.length && !base.slots.length))) fail()
+    && !authenticationRecovery && !(base.report.state === 'preparing' && base.report.attempts === 0 && !base.frames.length && !base.slots.length))) fail()
   if (options.resetReadRetryBudget !== undefined && typeof options.resetReadRetryBudget !== 'boolean'
-    || options.resetReadRetryBudget && (!base || !hasSampleSurveyTransientFailure(base))) fail()
+    || options.resetReadRetryBudget && (!base || !hasSampleSurveyTransientFailure(base) && !authenticationRecovery)) fail()
   const invocationMinutes = options.maxInvocationMinutes ?? plan.config.maxDurationMinutes
   if (!integer(invocationMinutes, 1, plan.config.maxDurationMinutes)) fail()
+  let authenticationPage: SampleSurveyPage | undefined
+  if (authenticationRecovery) {
+    // The production reader returns a page only after positive, fresh sign-in
+    // evidence and the normal listing checks. Never save a preparing state or
+    // renew retries before this one explicit authentication check has succeeded.
+    if (options.signal.aborted) throw new SampleSurveyReadError('cancelled')
+    authenticationPage = validatePage(await options.reader.readPage('lp', 1), 'lp', 1, () => {})
+    if (options.signal.aborted) throw new SampleSurveyReadError('cancelled')
+    if (Date.parse(authenticationPage.observedAt) < start || Date.parse(authenticationPage.observedAt) > now()) fail()
+    if (base!.frames.some(frame => frame.target === 'lp' && frame.pageSize !== authenticationPage!.pageSize)) throw new SampleSurveyReadError('frame-changed')
+    if (now() - start >= invocationMinutes * 60_000) throw new SampleSurveyReadError('limit-reached')
+  }
   const checkpoint: SampleSurveyCheckpoint = base ?? createSampleSurveyCheckpoint(plan, start)
   const previousElapsed = checkpoint.report.elapsedMs, initialAttempts = checkpoint.report.attempts
   const timeoutMs = invocationMinutes * 60_000, maxReads = Math.floor(timeoutMs / SAMPLE_SURVEY_INTERVAL_MS) + 1
-  let lastStart: number | null = null, current: SampleSurveyStratumDefinition | null = null
+  let lastStart: number | null = authenticationRecovery ? start : null, current: SampleSurveyStratumDefinition | null = null
   const wait = options.wait ?? (async (milliseconds: number) => { await delay(milliseconds, undefined, { signal: options.signal }) })
   const definitions = sampleSurveyStratumDefinitions(plan.config), report = checkpoint.report, observation = report.observation!
   // Ordinary resume cannot identify which failed pages were already retried.
-  // Only a separately bounded cloud continuation with transient failure evidence
-  // can explicitly grant a fresh invocation budget; other resumes are conservative.
+  // Only a bounded cloud continuation with transient evidence or an explicit
+  // manual authentication recovery can renew retries; other resumes are conservative.
   let readRetries = options.resetReadRetryBudget ? 0 : report.attempts > report.successfulPages ? 3 : 0
   const retriedPages = new Set<string>()
   const latest = new Map<SampleSurveyTarget, { total: number; pageSize: number }>()
   const lastObservedAt = new Map<SampleSurveyTarget, string>()
   report.state = 'preparing'; report.phase = 'boundaries'; report.stopReason = null; report.finishedAt = null; report.resumeAllowed = false
   delete checkpoint.transientFailure
+  if (authenticationPage) {
+    report.attempts++; report.successfulPages++
+    lastObservedAt.set('lp', authenticationPage.observedAt)
+  }
   const check = () => {
     if (options.signal.aborted) throw new SampleSurveyReadError(options.signal.reason instanceof SampleSurveyReadError ? options.signal.reason.code : 'cancelled')
     if (now() - start >= timeoutMs) throw new SampleSurveyReadError('limit-reached')

@@ -1,5 +1,5 @@
 name: Collect production sample survey
-run-name: ${{ inputs.restart_failed_run_id && format('Sample survey production {0} resume {1} restart {2}', inputs.first_run_id, inputs.resume_from_run_id, inputs.restart_failed_run_id) || inputs.resume_from_run_id && format('Sample survey production {0} resume {1}', inputs.first_run_id, inputs.resume_from_run_id) || format('Sample survey production {0}', inputs.first_run_id) }}
+run-name: ${{ inputs.recovery_parent_run_id && format('Sample survey production {0} recover {1} checkpoint {2}', inputs.first_run_id, inputs.recovery_parent_run_id, inputs.recovery_checkpoint_run_id) || inputs.restart_failed_run_id && format('Sample survey production {0} resume {1} restart {2}', inputs.first_run_id, inputs.resume_from_run_id, inputs.restart_failed_run_id) || inputs.resume_from_run_id && format('Sample survey production {0} resume {1}', inputs.first_run_id, inputs.resume_from_run_id) || format('Sample survey production {0}', inputs.first_run_id) }}
 
 on:
   workflow_dispatch:
@@ -19,6 +19,27 @@ on:
         type: string
       resume_from_run_id:
         description: '第1回保存後・第2回起動前に失敗した管理実行ID。未指定は新規管理。'
+        required: false
+        default: ''
+        type: string
+
+      recovery_parent_run_id:
+        description: '第1・2回保存後、第3回の認証確認で停止した管理実行ID。明示復旧用。'
+        required: false
+        default: ''
+        type: string
+      recovery_checkpoint_run_id:
+        description: '第3回の authentication-unconfirmed 停止と途中保存を持つ実行ID。'
+        required: false
+        default: ''
+        type: string
+      completed_second_run_id:
+        description: '保存済みBRONZE・SILVER各200枠の成功実行ID。再取得しません。'
+        required: false
+        default: ''
+        type: string
+      checkpoint_source_sha:
+        description: '第2・3回の途中保存を生成した40桁コードSHA。明示復旧時のみ使用。'
         required: false
         default: ''
         type: string
@@ -62,6 +83,10 @@ jobs:
           PRODUCTION_STAGE: '1'
           PRODUCTION_RESTART_FAILED_RUN_ID: ${{ inputs.restart_failed_run_id }}
           PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
+          PRODUCTION_RECOVERY_PARENT_RUN_ID: ${{ inputs.recovery_parent_run_id }}
+          PRODUCTION_RECOVERY_CHECKPOINT_RUN_ID: ${{ inputs.recovery_checkpoint_run_id }}
+          PRODUCTION_COMPLETED_SECOND_RUN_ID: ${{ inputs.completed_second_run_id }}
+          PRODUCTION_CHECKPOINT_SOURCE_SHA: ${{ inputs.checkpoint_source_sha }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
           PRODUCTION_FIRST_RUN_SHA: ${{ inputs.first_run_sha }}
         run: node scripts/manage-sample-survey-production.ts
@@ -95,6 +120,10 @@ jobs:
           PRODUCTION_STAGE: '2'
           PRODUCTION_RESTART_FAILED_RUN_ID: ${{ inputs.restart_failed_run_id }}
           PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
+          PRODUCTION_RECOVERY_PARENT_RUN_ID: ${{ inputs.recovery_parent_run_id }}
+          PRODUCTION_RECOVERY_CHECKPOINT_RUN_ID: ${{ inputs.recovery_checkpoint_run_id }}
+          PRODUCTION_COMPLETED_SECOND_RUN_ID: ${{ inputs.completed_second_run_id }}
+          PRODUCTION_CHECKPOINT_SOURCE_SHA: ${{ inputs.checkpoint_source_sha }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
         run: node scripts/manage-sample-survey-production.ts
   stage-3:
@@ -127,6 +156,10 @@ jobs:
           PRODUCTION_STAGE: '3'
           PRODUCTION_RESTART_FAILED_RUN_ID: ${{ inputs.restart_failed_run_id }}
           PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
+          PRODUCTION_RECOVERY_PARENT_RUN_ID: ${{ inputs.recovery_parent_run_id }}
+          PRODUCTION_RECOVERY_CHECKPOINT_RUN_ID: ${{ inputs.recovery_checkpoint_run_id }}
+          PRODUCTION_COMPLETED_SECOND_RUN_ID: ${{ inputs.completed_second_run_id }}
+          PRODUCTION_CHECKPOINT_SOURCE_SHA: ${{ inputs.checkpoint_source_sha }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
         run: node scripts/manage-sample-survey-production.ts
   stage-4:
@@ -159,6 +192,10 @@ jobs:
           PRODUCTION_STAGE: '4'
           PRODUCTION_RESTART_FAILED_RUN_ID: ${{ inputs.restart_failed_run_id }}
           PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
+          PRODUCTION_RECOVERY_PARENT_RUN_ID: ${{ inputs.recovery_parent_run_id }}
+          PRODUCTION_RECOVERY_CHECKPOINT_RUN_ID: ${{ inputs.recovery_checkpoint_run_id }}
+          PRODUCTION_COMPLETED_SECOND_RUN_ID: ${{ inputs.completed_second_run_id }}
+          PRODUCTION_CHECKPOINT_SOURCE_SHA: ${{ inputs.checkpoint_source_sha }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
         run: node scripts/manage-sample-survey-production.ts
   stage-5:
@@ -191,5 +228,9 @@ jobs:
           PRODUCTION_STAGE: '5'
           PRODUCTION_RESTART_FAILED_RUN_ID: ${{ inputs.restart_failed_run_id }}
           PRODUCTION_RESUME_FROM_RUN_ID: ${{ inputs.resume_from_run_id }}
+          PRODUCTION_RECOVERY_PARENT_RUN_ID: ${{ inputs.recovery_parent_run_id }}
+          PRODUCTION_RECOVERY_CHECKPOINT_RUN_ID: ${{ inputs.recovery_checkpoint_run_id }}
+          PRODUCTION_COMPLETED_SECOND_RUN_ID: ${{ inputs.completed_second_run_id }}
+          PRODUCTION_CHECKPOINT_SOURCE_SHA: ${{ inputs.checkpoint_source_sha }}
           PRODUCTION_FIRST_RUN_ID: ${{ inputs.first_run_id }}
         run: node scripts/manage-sample-survey-production.ts

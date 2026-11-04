@@ -157,3 +157,54 @@ test('an actual authentication stop is encrypted for diagnosis but cannot be aut
   }), SampleSurveyCloudError)
   assert.equal(launches, 0)
 })
+
+test('manual auth recovery preserves encrypted observations across a code update and requires a new successful read', async () => {
+  let clock = EPOCH, sampled = 0, stopAfterSample = true, saved: SampleSurveyCheckpoint | undefined, bytes: Buffer | undefined
+  const rows = Array.from({ length: 2000 }, (_, i) => ({ accountId: String(7654300000 + i), value: 50000 - i, rankId: 36 }))
+  const createReader = async () => ({ async readPage(target: 'lp' | 'mr', page: number) {
+    if (stopAfterSample && sampled >= 40) throw new SampleSurveyReadError('authentication-unconfirmed')
+    clock += 100
+    return { target, page, pageSize: 20, totalCount: rows.length, totalPages: 100, observedAt: new Date(clock).toISOString(),
+      entries: rows.slice((page - 1) * 20, page * 20).map(row => ({ ...row })) }
+  }, async close() {} })
+  const first = await runSampleSurveyCloud({ env: env(), now: () => new Date(clock), createReader,
+    collect: (plan, options) => runSampleSurvey(plan, { ...options, wait: async ms => { clock += ms } }),
+    saveCheckpoint: async (cp, owner, key) => { saved = structuredClone(cp); sampled = cp.report.uniqueAccountCount; bytes = encryptSampleSurveyCheckpoint(cp, owner, key) },
+    logReport: () => {},
+  })
+  assert.equal(first.succeeded, false); assert.equal(first.report.stopReason, 'authentication-unconfirmed')
+  assert.ok(sampled >= 40); assert.equal(first.report.resumeAllowed, false)
+  const old = structuredClone(saved!), oldBytes = Buffer.from(bytes!), newSource = 'b'.repeat(40)
+  const manualEnv = () => ({ ...env('10002', '10001'), GITHUB_SHA: newSource, SAMPLE_SURVEY_SOURCE_SHA: newSource,
+    SAMPLE_SURVEY_RECOVER_AUTHENTICATION: 'true', SAMPLE_SURVEY_RESUME_SOURCE_SHA: SOURCE })
+  const loadCheckpoint: NonNullable<Parameters<typeof runSampleSurveyCloud>[0]>['loadCheckpoint'] = async (_path, key, expected) => {
+    assert.equal(expected.sourceSha, SOURCE)
+    return { checkpoint: decryptSampleSurveyCheckpoint(oldBytes, key, expected), manifest: createSampleSurveyCheckpointManifest(oldBytes) }
+  }
+  clock += 5 * 60_000
+  let deniedReads = 0
+  await assert.rejects(runSampleSurveyCloud({ env: manualEnv(), now: () => new Date(clock), loadCheckpoint,
+    createReader: async () => ({ async readPage() { deniedReads++; throw new SampleSurveyReadError('authentication-unconfirmed') }, async close() {} }),
+    saveCheckpoint: async () => assert.fail('must preserve old checkpoint before positive authentication'),
+    write: async () => assert.fail('cannot publish a failed authentication check'),
+  }), SampleSurveyCloudError)
+  assert.equal(deniedReads, 1); assert.deepEqual(bytes, oldBytes)
+  stopAfterSample = false
+  let verifiedRead = false, final: SampleSurveyCheckpoint | undefined
+  const second = await runSampleSurveyCloud({ env: manualEnv(), now: () => new Date(clock), loadCheckpoint,
+    createReader: async () => {
+      const reader = await createReader()
+      return { ...reader, async readPage(target, page) { const result = await reader.readPage(target, page); verifiedRead = true; return result } }
+    },
+    collect: (plan, options) => runSampleSurvey(plan, { ...options, wait: async ms => { clock += ms } }),
+    saveCheckpoint: async (cp, owner, key) => {
+      assert.equal(verifiedRead, true); assert.equal(owner.sourceSha, newSource); assert.equal(owner.resumeDepth, 1)
+      final = decryptSampleSurveyCheckpoint(encryptSampleSurveyCheckpoint(cp, owner, key), key, { ...owner, config: cp.plan.config })
+    },
+    write: async () => ({ datasets: 1 }), validate: async () => ({ datasets: 1 }), artifactReady: async () => {}, logReport: () => {},
+  })
+  assert.equal(second.succeeded, true); assert.equal(second.report.strata[0].succeeded, 200)
+  assert.equal(second.report.id, first.report.id); assert.deepEqual(final!.plan, old.plan)
+  assert.deepEqual(final!.slots.map(slot => slot.id), old.slots.map(slot => slot.id))
+  for (const slot of old.slots.filter(slot => slot.status !== 'pending')) assert.deepEqual(final!.slots.find(row => row.id === slot.id), slot)
+})

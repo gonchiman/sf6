@@ -364,3 +364,18 @@ test('missing checkpoint keys and duplicate run attempts fail before launching a
     assert.equal(env.BUCKLER_WEEKLY_SESSION, undefined)
   }
 })
+
+test('positive authentication logs reconstruct only safe fields once per target', async () => {
+  const logs: string[] = []
+  await runSampleSurveyCloud({ env: environment(), now: () => now,
+    createReader: async options => {
+      const event = { target: 'lp' as const, page: 1, observedAt: now.toISOString(), evidence: 'logout-control' as const }
+      await options.onAuthenticationVerified!({ ...event, cookie: PRIVATE } as never)
+      await options.onAuthenticationVerified!(event)
+      await options.onAuthenticationVerified!({ ...event, target: PRIVATE } as never)
+      return { readPage: async () => { throw new SampleSurveyReadError('authentication-unconfirmed') }, close: async () => {} }
+    }, logAuthenticationVerified: line => { logs.push(line) }, logReport: () => {},
+  })
+  assert.equal(logs.length, 1); assert.ok(!logs[0].includes(PRIVATE))
+  assert.deepEqual(JSON.parse(logs[0]), { sampleSurveyAuthenticationVerified: { target: 'lp', page: 1, observedAt: now.toISOString(), evidence: 'logout-control' } })
+})

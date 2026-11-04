@@ -9,7 +9,7 @@ import { parseSampleSurveyResultsManifest, parseSampleSurveyResultsRun, SAMPLE_S
 import type { SampleSurveyConfig, SampleSurveyRun } from '../src/types/sampleSurvey.ts'
 import { runCloudGhCommand, type CloudGhCommand } from './lib/parallel-fetch-github.ts'
 import { publishableSampleSurveyRun } from './lib/sample-survey-publication.ts'
-import { validateProductionRestart, validateProductionResume } from './lib/sample-survey-production-resume.ts'
+import { validateProductionRecovery, validateProductionRestart, validateProductionResume } from './lib/sample-survey-production-resume.ts'
 import { createSampleSurveyCheckpointManifest, parseSampleSurveyCheckpointManifest, type SampleSurveyCheckpointManifest } from './lib/sample-survey-cloud-checkpoint.ts'
 
 const REPO = 'gonchiman/sf6', API = `repos/${REPO}`, WORKFLOW = 'sample-survey.yml'
@@ -124,22 +124,27 @@ export function extractProductionArtifact(zip: Buffer, kind: 'report' | 'checkpo
 }
 export interface ProductionGitHub {
   mainSha(): Promise<string>
-  dispatch(stage: number, sourceSha: string, resumeRunId?: string, executionBudgetMinutes?: number): Promise<string>
+  dispatch(stage: number, sourceSha: string, resumeRunId?: string, executionBudgetMinutes?: number,
+    recovery?: { sourceSha: string; recoverAuthentication: true }): Promise<string>
   run(runId: string, expectedSha: string, pinnedSource?: boolean): Promise<ProductionRun>
   report(run: ProductionRun, stage: number, resumed?: SampleSurveyCheckpointManifest): Promise<SampleSurveyRun>
-  checkpoint?(run: ProductionRun, stage: number, sourceSha: string): Promise<SampleSurveyCheckpointManifest>
+  checkpoint?(run: ProductionRun, stage: number, sourceSha: string, completed?: boolean): Promise<SampleSurveyCheckpointManifest>
   cancel?(runId: string): Promise<void>
 }
 /** Read encrypted checkpoint bytes only; the parent never receives the decryption key. */
 export async function fetchSampleSurveyCheckpointArtifact(options: {
-  run: ProductionRun; sourceSha: string; config: SampleSurveyConfig
+  run: ProductionRun; sourceSha: string; config: SampleSurveyConfig; completed?: boolean
 }, command: CloudGhCommand = runCloudGhCommand): Promise<{ manifest: SampleSurveyCheckpointManifest; files: Map<string, Buffer> }> {
   try {
     const { run, config } = options, source = sha(options.sourceSha), runId = id(run.id)
-    if (run.status !== 'completed' || run.conclusion !== 'failure' || run.attempt !== 1) return fail()
+    if (run.status !== 'completed' || run.conclusion !== (options.completed === true ? 'success' : 'failure') || run.attempt !== 1) return fail()
     const listing = object(JSON.parse((await command(['api', '--hostname', 'github.com', `${API}/actions/runs/${runId}/artifacts?per_page=100`], META_LIMIT)).toString('utf8')))
-    if (listing.total_count !== 1 || !Array.isArray(listing.artifacts) || listing.artifacts.length !== 1) return fail()
-    const artifact = object(listing.artifacts[0])
+    const expectedCount = options.completed === true ? 2 : 1
+    if (listing.total_count !== expectedCount || !Array.isArray(listing.artifacts) || listing.artifacts.length !== expectedCount) return fail()
+    const names = listing.artifacts.map(value => String(object(value).name))
+    if (new Set(names).size !== expectedCount || names.some(name => ![`sample-survey-checkpoint-${runId}-1`,
+      ...(options.completed === true ? [`sample-survey-${runId}-1`] : [])].includes(name))) return fail()
+    const artifact = object(listing.artifacts.find(value => object(value).name === `sample-survey-checkpoint-${runId}-1`))
     if (artifact.name !== `sample-survey-checkpoint-${runId}-1` || artifact.expired !== false
       || !Number.isSafeInteger(artifact.size_in_bytes) || Number(artifact.size_in_bytes) < 1 || Number(artifact.size_in_bytes) > CHECKPOINT_ZIP_LIMIT
       || typeof artifact.digest !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(artifact.digest)
@@ -163,7 +168,7 @@ export function validateProductionParents(value: unknown, parentRunId: string, f
     || !Array.isArray(input.workflow_runs) || input.workflow_runs.length !== input.total_count) return fail()
   const title = `Sample survey production ${first}`
   const matches = input.workflow_runs.filter(value => object(value).display_title === title
-    || typeof object(value).display_title === 'string' && String(object(value).display_title).startsWith(`${title} resume `))
+    || typeof object(value).display_title === 'string' && String(object(value).display_title).startsWith(`${title} `))
   if (matches.length !== 1) return fail()
   const run = object(matches[0])
   if (id(run.id) !== current || run.run_attempt !== 1 || run.event !== 'workflow_dispatch' || run.head_branch !== 'main'
@@ -190,10 +195,11 @@ export function createProductionGitHub(command: CloudGhCommand = runCloudGhComma
   }
   return {
     async mainSha() { return sha((await api(`${API}/commits/main`)).sha) },
-    async dispatch(stage, sourceSha, resumeRunId, executionBudgetMinutes) {
+    async dispatch(stage, sourceSha, resumeRunId, executionBudgetMinutes, recovery) {
       const { config } = productionStage(stage)
       if (resumeRunId !== undefined) id(resumeRunId)
       if (executionBudgetMinutes !== undefined && (!Number.isInteger(executionBudgetMinutes) || executionBudgetMinutes < 1 || executionBudgetMinutes > config.maxDurationMinutes)) return fail()
+      if (recovery && (stage !== 3 || !resumeRunId || recovery.recoverAuthentication !== true || !/^[a-f0-9]{40}$/.test(recovery.sourceSha))) return fail()
       const source = sha(sourceSha), launch = sha((await api(`${API}/commits/main`)).sha)
       await compatibleWorkflow(source, launch)
       // One POST only. Never resend a dispatch after an ambiguous response.
@@ -203,6 +209,7 @@ export function createProductionGitHub(command: CloudGhCommand = runCloudGhComma
         '-f', `inputs[mr_sample_size]=${config.mrSampleSize}`, '-f', `inputs[max_duration_minutes]=${config.maxDurationMinutes}`,
         '-f', `inputs[source_sha]=${source}`,
         ...(resumeRunId ? ['-f', `inputs[resume_run_id]=${resumeRunId}`] : []),
+        ...(recovery ? ['-f', `inputs[resume_source_sha]=${sha(recovery.sourceSha)}`, '-f', 'inputs[recover_authentication]=true'] : []),
         ...(executionBudgetMinutes === undefined ? [] : ['-f', `inputs[execution_budget_minutes]=${executionBudgetMinutes}`])]))
     },
     async run(runId, expectedSha, pinnedSource = false) {
@@ -222,8 +229,8 @@ export function createProductionGitHub(command: CloudGhCommand = runCloudGhComma
       }
       return fail()
     },
-    async checkpoint(run, stage, sourceSha) {
-      return (await fetchSampleSurveyCheckpointArtifact({ run, sourceSha, config: productionStage(stage).config }, command)).manifest
+    async checkpoint(run, stage, sourceSha, completed) {
+      return (await fetchSampleSurveyCheckpointArtifact({ run, sourceSha, config: productionStage(stage).config, completed }, command)).manifest
     },
     async cancel(runId) {
       await command(['api', '--hostname', 'github.com', `${API}/actions/runs/${id(runId)}/cancel`, '--method', 'POST'], META_LIMIT)
@@ -266,7 +273,24 @@ export function createProductionGitHub(command: CloudGhCommand = runCloudGhComma
     },
   }
 }
-export async function runProductionStage(options: { stage: number; sha: string; firstRunId?: string; firstRunSha?: string; allowCompletedHistory?: boolean }, dependencies: {
+export async function adoptCompletedProductionStage(options: { stage: 2; runId: string; sourceSha: string }, dependencies: {
+  github: ProductionGitHub; now?: () => number
+}): Promise<{ run: ProductionRun; report: SampleSurveyRun }> {
+  if (options.stage !== 2 || !dependencies.github.checkpoint) return fail()
+  const runId = id(options.runId), source = sha(options.sourceSha), { github } = dependencies
+  const run = await github.run(runId, source, true), now = (dependencies.now ?? Date.now)()
+  if (run.status !== 'completed' || run.conclusion !== 'success' || Date.parse(run.createdAt) > now + PRODUCTION_CLOCK_SKEW_MS) return fail()
+  const saved = parseSampleSurveyCheckpointManifest(await github.checkpoint!(run, options.stage, source, true))
+  if (saved.runId !== runId || saved.sourceSha !== source || saved.runAttempt !== 1 || saved.state !== 'complete' || saved.stopReason !== null
+    || saved.resumeAllowed || saved.processed !== 400 || !isDeepStrictEqual(saved.config, productionStage(2).config)
+    || Date.parse(saved.checkpointAt) > now || Date.parse(saved.checkpointAt) < Date.parse(run.createdAt)) return fail()
+  const report = validateProductionReport(await github.report(run, 2, saved), 2)
+  if (report.id !== saved.reportId || report.planId !== saved.planId || report.startedAt !== saved.startedAt) return fail()
+  return { run, report }
+}
+
+export async function runProductionStage(options: { stage: number; sha: string; firstRunId?: string; firstRunSha?: string; allowCompletedHistory?: boolean;
+  recoveryCheckpoint?: { runId: string; sourceSha: string } }, dependencies: {
   github: ProductionGitHub; now?: () => number; sleep?: (ms: number) => Promise<void>; log?: (value: unknown) => void
 }): Promise<{ run: ProductionRun; report: SampleSurveyRun }> {
   const stage = productionStage(options.stage), expectedSha = sha(options.sha), { github } = dependencies
@@ -275,11 +299,31 @@ export async function runProductionStage(options: { stage: number; sha: string; 
   let runId: string, runSha: string
   let resumed: SampleSurveyCheckpointManifest | undefined, resumes = 0
   const dispatched = new Set<string>()
+  if (options.recoveryCheckpoint && stage.stage !== 3) return fail()
   if (stage.stage === 1) {
     runId = id(options.firstRunId); runSha = sha(options.firstRunSha)
   } else {
     if (options.firstRunId || options.firstRunSha || options.allowCompletedHistory) return fail()
-    runSha = expectedSha; runId = id(await github.dispatch(stage.stage, expectedSha))
+    runSha = expectedSha
+    if (options.recoveryCheckpoint) {
+      if (!github.checkpoint) return fail()
+      const oldId = id(options.recoveryCheckpoint.runId), oldSource = sha(options.recoveryCheckpoint.sourceSha)
+      const oldRun = await github.run(oldId, oldSource, true)
+      if (oldRun.status !== 'completed' || oldRun.conclusion !== 'failure' || Date.parse(oldRun.createdAt) > now() + PRODUCTION_CLOCK_SKEW_MS) return fail()
+      const saved = parseSampleSurveyCheckpointManifest(await github.checkpoint(oldRun, stage.stage, oldSource))
+      if (saved.sourceSha !== oldSource || saved.runId !== oldId || saved.runAttempt !== 1 || saved.resumeDepth >= PRODUCTION_MAX_RESUMES
+        || !isDeepStrictEqual(saved.config, stage.config) || saved.state !== 'error' || saved.stopReason !== 'authentication-unconfirmed'
+        || saved.resumeAllowed || Date.parse(saved.startedAt) < now() - 72 * 60 * 60_000 || Date.parse(saved.checkpointAt) > now()
+        || Date.parse(saved.checkpointAt) < Date.parse(oldRun.createdAt)) return fail()
+      resumed = saved; resumes = saved.resumeDepth + 1
+      dispatched.add(oldId)
+      // Explicitly requested once. The child must obtain a fresh positive auth
+      // result before restoring any saved work. Later auth stops still terminate.
+      runId = id(await github.dispatch(stage.stage, expectedSha, oldId, stage.config.maxDurationMinutes,
+        { sourceSha: oldSource, recoverAuthentication: true }))
+      if (dispatched.has(runId)) return fail()
+      log({ stage: stage.stage, runId, state: 'authentication-recovery-requested', previousRunId: oldId, processed: saved.processed, resumeNumber: resumes })
+    } else runId = id(await github.dispatch(stage.stage, expectedSha))
   }
   dispatched.add(runId)
   log({ stage: stage.stage, runId, sourceSha: runSha, state: 'waiting', url: `https://github.com/${REPO}/actions/runs/${runId}` })
@@ -341,8 +385,25 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   const parentRunId = id(process.env.GITHUB_RUN_ID), firstRunId = id(process.env.PRODUCTION_FIRST_RUN_ID)
   const resumeFrom = process.env.PRODUCTION_RESUME_FROM_RUN_ID?.trim()
   const restartFailed = process.env.PRODUCTION_RESTART_FAILED_RUN_ID?.trim()
+  const recoveryParent = process.env.PRODUCTION_RECOVERY_PARENT_RUN_ID?.trim()
+  const checkpointRun = process.env.PRODUCTION_RECOVERY_CHECKPOINT_RUN_ID?.trim()
+  const completedSecond = process.env.PRODUCTION_COMPLETED_SECOND_RUN_ID?.trim()
+  const checkpointSource = process.env.PRODUCTION_CHECKPOINT_SOURCE_SHA?.trim()
   if (restartFailed && !resumeFrom) return fail()
-  if (resumeFrom) {
+  if ([checkpointRun, completedSecond, checkpointSource].some(Boolean) && !recoveryParent) return fail()
+  if (recoveryParent) {
+    if (resumeFrom || restartFailed) return fail()
+    const previousParentRunId = id(recoveryParent), checkpointRunId = id(checkpointRun)
+    const completedSecondRunId = id(completedSecond), checkpointSourceSha = sha(checkpointSource)
+    const read = async (path: string) => JSON.parse((await runCloudGhCommand(['api', '--hostname', 'github.com', `${API}/${path}`], META_LIMIT)).toString('utf8'))
+    const [previousParent, previousJobs, childRuns, completedSecondRun, failedChild] = await Promise.all([
+      read(`actions/runs/${previousParentRunId}`), read(`actions/runs/${previousParentRunId}/jobs?filter=latest&per_page=100`),
+      read(`actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&branch=main&per_page=100`),
+      read(`actions/runs/${completedSecondRunId}`), read(`actions/runs/${checkpointRunId}`),
+    ])
+    validateProductionRecovery({ parents: parentRuns, previousParent, previousJobs, childRuns, completedSecond: completedSecondRun, failedChild,
+      parentRunId, firstRunId, previousParentRunId, completedSecondRunId, checkpointRunId, checkpointSourceSha })
+  } else if (resumeFrom) {
     const previousParentRunId = id(resumeFrom)
     const read = async (path: string) => JSON.parse((await runCloudGhCommand(['api', '--hostname', 'github.com', `${API}/${path}`], META_LIMIT)).toString('utf8'))
     const [previousParent, previousJobs, childRuns] = await Promise.all([
@@ -364,9 +425,13 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         failedChildArtifacts, childRuns, parentRunId, firstRunId, previousParentRunId, restartFailedRunId })
     } else validateProductionResume({ parents: parentRuns, previousParent, previousJobs, childRuns, parentRunId, firstRunId, previousParentRunId })
   } else validateProductionParents(parentRuns, parentRunId, firstRunId)
-  const result = await runProductionStage({ stage, sha: sha(process.env.GITHUB_SHA),
-    ...(stage === 1 ? { firstRunId, firstRunSha: process.env.PRODUCTION_FIRST_RUN_SHA, allowCompletedHistory: !!resumeFrom } : {}) },
-  { github: createProductionGitHub(), log: value => console.log(JSON.stringify({ production: value })) })
+  const github = createProductionGitHub()
+  const result = recoveryParent && stage === 2
+    ? await adoptCompletedProductionStage({ stage: 2, runId: id(completedSecond), sourceSha: sha(checkpointSource) }, { github })
+    : await runProductionStage({ stage, sha: sha(process.env.GITHUB_SHA),
+      ...(stage === 1 ? { firstRunId, firstRunSha: process.env.PRODUCTION_FIRST_RUN_SHA, allowCompletedHistory: !!resumeFrom || !!recoveryParent } : {}),
+      ...(recoveryParent && stage === 3 ? { recoveryCheckpoint: { runId: id(checkpointRun), sourceSha: sha(checkpointSource) } } : {}) },
+    { github, log: value => console.log(JSON.stringify({ production: value })) })
   if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `run_id=${result.run.id}\nreport_id=${result.report.id}\n`)
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,
     `### ${productionStage(stage).label}\n\n[取得実行](https://github.com/${REPO}/actions/runs/${result.run.id}) — 保存・公開確認済み\n\n`

@@ -55,6 +55,102 @@ function stoppedParentJobs(value: unknown, parent: Record<string, unknown>): voi
   }
 }
 
+/** One explicitly reviewed recovery of stage 3. Earlier successful collections are
+ * adopted, never dispatched again. The caller must verify their published reports
+ * and the failed child's authenticated checkpoint before dispatching any new work.
+ */
+export function validateProductionRecovery(options: {
+  parents: unknown; previousParent: unknown; previousJobs: unknown; childRuns: unknown
+  completedSecond: unknown; failedChild: unknown
+  parentRunId: string; firstRunId: string; previousParentRunId: string
+  completedSecondRunId: string; checkpointRunId: string; checkpointSourceSha: string
+}): void {
+  try {
+    const currentId = id(options.parentRunId), firstId = id(options.firstRunId), previousId = id(options.previousParentRunId)
+    const secondId = id(options.completedSecondRunId), failedId = id(options.checkpointRunId)
+    if (new Set([currentId, firstId, previousId, secondId, failedId]).size !== 5
+      || !/^[a-f0-9]{40}$/.test(options.checkpointSourceSha)) return fail()
+    const previous = object(options.previousParent), parents = listing(options.parents, 'workflow_runs')
+    const base = `Sample survey production ${firstId}`
+    const current = parents.find(row => id(row.id) === currentId), listedPrevious = parents.find(row => id(row.id) === previousId)
+    if (!current || !listedPrevious || id(previous.id) !== previousId) return fail()
+    for (const parent of [current, previous, listedPrevious]) {
+      workflowRun(parent, PARENT_WORKFLOW)
+      if (parent.run_attempt !== 1) return fail()
+    }
+    if (current.display_title !== `${base} recover ${previousId} checkpoint ${failedId}`
+      || !['queued', 'in_progress'].includes(String(current.status)) || current.conclusion !== null
+      || typeof previous.display_title !== 'string' || !previous.display_title.startsWith(`${base} `)
+      || previous.status !== 'completed' || previous.conclusion !== 'failure'
+      || previous.head_sha !== options.checkpointSourceSha) return fail()
+    for (const key of ['head_sha', 'created_at', 'updated_at', 'display_title', 'status', 'conclusion', 'run_attempt']) {
+      if (previous[key] !== listedPrevious[key]) return fail()
+    }
+    const start = timestamp(previous.created_at), end = timestamp(previous.updated_at), cutoff = timestamp(current.created_at)
+    if (end < start || cutoff <= end) return fail()
+    // Earlier ancestors are allowed. Another attempt after this source parent
+    // would make it unsafe to claim that the later stages remain undispatched.
+    for (const parent of parents) {
+      if (typeof parent.display_title !== 'string' || !(parent.display_title === base || parent.display_title.startsWith(`${base} `))) continue
+      workflowRun(parent, PARENT_WORKFLOW)
+      if (![currentId, previousId].includes(id(parent.id)) && timestamp(parent.created_at) >= start) return fail()
+    }
+    const jobs = listing(options.previousJobs, 'jobs')
+    const expected = [
+      ['ROOKIE and IRON', 'success', 'Wait for the existing collection'],
+      ['BRONZE and SILVER', 'success', 'Start and verify this collection'],
+      ['GOLD and PLATINUM', 'failure', 'Start and verify this collection'],
+      ['DIAMOND and MASTER', 'skipped', null], ['Six MR bands', 'skipped', null],
+    ] as const
+    if (jobs.length !== expected.length) return fail()
+    const windows: [number, number][] = []
+    for (const [name, conclusion, stepName] of expected) {
+      const matches = jobs.filter(job => job.name === name)
+      if (matches.length !== 1) return fail()
+      const job = matches[0]!
+      if (id(job.run_id) !== previousId || job.status !== 'completed' || job.conclusion !== conclusion) return fail()
+      if (stepName === null) {
+        if (job.steps !== null && (!Array.isArray(job.steps) || job.steps.length !== 0)) return fail()
+        continue
+      }
+      const from = timestamp(job.started_at), to = timestamp(job.completed_at)
+      if (from < start || to < from || to > end || windows.length && from < windows.at(-1)![1] || !Array.isArray(job.steps)) return fail()
+      const steps = job.steps.map(object).filter(step => step.name === stepName)
+      if (steps.length !== 1 || steps[0]!.status !== 'completed' || steps[0]!.conclusion !== conclusion) return fail()
+      windows.push([from, to])
+    }
+    const second = object(options.completedSecond), failed = object(options.failedChild)
+    const known = new Map([[secondId, second], [failedId, failed]])
+    const within = (run: Record<string, unknown>, window: [number, number]): boolean => {
+      const from = timestamp(run.created_at), to = timestamp(run.updated_at)
+      return from >= window[0] && to >= from && to <= window[1]
+    }
+    for (const [runId, run, conclusion, window] of [
+      [secondId, second, 'success', windows[1]!], [failedId, failed, 'failure', windows[2]!],
+    ] as const) {
+      workflowRun(run, CHILD_WORKFLOW)
+      if (id(run.id) !== runId || run.run_attempt !== 1 || run.status !== 'completed' || run.conclusion !== conclusion
+        || run.display_title !== `Sample survey source ${options.checkpointSourceSha}` || !within(run, window)) return fail()
+    }
+    const found = new Set<string>()
+    for (const run of listing(options.childRuns, 'workflow_runs')) {
+      workflowRun(run, CHILD_WORKFLOW)
+      const runId = id(run.id), created = timestamp(run.created_at), reference = known.get(runId)
+      if (reference) {
+        for (const key of ['head_sha', 'created_at', 'updated_at', 'display_title', 'status', 'conclusion', 'run_attempt']) if (run[key] !== reference[key]) return fail()
+        found.add(runId)
+      }
+      // New children of the current parent are intentionally outside this fixed cutoff.
+      if (runId === firstId || created < start || created > cutoff || reference) continue
+      if (run.run_attempt !== 1 || run.status !== 'completed' || run.conclusion !== 'failure'
+        || run.display_title !== `Sample survey source ${options.checkpointSourceSha}`
+        || !(within(run, windows[1]!) && timestamp(run.updated_at) < timestamp(second.created_at)
+          || within(run, windows[2]!) && timestamp(run.updated_at) < timestamp(failed.created_at))) return fail()
+    }
+    if (found.size !== 2) return fail()
+  } catch { return fail() }
+}
+
 /** Explicit migration for an old failed child which has no saved checkpoint or published artifact.
  * The previous two parents must both have preserved stage 1 and never reached stage 3.
  */

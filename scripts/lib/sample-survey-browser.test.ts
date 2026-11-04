@@ -147,6 +147,81 @@ test('capture hook leaves the parallel fetch public metrics free of IDs and salt
   await session.close()
 })
 
+test('authentication verification reports only the first fully validated read of each target', async () => {
+  const f = fixture(), verifications: unknown[] = [], now = () => Date.UTC(2026, 10, 4)
+  const reader = await createSampleSurveyReader({ signal: new AbortController().signal,
+    onAuthenticationVerified(value) { verifications.push(value) },
+  }, { browser: f.dependencies, now })
+  await reader.readPage('lp', 1)
+  await reader.readPage('lp', 2)
+  await reader.readPage('lp', 1)
+  await reader.readPage('mr', 1)
+  await reader.readPage('mr', 2)
+  assert.deepEqual(verifications, ['lp', 'mr'].map(target => ({ target, page: 1,
+    observedAt: '2026-11-04T00:00:00.000Z', evidence: 'logout-control' })))
+  assert.doesNotMatch(JSON.stringify(verifications), /10001|synthetic-cookie|account|salt|sourceUrl|profile\//)
+  assert.equal(f.navigation.length, 5, 'verification does not add a separate request')
+  await reader.close()
+})
+
+test('authentication verification logging failure cannot reject or repeat a validated read', async () => {
+  const f = fixture()
+  let verifications = 0
+  const reader = await createSampleSurveyReader({ signal: new AbortController().signal,
+    async onAuthenticationVerified() { verifications++; throw new Error('synthetic-private-log-failure') },
+  }, { browser: f.dependencies })
+  assert.equal((await reader.readPage('lp', 1)).page, 1)
+  assert.equal((await reader.readPage('lp', 1)).page, 1)
+  assert.equal(verifications, 1)
+  assert.equal(f.stats().contextClosed, 0)
+  await reader.close()
+})
+
+test('authentication verification reports the actual validated page even when a reader supplies a later first success', async () => {
+  const f = fixture(), verifications: { page: number }[] = []
+  f.setStatus(502); f.setError(new RankDistributionDomError('server-error'))
+  f.setNetwork([{ status: 502, resource: 'document' }])
+  const reader = await createSampleSurveyReader({ signal: new AbortController().signal,
+    onAuthenticationVerified(value) { verifications.push(value) },
+  }, { browser: f.dependencies })
+  await assert.rejects(reader.readPage('lp', 1), retryable('server-error', 502))
+  assert.equal(verifications.length, 0)
+  // Production DOM readers require page 1 first; an injected reader must still
+  // never cause the diagnostic to misreport which page was actually validated.
+  f.setStatus(200); f.setError(null); f.setNetwork([])
+  assert.equal((await reader.readPage('lp', 2)).page, 2)
+  assert.equal(verifications.length, 1)
+  assert.equal(verifications[0].page, 2)
+  await reader.close()
+})
+
+test('readability, failed authentication and invalid private rows never emit authentication verification', async () => {
+  for (const code of ['authentication-unconfirmed', 'human-verification', 'login-required', 'http-denied', 'condition-mismatch'] as const) {
+    const f = fixture(), verifications: unknown[] = []
+    if (code === 'condition-mismatch') f.mutate(value => { value.rows[0].value++ })
+    else {
+      f.setError(new RankDistributionDomError(code))
+      f.setReadDiagnostics({ lastAuthenticationEvidence: 'login-control', lastLoginRequiredHeading: false, lastRankingReadable: true })
+    }
+    const reader = await createSampleSurveyReader({ signal: new AbortController().signal,
+      onAuthenticationVerified(value) { verifications.push(value) },
+    }, { browser: f.dependencies })
+    await assert.rejects(reader.readPage('lp', 1), errorCode(code))
+    assert.deepEqual(verifications, [], code)
+    await reader.close()
+  }
+})
+
+test('authentication verification cannot return a page after cancellation during the callback', async () => {
+  const f = fixture(), controller = new AbortController()
+  const reader = await createSampleSurveyReader({ signal: controller.signal,
+    onAuthenticationVerified() { controller.abort() },
+  }, { browser: f.dependencies })
+  await assert.rejects(reader.readPage('lp', 1), errorCode('cancelled'))
+  await reader.close()
+  assert.equal(f.stats().contextClosed, 1)
+})
+
 test('private capture rejects row movement, wrong values/rank, counters, duplicates and invalid identities', async () => {
   const mutations: ((capture: Capture) => void)[] = [
     capture => { capture.rows.reverse() }, // Equal LP and rank still cannot hide swapped accounts.

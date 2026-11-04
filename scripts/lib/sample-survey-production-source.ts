@@ -29,6 +29,19 @@ export function sampleSurveySourceSelection(env: Record<string, string | undefin
   return { sourceSha: sha(env.SAMPLE_SURVEY_SOURCE_SHA || runSha), runSha }
 }
 
+/** Manual recovery is explicit; an old encrypted record never grants permission by itself. */
+export function parseSampleSurveyRecovery(env: Record<string, string | undefined>): { recoverAuthentication: boolean; resumeSourceSha?: string } {
+  const requested = env.SAMPLE_SURVEY_RECOVER_AUTHENTICATION || 'false'
+  const previous = env.SAMPLE_SURVEY_RESUME_SOURCE_SHA || ''
+  if (!['true', 'false'].includes(requested)) throw new SampleSurveySourceError('source')
+  if (requested === 'false') {
+    if (previous) throw new SampleSurveySourceError('source')
+    return { recoverAuthentication: false }
+  }
+  if (!/^[1-9]\d{0,14}$/.test(env.SAMPLE_SURVEY_RESUME_RUN_ID || '')) throw new SampleSurveySourceError('source')
+  return { recoverAuthentication: true, resumeSourceSha: sha(previous) }
+}
+
 export type SampleSurveySourceGit = (args: string[]) => Promise<string>
 
 /** Public Git reads only. No shell, credentials, raw command errors, or unbounded output. */
@@ -61,13 +74,19 @@ const sourceGit: SampleSurveySourceGit = args => new Promise((resolveResult, rej
 export async function verifySampleSurveySource(options: {
   env?: Record<string, string | undefined>; git?: SampleSurveySourceGit
 } = {}): Promise<{ sourceSha: string; runSha: string }> {
-  const selected = sampleSurveySourceSelection(options.env ?? process.env), git = options.git ?? sourceGit
+  const env = options.env ?? process.env
+  const selected = sampleSurveySourceSelection(env), recovery = parseSampleSurveyRecovery(env), git = options.git ?? sourceGit
   const command = async (args: string[], code: SampleSurveySourceCode): Promise<string> => {
     try { return (await git(args)).trim() } catch { throw new SampleSurveySourceError(code) }
   }
   if (await command(['rev-parse', '--verify', 'HEAD'], 'checkout') !== selected.sourceSha) throw new SampleSurveySourceError('checkout')
   // Git object IDs avoid Windows checkout newline conversion affecting the comparison.
   const sourceBlob = sha(await command(['rev-parse', '--verify', `${selected.sourceSha}:${WORKFLOW}`], 'workflow'))
+  if (recovery.resumeSourceSha && recovery.resumeSourceSha !== selected.sourceSha) {
+    // Migration changes code, not sample identity. Both revisions must belong to main's history.
+    await command(['fetch', '--no-tags', '--filter=blob:none', '--depth=1000', REPOSITORY_URL, selected.sourceSha], 'ancestry')
+    await command(['merge-base', '--is-ancestor', recovery.resumeSourceSha, selected.sourceSha], 'ancestry')
+  }
   if (selected.sourceSha === selected.runSha) return selected
   let runPresent = false
   try { runPresent = await git(['cat-file', '-t', selected.runSha]) === 'commit' } catch { /* Fetch only missing execution history. */ }

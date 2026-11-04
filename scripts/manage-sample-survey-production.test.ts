@@ -10,7 +10,8 @@ import { SAMPLE_SURVEY_RESULTS_SOURCE } from '../src/lib/sampleSurveyResults.ts'
 import type { SampleSurveyRun } from '../src/types/sampleSurvey.ts'
 import { productionStage, parseProductionRun, parseProductionDispatch, validateProductionReport,
   createProductionGitHub, runProductionStage, isAllowedProductionExecution, extractProductionArtifact,
-  validateProductionParents, PRODUCTION_RESUME_DELAY_MS, PRODUCTION_MAX_RESUMES, PRODUCTION_CLOCK_SKEW_MS, fetchSampleSurveyCheckpointArtifact } from './manage-sample-survey-production.ts'
+  validateProductionParents, PRODUCTION_RESUME_DELAY_MS, PRODUCTION_MAX_RESUMES, PRODUCTION_CLOCK_SKEW_MS, fetchSampleSurveyCheckpointArtifact,
+  adoptCompletedProductionStage } from './manage-sample-survey-production.ts'
 import type { ProductionGitHub } from './manage-sample-survey-production.ts'
 import type { CloudGhCommand } from './lib/parallel-fetch-github.ts'
 
@@ -615,5 +616,114 @@ test('GitHub and runner creation clocks may differ by at most five seconds', asy
       createdAt: new Date(Date.parse(END) + ahead).toISOString() }) })
     if (ahead <= PRODUCTION_CLOCK_SKEW_MS) await runProductionStage({ stage: 2, sha: SHA }, f.dependencies)
     else await assert.rejects(runProductionStage({ stage: 2, sha: SHA }, f.dependencies))
+  }
+})
+
+test('a completed second stage is adopted with its checkpoint identity and published history, never dispatched', async () => {
+  const saved = { ...savedManifest('123', 2, 400), state: 'complete' as const, stopReason: null, resumeAllowed: false }
+  const f = stageFixture(2, {
+    run: async (runId, source, pinned) => {
+      assert.equal(source, SHA); assert.equal(pinned, true)
+      return { id: runId, attempt: 1, status: 'completed', conclusion: 'success', createdAt: '2026-10-31T03:30:00.000Z' }
+    },
+    checkpoint: async (_run, stage, source, completed) => {
+      assert.equal(stage, 2); assert.equal(source, SHA); assert.equal(completed, true); return saved
+    },
+    report: async (_run, stage, resumed) => { assert.deepEqual(resumed, saved); return report(stage) },
+  })
+  f.advance(96 * 60 * 60_000)
+  const result = await adoptCompletedProductionStage({ stage: 2, runId: '123', sourceSha: SHA }, f.dependencies)
+  assert.equal(result.report.strata.reduce((n, row) => n + row.processed, 0), 400)
+  assert.deepEqual(f.calls, []); assert.deepEqual(f.waits, [])
+  for (const patch of [{ state: 'error' }, { processed: 399 }, { resumeAllowed: true }, { config: productionStage(3).config },
+    { sourceSha: FIRST_SHA }, { runId: '124' }, { reportId: 'another' }, { planId: 'another' }, { startedAt: END }]) {
+    f.dependencies.github.checkpoint = async () => ({ ...saved, ...patch }) as SampleSurveyCheckpointManifest
+    await assert.rejects(adoptCompletedProductionStage({ stage: 2, runId: '123', sourceSha: SHA }, f.dependencies))
+  }
+})
+
+function authRecoveryManifest(depth = 0): SampleSurveyCheckpointManifest {
+  return { ...savedManifest('120', depth, 200), sourceSha: FIRST_SHA, config: productionStage(3).config,
+    stopReason: 'authentication-unconfirmed', resumeAllowed: false }
+}
+
+test('manual authentication recovery migrates the source once and continues transient retries with unchanged identity', async () => {
+  const dispatches: unknown[][] = []
+  const f = stageFixture(3, {
+    dispatch: async (...args) => { dispatches.push(args); return dispatches.length === 1 ? '123' : '124' },
+    run: async (runId, source, pinned) => {
+      assert.equal(source, runId === '120' ? FIRST_SHA : SHA); assert.equal(pinned, true)
+      return { id: runId, attempt: 1, status: 'completed', conclusion: runId === '124' ? 'success' : 'failure', createdAt: START }
+    },
+    checkpoint: async run => run.id === '120' ? authRecoveryManifest(2)
+      : { ...savedManifest('123', 3, 250), config: productionStage(3).config },
+    report: async (_run, stage, saved) => { assert.equal(saved?.processed, 250); return report(stage) },
+  })
+  const result = await runProductionStage({ stage: 3, sha: SHA, recoveryCheckpoint: { runId: '120', sourceSha: FIRST_SHA } }, f.dependencies)
+  assert.equal(result.run.id, '124')
+  assert.deepEqual(dispatches, [
+    [3, SHA, '120', 120, { sourceSha: FIRST_SHA, recoverAuthentication: true }],
+    [3, SHA, '123', 120],
+  ])
+  assert.deepEqual(f.waits, [PRODUCTION_RESUME_DELAY_MS])
+  assert.doesNotMatch(JSON.stringify(f.logs), /seed|slots|ciphertext|accountId/)
+})
+
+test('an authentication stop after explicit recovery stops again without an automatic second authentication attempt', async () => {
+  let dispatches = 0
+  const f = stageFixture(3, {
+    dispatch: async () => { dispatches++; return '123' },
+    run: async runId => ({ id: runId, attempt: 1, status: 'completed', conclusion: 'failure', createdAt: START }),
+    checkpoint: async run => run.id === '120' ? authRecoveryManifest() : { ...authRecoveryManifest(1), sourceSha: SHA, runId: '123' },
+  })
+  await assert.rejects(runProductionStage({ stage: 3, sha: SHA, recoveryCheckpoint: { runId: '120', sourceSha: FIRST_SHA } }, f.dependencies))
+  assert.equal(dispatches, 1); assert.deepEqual(f.waits, [])
+})
+
+test('explicit recovery refuses CAPTCHA, login, denial, stale checkpoints, exhausted depth and another stage before dispatch', async () => {
+  for (const patch of [{ stopReason: 'human-verification' }, { stopReason: 'login-required' }, { stopReason: 'http-denied' },
+    { stopReason: 'server-error' }, { resumeAllowed: true }, { resumeDepth: 6 }, { state: 'running' },
+    { sourceSha: SHA }, { config: productionStage(2).config }, { runId: '999' },
+    { startedAt: '2026-10-27T03:00:00.000Z' }, { checkpointAt: '2026-10-31T04:00:01.000Z' }]) {
+    const f = stageFixture(3, {
+      run: async runId => ({ id: runId, attempt: 1, status: 'completed', conclusion: 'failure', createdAt: START }),
+      checkpoint: async () => ({ ...authRecoveryManifest(), ...patch }) as SampleSurveyCheckpointManifest,
+    })
+    await assert.rejects(runProductionStage({ stage: 3, sha: SHA, recoveryCheckpoint: { runId: '120', sourceSha: FIRST_SHA } }, f.dependencies))
+    assert.deepEqual(f.calls, [])
+  }
+  for (const stage of [1, 2, 4, 5]) {
+    const f = stageFixture(stage)
+    await assert.rejects(runProductionStage({ stage, sha: SHA, recoveryCheckpoint: { runId: '120', sourceSha: FIRST_SHA } }, f.dependencies))
+    assert.deepEqual(f.calls, [])
+  }
+})
+
+test('the dispatch adapter emits manual recovery fields only for an explicit stage-three checkpoint restore', async () => {
+  const f = mocked(args => args.some(arg => arg.endsWith('/commits/main')) ? { sha: SHA }
+    : { workflow_run_id: 123, run_url: 'https://api.github.com/repos/gonchiman/sf6/actions/runs/123',
+      html_url: 'https://github.com/gonchiman/sf6/actions/runs/123' })
+  await f.github.dispatch(3, SHA, '120', 120, { sourceSha: FIRST_SHA, recoverAuthentication: true })
+  assert.ok(f.calls[1].args.includes(`inputs[resume_source_sha]=${FIRST_SHA}`))
+  assert.ok(f.calls[1].args.includes('inputs[recover_authentication]=true'))
+  await assert.rejects(f.github.dispatch(2, SHA, '120', 120, { sourceSha: FIRST_SHA, recoverAuthentication: true }))
+  await assert.rejects(f.github.dispatch(3, SHA, undefined, 120, { sourceSha: FIRST_SHA, recoverAuthentication: true }))
+  assert.equal(f.calls.length, 2)
+})
+
+test('a successful completion checkpoint is read only explicitly and requires exactly the aggregate and checkpoint artifacts', async () => {
+  const f = checkpointArtifact(), bytes = zip(f.entries)
+  const run = { id: '123', attempt: 1 as const, status: 'completed' as const, conclusion: 'success', createdAt: START }
+  const checkpoint = { id: 456, name: 'sample-survey-checkpoint-123-1', expired: false, size_in_bytes: bytes.length,
+    digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, workflow_run: { id: 123 } }
+  let artifacts = [{ id: 457, name: 'sample-survey-123-1' }, checkpoint]
+  const command: CloudGhCommand = async args => args.at(-1)?.endsWith('/zip') ? bytes
+    : Buffer.from(JSON.stringify({ total_count: artifacts.length, artifacts }))
+  const got = await fetchSampleSurveyCheckpointArtifact({ run, sourceSha: SHA, config: f.config, completed: true }, command)
+  assert.deepEqual(got.manifest, f.manifest)
+  await assert.rejects(fetchSampleSurveyCheckpointArtifact({ run, sourceSha: SHA, config: f.config }, command))
+  for (const altered of [[checkpoint], [checkpoint, checkpoint], [{ id: 457, name: 'unexpected' }, checkpoint]]) {
+    artifacts = altered
+    await assert.rejects(fetchSampleSurveyCheckpointArtifact({ run, sourceSha: SHA, config: f.config, completed: true }, command))
   }
 })
