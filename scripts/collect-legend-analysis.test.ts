@@ -437,6 +437,79 @@ test('collector MR-order failure propagates fixed diagnostics through the CLI an
   assert.doesNotMatch(await readFile(resolve(data.output, 'public/index.json'), 'utf8'), /orderDiagnostic|orderRecheck|masterRating/)
 })
 
+test('an ineligible boundary recovery keeps its later conflict through retries and CAPTCHA without changing read counts or public files', async t => {
+  for (const denied of [true, false]) {
+    const data = await fixture(t), pages: number[] = []
+    let rechecks = 0, profiles = 0
+    data.transport.fetchPage = async (page, sourceUrl) => {
+      pages.push(page); data.calls.read++
+      if (denied && pages.length === 4) throw new LegendAnalysisDomError('http-denied')
+      const offset = (page - 1) * 20
+      const entries = Array.from({ length: 20 }, (_, index) => ({
+        accountKey: (offset + index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
+        rank: offset + index + 1, masterRating: 2400 - offset - index, isLegend: offset + index < 42,
+        playerName: `Synthetic player ${offset + index + 1}`, playerId: String(offset + index + 1), region: '日本', platform: 'Steam',
+      }))
+      if (pages.length === 3) {
+        entries[0].rank = 39 // Boundary reversal: previous page ended at rank 40.
+        // A later entry duplicates page 1, which prevents the adjacent-only recovery.
+        entries[1].accountKey = (10).toString(16).padStart(64, '0')
+        entries[1].playerId = '10'; entries[1].playerName = 'Synthetic player 10'
+      }
+      return { sourceUrl, page, pageSize: 20, totalCount: 800000, from: offset + 1, to: offset + 20,
+        nextPage: page + 1, actId: 'act-13', conditions: { ...LEGEND_ANALYSIS_CONDITIONS },
+        conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries }
+    }
+    data.transport.recheckOrderFailure = async () => { rechecks++; return { status: 'unavailable', elapsedMs: 1000 } }
+    data.transport.fetchPlayerRankedMatches = async () => { profiles++; return { ryu: 123 } }
+    data.transport.getDiagnostics = () => ({ requestCount: data.calls.read, lastAttemptedPage: pages.at(-1) ?? null,
+      successfulReadCount: data.calls.read - (denied ? 1 : 0), lastStep: denied ? 'ranking-navigation' : 'complete',
+      lastHttpStatus: denied ? 405 : 200, lastErrorCode: denied ? 'http-denied' : null,
+      humanVerification: { wafHeaderChecked: true, wafAction: denied ? 'captcha' : null, domDetected: denied } })
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+    const safe = summarizeLegendAnalysisCaptureReport(result.report)
+    const expected = { trigger: 'rank-order', eligible: false, reason: 'earlier-page-duplicate', page: 3, previousPage: 2, recoveryUsed: false,
+      conflict: { previous: { page: 1, rowIndex: 10, rank: 10, masterRating: 2391 },
+        current: { page: 3, rowIndex: 2, rank: 42, masterRating: 2359 } } }
+    assert.equal(result.succeeded, !denied)
+    assert.equal(safe.pageRecoveryAttemptCount, 0); assert.equal(safe.pageRecoverySuccessCount, 0)
+    assert.equal(safe.retryCount, 1); assert.equal(rechecks, 1); assert.equal(profiles, denied ? 0 : 42)
+    assert.deepEqual(pages, denied ? [1, 2, 3, 1] : [1, 2, 3, 1, 2, 3, 3, 1])
+    assert.equal(safe.attemptFailures.length, 1)
+    assert.equal(safe.attemptFailures[0].validationCheck, 'rank-order')
+    assert.deepEqual(safe.attemptFailures[0].pageRecoveryDecision, expected)
+    assert.deepEqual(result.report.attemptFailures, safe.attemptFailures)
+    assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).attemptFailures, safe.attemptFailures)
+    assert.doesNotMatch(JSON.stringify(safe), /Synthetic player|accountKey|playerId|playerName|profileUrl|synthetic-secret/)
+    if (denied) {
+      assert.equal(safe.reason, 'access-unavailable')
+      assert.equal(safe.humanVerification.wafAction, 'captcha')
+      assert.equal(safe.captureAttempt, 2)
+      assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+    }
+    for (const directory of ['public', 'public/players']) for (const filename of (await readdir(resolve(data.output, directory))).filter(name => name.endsWith('.json'))) {
+      assert.doesNotMatch(await readFile(resolve(data.output, directory, filename), 'utf8'), /pageRecoveryDecision|orderDiagnostic|orderRecheck|attemptFailures|earlier-page-duplicate/)
+    }
+  }
+})
+
+test('stdout allowlists recovery decisions and preserves legacy failures without optional decision records', () => {
+  const decision = { trigger: 'rank-order', eligible: false, reason: 'earlier-page-duplicate', page: 3, previousPage: 2, recoveryUsed: false,
+    conflict: { previous: { page: 1, rowIndex: 10, rank: 10, masterRating: 2391 },
+      current: { page: 3, rowIndex: 2, rank: 42, masterRating: 2359 } } }
+  const failure = { attempt: 1, phase: 'listing', page: 3, code: 'source-changed', validationCheck: 'rank-order', recheckChangeKinds: null }
+  const safe = summarizeLegendAnalysisCaptureReport({ attemptFailures: [
+    { ...failure, pageRecoveryDecision: { ...decision, message: SECRET, url: SECRET, playerId: SECRET,
+      conflict: { ...decision.conflict, accountKey: SECRET,
+        previous: { ...decision.conflict.previous, playerName: SECRET }, current: { ...decision.conflict.current, profileUrl: SECRET } } } },
+    { ...failure, attempt: 2, pageRecoveryDecision: { ...decision, reason: SECRET, rawEntries: [SECRET] } },
+    { ...failure, attempt: 3 },
+  ] })
+  assert.deepEqual(safe.attemptFailures, [{ ...failure, pageRecoveryDecision: decision }, { ...failure, attempt: 2 }, { ...failure, attempt: 3 }])
+  for (const value of [SECRET, 'accountKey', 'playerName', 'playerId', 'profileUrl', 'message', 'rawEntries', 'url']) assert.equal(JSON.stringify(safe).includes(value), false)
+  assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).attemptFailures, safe.attemptFailures)
+})
+
 test('legacy transports retain numeric order diagnostics without requiring a DOM recheck method', async t => {
   const data = await fixture(t), read = data.transport.fetchPage
   data.transport.fetchPage = async (page, url) => { const value = await read(page, url); value.entries[2].rank = 1; return value }

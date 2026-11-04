@@ -16,6 +16,16 @@ export interface LegendOrderDiagnostic {
   duplicateInAccepted: boolean
   duplicateWithinCurrentPage: boolean
 }
+export interface LegendPageRecoveryDecision {
+  trigger: 'rank-order' | 'mr-order' | 'duplicate-entry'
+  eligible: boolean
+  reason: 'eligible' | 'within-page-order' | 'recovery-already-used' | 'previous-page-missing' | 'nonadjacent-page'
+    | 'within-page-rank-order' | 'within-page-mr-order' | 'within-page-duplicate' | 'earlier-page-duplicate'
+  page: number
+  previousPage: number | null
+  recoveryUsed: boolean
+  conflict?: { previous: LegendOrderPosition; current: LegendOrderPosition }
+}
 export type LegendOrderRecheck = { status: 'failed' } | { status: 'unavailable'; elapsedMs: number } | {
   status: 'observed'
   elapsedMs: number
@@ -48,6 +58,28 @@ function position(value: unknown): LegendOrderPosition | undefined {
   const { page, rowIndex } = value
   if (!integer(page, 1, 1000000) || !integer(rowIndex, 1, 20)) return undefined
   return { page, rowIndex, ...numeric }
+}
+
+/** Fixed eligibility reason and numeric conflict only; identity lookup maps never leave the collector. */
+export function sanitizeLegendPageRecoveryDecision(value: unknown): LegendPageRecoveryDecision | undefined {
+  try {
+    if (!record(value)) return undefined
+    const { trigger, eligible, reason, page, previousPage, recoveryUsed, conflict } = value
+    if (!['rank-order', 'mr-order', 'duplicate-entry'].includes(trigger as string) || !bool(eligible)
+      || !['eligible', 'within-page-order', 'recovery-already-used', 'previous-page-missing', 'nonadjacent-page',
+        'within-page-rank-order', 'within-page-mr-order', 'within-page-duplicate', 'earlier-page-duplicate'].includes(reason as string)
+      || eligible !== (reason === 'eligible') || !integer(page, 1, 1000000)
+      || !(previousPage === null || integer(previousPage, 1, 1000000)) || !bool(recoveryUsed)) return undefined
+    const decision: LegendPageRecoveryDecision = { trigger: trigger as LegendPageRecoveryDecision['trigger'], eligible,
+      reason: reason as LegendPageRecoveryDecision['reason'], page, previousPage, recoveryUsed }
+    if (conflict !== undefined) {
+      if (!record(conflict)) return undefined
+      const previous = position(conflict.previous), current = position(conflict.current)
+      if (!previous || !current) return undefined
+      decision.conflict = { previous, current }
+    }
+    return decision
+  } catch { return undefined }
 }
 
 /** Rebuild the allowlist rather than forwarding nested objects, custom serializers, or unknown fields. */

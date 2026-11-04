@@ -178,7 +178,8 @@ test('changed adjacent membership falls back to a complete attempt and never rep
   assert.deepEqual(events, ['started'])
   assert.deepEqual(data.requested, [1, 2, 1, 1, 2, 3, 3, 1])
   assert.deepEqual(failures, [{ attempt: 1, phase: 'listing', page: 1, code: 'source-changed',
-    validationCheck: 'adjacent-recheck', recheckChangeKinds: ['legend-entries'] }])
+    validationCheck: 'adjacent-recheck', recheckChangeKinds: ['legend-entries'],
+    pageRecoveryDecision: { trigger: 'duplicate-entry', eligible: true, reason: 'eligible', page: 2, previousPage: 1, recoveryUsed: false } }])
 })
 
 test('persistent overlap gets only one local recovery across complete attempts and never becomes a partial success', async () => {
@@ -436,7 +437,8 @@ test('attempt diagnostics preserve the first validation failure when the followi
   await assert.rejects(collectLegendAnalysisDataset(data.options), error => error === transportFailure)
   assert.deepEqual(retries, [1])
   assert.deepEqual(failures, [{ attempt: 1, phase: 'listing', page: 1, code: 'duplicate-entry',
-    validationCheck: 'duplicate-entry', recheckChangeKinds: null }])
+    validationCheck: 'duplicate-entry', recheckChangeKinds: null,
+    pageRecoveryDecision: { trigger: 'duplicate-entry', eligible: false, reason: 'previous-page-missing', page: 1, previousPage: null, recoveryUsed: false } }])
   assert.doesNotMatch(JSON.stringify(failures), /accountKey|profile|private transport|session/)
 })
 
@@ -475,7 +477,9 @@ test('successful retry retains failure evidence and a diagnostic callback cannot
     validationCheck: 'mr-order', recheckChangeKinds: null, orderDiagnostic: { boundary: 'within-page',
       previous: { page: 1, rowIndex: 1, rank: 1, masterRating: 2400 },
       current: { page: 1, rowIndex: 2, rank: 2, masterRating: 9999 },
-      sameEntry: false, duplicateInAccepted: false, duplicateWithinCurrentPage: false } }])
+      sameEntry: false, duplicateInAccepted: false, duplicateWithinCurrentPage: false },
+    pageRecoveryDecision: { trigger: 'mr-order', eligible: false, reason: 'within-page-order', page: 1, previousPage: null, recoveryUsed: false,
+      conflict: { previous: { page: 1, rowIndex: 1, rank: 1, masterRating: 2400 }, current: { page: 1, rowIndex: 2, rank: 2, masterRating: 9999 } } } }])
   assert.equal(result.dataset.totalCount, 2)
 })
 
@@ -781,6 +785,8 @@ test('persistent boundary inversion shares a single recovery budget across whole
   await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'rank-order')
   assert.deepEqual(events, ['started']); assert.deepEqual(data.requested, [1, 2, 1, 2, 1, 2]); assert.equal(rechecks, 2)
   assert.equal(failures.length, 2)
+  assert.deepEqual(failures.map(failure => failure.pageRecoveryDecision?.reason), ['eligible', 'recovery-already-used'])
+  assert.deepEqual(failures.map(failure => failure.pageRecoveryDecision?.recoveryUsed), [false, true])
   for (const failure of failures) {
     assert.equal(failure.orderDiagnostic?.current.rank, 1); assert.equal(failure.orderDiagnostic?.previous.rank, 2)
     assert.deepEqual(failure.orderRecheck, { status: 'unavailable', elapsedMs: 1000 })
@@ -810,6 +816,7 @@ test('a changed preceding membership preserves original order evidence with the 
 test('page-internal inversions and nonadjacent duplicates remain ineligible even when a boundary also inverts', async () => {
   for (const kind of ['within-only', 'within-rank', 'within-mr', 'within-duplicate', 'earlier-duplicate'] as const) {
     const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = []
+    const failures: LegendAnalysisAttemptFailure[] = []
     const failingPage = kind === 'earlier-duplicate' || kind === 'within-rank' ? 3 : 2
     data.options.fetchPage = async (page, url) => {
       const value = await read(page, url)
@@ -826,9 +833,17 @@ test('page-internal inversions and nonadjacent duplicates remain ineligible even
       return value
     }
     data.options.onPageRecovery = value => { events.push(value) }
+    data.options.onAttemptFailure = value => { failures.push(value) }
     await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), LegendAnalysisCollectionError)
     assert.deepEqual(events, [])
     assert.deepEqual(data.requested, failingPage === 3 ? [1, 2, 3] : [1, 2])
+    const reason = { 'within-only': 'within-page-order', 'within-rank': 'within-page-rank-order',
+      'within-mr': 'within-page-mr-order', 'within-duplicate': 'within-page-duplicate', 'earlier-duplicate': 'earlier-page-duplicate' }[kind]
+    assert.equal(failures[0].pageRecoveryDecision?.eligible, false)
+    assert.equal(failures[0].pageRecoveryDecision?.reason, reason)
+    assert.equal(failures[0].pageRecoveryDecision?.conflict?.current.page, failingPage)
+    assert.equal(failures[0].pageRecoveryDecision?.conflict?.current.rowIndex, kind === 'earlier-duplicate' ? 1 : 2)
+    assert.equal(failures[0].pageRecoveryDecision?.conflict?.previous.page, kind === 'earlier-duplicate' ? 1 : failingPage)
   }
 })
 
@@ -877,6 +892,8 @@ test('boundary recovery preserves original diagnostics on request limits, cancel
     assert.deepEqual(events, ['started']); assert.deepEqual(retries, []); assert.equal(rechecks, 1)
     assert.deepEqual(data.requested, kind === 'cancelled' ? [1, 2] : [1, 2, 1])
     assert.equal(failures.length, 1); assert.equal(failures[0].orderDiagnostic?.current.rank, 1)
+    assert.deepEqual(failures[0].pageRecoveryDecision, { trigger: 'rank-order', eligible: true, reason: 'eligible',
+      page: 2, previousPage: 1, recoveryUsed: false })
     assert.deepEqual(failures[0].orderRecheck, { status: 'unavailable', elapsedMs: 1000 })
     assert.doesNotMatch(JSON.stringify(failures), /private terminal/)
   }
@@ -917,4 +934,84 @@ test('successful boundary recovery clears its diagnostics before an unrelated en
   await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'end-recheck')
   assert.deepEqual(events, ['started', 'succeeded']); assert.equal(failures.length, 1)
   assert.equal('orderDiagnostic' in failures[0], false); assert.equal('orderRecheck' in failures[0], false)
+  assert.equal('pageRecoveryDecision' in failures[0], false)
+})
+
+test('a 275-to-274 boundary inversion reports the later conflicting old-page row and keeps both attempt decisions', async () => {
+  const values = Array.from({ length: 320 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
+    characterId: 'ryu', rank: index >= 274 && index < 280 ? 275 : index + 1,
+    masterRating: index < 274 ? 3000 - index : index < 280 ? 1811 : 1810 - (index - 280), isLegend: index < 300 }))
+  const data = fixture(values, 20), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = []
+  let rechecks = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 15) {
+      value.entries[0].rank = 274; value.entries[0].masterRating = 1811
+      overlapWith(value.entries[9], values[259])
+      value.entries[9].playerName = 'secret-player'; value.entries[9].playerId = 'secret-id'
+    }
+    return value
+  }
+  data.options.onAttemptFailure = value => { failures.push(value) }
+  data.options.onPageRecovery = value => { events.push(value) }
+  data.options.recheckOrderFailure = async () => { rechecks++; return { status: 'unavailable', elapsedMs: 1000 } }
+  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'rank-order')
+  assert.deepEqual(events, []); assert.equal(rechecks, 2)
+  assert.deepEqual(data.requested, [...Array.from({ length: 15 }, (_, index) => index + 1), ...Array.from({ length: 15 }, (_, index) => index + 1)])
+  assert.deepEqual(failures.map(failure => failure.attempt), [1, 2])
+  for (const failure of failures) {
+    assert.equal(failure.orderDiagnostic?.previous.rank, 275); assert.equal(failure.orderDiagnostic?.current.rank, 274)
+    assert.equal(failure.orderDiagnostic?.current.masterRating, 1811)
+    assert.deepEqual(failure.pageRecoveryDecision, { trigger: 'rank-order', eligible: false, reason: 'earlier-page-duplicate',
+      page: 15, previousPage: 14, recoveryUsed: false, conflict: {
+        previous: { page: 13, rowIndex: 20, rank: 260, masterRating: 2741 },
+        current: { page: 15, rowIndex: 10, rank: 290, masterRating: 1801 } } })
+  }
+  assert.doesNotMatch(JSON.stringify(failures), /accountKey|characterId|playerName|playerId|secret|https?:/)
+})
+
+test('eligible recovery is recorded before passive observation can deny access without starting recovery reads', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = []
+  const denied = new LegendAnalysisDomError('http-denied')
+  data.options.fetchPage = async (page, url) => { const value = await read(page, url); if (page === 2) value.entries[0].rank = 1; return value }
+  data.options.recheckOrderFailure = async () => { throw denied }
+  data.options.onAttemptFailure = value => { failures.push(value) }
+  data.options.onPageRecovery = value => { events.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error === denied)
+  assert.deepEqual(data.requested, [1, 2]); assert.deepEqual(events, [])
+  assert.deepEqual(failures[0].pageRecoveryDecision, { trigger: 'rank-order', eligible: true, reason: 'eligible',
+    page: 2, previousPage: 1, recoveryUsed: false })
+})
+
+test('duplicate recovery decisions survive a transport failure and do not leak into the next attempt', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = []
+  const denied = new LegendAnalysisDomError('authentication-required')
+  let firstReads = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 2) overlapWith(value.entries[1], data.values[1])
+    if (page === 1 && ++firstReads === 2) throw denied
+    return value
+  }
+  data.options.onAttemptFailure = value => { failures.push(value) }
+  data.options.onPageRecovery = value => { events.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error === denied)
+  assert.deepEqual(data.requested, [1, 2, 1]); assert.deepEqual(events, ['started']); assert.equal(failures.length, 1)
+  assert.equal(failures[0].code, 'read-failed')
+  assert.deepEqual(failures[0].pageRecoveryDecision, { trigger: 'duplicate-entry', eligible: true, reason: 'eligible',
+    page: 2, previousPage: 1, recoveryUsed: false })
+
+  const retry = fixture(), original = retry.options.fetchPage, retryFailures: LegendAnalysisAttemptFailure[] = []
+  let reads = 0
+  retry.options.fetchPage = async (page, url) => {
+    const value = await original(page, url)
+    if (++reads === 1) overlapWith(value.entries[1], value.entries[0])
+    else value.conditionsConfirmed = false
+    return value
+  }
+  retry.options.onAttemptFailure = value => { retryFailures.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset(retry.options), LegendAnalysisCollectionError)
+  assert.equal(retryFailures[0].pageRecoveryDecision?.reason, 'previous-page-missing')
+  assert.equal('pageRecoveryDecision' in retryFailures[1], false)
+  assert.deepEqual(retry.requested, [1, 1])
 })

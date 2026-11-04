@@ -9,7 +9,7 @@ import { collectLegendAnalysisDataset, LEGEND_ANALYSIS_COLLECTION_ERROR_CODES, L
   LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS, LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
 import type { LegendAnalysisCollectionErrorCode, LegendAnalysisCollectionPhase, LegendAnalysisPage,
   LegendAnalysisRecheckChangeKind, LegendAnalysisValidationCheck, LegendAnalysisVerifiedPlayer, LegendAnalysisAttemptFailure } from './lib/legend-analysis-collector.ts'
-import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck } from './lib/legend-order-diagnostics.ts'
+import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision } from './lib/legend-order-diagnostics.ts'
 import type { LegendOrderRecheck } from './lib/legend-order-diagnostics.ts'
 import { createLegendAnalysisPageReader, LEGEND_ANALYSIS_CONDITIONS, legendAnalysisPageUrl, LegendAnalysisDomError, sanitizeLegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import type { LegendAnalysisDomErrorCode, LegendAnalysisReaderStep, LegendClickFailure, LegendClickHit, LegendClickObservation, LegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
@@ -123,6 +123,7 @@ function safeAttemptFailures(value: unknown): LegendAnalysisAttemptFailure[] {
       || !LEGEND_ANALYSIS_COLLECTION_ERROR_CODES.includes(item.code as LegendAnalysisCollectionErrorCode)) return []
     const orderDiagnostic = sanitizeLegendOrderDiagnostic(item.orderDiagnostic)
     const orderRecheck = sanitizeLegendOrderRecheck(item.orderRecheck)
+    const pageRecoveryDecision = sanitizeLegendPageRecoveryDecision(item.pageRecoveryDecision)
     return [{ attempt: item.attempt as number, phase: item.phase as LegendAnalysisCollectionPhase,
       page: Number.isSafeInteger(item.page) && Number(item.page) >= 1 && Number(item.page) <= 1000000 ? item.page as number : null,
       code: item.code as LegendAnalysisCollectionErrorCode,
@@ -131,7 +132,8 @@ function safeAttemptFailures(value: unknown): LegendAnalysisAttemptFailure[] {
         && new Set(item.recheckChangeKinds).size === item.recheckChangeKinds.length
         && item.recheckChangeKinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind as LegendAnalysisRecheckChangeKind))
         ? [...item.recheckChangeKinds] as LegendAnalysisRecheckChangeKind[] : null,
-      ...(orderDiagnostic ? { orderDiagnostic } : {}), ...(orderRecheck ? { orderRecheck } : {}) }]
+      ...(orderDiagnostic ? { orderDiagnostic } : {}), ...(orderRecheck ? { orderRecheck } : {}),
+      ...(pageRecoveryDecision ? { pageRecoveryDecision } : {}) }]
   })
 }
 /** A second bounded enum/scalar-only boundary for stdout; never log an arbitrary collector result. */

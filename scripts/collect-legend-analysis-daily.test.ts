@@ -9,6 +9,7 @@ import { publishLegendDailyBundle, validateLegendDailyBundle } from './lib/legen
 import { legendAnalysisPathWithin } from './lib/legend-analysis-files.ts'
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS, summarizeLegendMr } from '../src/lib/legendAnalysis.ts'
 import { createLegendPlayersDescriptor, parseLegendPlayersDataset } from '../src/lib/legendPlayers.ts'
+import { summarizeLegendAnalysisCaptureReport } from './collect-legend-analysis.ts'
 
 const PRIVATE = 'synthetic-legend-session'
 const now = new Date('2026-10-16T13:30:00.000Z')
@@ -114,6 +115,28 @@ test('daily stdout keeps safe order diagnostics and rechecks through its second 
     { ...failure, attempt: 2, orderRecheck: { status: 'failed' } },
   ])
   for (const value of [PRIVATE, 'playerId', 'playerName', 'accountKey', 'profileUrl', 'raw', 'message']) assert.equal(text.includes(value), false)
+})
+
+test('daily stdout preserves a recovery rejection and numeric conflict through repeated sanitization', async t => {
+  const lines: unknown[] = []
+  t.mock.method(console, 'log', (...values: unknown[]) => { lines.push(...values) })
+  const supplied = result(false)
+  const decision = { trigger: 'rank-order', eligible: false, reason: 'earlier-page-duplicate', page: 3, previousPage: 2, recoveryUsed: false,
+    conflict: { previous: { page: 1, rowIndex: 10, rank: 10, masterRating: 2391 },
+      current: { page: 3, rowIndex: 2, rank: 42, masterRating: 2359 } } }
+  const failure = { attempt: 1, phase: 'listing', page: 3, code: 'source-changed', validationCheck: 'rank-order', recheckChangeKinds: null }
+  const firstPass = summarizeLegendAnalysisCaptureReport({ ...supplied.report, attemptFailures: [{ ...failure,
+    pageRecoveryDecision: { ...decision, accountKey: PRIVATE, conflict: { ...decision.conflict,
+      current: { ...decision.conflict.current, playerId: PRIVATE, playerName: PRIVATE } }, raw: [PRIVATE] } },
+    { ...failure, attempt: 2 }] })
+  assert.deepEqual(firstPass.attemptFailures, [{ ...failure, pageRecoveryDecision: decision }, { ...failure, attempt: 2 }])
+  Object.assign(supplied.report, { attemptFailures: firstPass.attemptFailures })
+  await runLegendDaily({ env: environment(), now: () => now, collect: async () => supplied,
+    validate: async () => ({ datasets: 0, entries: 0 }), artifactReady: async () => {} })
+  assert.equal(lines.length, 1)
+  const text = String(lines[0]), emitted = JSON.parse(text).capture
+  assert.deepEqual(emitted.attemptFailures, firstPass.attemptFailures)
+  for (const value of [PRIVATE, 'accountKey', 'playerId', 'playerName', 'raw']) assert.equal(text.includes(value), false)
 })
 
 test('publisher uses fixed isolated bundle paths and the same workflow gate', async () => {
