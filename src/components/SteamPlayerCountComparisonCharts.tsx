@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { chartTextWidth } from '../lib/chartTextWidth'
 import { sampleSurveyBarAxis } from '../lib/sampleSurveyBarChart'
+import { steamPlayerCountPeopleAxis } from '../lib/steamPlayerCountChartAxis'
 import { steamPlayerCountGameLabel, steamPlayerCountGameStyle } from '../lib/steamPlayerCountGameColors'
 import type { SteamPlayerCountComparisonSeries } from '../types/steamPlayerCountComparison'
 import { SeriesMarker } from './CharacterSeriesKey'
@@ -26,9 +27,10 @@ function hourlyValue(series: SteamPlayerCountComparisonSeries, hour: number, sca
   return series.periodMean !== null && series.periodMean > 0 ? value / series.periodMean * 100 : null
 }
 
-function lineLayout(width: number, values: readonly (number | null)[]) {
-  const { maximum } = sampleSurveyBarAxis(values)
-  const ticks = [...new Set([0, maximum / 4, maximum / 2, maximum * .75, maximum].filter(Number.isInteger))]
+function lineLayout(width: number, values: readonly (number | null)[], scale: Scale) {
+  const { maximum, ticks: peopleTicks } = scale === 'people' ? steamPlayerCountPeopleAxis(values) : sampleSurveyBarAxis(values)
+  const ticks = scale === 'people' ? peopleTicks
+    : [...new Set([0, maximum / 4, maximum / 2, maximum * .75, maximum].filter(Number.isInteger))]
   const height = width < 440 ? 280 : 330
   const left = Math.max(64, ...ticks.map(value => chartTextWidth(steamPlayerCountNumber(value)) + 12))
   const right = Math.max(left + 1, width - 12), top = 30, bottom = height - 47
@@ -57,7 +59,7 @@ export function SteamPlayerCountGameHourlyChart({ series, scale }: {
   const svgRef = useRef<SVGSVGElement>(null)
   const [hour, setHour] = useState(9)
   const plotted = series.map(item => ({ item, values: Array.from({ length: 24 }, (_, value) => hourlyValue(item, value, scale)) }))
-  const chart = lineLayout(width, plotted.flatMap(item => item.values))
+  const chart = lineLayout(width, plotted.flatMap(item => item.values), scale)
   const hasValues = plotted.some(item => item.values.some(value => value !== null))
   const selectedCoverage = series[0]?.hourly.find(row => row.hour === hour)
   const hourTicks = width < 440 ? [0, 8, 16, 23] : [0, 4, 8, 12, 16, 20, 23]

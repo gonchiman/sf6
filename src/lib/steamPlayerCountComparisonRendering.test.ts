@@ -24,6 +24,29 @@ const series = (index: number, value: number | null, periodMean = value): SteamP
     totalDays: 1, observedSlots: value === null ? 0 : 4, expectedSlots: 4 })),
 })
 
+const peopleTicks = (input: SteamPlayerCountComparisonSeries[]) => {
+  const html = renderToStaticMarkup(createElement(Hourly, { series: input, scale: 'people' }))
+  assert.doesNotMatch(html, /NaN|Infinity/)
+  return [...html.matchAll(/<text class="steam-game-chart-tick"[^>]*text-anchor="end">([^<]+)<\/text>/g)]
+    .map(match => Number(match[1].replaceAll(',', ''))).slice(0, -1) // Last end-anchored tick is hour 23.
+}
+
+test('the people axis fits selected hourly means with padded whole-person ticks', () => {
+  const first = { ...series(0, 31045), peak: 50000 }, second = series(1, 5500)
+  assert.deepEqual(peopleTicks([first, second]), [0, 5000, 10000, 15000, 20000, 25000, 30000, 35000])
+  assert.deepEqual(peopleTicks([second]), [0, 1000, 2000, 3000, 4000, 5000, 6000])
+  assert.deepEqual(peopleTicks([series(0, 15)]), [0, 5, 10, 15, 20])
+  assert.deepEqual(peopleTicks([series(0, .2)]), [0, 1])
+})
+
+test('zero observations and missing data both retain a finite zero-based axis without inventing data', () => {
+  assert.deepEqual(peopleTicks([series(0, 0)]), [0, 1])
+  assert.deepEqual(peopleTicks([series(0, null)]), [0, 1])
+  const missing = renderToStaticMarkup(createElement(Hourly, { series: [series(0, null)], scale: 'people' }))
+  assert.doesNotMatch(missing, /class="steam-game-chart-line"|0 人/)
+  assert.match(missing, /共通の比較対象がありません/)
+})
+
 test('a missing hourly value splits each line without adding a point at every reading', () => {
   const item = series(0, 100)
   item.hourly[4].mean = null
