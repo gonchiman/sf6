@@ -9,7 +9,7 @@ const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 
 export const steamPlayerCountNumber = (value: number) => integerFormat.format(value)
 export const steamPlayerCountHour = (hour: number) => `${String(hour).padStart(2, '0')}時台`
 
-function useChartWidth(available = true) {
+export function useChartWidth(available = true) {
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(320)
   useLayoutEffect(() => {
@@ -48,7 +48,7 @@ function ValueAxis({ chart }: { chart: ReturnType<typeof chartLayout> }) {
   </g>
 }
 
-function nextSelectionIndex(key: string, current: number, length: number): number | null {
+export function nextSelectionIndex(key: string, current: number, length: number): number | null {
   if (!length) return null
   if (key === 'Home') return 0
   if (key === 'End') return length - 1

@@ -1,0 +1,20 @@
+.steam-game-series-key { display: inline-block; flex: 0 0 34px; vertical-align: middle; }
+.comparison-grid-option .steam-game-series-key { background: var(--surface); }
+.steam-game-chart-frame { fill: none; stroke: var(--border); stroke-width: 1; }
+.steam-game-chart-tick { fill: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.steam-game-chart-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.steam-game-chart-isolated { stroke-width: 2; stroke-linecap: round; }
+.steam-game-selected-point { stroke: var(--surface); stroke-width: 1.2; }
+.steam-game-selection { align-items: start; }
+.steam-game-selection-results { flex: 1 1 240px; min-width: 0; display: grid; gap: 9px; }
+.steam-game-selection-values { display: flex; flex-wrap: wrap; gap: 9px 22px; list-style: none; margin: 0; padding: 0; }
+.steam-game-selection-values > li { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; min-width: 0; }
+.steam-game-name { display: inline-flex; align-items: center; gap: 5px; }
+.steam-game-name abbr { text-decoration: none; }
+.steam-game-selection-values strong { font-weight: 500; }
+.steam-game-bar-name, .steam-game-bar-value { fill: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; }
+.steam-game-summary-zero { stroke-width: 2; }
+@media (max-width: 440px) {
+  .steam-game-selection-values { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .steam-game-selection-values > li { justify-content: space-between; }
+}

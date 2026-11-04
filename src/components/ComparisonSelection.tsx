@@ -17,7 +17,7 @@ type Props = {
   showOptionKeys?: boolean
   layout?: 'picker' | 'grid'
   selectionCountLabel?: (count: number) => string
-  minimumSelectionLabel?: string
+  minimumSelectionLabel?: string | null
 }
 
 /** Shared comparison selection; the picker restores focus after chip removal. */
@@ -53,15 +53,15 @@ export function ComparisonSelection({ items, selectedIds, onChange, label, selec
       <span id={labelId}>{label}</span>
       <span className="comparison-grid-count" aria-live="polite" aria-atomic="true">{selectionCountLabel(selectedIds.length)}</span>
     </div>
-    <div className="comparison-grid-options" role="group" aria-labelledby={labelId} aria-describedby={hintId}>
+    <div className="comparison-grid-options" role="group" aria-labelledby={labelId} aria-describedby={minimumSelectionLabel ? hintId : undefined}>
       {items.map(item => <button key={item.id} type="button" className="comparison-grid-option"
         aria-pressed={selected.has(item.id)} aria-disabled={selectedIds.length === 1 && selected.has(item.id)}
-        aria-describedby={hintId} onClick={() => toggle(item.id, !selected.has(item.id))}>
+        aria-describedby={minimumSelectionLabel ? hintId : undefined} onClick={() => toggle(item.id, !selected.has(item.id))}>
         {showOptionKeys && renderKey(item.id)}<span className="comparison-grid-name">{item.name}</span>
         <span className="comparison-grid-check" aria-hidden="true">✓</span>
       </button>)}
     </div>
-    <p id={hintId} className="comparison-grid-hint">{minimumSelectionLabel}</p>
+    {minimumSelectionLabel && <p id={hintId} className="comparison-grid-hint">{minimumSelectionLabel}</p>}
   </div>
 
   return <div className="comparison-selection history-character-selection">

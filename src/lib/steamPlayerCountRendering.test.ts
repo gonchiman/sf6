@@ -6,11 +6,13 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer, type ViteDevServer } from 'vite'
 import { STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
 import type { SteamPlayerCountAppId, SteamPlayerCountHourlyRow, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
+import type { SteamPlayerCountGameComparison } from '../types/steamPlayerCountComparison.ts'
 
 let server: ViteDevServer
 let Hourly: ComponentType<{ rows: SteamPlayerCountHourlyRow[] }>
 let Trend: ComponentType<{ observations: SteamPlayerCountObservation[] }>
-let Page: ComponentType<{ initialAppId?: SteamPlayerCountAppId }>
+let Page: ComponentType<{ initialAppId?: SteamPlayerCountAppId; initialMode?: 'single' | 'comparison' }>
+let ComparisonTable: ComponentType<{ comparison: SteamPlayerCountGameComparison }>
 before(async () => {
   server = await createServer({ root: fileURLToPath(new URL('../../', import.meta.url)), configFile: false,
     server: { middlewareMode: true, watch: null }, appType: 'custom', logLevel: 'error', optimizeDeps: { noDiscovery: true, include: [] } })
@@ -19,6 +21,8 @@ before(async () => {
   Trend = charts.SteamPlayerCountTrendChart
   const page = await server.ssrLoadModule('/src/components/SteamPlayerCountPage.tsx')
   Page = page.SteamPlayerCountPage
+  const comparison = await server.ssrLoadModule('/src/components/SteamPlayerCountComparisonView.tsx')
+  ComparisonTable = comparison.SteamPlayerCountGameComparisonTable
 })
 after(async () => { await server?.close() })
 const observation = (minute: number, playerCount = 20000): SteamPlayerCountObservation => ({
@@ -59,6 +63,53 @@ test('every selected game has its own source and loading state without another g
     assert.ok(selector)
     assert.doesNotMatch(selector, /disabled/)
   }
+})
+
+test('comparison mode starts with all five games and shared period controls while loading', () => {
+  const html = renderToStaticMarkup(createElement(Page, { initialMode: 'comparison' }))
+  assert.match(html, /aria-label="Steam同時接続数のゲーム比較"/)
+  const selectedGames = html.match(/<button[^>]*class="[^"]*comparison-grid-option[^"]*"[^>]*>[\s\S]*?<\/button>/g) ?? []
+  assert.equal(selectedGames.length, 5)
+  for (const [index, label] of ['SF6', 'TEKKEN 8', 'GGST', 'GBVSR', 'KOF XV'].entries()) {
+    assert.match(selectedGames[index], /aria-pressed="true"/)
+    assert.ok(selectedGames[index].includes(label))
+  }
+  assert.match(html, /role="group" aria-label="期間"/)
+  for (const label of ['今日', '昨日', '直近7日', '直近30日', '全期間', '日付指定']) {
+    assert.match(html, new RegExp(`<button[^>]*aria-pressed="${label === '直近7日'}"[^>]*>${label}</button>`))
+  }
+  assert.match(html, /aria-label="曜日"/)
+  assert.match(html, /<dt>共通データ範囲<\/dt><dd>読込中<\/dd>/)
+  assert.match(html, /比較するゲームの観測データを読み込み中/)
+})
+
+test('the comparison table distinguishes zero from missing means and retains shared coverage', () => {
+  const hourly: SteamPlayerCountHourlyRow[] = [
+    { hour: 9, mean: null, validDays: 1, totalDays: 2, observedSlots: 4, expectedSlots: 8 },
+    { hour: 10, mean: null, validDays: 0, totalDays: 2, observedSlots: 3, expectedSlots: 8 },
+  ]
+  const comparison: SteamPlayerCountGameComparison = {
+    hourly, commonDays: 1, commonHours: 1, commonSlots: 4, expectedSlots: 16, totalDays: 2,
+    series: STEAM_PLAYER_COUNT_GAMES.map((game, index) => ({
+      game, hourly: hourly.map(row => ({ ...row, mean: row.hour === 9 ? index * 100 : null })),
+      periodMean: index * 100, peak: index * 100,
+    })),
+  }
+  const html = renderToStaticMarkup(createElement(ComparisonTable, { comparison }))
+  const header = html.match(/<thead>[\s\S]*?<\/thead>/)?.[0]
+  assert.ok(header)
+  for (const label of ['時間帯（JST）', 'SF6', 'TEKKEN 8', 'GGST', 'GBVSR', 'KOF XV', '平均（人）', '共通比較日数', '共通観測／予定']) {
+    assert.ok(header.includes(label))
+  }
+  const zeroRow = html.match(/<tr><th scope="row">09時台<\/th>[\s\S]*?<\/tr>/)?.[0]
+  assert.ok(zeroRow)
+  assert.match(zeroRow, /<td>0<\/td>/)
+  assert.match(zeroRow, /<td>1 \/ 2 日<\/td><td>4 \/ 8 区間<\/td>/)
+  assert.doesNotMatch(zeroRow, /算出不可/)
+  const missingRow = html.match(/<tr><th scope="row">10時台<\/th>[\s\S]*?<\/tr>/)?.[0]
+  assert.ok(missingRow)
+  assert.equal((missingRow.match(/算出不可/g) ?? []).length, 5)
+  assert.match(missingRow, /<td>0 \/ 2 日<\/td><td>3 \/ 8 区間<\/td>/)
 })
 
 test('unavailable hourly means stay missing while a verified zero remains visible', () => {
