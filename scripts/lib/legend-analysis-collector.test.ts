@@ -161,13 +161,13 @@ test('adjacent recovery verifies the previous page and atomically replaces the c
   assert.equal(data.actChecks(), 1)
 })
 
-test('changed adjacent evidence falls back to a complete attempt and never reports a successful local recovery', async () => {
+test('changed adjacent membership falls back to a complete attempt and never reports a successful local recovery', async () => {
   const data = adjacentFixture(), read = data.options.fetchPage
   let firstReads = 0, secondReads = 0
   data.options.fetchPage = async (page, url) => {
     const value = await read(page, url)
     if (page === 2 && ++secondReads === 1) overlapWith(value.entries[1], data.values[1])
-    if (page === 1 && ++firstReads === 2) value.entries[0].masterRating++
+    if (page === 1 && ++firstReads === 2) value.entries[0].accountKey = 'f'.repeat(64)
     return value
   }
   const events: string[] = [], failures: LegendAnalysisAttemptFailure[] = []
@@ -190,6 +190,166 @@ test('persistent overlap gets only one local recovery across complete attempts a
   assert.deepEqual(events, ['started'])
   assert.deepEqual(data.requested, [1, 2, 1, 2, 1, 2])
   assert.equal(data.actChecks(), 0)
+})
+
+test('a 488-to-487 boundary inversion recovers a rank-only update without restarting or losing tied Legend entries', async () => {
+  const rows = Array.from({ length: 520 }, (_, index) => ({
+    accountKey: (index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
+    rank: index >= 486 && index < 504 ? 487 : index + 1,
+    masterRating: index < 486 ? 2247 - index : index < 504 ? 1761 : 1760 - (index - 504),
+    isLegend: index < 504, playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam',
+  }))
+  const data = fixture(rows, 20), read = data.options.fetchPage, events: string[] = []
+  let previousReads = 0, projections = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 25 && ++previousReads === 1) value.entries[19].rank = 488
+    return value
+  }
+  data.options.onPageRecovery = state => { events.push(state) }
+  data.options.onVerifiedPlayers = players => {
+    projections++
+    assert.deepEqual(players.map(row => [row.playerId, row.rank, row.masterRating]), rows.slice(0, 504).map(row => [row.playerId, row.rank, row.masterRating]))
+  }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.retryCount, 0); assert.equal(result.pagesRead, 26); assert.equal(result.requestCount, 30)
+  assert.equal(result.dataset.totalCount, 504); assert.equal(result.dataset.mr.min, 1761)
+  assert.equal(projections, 1); assert.deepEqual(events, ['started', 'succeeded'])
+  assert.deepEqual(data.requested, [...Array.from({ length: 26 }, (_, index) => index + 1), 25, 26, 26, 1])
+})
+
+test('reordered members and updated values replace the old preceding page in both aggregation and player projection', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = []
+  data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
+  Object.assign(data.values[4], { rank: 3, masterRating: 2398 })
+  let previousReads = 0, projections = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 2 && ++previousReads === 2) {
+      value.entries.reverse()
+      value.entries.forEach(entry => { entry.rank = 3; entry.masterRating = 2398 })
+      value.entries[0].playerName = 'Updated name'
+    }
+    return value
+  }
+  data.options.onPageRecovery = state => { events.push(state) }
+  data.options.onVerifiedPlayers = players => {
+    projections++
+    assert.deepEqual(players.map(row => row.playerId), ['10000', '10001', '10003', '10002'])
+    assert.deepEqual(players.map(row => row.masterRating), [2400, 2399, 2398, 2398])
+    assert.equal(players[2].playerName, 'Updated name')
+    assert.equal(players[3].rank, 3)
+  }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.retryCount, 0); assert.equal(result.dataset.totalCount, 4); assert.equal(result.dataset.mr.min, 2398)
+  assert.equal(projections, 1); assert.deepEqual(events, ['started', 'succeeded'])
+  assert.deepEqual(data.requested, [1, 2, 3, 2, 3, 3, 1])
+})
+
+test('refreshing page one changes the final start baseline but does not waive the final comparison', async () => {
+  for (const staleFinal of [false, true]) {
+    const data = adjacentFixture(), read = data.options.fetchPage
+    data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
+    let firstReads = 0, secondReads = 0, projections = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === 2 && ++secondReads === 1) overlapWith(value.entries[0], data.values[1])
+      if (page === 1 && ++firstReads >= 2 && !(staleFinal && firstReads === 3)) {
+        value.entries.forEach(entry => { entry.masterRating++ })
+        value.entries[0].playerName = 'Updated name'
+      }
+      return value
+    }
+    data.options.onVerifiedPlayers = players => {
+      projections++
+      assert.equal(players[0].masterRating, 2401); assert.equal(players[0].playerName, 'Updated name')
+    }
+    const collect = collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 })
+    if (staleFinal) await assert.rejects(collect, error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'start-recheck')
+    else {
+      const result = await collect
+      assert.equal(result.retryCount, 0); assert.equal(result.dataset.mr.max, 2401)
+    }
+    assert.equal(projections, staleFinal ? 0 : 1)
+    assert.deepEqual(data.requested, [1, 2, 1, 2, 3, 3, 1])
+  }
+})
+
+test('preceding-page replacement rejects changed membership, character, Legend classification, duplicate membership and metadata', async () => {
+  for (const mutate of [
+    (page: LegendAnalysisPage) => { page.entries[0].accountKey = 'f'.repeat(64) },
+    (page: LegendAnalysisPage) => { page.entries[0].characterId = 'ken' },
+    (page: LegendAnalysisPage) => { page.entries[0].isLegend = false },
+    (page: LegendAnalysisPage) => { overlapWith(page.entries[1], page.entries[0]) },
+    (page: LegendAnalysisPage) => { page.actConfirmed = false },
+  ]) {
+    const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = []
+    data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
+    let firstReads = 0, projections = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === 2) value.entries[0].rank = 1
+      if (page === 1 && ++firstReads === 2) mutate(value)
+      return value
+    }
+    data.options.onPageRecovery = state => { events.push(state) }
+    data.options.onVerifiedPlayers = () => { projections++ }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), LegendAnalysisCollectionError)
+    assert.equal(projections, 0); assert.deepEqual(events, ['started']); assert.deepEqual(data.requested, [1, 2, 1])
+  }
+})
+
+test('refreshed preceding rows must still obey their earlier prefix and internal order', async () => {
+  for (const kind of ['prefix-rank', 'prefix-mr', 'internal-rank', 'internal-mr'] as const) {
+    const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = []
+    let previousReads = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === 3) value.entries[0].rank = 3
+      if (page === 2 && ++previousReads === 2) {
+        if (kind === 'prefix-rank') value.entries[0].rank = 1
+        if (kind === 'prefix-mr') value.entries[0].masterRating = 2400
+        if (kind === 'internal-rank') value.entries[1].rank = 2
+        if (kind === 'internal-mr') value.entries[1].masterRating = 2399
+      }
+      return value
+    }
+    data.options.onPageRecovery = state => { events.push(state) }
+    data.options.onAttemptFailure = failure => { failures.push(failure) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError
+      && error.validationCheck === (kind.endsWith('rank') ? 'rank-order' : 'mr-order'))
+    assert.deepEqual(events, ['started']); assert.deepEqual(data.requested, [1, 2, 3, 2])
+    assert.equal(failures[0].orderDiagnostic?.previous.page, 2)
+    assert.equal(failures[0].orderDiagnostic?.previous.rank, 4)
+    assert.equal(failures[0].orderDiagnostic?.current.page, 3)
+    assert.equal(failures[0].orderDiagnostic?.current.rank, 3)
+  }
+})
+
+test('an updated preceding page is never published when the current replacement is invalid or access is denied', async () => {
+  for (const kind of ['duplicate', 'order', 'denied'] as const) {
+    const data = adjacentFixture(), read = data.options.fetchPage, events: string[] = [], retries: number[] = []
+    data.values.forEach((entry, index) => { Object.assign(entry, { playerName: `Synthetic ${index}`, playerId: `${10000 + index}`, region: '日本', platform: 'Steam' }) })
+    const denied = new LegendAnalysisDomError('http-denied')
+    let firstReads = 0, secondReads = 0, projections = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === 1 && ++firstReads === 2) value.entries[0].masterRating++
+      if (page === 2) {
+        if (++secondReads === 1 || kind === 'order') value.entries[0].rank = 1
+        else if (kind === 'duplicate') overlapWith(value.entries[0], data.values[1])
+        else throw denied
+      }
+      return value
+    }
+    data.options.onPageRecovery = state => { events.push(state) }
+    data.options.onRetry = count => { retries.push(count) }
+    data.options.onVerifiedPlayers = () => { projections++ }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: kind === 'denied' ? 2 : 1 }), error =>
+      kind === 'denied' ? error === denied : error instanceof LegendAnalysisCollectionError)
+    assert.equal(projections, 0); assert.deepEqual(events, ['started']); assert.deepEqual(retries, [])
+    assert.deepEqual(data.requested, [1, 2, 1, 2])
+  }
 })
 
 test('earlier-page and within-page overlaps are not eligible for adjacent recovery', async () => {
@@ -627,13 +787,13 @@ test('persistent boundary inversion shares a single recovery budget across whole
   }
 })
 
-test('a changed preceding page preserves original order evidence with the actual adjacent-recheck failure', async () => {
+test('a changed preceding membership preserves original order evidence with the actual adjacent-recheck failure', async () => {
   const data = adjacentFixture(), read = data.options.fetchPage, failures: LegendAnalysisAttemptFailure[] = [], events: string[] = []
   let firstReads = 0, rechecks = 0
   data.options.fetchPage = async (page, url) => {
     const value = await read(page, url)
     if (page === 2) value.entries[0].rank = 1
-    if (page === 1 && ++firstReads === 2) value.entries[0].masterRating++
+    if (page === 1 && ++firstReads === 2) value.entries[0].accountKey = 'f'.repeat(64)
     return value
   }
   data.options.recheckOrderFailure = async () => { rechecks++; return { status: 'unavailable', elapsedMs: 1000 } }
