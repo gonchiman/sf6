@@ -1,0 +1,625 @@
+{
+  "schemaVersion": 2,
+  "id": "d598a35b-6844-4089-8dbe-d8953cd2fab9",
+  "planId": "3a0c0909-6d3b-496d-a2e5-1da3a915bdbf",
+  "config": {
+    "ranks": [
+      "GOLD",
+      "PLATINUM"
+    ],
+    "rankSampleSize": 200,
+    "includeMr": false,
+    "mrSampleSize": 100,
+    "maxDurationMinutes": 120
+  },
+  "state": "complete",
+  "phase": "complete",
+  "startedAt": "2026-11-02T05:54:27.465Z",
+  "updatedAt": "2026-11-04T08:40:15.459Z",
+  "finishedAt": "2026-11-04T08:40:15.459Z",
+  "elapsedMs": 5010137,
+  "attempts": 491,
+  "successfulPages": 487,
+  "uniqueAccountCount": 400,
+  "strata": [
+    {
+      "id": "lp-GOLD",
+      "label": "GOLD",
+      "target": "lp",
+      "requested": 200,
+      "population": 376746,
+      "selected": 200,
+      "processed": 200,
+      "succeeded": 200,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 10861.515,
+      "min": 9000,
+      "max": 12978
+    },
+    {
+      "id": "lp-PLATINUM",
+      "label": "PLATINUM",
+      "target": "lp",
+      "requested": 200,
+      "population": 512255,
+      "selected": 200,
+      "processed": 200,
+      "succeeded": 200,
+      "missing": 0,
+      "duplicates": 0,
+      "mean": 15201.27,
+      "min": 13000,
+      "max": 18960
+    }
+  ],
+  "frameChanged": true,
+  "stopReason": null,
+  "resumeAllowed": false,
+  "observation": {
+    "method": "rank-position-tolerant-v1",
+    "strata": [
+      {
+        "id": "lp-GOLD",
+        "status": "review-required",
+        "startedAt": "2026-11-02T05:54:27.469Z",
+        "finishedAt": "2026-11-02T06:36:10.961Z",
+        "totalCountBefore": 3107828,
+        "totalCountAfter": 3107867,
+        "startBefore": 1408800,
+        "endBefore": 1785546,
+        "startAfter": 1408817,
+        "endAfter": 1785565,
+        "boundaryChanged": true,
+        "boundaryAcceptance": {
+          "mode": "approximate",
+          "referenceStart": 1408795,
+          "referenceEnd": 1785546,
+          "referenceCheckedAt": "2026-11-02T06:00:06.652Z",
+          "start": 1408800,
+          "end": 1785546,
+          "startObservedAt": "2026-11-02T06:00:27.665Z",
+          "endObservedAt": "2026-11-02T06:00:34.727Z"
+        }
+      },
+      {
+        "id": "lp-PLATINUM",
+        "status": "review-required",
+        "startedAt": "2026-11-02T06:36:10.965Z",
+        "finishedAt": "2026-11-04T08:40:15.449Z",
+        "totalCountBefore": 3110927,
+        "totalCountAfter": 3110964,
+        "startBefore": 898217,
+        "endBefore": 1410472,
+        "startAfter": 898222,
+        "endAfter": 1410488,
+        "boundaryChanged": true,
+        "boundaryAcceptance": {
+          "mode": "exact",
+          "referenceStart": 898217,
+          "referenceEnd": 1410472,
+          "referenceCheckedAt": "2026-11-04T08:05:44.029Z",
+          "start": 898217,
+          "end": 1410472,
+          "startObservedAt": "2026-11-04T08:05:55.293Z",
+          "endObservedAt": "2026-11-04T08:06:05.573Z"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:19:23.454Z",
+        "before": 3107848,
+        "after": 3107849
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:19:44.769Z",
+        "before": 3107849,
+        "after": 3107850
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:20:13.481Z",
+        "before": 3107850,
+        "after": 3107851
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:20:42.058Z",
+        "before": 3107851,
+        "after": 3107853
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:22:01.580Z",
+        "before": 3107853,
+        "after": 3107854
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:23:42.349Z",
+        "before": 3107854,
+        "after": 3107855
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:24:11.854Z",
+        "before": 3107855,
+        "after": 3107856
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:26:06.924Z",
+        "before": 3107856,
+        "after": 3107857
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:27:09.306Z",
+        "before": 3107857,
+        "after": 3107858
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:28:45.814Z",
+        "before": 3107858,
+        "after": 3107859
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:29:05.467Z",
+        "before": 3107859,
+        "after": 3107860
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:29:23.807Z",
+        "before": 3107860,
+        "after": 3107861
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:31:31.291Z",
+        "before": 3107861,
+        "after": 3107862
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:32:52.245Z",
+        "before": 3107862,
+        "after": 3107863
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:33:11.527Z",
+        "before": 3107863,
+        "after": 3107865
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:34:22.602Z",
+        "before": 3107865,
+        "after": 3107866
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:35:01.069Z",
+        "before": 3107866,
+        "after": 3107867
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:35:51.396Z",
+        "before": 1408800,
+        "after": 1408817
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:35:51.396Z",
+        "before": 1785546,
+        "after": 1785565
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-GOLD",
+        "at": "2026-11-02T06:36:10.961Z",
+        "before": 1408817,
+        "after": null
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:03:04.397Z",
+        "before": 3110922,
+        "after": 3110923
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:04:45.707Z",
+        "before": 3110923,
+        "after": 3110924
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:05:55.293Z",
+        "before": 3110924,
+        "after": 3110926
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:06:05.573Z",
+        "before": 3110926,
+        "after": 3110927
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:06:16.494Z",
+        "before": 3110927,
+        "after": 3110928
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:07:15.099Z",
+        "before": 3110928,
+        "after": 3110929
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:08:13.934Z",
+        "before": 3110929,
+        "after": 3110930
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:08:55.373Z",
+        "before": 3110930,
+        "after": 3110931
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:09:04.605Z",
+        "before": 3110931,
+        "after": 3110932
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:09:55.028Z",
+        "before": 3110932,
+        "after": 3110933
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:10:34.056Z",
+        "before": 3110933,
+        "after": 3110934
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:11:25.097Z",
+        "before": 3110934,
+        "after": 3110935
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:11:45.228Z",
+        "before": 3110935,
+        "after": 3110936
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:12:16.558Z",
+        "before": 3110936,
+        "after": 3110937
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:12:24.942Z",
+        "before": 3110937,
+        "after": 3110938
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:13:05.877Z",
+        "before": 3110938,
+        "after": 3110939
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:13:55.297Z",
+        "before": 3110939,
+        "after": 3110940
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:14:45.745Z",
+        "before": 3110940,
+        "after": 3110941
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:15:45.944Z",
+        "before": 3110941,
+        "after": 3110942
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:16:05.138Z",
+        "before": 3110942,
+        "after": 3110943
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:16:55.017Z",
+        "before": 3110943,
+        "after": 3110944
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:17:25.937Z",
+        "before": 3110944,
+        "after": 3110945
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:17:54.983Z",
+        "before": 3110945,
+        "after": 3110946
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:18:35.676Z",
+        "before": 3110946,
+        "after": 3110947
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:19:25.795Z",
+        "before": 3110947,
+        "after": 3110948
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:21:15.144Z",
+        "before": 3110948,
+        "after": 3110949
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:22:35.556Z",
+        "before": 3110949,
+        "after": 3110950
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:22:45.277Z",
+        "before": 3110950,
+        "after": 3110951
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:25:45.490Z",
+        "before": 3110951,
+        "after": 3110952
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:27:04.633Z",
+        "before": 3110952,
+        "after": 3110953
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:27:36.250Z",
+        "before": 3110953,
+        "after": 3110954
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:29:05.153Z",
+        "before": 3110954,
+        "after": 3110955
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:30:15.090Z",
+        "before": 3110955,
+        "after": 3110956
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:30:45.156Z",
+        "before": 3110956,
+        "after": 3110957
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:31:44.580Z",
+        "before": 3110957,
+        "after": 3110958
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:33:06.331Z",
+        "before": 3110958,
+        "after": 3110959
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:33:15.760Z",
+        "before": 3110959,
+        "after": 3110960
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:34:25.551Z",
+        "before": 3110960,
+        "after": 3110961
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:38:15.095Z",
+        "before": 3110961,
+        "after": 3110962
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:38:55.642Z",
+        "before": 3110962,
+        "after": 3110963
+      },
+      {
+        "kind": "total-count",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:39:55.664Z",
+        "before": 3110963,
+        "after": 3110964
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:39:55.673Z",
+        "before": 898217,
+        "after": 898222
+      },
+      {
+        "kind": "boundary-end",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:39:55.674Z",
+        "before": 1410472,
+        "after": 1410488
+      },
+      {
+        "kind": "boundary-start",
+        "target": "lp",
+        "stratumId": "lp-PLATINUM",
+        "at": "2026-11-04T08:40:15.449Z",
+        "before": 898222,
+        "after": null
+      }
+    ],
+    "omittedChanges": 21
+  }
+}
