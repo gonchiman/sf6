@@ -92,6 +92,14 @@ export interface SampleSurveyBrowserDependencies {
   now?(): number
 }
 
+/** Positive evidence from the first strict, fully validated read of each target. */
+export interface SampleSurveyAuthenticationVerification {
+  target: SampleSurveyTarget
+  page: number
+  observedAt: string
+  evidence: 'logout-control'
+}
+
 const SAFE_ERRORS = new Set<SampleSurveyError>(['cancelled', 'limit-reached', 'human-verification', 'http-denied',
   'login-required', 'authentication-unconfirmed', 'maintenance', 'server-error', 'http-error', 'timeout',
   'read-failed', 'condition-mismatch', 'page-mismatch', 'frame-changed', 'session-unavailable', 'browser-unavailable', 'invalid-request'])
@@ -175,6 +183,7 @@ function validatedPrivatePage(target: SampleSurveyTarget, snapshot: RankBoundary
 export async function createSampleSurveyReader(options: {
   signal: AbortSignal
   onReadFailure?(diagnostic: SampleSurveyFailureDiagnostic): Promise<void> | void
+  onAuthenticationVerified?(verification: SampleSurveyAuthenticationVerification): Promise<void> | void
 }, dependencies: SampleSurveyBrowserDependencies = {}): Promise<SampleSurveyReader> {
   const diagnostic = createSampleSurveyDiagnostics()
   let failureEmitted = false, pendingFailure: SampleSurveyFailureDiagnostic | null = null
@@ -245,8 +254,17 @@ export async function createSampleSurveyReader(options: {
         const value = pendingCapture as SampleSurveyPage | null
         if (!value || value.target !== target || value.page !== pageNumber || value.totalCount !== summary.totalCount
           || value.totalPages !== summary.totalPages) throw new SampleSurveyReadError('read-failed')
+        const firstStrictRead = !strictTargets.has(target)
         strictTargets.add(target)
         pendingFailure = null
+        if (firstStrictRead) {
+          // Both the strict DOM reader and the private capture require a visible
+          // logout control without a login control. Readability alone is insufficient.
+          try {
+            await options.onAuthenticationVerified?.({ target, page: pageNumber, observedAt: value.observedAt, evidence: 'logout-control' })
+          } catch { /* Optional diagnostics cannot alter a validated read. */ }
+          if (closed || options.signal.aborted) throw new SampleSurveyReadError('cancelled')
+        }
         return value
       } catch (error) {
         pendingCapture = null

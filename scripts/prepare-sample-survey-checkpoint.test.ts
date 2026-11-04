@@ -27,12 +27,13 @@ function archive(files: [string, Buffer][]) {
   end.writeUInt32LE(0x06054b50); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10); end.writeUInt32LE(c.length, 12); end.writeUInt32LE(offset, 16)
   return Buffer.concat([...local, c, end])
 }
-function fixture(resumeDepth = 0, resumable = true) {
+function fixture(resumeDepth = 0, resumable = true, authenticationStop = false) {
   const config = { ranks: ['MASTER' as const], rankSampleSize: 10, includeMr: false, mrSampleSize: 10, maxDurationMinutes: 10 }
   const cp = createSampleSurveyCheckpoint({ schemaVersion: 1, id: 'plan', createdAt: START, config, seed: '1'.repeat(64) }, Date.parse(START))
   Object.assign(cp.report, { state: 'error', stopReason: resumable ? 'server-error' : 'human-verification', resumeAllowed: resumable,
     updatedAt: END, finishedAt: END, elapsedMs: 1200000 })
   if (resumable) cp.transientFailure = { httpStatus: 502, at: END }
+  if (authenticationStop) { cp.report.stopReason = 'authentication-unconfirmed'; cp.report.resumeAllowed = false; delete cp.transientFailure }
   const encrypted = encryptSampleSurveyCheckpoint(cp, { sourceSha: SHA, runId: '123', runAttempt: 1, resumeDepth }, Buffer.alloc(32, 7).toString('base64'))
   const manifest = createSampleSurveyCheckpointManifest(encrypted), bytes = archive([
     ['manifest.json', Buffer.from(JSON.stringify(manifest))], ['checkpoint.enc.json', encrypted],
@@ -54,6 +55,21 @@ function fixture(resumeDepth = 0, resumable = true) {
 test('a fresh collection never downloads a checkpoint', async () => {
   const value = await prepareSampleSurveyCheckpoint({ env: { ...env(), SAMPLE_SURVEY_RESUME_RUN_ID: '' }, command: async () => { assert.fail('no network') } })
   assert.equal(value, null)
+})
+
+test('only an explicit manual request can restore an authentication-unconfirmed LP checkpoint across source revisions', async () => {
+  const f = fixture(0, false, true), current = 'b'.repeat(40)
+  const manual = { ...env(), GITHUB_SHA: current, SAMPLE_SURVEY_SOURCE_SHA: current,
+    SAMPLE_SURVEY_RECOVER_AUTHENTICATION: 'true', SAMPLE_SURVEY_RESUME_SOURCE_SHA: SHA }
+  let writes = 0
+  const result = await prepareSampleSurveyCheckpoint({ env: manual, command: f.command, now: () => Date.parse(END) + 600000,
+    write: async (_path, files) => { writes++; assert.deepEqual(files.get('checkpoint.enc.json'), f.encrypted) } })
+  assert.equal(result?.sourceSha, SHA); assert.equal(result?.stopReason, 'authentication-unconfirmed'); assert.equal(writes, 1)
+  for (const [environment, fixtureValue] of [[env(), f], [manual, fixture(0, false)],
+    [{ ...manual, SAMPLE_SURVEY_RESUME_SOURCE_SHA: current }, f], [{ ...manual, SAMPLE_SURVEY_RECOVER_AUTHENTICATION: 'false' }, f]] as const) {
+    await assert.rejects(prepareSampleSurveyCheckpoint({ env: environment, command: fixtureValue.command,
+      metadataWait: async () => {}, now: () => Date.parse(END) + 600000, write: async () => assert.fail('not eligible') }))
+  }
 })
 test('restoration verifies the exact failed run and encrypted artifact before writing only fixed filenames', async () => {
   const f = fixture(); let writes = 0

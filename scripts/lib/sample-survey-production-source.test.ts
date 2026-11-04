@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runInNewContext } from 'node:vm'
-import { sampleSurveySourceSelection, verifySampleSurveySource, SampleSurveySourceError } from './sample-survey-production-source.ts'
+import { sampleSurveySourceSelection, verifySampleSurveySource, parseSampleSurveyRecovery, SampleSurveySourceError } from './sample-survey-production-source.ts'
 
 const SOURCE = 'a'.repeat(40), RUN = 'b'.repeat(40), BLOB = 'c'.repeat(40)
 const WORKFLOW = '.github/workflows/sample-survey.yml', PRIVATE = 'raw-command-secret'
@@ -22,6 +22,22 @@ const expectedError = (code: SampleSurveySourceError['code']) => (error: unknown
   assert.ok(!error.message.includes(PRIVATE))
   return true
 }
+
+test('manual auth recovery binds the old checkpoint revision to an explicit request and ancestor check', async () => {
+  const previous = 'd'.repeat(40), f = fixture()
+  const env = environment({ GITHUB_SHA: SOURCE, SAMPLE_SURVEY_RECOVER_AUTHENTICATION: 'true',
+    SAMPLE_SURVEY_RESUME_SOURCE_SHA: previous, SAMPLE_SURVEY_RESUME_RUN_ID: '123' })
+  assert.deepEqual(parseSampleSurveyRecovery(env), { recoverAuthentication: true, resumeSourceSha: previous })
+  await verifySampleSurveySource({ env, git: f.git })
+  assert.ok(f.calls.some(args => args.join(' ') === `merge-base --is-ancestor ${previous} ${SOURCE}`))
+  await assert.rejects(verifySampleSurveySource({ env, git: fixture('merge-base').git }), expectedError('ancestry'))
+  for (const change of [{ SAMPLE_SURVEY_RECOVER_AUTHENTICATION: 'false' }, { SAMPLE_SURVEY_RECOVER_AUTHENTICATION: 'yes' },
+    { SAMPLE_SURVEY_RESUME_SOURCE_SHA: 'main' }, { SAMPLE_SURVEY_RESUME_RUN_ID: '' }, { SAMPLE_SURVEY_RESUME_SOURCE_SHA: '' }]) {
+    const calls = fixture()
+    await assert.rejects(verifySampleSurveySource({ env: { ...env, ...change }, git: calls.git }), expectedError('source'))
+    assert.equal(calls.calls.length, 0)
+  }
+})
 function fixture(failAt?: string) {
   const calls: string[][] = []
   return { calls, git: async (args: string[]) => {

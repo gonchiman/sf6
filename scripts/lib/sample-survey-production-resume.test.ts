@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
-import { validateProductionRestart, validateProductionResume } from './sample-survey-production-resume.ts'
+import { validateProductionRecovery, validateProductionRestart, validateProductionResume } from './sample-survey-production-resume.ts'
 
 const OLD_START = '2026-10-31T09:19:05Z', OLD_END = '2026-10-31T10:39:55Z', NEW_START = '2026-11-02T01:00:00Z'
 const PRIVATE = 'synthetic-secret-never-log'
@@ -22,7 +22,7 @@ function fixture() {
     steps: index < 2 ? [{ name: index === 0 ? 'Wait for the existing collection' : 'Start and verify this collection',
       status: 'completed', conclusion: index === 0 ? 'success' : 'failure' }] : null,
   }))
-  const first = { ...run(111, '2026-10-31T09:18:52Z', '.github/workflows/sample-survey.yml'), conclusion: 'success' }
+  const first = { ...run(111, '2026-10-31T09:18:52Z', '.github/workflows/sample-survey.yml'), conclusion: 'success' as string | null }
   return { parentRunId: '333', firstRunId: '111', previousParentRunId: '222',
     parents: { total_count: 2, workflow_runs: [structuredClone(previous), current] }, previousParent: previous,
     previousJobs: { total_count: 5, jobs }, childRuns: { total_count: 1, workflow_runs: [first] } }
@@ -204,4 +204,80 @@ test('legacy restart refuses a checkpoint, a published artifact, active work, al
     x => { x.parents.workflow_runs.push({ ...run(777, NEW_START), display_title: x.parents.workflow_runs[2].display_title }); x.parents.total_count++ },
   ]
   for (const change of changes) { const input = restartFixture(); change(input); assert.throws(() => validateProductionRestart(input)) }
+})
+
+function recoveryFixture() {
+  const previous = { ...run(222, '2026-11-02T04:12:09Z'), updated_at: '2026-11-02T06:38:23Z',
+    display_title: 'Sample survey production 111 resume 10 restart 20' }
+  const current = { ...run(333, '2026-11-04T01:00:00Z'), updated_at: '2026-11-04T01:00:00Z', head_sha: 'b'.repeat(40),
+    display_title: 'Sample survey production 111 recover 222 checkpoint 555', status: 'in_progress', conclusion: null }
+  const second = { ...run(444, '2026-11-02T05:48:26Z', '.github/workflows/sample-survey.yml'),
+    updated_at: '2026-11-02T05:53:10Z', display_title: `Sample survey source ${previous.head_sha}`, conclusion: 'success' }
+  const failed = { ...run(555, '2026-11-02T05:53:55Z', '.github/workflows/sample-survey.yml'),
+    updated_at: '2026-11-02T06:38:09Z', display_title: `Sample survey source ${previous.head_sha}` }
+  const retries = [
+    { ...second, id: 666, created_at: '2026-11-02T04:12:42Z', updated_at: '2026-11-02T04:53:39Z', conclusion: 'failure' },
+    { ...second, id: 777, created_at: '2026-11-02T04:59:03Z', updated_at: '2026-11-02T05:43:09Z', conclusion: 'failure' },
+  ]
+  const windows = [
+    ['ROOKIE and IRON', 'success', '2026-11-02T04:12:13Z', '2026-11-02T04:12:28Z'],
+    ['BRONZE and SILVER', 'success', '2026-11-02T04:12:31Z', '2026-11-02T05:53:37Z'],
+    ['GOLD and PLATINUM', 'failure', '2026-11-02T05:53:40Z', '2026-11-02T06:38:22Z'],
+    ['DIAMOND and MASTER', 'skipped', '2026-11-02T06:38:22Z', '2026-11-02T06:38:22Z'],
+    // GitHub may publish skipped job timestamps one second apart in reverse order.
+    ['Six MR bands', 'skipped', '2026-11-02T06:38:23Z', '2026-11-02T06:38:22Z'],
+  ]
+  const jobs = windows.map(([name, conclusion, started_at, completed_at], index) => ({ id: 1000 + index, run_id: 222,
+    name, conclusion, started_at, completed_at, status: 'completed', steps: index < 3 ? [{ status: 'completed', conclusion,
+      name: index === 0 ? 'Wait for the existing collection' : 'Start and verify this collection' }] : null }))
+  return { parentRunId: '333', firstRunId: '111', previousParentRunId: '222', completedSecondRunId: '444', checkpointRunId: '555',
+    checkpointSourceSha: previous.head_sha, previousParent: previous, completedSecond: second, failedChild: failed,
+    parents: { total_count: 2, workflow_runs: [structuredClone(previous), current] }, previousJobs: { total_count: 5, jobs },
+    childRuns: { total_count: 4, workflow_runs: [...retries, structuredClone(second), structuredClone(failed)] } }
+}
+
+test('manual stage-three recovery preserves two complete stages and permits proven earlier transient attempts', () => {
+  const f = recoveryFixture()
+  assert.doesNotThrow(() => validateProductionRecovery(f))
+  f.parents.workflow_runs.push({ ...run(99, '2026-11-01T01:00:00Z'), display_title: 'Sample survey production 111' }); f.parents.total_count++
+  f.childRuns.workflow_runs.push({ ...f.failedChild, id: 888, created_at: '2026-11-04T01:00:01Z' }); f.childRuns.total_count++
+  assert.doesNotThrow(() => validateProductionRecovery(f))
+})
+
+test('manual recovery rejects repeat parents, unproven completed stages, active children and any later pre-dispatch attempt', () => {
+  const mutations: ((f: ReturnType<typeof recoveryFixture>) => void)[] = [
+    f => { f.checkpointSourceSha = 'b'.repeat(40) }, f => { f.checkpointRunId = f.completedSecondRunId },
+    f => { f.parents.workflow_runs[1].display_title = 'Sample survey production 111 recover 222 checkpoint 666' },
+    f => { f.parents.workflow_runs[1].status = 'completed' }, f => { f.parents.workflow_runs[1].run_attempt = 2 },
+    f => { f.parents.workflow_runs.push({ ...f.parents.workflow_runs[1], id: 999 }); f.parents.total_count++ },
+    f => { f.parents.workflow_runs[0].head_sha = 'b'.repeat(40) },
+    f => { f.previousParent.status = 'in_progress'; f.parents.workflow_runs[0].status = 'in_progress' },
+    f => { f.previousJobs.jobs[1].conclusion = 'failure' }, f => { f.previousJobs.jobs[3].conclusion = 'success' },
+    f => { f.previousJobs.jobs[2].started_at = '2026-11-02T05:53:00Z' },
+    f => { f.previousJobs.jobs[2].steps![0].name = 'Unrelated failure' },
+    f => { f.completedSecond.conclusion = 'failure'; f.childRuns.workflow_runs[2].conclusion = 'failure' },
+    f => { f.failedChild.conclusion = 'success'; f.childRuns.workflow_runs[3].conclusion = 'success' },
+    f => { f.childRuns.workflow_runs[0].status = 'in_progress' },
+    f => { f.childRuns.workflow_runs[0].conclusion = 'success' },
+    f => { f.childRuns.workflow_runs[0].display_title = 'Sample survey source ' + 'b'.repeat(40) },
+    f => { f.childRuns.workflow_runs[0].updated_at = '2026-11-02T05:49:00Z' },
+    f => { f.failedChild.updated_at = '2026-11-02T07:00:00Z'; f.childRuns.workflow_runs[3].updated_at = f.failedChild.updated_at },
+    f => { f.childRuns.workflow_runs.push({ ...f.failedChild, id: 999, created_at: '2026-11-03T01:00:00Z', updated_at: '2026-11-03T02:00:00Z' }); f.childRuns.total_count++ },
+    f => { f.childRuns.workflow_runs.splice(2, 1); f.childRuns.total_count-- },
+    f => { f.childRuns.total_count++ }, f => { f.parents.total_count = 101 },
+  ]
+  for (const mutate of mutations) { const f = recoveryFixture(); mutate(f); assert.throws(() => validateProductionRecovery(f)) }
+})
+
+test('manual recovery inputs reach every serial parent job without granting the parent any secret', async () => {
+  const workflow = await readFile(new URL('../../.github/workflows/sample-survey-production.yml', import.meta.url), 'utf8')
+  assert.match(workflow, /format\('Sample survey production \{0\} recover \{1\} checkpoint \{2\}'/)
+  for (const input of ['recovery_parent_run_id', 'recovery_checkpoint_run_id', 'completed_second_run_id', 'checkpoint_source_sha']) {
+    assert.match(workflow, new RegExp(`      ${input}:`))
+    for (let stage = 1; stage <= 5; stage++) {
+      const section = workflow.split(`  stage-${stage}:`)[1].split(/\n  stage-\d:/)[0]
+      assert.match(section, new RegExp(`PRODUCTION_${input.toUpperCase()}: \\$\\{\\{ inputs.${input} \\}\\}`))
+    }
+  }
+  assert.doesNotMatch(workflow, /secrets\.|continue-on-error:|always\(\)/)
 })

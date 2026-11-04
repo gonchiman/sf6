@@ -10,10 +10,11 @@ import { createSampleSurveyReader } from './lib/sample-survey-browser.ts'
 import { serializeSampleSurveyFailureDiagnostic, serializeSampleSurveyReadRetry } from './lib/sample-survey-diagnostics.ts'
 import { SampleSurveyReadError } from './lib/sample-survey-reader.ts'
 import type { SampleSurveyReader } from './lib/sample-survey-reader.ts'
-import { canResumeSampleSurvey, createSampleSurveyCheckpoint, runSampleSurvey } from './lib/sample-survey-runner.ts'
+import { canResumeSampleSurvey, canRecoverSampleSurveyAuthentication, createSampleSurveyCheckpoint, runSampleSurvey } from './lib/sample-survey-runner.ts'
 import type { SampleSurveyCheckpoint } from './lib/sample-survey-runner.ts'
 import { SAMPLE_SURVEY_CHECKPOINT_KEY_SECRET, finalizeSampleSurveyCloudCheckpoint, loadSampleSurveyCloudCheckpointBundle, saveSampleSurveyCloudCheckpoint } from './lib/sample-survey-cloud-checkpoint.ts'
 import type { SampleSurveyCheckpointContext } from './lib/sample-survey-cloud-checkpoint.ts'
+import { parseSampleSurveyRecovery } from './lib/sample-survey-production-source.ts'
 import { publishableSampleSurveyRun, validateSampleSurveyResultsDirectory, writeSampleSurveyResults } from './lib/sample-survey-publication.ts'
 
 type Environment = Record<string, string | undefined>
@@ -66,6 +67,7 @@ export async function runSampleSurveyCloud(dependencies: {
   artifactReady?: (env: Environment) => Promise<void>; logReport?: (report: SampleSurveyRun) => void
   logFailureDiagnostic?: (line: string) => void | Promise<void>
   logReadRetry?: (line: string) => void
+  logAuthenticationVerified?: (line: string) => void
   saveCheckpoint?: (checkpoint: SampleSurveyCheckpoint, context: SampleSurveyCheckpointContext, key: string, path: string) => Promise<unknown>
   loadCheckpoint?: typeof loadSampleSurveyCloudCheckpointBundle
 } = {}): Promise<{ succeeded: boolean; report: SampleSurveyRun }> {
@@ -80,6 +82,7 @@ export async function runSampleSurveyCloud(dependencies: {
   const executionBudget = parseSampleSurveyExecutionBudget(env, config)
   const sourceSha = env.SAMPLE_SURVEY_SOURCE_SHA || env.GITHUB_SHA, runId = env.GITHUB_RUN_ID
   const resumeRunId = env.SAMPLE_SURVEY_RESUME_RUN_ID || ''
+  const recovery = parseSampleSurveyRecovery(env)
   if (!sourceSha || !/^[a-f0-9]{40}$/.test(sourceSha) || !runId || !/^[1-9]\d{0,14}$/.test(runId)
     || env.GITHUB_RUN_ATTEMPT !== '1' || resumeRunId && (!/^[1-9]\d{0,14}$/.test(resumeRunId) || resumeRunId === runId)
     || !checkpointKey || !/^[A-Za-z0-9+/]{43}=$/.test(checkpointKey)
@@ -88,9 +91,11 @@ export async function runSampleSurveyCloud(dependencies: {
   if (resumeRunId) {
     try {
       const restored = await (dependencies.loadCheckpoint ?? loadSampleSurveyCloudCheckpointBundle)(SAMPLE_SURVEY_CHECKPOINT_INPUT, checkpointKey,
-        { sourceSha, runId: resumeRunId, runAttempt: 1, config })
+        { sourceSha: recovery.resumeSourceSha ?? sourceSha, runId: resumeRunId, runAttempt: 1, config })
       const { manifest, checkpoint } = restored, time = now().getTime()
-      if (!checkpoint.report.resumeAllowed || !canResumeSampleSurvey(checkpoint) || manifest.resumeDepth >= 6
+      const permitted = recovery.recoverAuthentication ? canRecoverSampleSurveyAuthentication(checkpoint)
+        : checkpoint.report.resumeAllowed && canResumeSampleSurvey(checkpoint)
+      if (!permitted || manifest.resumeDepth >= 6
         || Date.parse(manifest.startedAt) < time - 72 * 60 * 60_000
         || Date.parse(manifest.checkpointAt) > time - 5 * 60_000) throw new Error()
       saved = checkpoint; resumeDepth = manifest.resumeDepth + 1
@@ -120,6 +125,20 @@ export async function runSampleSurveyCloud(dependencies: {
     } catch { /* Logging cannot replace the original collection failure or trigger another read. */ }
   }
   const retriesRecorded = new Set<number>()
+  const verifiedTargets = new Set<string>()
+  const onAuthenticationVerified = (value: unknown): void => {
+    try {
+      if (!value || typeof value !== 'object') return
+      const { target, page, observedAt, evidence } = value as Record<string, unknown>
+      if ((target !== 'lp' && target !== 'mr') || !Number.isSafeInteger(page) || Number(page) < 1
+        || typeof observedAt !== 'string' || !Number.isFinite(Date.parse(observedAt))
+        || new Date(observedAt).toISOString() !== observedAt || evidence !== 'logout-control' || verifiedTargets.has(target)) return
+      verifiedTargets.add(target)
+      ;(dependencies.logAuthenticationVerified ?? (line => console.log(line)))(JSON.stringify({
+        sampleSurveyAuthenticationVerified: { target, page, observedAt, evidence },
+      }))
+    } catch { /* A diagnostic must not affect collection or expose an arbitrary payload. */ }
+  }
   const onReadRetry = (event: unknown): void => {
     if (retriesRecorded.size >= 3) return
     const line = serializeSampleSurveyReadRetry(event)
@@ -139,9 +158,10 @@ export async function runSampleSurveyCloud(dependencies: {
       Object.assign(initial.report, { state: 'preparing', phase: 'boundaries', updatedAt: now().toISOString(), finishedAt: null, stopReason: null, resumeAllowed: false })
       delete initial.transientFailure
     }
-    await onUpdate(initial)
+    // Manual auth recovery keeps the old checkpoint untouched until a fresh signed-in read succeeds.
+    if (!recovery.recoverAuthentication) await onUpdate(initial)
     const browserEnvironment = rankDistributionCloudBrowserEnvironment(env)
-    reader = await (dependencies.createReader ?? createSampleSurveyReader)({ signal, onReadFailure }, { browser: {
+    reader = await (dependencies.createReader ?? createSampleSurveyReader)({ signal, onReadFailure, onAuthenticationVerified }, { browser: {
       loadSession: async () => {
         if (!session) throw new SampleSurveyReadError('session-unavailable')
         return session.storageState
@@ -154,7 +174,8 @@ export async function runSampleSurveyCloud(dependencies: {
     // Persist the fixed sample and progress encrypted; public output remains aggregate-only.
     report = parseSampleSurveyRun((await (dependencies.collect ?? runSampleSurvey)(plan, { reader, signal, now: () => now().getTime(), onReadRetry,
       onUpdate, checkpoint: saved, maxInvocationMinutes: executionBudget,
-      resetReadRetryBudget: !!saved?.transientFailure })).report)
+      recoverAuthentication: recovery.recoverAuthentication,
+      resetReadRetryBudget: !!saved?.transientFailure || recovery.recoverAuthentication })).report)
   } catch { throw new SampleSurveyCloudError('collection') }
   finally { clearTimeout(timer); await reader?.close().catch(() => {}); session = undefined; checkpointKey = undefined }
   ;(dependencies.logReport ?? (value => console.log(JSON.stringify({ capture: value }))))(report)

@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseSampleSurveyCloudConfig } from './collect-sample-survey-cloud.ts'
 import { createProductionGitHub, fetchSampleSurveyCheckpointArtifact } from './manage-sample-survey-production.ts'
 import type { CloudGhCommand } from './lib/parallel-fetch-github.ts'
-import { sampleSurveySourceSelection } from './lib/sample-survey-production-source.ts'
+import { sampleSurveySourceSelection, parseSampleSurveyRecovery } from './lib/sample-survey-production-source.ts'
 import type { SampleSurveyCheckpointManifest } from './lib/sample-survey-cloud-checkpoint.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -37,16 +37,21 @@ export async function prepareSampleSurveyCheckpoint(options: {
   try {
     const env = options.env ?? process.env, resumeRunId = env.SAMPLE_SURVEY_RESUME_RUN_ID?.trim()
     const source = sampleSurveySourceSelection(env)
+    const recovery = parseSampleSurveyRecovery(env)
     if (env.GITHUB_RUN_ATTEMPT !== '1') return fail()
     if (!resumeRunId) return null
     if (!/^[1-9]\d{0,14}$/.test(resumeRunId) || resumeRunId === env.GITHUB_RUN_ID) return fail()
     const config = parseSampleSurveyCloudConfig(env), github = createProductionGitHub(options.command, options.metadataWait)
-    const run = await github.run(resumeRunId, source.sourceSha, true)
-    const bundle = await fetchSampleSurveyCheckpointArtifact({ run, sourceSha: source.sourceSha, config }, options.command)
+    const previousSource = recovery.resumeSourceSha ?? source.sourceSha
+    const run = await github.run(resumeRunId, previousSource, true)
+    const bundle = await fetchSampleSurveyCheckpointArtifact({ run, sourceSha: previousSource, config }, options.command)
     const now = (options.now ?? Date.now)(), saved = bundle.manifest
-    if (!saved.resumeAllowed || !['stopped', 'error'].includes(saved.state) || saved.resumeDepth >= 6
+    const permitted = recovery.recoverAuthentication
+      ? saved.stopReason === 'authentication-unconfirmed' && saved.state === 'error' && !config.includeMr && config.ranks.length > 0
+      : saved.resumeAllowed && ['server-error', 'timeout', 'limit-reached', 'interrupted', 'cancelled'].includes(saved.stopReason ?? '')
+    if (!permitted || !['stopped', 'error'].includes(saved.state) || saved.resumeDepth >= 6
       || Date.parse(saved.startedAt) < now - 72 * 60 * 60_000 || Date.parse(saved.checkpointAt) > now
-      || !['server-error', 'timeout', 'limit-reached', 'interrupted', 'cancelled'].includes(saved.stopReason ?? '')) return fail()
+      ) return fail()
     await (options.write ?? writeBundle)(SAMPLE_SURVEY_CHECKPOINT_INPUT, bundle.files)
     return saved
   } catch { return fail() }

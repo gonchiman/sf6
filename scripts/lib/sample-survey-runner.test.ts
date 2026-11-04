@@ -5,7 +5,7 @@ import type { SampleSurveyPlan, SampleSurveyTarget } from '../../src/types/sampl
 import { SampleSurveyReadError, SampleSurveyRetryableReadError } from './sample-survey-reader.ts'
 import type { SampleSurveyPage, SampleSurveyReader, SampleSurveyReadRetryEvent } from './sample-survey-reader.ts'
 import type { SampleSurveyCheckpoint, SampleSurveyRunnerOptions } from './sample-survey-runner.ts'
-import { canResumeSampleSurvey, createSampleSurveyCheckpoint, hasSampleSurveyTransientFailure, markSampleSurveyInterrupted, parseSampleSurveyCheckpoint, runSampleSurvey as runCurrentSampleSurvey, sampleSurveyPositions } from './sample-survey-runner.ts'
+import { canRecoverSampleSurveyAuthentication, canResumeSampleSurvey, createSampleSurveyCheckpoint, hasSampleSurveyTransientFailure, markSampleSurveyInterrupted, parseSampleSurveyCheckpoint, runSampleSurvey as runCurrentSampleSurvey, sampleSurveyPositions } from './sample-survey-runner.ts'
 
 const startTime = Date.parse('2026-10-27T00:00:00.000Z')
 // Keep the existing strict-method regressions explicit after changing the
@@ -1392,4 +1392,108 @@ test('shorter invocation budgets preserve the immutable plan and continue only p
     await assert.rejects(runCurrentSampleSurvey(value, { ...invalid, maxInvocationMinutes, signal: new AbortController().signal }))
   }
   assert.equal(invalid.calls.length, 0)
+})
+
+async function unconfirmedCheckpoint(config: Partial<SampleSurveyPlan['config']> = {}) {
+  const f = fixture(), value = plan({ ranks: ['GOLD', 'PLATINUM'], ...config })
+  f.reader.readPage = async () => { throw new SampleSurveyReadError('authentication-unconfirmed') }
+  return runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal })
+}
+
+test('manual authentication recovery verifies a fresh LP page before saving and preserves a completed GOLD stratum', async () => {
+  const f = fixture({ rowsPerStratum: 2000 }), value = plan({ ranks: ['GOLD', 'PLATINUM'], rankSampleSize: 200 })
+  const original = f.reader.readPage.bind(f.reader)
+  let goldDone = false
+  f.reader.readPage = async (target, page) => {
+    if (goldDone) throw new SampleSurveyReadError('authentication-unconfirmed')
+    return original(target, page)
+  }
+  const first = await runCurrentSampleSurvey(value, { ...f, signal: new AbortController().signal,
+    onUpdate(checkpoint) { goldDone = ['checked', 'review-required'].includes(checkpoint.report.observation!.strata[0].status) } })
+  assert.equal(first.report.stopReason, 'authentication-unconfirmed'); assert.equal(first.report.resumeAllowed, false)
+  assert.equal(canResumeSampleSurvey(first), false); assert.equal(canRecoverSampleSurveyAuthentication(first), true)
+  assert.deepEqual(first.report.strata.map(row => row.processed), [200, 0])
+  const oldGold = structuredClone(first.slots), prior = structuredClone(first)
+  let reads = 0, saves = 0, probed = false
+  const retryEvents: SampleSurveyReadRetryEvent[] = []
+  f.resetFirst()
+  f.reader.readPage = async (target, page) => {
+    reads++
+    if (reads === 1) {
+      assert.equal(target, 'lp'); assert.equal(page, 1); assert.equal(saves, 0)
+      assert.deepEqual(first, prior)
+      const result = await original(target, page); probed = true; return result
+    }
+    if (reads === 2) throw new SampleSurveyRetryableReadError('server-error', 502)
+    return original(target, page)
+  }
+  const beforeReads = f.calls.length
+  const second = await runCurrentSampleSurvey(value, { ...f, checkpoint: first, recoverAuthentication: true, resetReadRetryBudget: true,
+    signal: new AbortController().signal, onUpdate() { assert.equal(probed, true); saves++ }, onReadRetry: event => retryEvents.push(event) })
+  assert.equal(second.report.state, 'complete'); assert.deepEqual(second.plan, first.plan)
+  assert.equal(second.report.id, first.report.id); assert.deepEqual(second.report.strata.map(row => row.processed), [200, 200])
+  assert.deepEqual(second.slots.filter(slot => slot.stratumId === 'lp-GOLD'), oldGold)
+  assert.deepEqual(second.report.observation!.strata[0], first.report.observation!.strata[0])
+  assert.deepEqual(first, prior, 'the supplied saved object is never mutated')
+  assert.equal(retryEvents.length, 1); assert.equal(retryEvents[0].retryNumber, 1)
+  assert.equal(second.report.attempts - first.report.attempts, reads)
+  assert.equal(second.report.successfulPages - first.report.successfulPages, reads - 1)
+  for (let i = beforeReads + 1; i < f.calls.length; i++) assert.ok(f.calls[i].at - f.calls[i - 1].at >= 10000)
+})
+
+test('authentication recovery remains an explicit request and ordinary automatic resume never launches a read', async () => {
+  const checkpoint = await unconfirmedCheckpoint(), before = structuredClone(checkpoint), f = fixture()
+  for (const recoverAuthentication of [undefined, false, 'true' as unknown as boolean]) {
+    await assert.rejects(runCurrentSampleSurvey(checkpoint.plan, { ...f, checkpoint, recoverAuthentication, signal: new AbortController().signal }))
+  }
+  assert.equal(f.calls.length, 0); assert.deepEqual(checkpoint, before)
+  assert.equal(checkpoint.report.resumeAllowed, false); assert.equal(canResumeSampleSurvey(checkpoint), false)
+})
+
+test('a failed fresh authentication probe neither saves progress nor retries even a transient error', async () => {
+  const checkpoint = await unconfirmedCheckpoint(), prior = structuredClone(checkpoint)
+  for (const error of [new SampleSurveyReadError('authentication-unconfirmed'), new SampleSurveyReadError('login-required'),
+    new SampleSurveyReadError('human-verification'), new SampleSurveyReadError('http-denied'), new SampleSurveyRetryableReadError('server-error', 502)]) {
+    const f = fixture(); let reads = 0, saves = 0, retries = 0
+    f.reader.readPage = async () => { reads++; throw error }
+    await assert.rejects(runCurrentSampleSurvey(checkpoint.plan, { ...f, checkpoint, recoverAuthentication: true, resetReadRetryBudget: true,
+      signal: new AbortController().signal, onUpdate() { saves++ }, onReadRetry() { retries++ } }), error)
+    assert.equal(reads, 1); assert.equal(saves, 0); assert.equal(retries, 0); assert.deepEqual(checkpoint, prior)
+  }
+})
+
+test('manual recovery refuses CAPTCHA, login requests, MR plans and unrelated stop reasons before a probe', async () => {
+  const original = await unconfirmedCheckpoint()
+  for (const code of ['login-required', 'human-verification', 'http-denied', 'server-error', 'read-failed'] as const) {
+    const checkpoint = structuredClone(original), f = fixture()
+    checkpoint.report.stopReason = code
+    assert.equal(canRecoverSampleSurveyAuthentication(checkpoint), false)
+    await assert.rejects(runCurrentSampleSurvey(checkpoint.plan, { ...f, checkpoint, recoverAuthentication: true, signal: new AbortController().signal }))
+    assert.equal(f.calls.length, 0)
+  }
+  const mr = await unconfirmedCheckpoint({ ranks: [], includeMr: true }), f = fixture()
+  assert.equal(canRecoverSampleSurveyAuthentication(mr), false)
+  await assert.rejects(runCurrentSampleSurvey(mr.plan, { ...f, checkpoint: mr, recoverAuthentication: true, signal: new AbortController().signal }))
+  await assert.rejects(runCurrentSampleSurvey(original.plan, { ...f, recoverAuthentication: true, signal: new AbortController().signal }))
+  assert.equal(f.calls.length, 0)
+})
+
+test('manual recovery requires a current structurally valid first page before state transitions', async () => {
+  const checkpoint = await unconfirmedCheckpoint()
+  for (const mode of ['stale', 'future', 'bad-order', 'wrong-page', 'wrong-target'] as const) {
+    const f = fixture(), original = f.reader.readPage.bind(f.reader)
+    let saves = 0
+    f.reader.readPage = async (target, page) => {
+      const value = await original(target, page)
+      if (mode === 'stale') value.observedAt = new Date(startTime - 1).toISOString()
+      if (mode === 'future') value.observedAt = new Date(f.now() + 1).toISOString()
+      if (mode === 'bad-order') value.entries[0].rankId = 1
+      if (mode === 'wrong-page') value.page = 2
+      if (mode === 'wrong-target') value.target = 'mr'
+      return value
+    }
+    await assert.rejects(runCurrentSampleSurvey(checkpoint.plan, { ...f, checkpoint, recoverAuthentication: true,
+      signal: new AbortController().signal, onUpdate() { saves++ } }))
+    assert.equal(saves, 0); assert.equal(f.calls.length, 1)
+  }
 })

@@ -14,6 +14,16 @@ on:
         required: false
         type: string
         default: ''
+      recover_authentication:
+        description: '認証未確認で停止したLP記録を、認証再確認後に手動再開する'
+        required: false
+        type: boolean
+        default: false
+      resume_source_sha:
+        description: '手動再開する途中記録の取得コードSHA（recover_authentication時のみ）'
+        required: false
+        type: string
+        default: ''
       execution_budget_minutes:
         description: '今回の起動だけの取得時間上限（空欄は調査設定に従う）'
         required: false
@@ -66,6 +76,8 @@ jobs:
     env:
       SAMPLE_SURVEY_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
       SAMPLE_SURVEY_RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+      SAMPLE_SURVEY_RECOVER_AUTHENTICATION: ${{ inputs.recover_authentication }}
+      SAMPLE_SURVEY_RESUME_SOURCE_SHA: ${{ inputs.resume_source_sha }}
       SAMPLE_SURVEY_EXECUTION_BUDGET_MINUTES: ${{ inputs.execution_budget_minutes }}
       SAMPLE_SURVEY_RANKS: ${{ inputs.ranks }}
       SAMPLE_SURVEY_RANK_SAMPLE_SIZE: ${{ inputs.rank_sample_size }}
