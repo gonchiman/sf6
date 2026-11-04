@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './legend-order-diagnostics.ts'
-import type { LegendOrderDiagnostic, LegendOrderRecheck, LegendPageRecoveryDecision } from './legend-order-diagnostics.ts'
+import type { LegendOrderDiagnostic, LegendOrderRecheck, LegendPageRecoveryDecision, LegendPageRecoveryIssue } from './legend-order-diagnostics.ts'
 
 const diagnostic: LegendOrderDiagnostic = { boundary: 'within-page',
   previous: { page: 1, rowIndex: 1, rank: 1, masterRating: 2400 }, current: { page: 1, rowIndex: 2, rank: 2, masterRating: 2401 },
@@ -85,4 +85,96 @@ test('recovery range sanitizer bounds the span and progress and strips private v
     assert.equal(sanitizeLegendPageRecoveryRange({ ...base, ...patch }), undefined)
   }
   assert.equal(sanitizeLegendPageRecoveryRange({ get status(): never { throw new Error('private') } }), undefined)
+})
+
+const position = (page: number, rowIndex = 1) => ({ page, rowIndex, rank: (page - 1) * 20 + rowIndex, masterRating: 2400 - (page - 1) * 20 - rowIndex })
+const issueRange = { attempt: 1, fromPage: 15, toPage: 20, lastValidatedPage: 20, status: 'succeeded' }
+const recoveryIssues: LegendPageRecoveryIssue[] = [
+  { kind: 'fixed-prefix-duplicate', fromPage: 17, toPage: 18,
+    conflict: { previous: position(16, 20), current: position(17) }, expansion: { fromPage: 16, toPage: 18 } },
+  { kind: 'recovery-range-duplicate', fromPage: 16, toPage: 18,
+    conflict: { previous: position(16, 20), current: position(18) }, expansion: { fromPage: 16, toPage: 19 } },
+  { kind: 'within-page-duplicate', fromPage: 16, toPage: 19, conflict: { previous: position(17), current: position(17, 3) } },
+  { kind: 'missing-members', fromPage: 16, toPage: 19, missingCount: 2,
+    missingPositions: [position(16, 2), position(19, 20)], expansion: { fromPage: 15, toPage: 20 } },
+]
+
+test('recovery issues retain scoped conflicts, missing members and strict expansions with deep private-field removal', () => {
+  const secret = 'private-identity-name-url-hash', toJSON = () => secret
+  const dirty = recoveryIssues.map(issue => ({ ...issue, playerId: secret, raw: [secret], toJSON,
+    ...(issue.conflict ? { conflict: { previous: { ...issue.conflict.previous, accountKey: secret, toJSON },
+      current: { ...issue.conflict.current, playerName: secret, toJSON }, profileUrl: secret, toJSON } } : {}),
+    ...(issue.missingPositions ? { missingPositions: issue.missingPositions.map(item => ({ ...item, playerId: secret, toJSON })) } : {}),
+    ...(issue.expansion ? { expansion: { ...issue.expansion, sourceUrl: secret, toJSON } } : {}) }))
+  const safe = sanitizeLegendPageRecoveryRange({ ...issueRange, issues: dirty })
+  assert.deepEqual(safe, { ...issueRange, issues: recoveryIssues })
+  assert.deepEqual(sanitizeLegendPageRecoveryRange(safe), safe)
+  assert.doesNotMatch(JSON.stringify(safe), /private-identity|playerId|playerName|accountKey|sourceUrl|profileUrl|raw|toJSON/)
+  assert.notEqual(safe!.issues, dirty)
+  assert.notEqual(safe!.issues![0].conflict!.previous, dirty[0].conflict!.previous)
+  assert.deepEqual(sanitizeLegendPageRecoveryRange(issueRange), issueRange)
+  assert.equal(Object.hasOwn(sanitizeLegendPageRecoveryRange(issueRange)!, 'issues'), false)
+  assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: [] }), { ...issueRange, issues: [] })
+  assert.equal(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: Array(5).fill(recoveryIssues[0]) })?.issues?.length, 5)
+  for (const missingCount of [121, 1000, 20000]) {
+    const missing = { kind: 'missing-members', fromPage: 16, toPage: 18, missingCount }
+    assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: [missing] })?.issues, [missing])
+  }
+  // Different members can occupy this same observed position in different passes; identities are deliberately absent.
+  const samePositions = { kind: 'missing-members', fromPage: 16, toPage: 18, missingCount: 2,
+    missingPositions: [position(17), position(17)] }
+  assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: [samePositions] })?.issues, [samePositions])
+})
+
+test('invalid issue shapes, incompatible scopes and nonexpanding bounds fail closed', () => {
+  const duplicate = recoveryIssues[0], missing = recoveryIssues[3]
+  const invalid = [null, {}, { ...duplicate, kind: 'private' }, { ...duplicate, fromPage: 0 },
+    { ...duplicate, toPage: 17 }, { ...duplicate, toPage: 23 }, { ...duplicate, conflict: undefined },
+    { ...duplicate, missingCount: 1 }, { ...duplicate, missingPositions: [] },
+    { ...duplicate, conflict: { previous: position(17), current: position(17, 2) } },
+    { ...duplicate, conflict: { previous: position(16), current: position(19) } },
+    { ...recoveryIssues[1], conflict: { previous: position(15), current: position(17) } },
+    { ...recoveryIssues[1], conflict: { previous: position(17), current: position(17, 2) } },
+    { ...recoveryIssues[2], conflict: { previous: position(17, 3), current: position(17, 2) } },
+    { ...recoveryIssues[2], conflict: { previous: position(16), current: position(17) } },
+    { ...missing, conflict: duplicate.conflict }, { ...missing, missingCount: 0 }, { ...missing, missingCount: 20001 },
+    { ...missing, missingCount: '1' }, { ...missing, missingCount: Infinity }, { ...missing, missingCount: 1 },
+    { ...missing, missingPositions: [position(15)] }, { ...missing, missingPositions: [position(20)] },
+    { ...missing, missingCount: 4, missingPositions: Array(4).fill(position(17)) },
+    { ...duplicate, expansion: { fromPage: 17, toPage: 18 } }, { ...duplicate, expansion: { fromPage: 18, toPage: 19 } },
+    { ...duplicate, expansion: { fromPage: 16, toPage: 17 } }, { ...duplicate, expansion: { fromPage: 12, toPage: 18 } },
+    { ...duplicate, expansion: { fromPage: 0, toPage: 18 } }, { ...duplicate, expansion: { fromPage: 16, toPage: Infinity } },
+  ]
+  for (const issue of invalid) assert.equal(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: [issue] }), undefined)
+  for (const issues of [null, {}, Array(6).fill(duplicate), [duplicate, ...invalid]]) {
+    assert.equal(sanitizeLegendPageRecoveryRange({ ...issueRange, issues }), undefined)
+  }
+})
+
+test('issue and position arrays ignore custom iterators and reject throwing indexed access without leaking errors', () => {
+  let iteratorCalls = 0
+  const positions = [position(16)]
+  Object.defineProperty(positions, Symbol.iterator, { value: function* () { iteratorCalls++; for (let i = 0; i < 100; i++) yield position(16) } })
+  const missing = { kind: 'missing-members', fromPage: 16, toPage: 18, missingCount: 1, missingPositions: positions }
+  const issues = [missing]
+  Object.defineProperty(issues, Symbol.iterator, { value: function* () { iteratorCalls++; for (let i = 0; i < 100; i++) yield missing } })
+  assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...issueRange, issues })?.issues,
+    [{ ...missing, missingPositions: [position(16)] }])
+  assert.equal(iteratorCalls, 0)
+  const hostile = { get kind(): never { throw new Error('private') } }
+  assert.equal(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: [hostile] }), undefined)
+  for (const property of ['0', 'length']) {
+    const throwingIssues = new Proxy(issues, { get(target, key, receiver) {
+      if (key === property) throw new Error('private'); return Reflect.get(target, key, receiver)
+    } })
+    assert.equal(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: throwingIssues }), undefined)
+    const throwingPositions = new Proxy(positions, { get(target, key, receiver) {
+      if (key === property) throw new Error('private'); return Reflect.get(target, key, receiver)
+    } })
+    assert.equal(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: [{ ...missing, missingPositions: throwingPositions }] }), undefined)
+  }
+  assert.equal(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: [{ ...recoveryIssues[0],
+    conflict: { previous: position(16), get current(): never { throw new Error('private') } } }] }), undefined)
+  assert.equal(sanitizeLegendPageRecoveryRange({ ...issueRange, issues: [{ ...recoveryIssues[0],
+    expansion: { get fromPage(): never { throw new Error('private') } } }] }), undefined)
 })

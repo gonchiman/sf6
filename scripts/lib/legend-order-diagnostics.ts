@@ -26,12 +26,22 @@ export interface LegendPageRecoveryDecision {
   recoveryUsed: boolean
   conflict?: { previous: LegendOrderPosition; current: LegendOrderPosition }
 }
+export interface LegendPageRecoveryIssue {
+  kind: 'fixed-prefix-duplicate' | 'recovery-range-duplicate' | 'within-page-duplicate' | 'missing-members'
+  fromPage: number
+  toPage: number
+  conflict?: { previous: LegendOrderPosition; current: LegendOrderPosition }
+  missingCount?: number
+  missingPositions?: LegendOrderPosition[]
+  expansion?: { fromPage: number; toPage: number }
+}
 export interface LegendPageRecoveryRange {
   attempt: number
   fromPage: number
   toPage: number
   lastValidatedPage: number | null
   status: 'started' | 'succeeded' | 'failed'
+  issues?: LegendPageRecoveryIssue[]
 }
 export type LegendOrderRecheck = { status: 'failed' } | { status: 'unavailable'; elapsedMs: number } | {
   status: 'observed'
@@ -89,15 +99,68 @@ export function sanitizeLegendPageRecoveryDecision(value: unknown): LegendPageRe
   } catch { return undefined }
 }
 
+function recoveryIssue(value: unknown): LegendPageRecoveryIssue | undefined {
+  if (!record(value)) return undefined
+  const { kind, fromPage, toPage, conflict, missingCount, missingPositions, expansion } = value
+  if (!['fixed-prefix-duplicate', 'recovery-range-duplicate', 'within-page-duplicate', 'missing-members'].includes(kind as string)
+    || !integer(fromPage, 1, 1000000) || !integer(toPage, fromPage + 1, 1000000) || toPage - fromPage + 1 > 6) return undefined
+  const issue: LegendPageRecoveryIssue = { kind: kind as LegendPageRecoveryIssue['kind'], fromPage, toPage }
+  if (kind === 'missing-members') {
+    if (conflict !== undefined || !integer(missingCount, 1, 20000)) return undefined
+    issue.missingCount = missingCount
+    if (missingPositions !== undefined) {
+      if (!Array.isArray(missingPositions)) return undefined
+      const length = missingPositions.length
+      if (!integer(length, 0, 3) || length > missingCount) return undefined
+      const positions: LegendOrderPosition[] = []
+      for (let index = 0; index < length; index++) {
+        const item = position(missingPositions[index])
+        if (!item || item.page < fromPage || item.page > toPage) return undefined
+        positions.push(item)
+      }
+      issue.missingPositions = positions
+    }
+  } else {
+    if (!record(conflict) || missingCount !== undefined || missingPositions !== undefined) return undefined
+    const previous = position(conflict.previous), current = position(conflict.current)
+    if (!previous || !current || current.page < fromPage || current.page > toPage) return undefined
+    if (kind === 'fixed-prefix-duplicate' && previous.page >= fromPage) return undefined
+    if (kind === 'recovery-range-duplicate' && (previous.page < fromPage || previous.page >= current.page)) return undefined
+    if (kind === 'within-page-duplicate' && (previous.page !== current.page || previous.rowIndex >= current.rowIndex)) return undefined
+    issue.conflict = { previous, current }
+  }
+  if (expansion !== undefined) {
+    if (!record(expansion)) return undefined
+    const expandedFrom = expansion.fromPage, expandedTo = expansion.toPage
+    if (!integer(expandedFrom, 1, fromPage) || !integer(expandedTo, toPage, 1000000)
+      || expandedTo - expandedFrom + 1 > 6 || expandedFrom === fromPage && expandedTo === toPage) return undefined
+    issue.expansion = { fromPage: expandedFrom, toPage: expandedTo }
+  }
+  return issue
+}
+
 export function sanitizeLegendPageRecoveryRange(value: unknown): LegendPageRecoveryRange | undefined {
   try {
     if (!record(value)) return undefined
-    const { attempt, fromPage, toPage, lastValidatedPage, status } = value
+    const { attempt, fromPage, toPage, lastValidatedPage, status, issues: rawIssues } = value
     if (!integer(attempt, 1, 3) || !integer(fromPage, 1, 1000000) || !integer(toPage, fromPage + 1, 1000000)
       || toPage - fromPage + 1 > 6 || !['started', 'succeeded', 'failed'].includes(status as string)
       || !(lastValidatedPage === null || integer(lastValidatedPage, fromPage, toPage))
       || status === 'succeeded' && lastValidatedPage !== toPage) return undefined
-    return { attempt, fromPage, toPage, lastValidatedPage, status: status as LegendPageRecoveryRange['status'] }
+    const range: LegendPageRecoveryRange = { attempt, fromPage, toPage, lastValidatedPage, status: status as LegendPageRecoveryRange['status'] }
+    if (rawIssues !== undefined) {
+      if (!Array.isArray(rawIssues)) return undefined
+      const length = rawIssues.length
+      if (!integer(length, 0, 5)) return undefined
+      const issues: LegendPageRecoveryIssue[] = []
+      for (let index = 0; index < length; index++) {
+        const issue = recoveryIssue(rawIssues[index])
+        if (!issue) return undefined
+        issues.push(issue)
+      }
+      range.issues = issues
+    }
+    return range
   } catch { return undefined }
 }
 

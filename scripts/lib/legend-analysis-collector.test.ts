@@ -176,8 +176,8 @@ test('changed adjacent membership falls back to a complete attempt and never rep
   const result = await collectLegendAnalysisDataset(data.options)
   assert.equal(result.retryCount, 1); assert.equal(result.dataset.totalCount, 4)
   assert.deepEqual(events, ['started'])
-  assert.deepEqual(data.requested, [1, 2, 1, 2, 1, 2, 3, 3, 1])
-  assert.deepEqual(failures, [{ attempt: 1, phase: 'listing', page: 2, code: 'source-changed',
+  assert.deepEqual(data.requested, [1, 2, 1, 2, 3, 1, 2, 3, 1, 2, 3, 3, 1])
+  assert.deepEqual(failures, [{ attempt: 1, phase: 'listing', page: 3, code: 'source-changed',
     validationCheck: 'range-missing-members', recheckChangeKinds: null,
     pageRecoveryDecision: { trigger: 'duplicate-entry', eligible: true, reason: 'eligible', page: 2, previousPage: 1, recoveryUsed: false } }])
 })
@@ -297,7 +297,7 @@ test('range replacement rejects missing membership, character changes, Legend ch
     data.options.onVerifiedPlayers = () => { projections++ }
     await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError
       && error.validationCheck === ({ missing: 'range-missing-members', legend: 'range-legend-changed', duplicate: 'duplicate-entry', act: 'source-act' }[kind]))
-    assert.equal(projections, 0); assert.deepEqual(events, ['started']); assert.deepEqual(data.requested, kind === 'missing' ? [1, 2, 1, 2] : [1, 2, 1])
+    assert.equal(projections, 0); assert.deepEqual(events, ['started']); assert.deepEqual(data.requested, kind === 'missing' ? [1, 2, 1, 2, 3, 1, 2, 3] : [1, 2, 1])
   }
 })
 
@@ -808,8 +808,8 @@ test('a missing member in the replacement range retains the original order evide
   data.options.onAttemptFailure = value => { failures.push(value) }
   data.options.onPageRecovery = value => { events.push(value) }
   await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-missing-members')
-  assert.deepEqual(data.requested, [1, 2, 1, 2]); assert.deepEqual(events, ['started']); assert.equal(rechecks, 1)
-  assert.equal(failures[0].page, 2); assert.equal(failures[0].validationCheck, 'range-missing-members')
+  assert.deepEqual(data.requested, [1, 2, 1, 2, 3, 1, 2, 3]); assert.deepEqual(events, ['started']); assert.equal(rechecks, 1)
+  assert.equal(failures[0].page, 3); assert.equal(failures[0].validationCheck, 'range-missing-members')
   assert.equal(failures[0].recheckChangeKinds, null)
   assert.equal(failures[0].orderDiagnostic?.current.page, 2); assert.equal(failures[0].orderDiagnostic?.current.rank, 1)
   assert.deepEqual(failures[0].orderRecheck, { status: 'unavailable', elapsedMs: 1000 })
@@ -960,7 +960,7 @@ test('a persistent 275-to-274 boundary inversion retries its full duplicate rang
   data.options.onPageRecovery = value => { events.push(value) }
   data.options.onPageRecoveryRange = value => { ranges.push(value) }
   data.options.recheckOrderFailure = async () => { rechecks++; return { status: 'unavailable', elapsedMs: 1000 } }
-  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'rank-order')
+  await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'duplicate-entry')
   assert.deepEqual(events, ['started', 'started']); assert.equal(rechecks, 2)
   assert.deepEqual(data.requested, Array.from({ length: 2 }, () => [...Array.from({ length: 15 }, (_, index) => index + 1), 13, 14, 15]).flat())
   assert.deepEqual(failures.map(failure => failure.attempt), [1, 2])
@@ -970,7 +970,11 @@ test('a persistent 275-to-274 boundary inversion retries its full duplicate rang
     assert.deepEqual(failure.pageRecoveryDecision, { trigger: 'rank-order', eligible: true,
       reason: 'eligible', page: 15, previousPage: 14, recoveryUsed: failure.attempt !== 1 })
   }
-  assert.deepEqual(ranges.at(-1), { attempt: 2, fromPage: 13, toPage: 15, lastValidatedPage: 14, status: 'failed' })
+  assert.deepEqual(ranges.at(-1), { attempt: 2, fromPage: 13, toPage: 15, lastValidatedPage: 14, status: 'failed', issues: [
+    { kind: 'recovery-range-duplicate', fromPage: 13, toPage: 15, conflict: {
+      previous: { page: 13, rowIndex: 20, rank: 260, masterRating: 2741 },
+      current: { page: 15, rowIndex: 10, rank: 290, masterRating: 1801 } } },
+  ] })
   assert.doesNotMatch(JSON.stringify(failures), /accountKey|characterId|playerName|playerId|secret|https?:/)
 })
 
@@ -1147,13 +1151,23 @@ test('range missing members, changed Legend membership and anchor changes are di
     const expected = { missing: 'range-missing-members', legend: 'range-legend-changed', anchor: 'range-anchor-recheck' }[kind]
     await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === expected)
     assert.equal(projections, 0); assert.equal(failures[0].validationCheck, expected)
-    assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 2, toPage: 4, lastValidatedPage: kind === 'legend' ? 3 : 4, status: 'failed' })
-    assert.deepEqual(data.requested, kind === 'anchor' ? [1, 2, 3, 4, 2, 3, 4, 1] : [1, 2, 3, 4, 2, 3, 4])
+    if (kind === 'missing') {
+      assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 1, toPage: 4, lastValidatedPage: 4, status: 'failed', issues: [
+        { kind: 'missing-members', fromPage: 2, toPage: 4, missingCount: 1,
+          missingPositions: [{ page: 2, rowIndex: 1, rank: 3, masterRating: 2398 }], expansion: { fromPage: 1, toPage: 4 } },
+        { kind: 'missing-members', fromPage: 1, toPage: 4, missingCount: 1,
+          missingPositions: [{ page: 4, rowIndex: 1, rank: 7, masterRating: 2394 }] },
+      ] })
+      assert.deepEqual(data.requested, [1, 2, 3, 4, 2, 3, 4, 1, 2, 3, 4])
+    } else {
+      assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 2, toPage: 4, lastValidatedPage: kind === 'legend' ? 3 : 4, status: 'failed' })
+      assert.deepEqual(data.requested, kind === 'anchor' ? [1, 2, 3, 4, 2, 3, 4, 1] : [1, 2, 3, 4, 2, 3, 4])
+    }
   }
 })
 
-test('range metadata, duplicate, ordering, prefix conflict, access denial and cancellation fail atomically', async () => {
-  for (const kind of ['metadata', 'duplicate', 'order', 'prefix', 'denied', 'cancelled'] as const) {
+test('range metadata, duplicate, ordering, access denial and cancellation fail atomically', async () => {
+  for (const kind of ['metadata', 'duplicate', 'order', 'denied', 'cancelled'] as const) {
     const data = movedRangeFixture(), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = [], controller = new AbortController()
     const denied = new LegendAnalysisDomError('http-denied')
     let projections = 0
@@ -1163,7 +1177,6 @@ test('range metadata, duplicate, ordering, prefix conflict, access denial and ca
         if (kind === 'metadata') { value.pageSize = 1; value.from = 3; value.to = 3; value.entries = value.entries.slice(0, 1) }
         if (kind === 'duplicate') overlapWith(value.entries[1], value.entries[0])
         if (kind === 'order') value.entries[1].rank = 1
-        if (kind === 'prefix') overlapWith(value.entries[0], data.values[0])
         if (kind === 'denied') throw denied
         if (kind === 'cancelled') controller.abort()
       }
@@ -1174,7 +1187,10 @@ test('range metadata, duplicate, ordering, prefix conflict, access denial and ca
     await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1, signal: controller.signal }), error =>
       kind === 'denied' ? error === denied : error instanceof LegendAnalysisCollectionError)
     assert.equal(projections, 0); assert.deepEqual(data.requested, [1, 2, 3, 4, 2, 3])
-    assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 2, toPage: 4, lastValidatedPage: 2, status: 'failed' })
+    assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 2, toPage: 4, lastValidatedPage: 2, status: 'failed',
+      ...(kind === 'duplicate' ? { issues: [{ kind: 'within-page-duplicate', fromPage: 2, toPage: 4, conflict: {
+        previous: { page: 3, rowIndex: 1, rank: 5, masterRating: 2396 },
+        current: { page: 3, rowIndex: 2, rank: 6, masterRating: 2395 } } }] } : {}) })
   }
 })
 
@@ -1190,7 +1206,11 @@ test('a later recovery starts from the new position of a member moved by range r
   await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.code === 'duplicate-entry')
   assert.deepEqual(data.requested, [1, 2, 3, 4, 2, 3, 4, 1, 5, 4, 5])
   assert.deepEqual(ranges.filter(range => range.lastValidatedPage === null).map(range => [range.fromPage, range.toPage]), [[2, 4], [4, 5]])
-  assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 4, toPage: 5, lastValidatedPage: 4, status: 'failed' })
+  assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 4, toPage: 5, lastValidatedPage: 4, status: 'failed', issues: [
+    { kind: 'recovery-range-duplicate', fromPage: 4, toPage: 5, conflict: {
+      previous: { page: 4, rowIndex: 1, rank: 7, masterRating: 2394 },
+      current: { page: 5, rowIndex: 1, rank: 9, masterRating: 2392 } } },
+  ] })
   assert.equal(failures[0].pageRecoveryDecision?.reason, 'eligible')
   assert.equal(failures[0].pageRecoveryDecision?.recoveryUsed, true)
 })
@@ -1382,6 +1402,286 @@ test('prior successful recoveries never waive internal corruption or the final e
       assert.deepEqual(events, ['started', 'succeeded', 'started', 'succeeded'])
       assert.deepEqual(data.requested, data.expectedRequests.slice(0, kind === 'end' ? 12 : 13))
       assert.equal('pageRecoveryDecision' in failures[0], false); assert.equal('orderDiagnostic' in failures[0], false)
+    }
+  }
+})
+
+function boundaryExpansionFixture(direction: 'left' | 'right') {
+  const values = Array.from({ length: 12 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
+    characterId: 'ryu', rank: index + 1, masterRating: 2400 - index, isLegend: index < 11,
+    playerName: `Original ${index + 1}`, playerId: `${index + 1}`, region: '日本', platform: 'Steam' }))
+  const order = direction === 'left' ? [0, 1, 2, 7, 3, 4, 5, 6, 8, 9, 10, 11] : [0, 1, 2, 3, 4, 5, 6, 8, 7, 9, 10, 11]
+  const fresh = order.map((source, index) => ({ ...values[source], rank: index + 1, masterRating: 2400 - index,
+    playerName: source === index ? values[source].playerName : `Moved ${source + 1}` }))
+  const data = fixture(values), read = data.options.fetchPage, counts = new Map<number, number>()
+  let changed = false
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url), count = (counts.get(page) ?? 0) + 1; counts.set(page, count)
+    if (page === 3 && count === 2) changed = true
+    if (changed) value.entries = structuredClone(fresh.slice((page - 1) * 2, page * 2))
+    if (page === 4 && count === 1) value.entries[0].rank = 5
+    return value
+  }
+  return { ...data, fresh, expectedRequests: direction === 'left'
+    ? [1, 2, 3, 4, 3, 2, 3, 4, 1, 5, 6, 6, 1]
+    : [1, 2, 3, 4, 3, 4, 5, 2, 3, 4, 5, 1, 6, 6, 1] }
+}
+
+test('a fixed-prefix duplicate expands left even with a boundary inversion and atomically preserves every member', async () => {
+  for (const multipleSources of [false, true]) {
+    const data = boundaryExpansionFixture('left'), read = data.options.fetchPage, events: string[] = [], ranges: LegendPageRecoveryRange[] = []
+    let projections = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === 5) {
+        value.entries[0].rank = 3 // The same explicit fixed-prefix duplicate also inverts against the old left boundary.
+        if (multipleSources) overlapWith(value.entries[1], data.values[1])
+      }
+      return value
+    }
+    data.options.onPageRecovery = value => { events.push(value) }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    data.options.onVerifiedPlayers = rows => {
+      projections++
+      assert.deepEqual(rows.map(row => [row.playerId, row.rank, row.masterRating, row.playerName]),
+        data.fresh.filter(row => row.isLegend).map(row => [row.playerId, row.rank, row.masterRating, row.playerName]))
+      assert.equal(new Set(rows.map(row => row.playerId)).size, 11)
+    }
+    const result = await collectLegendAnalysisDataset(data.options)
+    assert.equal(projections, 1); assert.equal(result.pagesRead, 6); assert.equal(result.retryCount, 0)
+    assert.deepEqual(events, ['started', 'succeeded'])
+    assert.deepEqual(data.requested, multipleSources ? [1, 2, 3, 4, 3, 1, 2, 3, 4, 5, 6, 6, 1] : data.expectedRequests)
+    assert.deepEqual(ranges.at(-1)?.issues, [{ kind: 'fixed-prefix-duplicate', fromPage: 3, toPage: 4,
+      conflict: multipleSources ? { previous: { page: 1, rowIndex: 2, rank: 2, masterRating: 2399 },
+        current: { page: 3, rowIndex: 2, rank: 6, masterRating: 2395 } }
+        : { previous: { page: 2, rowIndex: 2, rank: 4, masterRating: 2397 }, current: { page: 3, rowIndex: 1, rank: 3, masterRating: 2396 } },
+      expansion: { fromPage: multipleSources ? 1 : 2, toPage: 4 } }])
+  }
+})
+
+test('missing members trigger both halo pages and future pages join the final endpoint and pagesRead', async () => {
+  const data = boundaryExpansionFixture('right'), events: string[] = [], ranges: LegendPageRecoveryRange[] = []
+  let projections = 0
+  data.options.onPageRecovery = value => { events.push(value) }
+  data.options.onPageRecoveryRange = value => { ranges.push(value) }
+  data.options.onVerifiedPlayers = rows => {
+    projections++
+    assert.deepEqual(rows.map(row => row.playerId), data.fresh.filter(row => row.isLegend).map(row => row.playerId))
+  }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.pagesRead, 6); assert.equal(result.requestCount, 15); assert.equal(projections, 1)
+  assert.deepEqual(data.requested, data.expectedRequests); assert.deepEqual(events, ['started', 'succeeded'])
+  assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 2, toPage: 5, lastValidatedPage: 5, status: 'succeeded', issues: [
+    { kind: 'missing-members', fromPage: 3, toPage: 4, missingCount: 1,
+      missingPositions: [{ page: 4, rowIndex: 2, rank: 8, masterRating: 2393 }], expansion: { fromPage: 2, toPage: 5 } },
+  ] })
+  // Previously emitted records are snapshots, not objects later altered by the expansion.
+  assert.deepEqual(ranges[0], { attempt: 1, fromPage: 3, toPage: 4, lastValidatedPage: null, status: 'started' })
+})
+
+test('the observed 381-to-380 inversion shape can retain a member moving from page 21 into page 22', async () => {
+  const rows = Array.from({ length: 440 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
+    rank: index >= 380 && index < 400 ? 381 : index + 1,
+    masterRating: index < 380 ? 2600 - index : index < 400 ? 1805 : 1804 - (index - 400), isLegend: index < 439,
+    playerName: `Synthetic ${index}`, playerId: `${index + 1}`, region: '日本', platform: 'Steam' }))
+  const fresh = structuredClone(rows)
+  for (const [target, source] of [[419, 420], [420, 419]]) Object.assign(fresh[target], { accountKey: rows[source].accountKey, playerId: rows[source].playerId, playerName: rows[source].playerName })
+  const data = fixture(rows, 20), read = data.options.fetchPage, counts = new Map<number, number>(), ranges: LegendPageRecoveryRange[] = []
+  let changed = false, projections = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url), count = (counts.get(page) ?? 0) + 1; counts.set(page, count)
+    if (page === 20 && count === 2) changed = true
+    if (changed) value.entries = structuredClone(fresh.slice((page - 1) * 20, page * 20))
+    if (page === 21 && count === 1) Object.assign(value.entries[0], { rank: 380, masterRating: 1805 })
+    return value
+  }
+  data.options.onPageRecoveryRange = value => { ranges.push(value) }
+  data.options.onVerifiedPlayers = players => { projections++; assert.deepEqual(players.map(row => row.playerId), fresh.slice(0, 439).map(row => row.playerId)) }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.pagesRead, 22); assert.equal(result.dataset.totalCount, 439); assert.equal(projections, 1)
+  assert.deepEqual(data.requested, [...Array.from({ length: 21 }, (_, index) => index + 1), 20, 21, 22, 19, 20, 21, 22, 18, 22, 1])
+  assert.deepEqual(ranges.at(-1)?.issues?.[0], { kind: 'missing-members', fromPage: 20, toPage: 21, missingCount: 1,
+    missingPositions: [{ page: 21, rowIndex: 20, rank: 420, masterRating: 1785 }], expansion: { fromPage: 19, toPage: 22 } })
+})
+
+test('members first seen in a failed candidate or right baseline cannot disappear in expanded passes', async () => {
+  for (const observedAt of ['candidate', 'right-baseline'] as const) {
+    const data = boundaryExpansionFixture('right'), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = [], events: string[] = []
+    let projections = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      const observedRead = observedAt === 'candidate' ? 6 : 7
+      if (data.requested.length === observedRead) {
+        const entry = value.entries[1]
+        Object.assign(entry, { accountKey: 'f'.repeat(64), playerId: '999', playerName: 'Observed new member' })
+      }
+      return value
+    }
+    data.options.onPageRecovery = value => { events.push(value) }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    data.options.onVerifiedPlayers = () => { projections++ }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-missing-members')
+    assert.equal(projections, 0); assert.deepEqual(events, ['started'])
+    assert.deepEqual(data.requested, [1, 2, 3, 4, 3, 4, 5, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6])
+    assert.equal(ranges.at(-1)?.fromPage, 1); assert.equal(ranges.at(-1)?.toPage, 6)
+    const issues = ranges.at(-1)!.issues!
+    assert.equal(issues.length, 3); assert.equal(issues[2].missingCount, 1)
+    assert.deepEqual(issues[2].missingPositions, [{ page: observedAt === 'candidate' ? 4 : 5, rowIndex: 2,
+      rank: observedAt === 'candidate' ? 8 : 10, masterRating: observedAt === 'candidate' ? 2393 : 2391 }])
+    assert.equal('expansion' in issues[2], false)
+    assert.doesNotMatch(JSON.stringify(ranges), /Observed new member|accountKey|playerId|999/)
+  }
+})
+
+test('fixed-prefix expansion cannot conceal a within-page error or a duplicate already inside the rebuilding range', async () => {
+  for (const kind of ['within-duplicate', 'within-order', 'range-duplicate'] as const) {
+    const data = boundaryExpansionFixture('right'), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = []
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === (kind === 'range-duplicate' ? 6 : 5)) {
+        overlapWith(value.entries[0], data.values[kind === 'range-duplicate' ? 4 : 3])
+        if (kind === 'within-duplicate') overlapWith(value.entries[1], value.entries[0])
+        if (kind === 'within-order') value.entries[1].rank = 1
+        if (kind === 'range-duplicate') overlapWith(value.entries[1], data.values[3])
+      }
+      return value
+    }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError
+      && error.validationCheck === (kind === 'within-order' ? 'rank-order' : 'duplicate-entry'))
+    assert.deepEqual(data.requested, [1, 2, 3, 4, 3, ...(kind === 'range-duplicate' ? [4] : [])])
+    assert.equal(ranges.at(-1)?.issues?.some(issue => issue.expansion) ?? false, false)
+    if (kind !== 'within-order') assert.equal(ranges.at(-1)?.issues?.[0].kind, kind === 'within-duplicate' ? 'within-page-duplicate' : 'recovery-range-duplicate')
+  }
+})
+
+test('left expansion accepts a six-page span and refuses a seven-page span before any additional read', async () => {
+  for (const lastPage of [6, 7]) {
+    const rows = Array.from({ length: lastPage * 2 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
+      characterId: 'ryu', rank: index + 1, masterRating: 2400 - index, isLegend: true }))
+    const data = fixture(rows), read = data.options.fetchPage, counts = new Map<number, number>(), ranges: LegendPageRecoveryRange[] = []
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url), count = (counts.get(page) ?? 0) + 1; counts.set(page, count)
+      if (page === lastPage && count === 1) value.entries[0].rank = (lastPage - 1) * 2 - 1
+      if (page === lastPage - 1 && count === 2) overlapWith(value.entries[0], rows[0])
+      return value
+    }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    const collect = collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 })
+    const listing = Array.from({ length: lastPage }, (_, index) => index + 1)
+    if (lastPage === 6) {
+      const result = await collect
+      assert.equal(result.dataset.totalCount, 12); assert.equal(result.pagesRead, 6)
+      assert.deepEqual(data.requested, [...listing, 5, ...listing, 6, 1])
+      assert.deepEqual(ranges.at(-1)?.issues?.[0].expansion, { fromPage: 1, toPage: 6 })
+    } else {
+      await assert.rejects(collect, error => error instanceof LegendAnalysisCollectionError && error.code === 'duplicate-entry')
+      assert.deepEqual(data.requested, [...listing, 6]); assert.equal(ranges.at(-1)?.issues?.[0].expansion, undefined)
+    }
+  }
+})
+
+test('halo expansion reserves baseline, complete recapture and anchor reads against the original request budget', async () => {
+  for (const budget of [15, 12, 11]) {
+    const data = boundaryExpansionFixture('right'), ranges: LegendPageRecoveryRange[] = []
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    const collect = collectLegendAnalysisDataset({ ...data.options, maxRequests: budget })
+    if (budget === 15) assert.equal((await collect).requestCount, 15)
+    else await assert.rejects(collect, error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'request-budget')
+    assert.deepEqual(data.requested, data.expectedRequests.slice(0, budget === 11 ? 6 : budget))
+    if (budget === 11) {
+      assert.equal(ranges.at(-1)?.fromPage, 3); assert.equal(ranges.at(-1)?.toPage, 4)
+      assert.equal(ranges.at(-1)?.issues?.[0].expansion, undefined)
+    }
+  }
+})
+
+test('invalid or denied new right baselines stop before recapturing the expanded range', async () => {
+  for (const kind of ['rank', 'mr', 'duplicate', 'page-size', 'denied', 'cancelled'] as const) {
+    const data = boundaryExpansionFixture('right'), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = [], retries: number[] = []
+    const denied = new LegendAnalysisDomError('http-denied'), controller = new AbortController()
+    let projections = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === 7) {
+        if (kind === 'rank') value.entries[1].rank = 1
+        if (kind === 'mr') value.entries[1].masterRating = 9999
+        if (kind === 'duplicate') overlapWith(value.entries[1], value.entries[0])
+        if (kind === 'page-size') { value.pageSize = 1; value.from = 5; value.to = 5; value.entries = value.entries.slice(0, 1) }
+        if (kind === 'denied') throw denied
+        if (kind === 'cancelled') controller.abort()
+      }
+      return value
+    }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    data.options.onRetry = value => { retries.push(value) }
+    data.options.onVerifiedPlayers = () => { projections++ }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: ['denied', 'cancelled'].includes(kind) ? 2 : 1, signal: controller.signal }), error => kind === 'denied'
+      ? error === denied : error instanceof LegendAnalysisCollectionError && error.validationCheck === ({ rank: 'rank-order', mr: 'mr-order', duplicate: 'duplicate-entry', 'page-size': 'page-size', cancelled: 'cancellation' }[kind]))
+    assert.equal(projections, 0); assert.deepEqual(retries, []); assert.deepEqual(data.requested, data.expectedRequests.slice(0, 7))
+    assert.equal(ranges.at(-1)?.status, 'failed'); assert.equal(ranges.at(-1)?.lastValidatedPage, null)
+    if (kind === 'duplicate') assert.equal(ranges.at(-1)?.issues?.at(-1)?.kind, 'within-page-duplicate')
+  }
+})
+
+test('a missing-member halo that would span seven pages is refused without choosing one side', async () => {
+  const rows = Array.from({ length: 18 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
+    characterId: 'ryu', rank: index + 1, masterRating: 2400 - index, isLegend: true }))
+  const data = fixture(rows), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = []
+  let seventhReads = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 7) {
+      if (++seventhReads === 1) overlapWith(value.entries[0], rows[4])
+      else value.entries[1].accountKey = 'f'.repeat(64)
+    }
+    return value
+  }
+  data.options.onPageRecoveryRange = value => { ranges.push(value) }
+  await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-missing-members')
+  assert.deepEqual(data.requested, [1, 2, 3, 4, 5, 6, 7, 3, 4, 5, 6, 7])
+  assert.deepEqual(ranges.at(-1)?.issues, [{ kind: 'missing-members', fromPage: 3, toPage: 7, missingCount: 1,
+    missingPositions: [{ page: 7, rowIndex: 2, rank: 14, masterRating: 2387 }] }])
+})
+
+test('the new left anchor and both final endpoints remain mandatory after expansion', async () => {
+  for (const failureRead of [12, 14, 15]) {
+    const data = boundaryExpansionFixture('right'), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = []
+    let projections = 0
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === failureRead) value.entries[0].masterRating++
+      return value
+    }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    data.options.onVerifiedPlayers = () => { projections++ }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError
+      && error.validationCheck === (failureRead === 12 ? 'range-anchor-recheck' : failureRead === 14 ? 'end-recheck' : 'start-recheck'))
+    assert.equal(projections, 0); assert.deepEqual(data.requested, data.expectedRequests.slice(0, failureRead))
+    assert.equal(ranges.at(-1)?.status, failureRead === 12 ? 'failed' : 'succeeded')
+  }
+})
+
+test('right halo availability follows the newly observed endpoint rather than its stale next-page value', async () => {
+  for (const transition of ['grew', 'shrunk'] as const) {
+    const data = boundaryExpansionFixture('right'), read = data.options.fetchPage, ranges: LegendPageRecoveryRange[] = []
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (transition === 'grew' ? data.requested.length <= 4 : data.requested.length > 4) {
+        value.totalCount = 8; value.nextPage = page < 4 ? page + 1 : null
+      }
+      return value
+    }
+    data.options.onPageRecoveryRange = value => { ranges.push(value) }
+    const collect = collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 })
+    if (transition === 'grew') {
+      assert.equal((await collect).dataset.totalCount, 11)
+      assert.deepEqual(data.requested, data.expectedRequests)
+      assert.deepEqual(ranges.at(-1)?.issues?.[0].expansion, { fromPage: 2, toPage: 5 })
+    } else {
+      await assert.rejects(collect, error => error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-missing-members')
+      assert.deepEqual(data.requested, [1, 2, 3, 4, 3, 4, 2, 3, 4, 1, 2, 3, 4])
+      assert.deepEqual(ranges.at(-1)?.issues?.map(issue => issue.expansion), [{ fromPage: 2, toPage: 4 }, { fromPage: 1, toPage: 4 }, undefined])
     }
   }
 })
