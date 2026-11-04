@@ -1,7 +1,7 @@
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS, parseLegendAnalysisDataset, summarizeLegendMr } from '../../src/lib/legendAnalysis.ts'
 import type { LegendAnalysisConditions, LegendAnalysisDataset, LegendMembershipRule } from '../../src/types/legendAnalysis.ts'
-import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision } from './legend-order-diagnostics.ts'
-import type { LegendOrderDiagnostic, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryDecision } from './legend-order-diagnostics.ts'
+import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './legend-order-diagnostics.ts'
+import type { LegendOrderDiagnostic, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryDecision, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
 
 /** Private transient row. Salted account keys are never persisted. */
 export interface LegendAnalysisEntry {
@@ -45,6 +45,7 @@ export const LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS = ['unclassified', 'co
   'request-budget', 'page-identity', 'source-conditions', 'source-act', 'source-roster', 'page-size', 'pagination',
   'entry-count', 'entry-values', 'character-roster', 'first-rank', 'rank-position', 'rank-order', 'mr-order',
   'duplicate-entry', 'legend-contiguity', 'legend-presence', 'adjacent-recheck', 'end-recheck', 'start-recheck', 'terminal-coverage',
+  'range-missing-members', 'range-legend-changed', 'range-recheck', 'range-anchor-recheck',
   'capture-clock', 'completion'] as const
 export type LegendAnalysisValidationCheck = typeof LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS[number]
 export const LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS = ['legend-entries', 'non-legend-entries', 'metadata'] as const
@@ -71,15 +72,11 @@ function stablePage(value: LegendAnalysisPage) {
 const entryKey = (entry: LegendAnalysisEntry): string => `${entry.accountKey}:${entry.characterId}`
 const entryPosition = (page: number, index: number, entry: LegendAnalysisEntry): LegendOrderPosition =>
   ({ page, rowIndex: index + 1, rank: entry.rank, masterRating: entry.masterRating })
-/** Row updates may be accepted only when no member or Legend classification moved across this page's boundary. */
-function samePageMembership(before: LegendAnalysisPage, after: LegendAnalysisPage): boolean {
+/** A range may move members between pages while retaining each page's observed extent and conditions. */
+function samePageMetadata(before: LegendAnalysisPage, after: LegendAnalysisPage): boolean {
   const { entries: _beforeEntries, ...beforeMetadata } = stablePage(before)
   const { entries: _afterEntries, ...afterMetadata } = stablePage(after)
-  if (!equal(beforeMetadata, afterMetadata) || before.entries.length !== after.entries.length) return false
-  const members = new Map(before.entries.map(entry => [entryKey(entry), entry.isLegend]))
-  const nextMembers = new Set(after.entries.map(entryKey))
-  return members.size === before.entries.length && nextMembers.size === after.entries.length
-    && after.entries.every(entry => members.get(entryKey(entry)) === entry.isLegend)
+  return equal(beforeMetadata, afterMetadata) && before.entries.length === after.entries.length
 }
 /** Private rows and keys are compared only in memory; the result is a fixed enum list. */
 function recheckChanges(before: LegendAnalysisPage, after: LegendAnalysisPage): LegendAnalysisRecheckChangeKind[] {
@@ -117,8 +114,9 @@ export interface CollectLegendAnalysisOptions {
   onRetry?: (retryCount: number) => void
   /** Receives fixed diagnostic fields for collection-validation failures, before retry or final throw. */
   onAttemptFailure?: (failure: LegendAnalysisAttemptFailure) => void
-  /** At most one adjacent-page recovery across all attempts; fixed states only, never row values. */
+  /** At most one bounded page-range recovery across all attempts; fixed states only, never row values. */
   onPageRecovery?: (state: 'started' | 'succeeded') => void
+  onPageRecoveryRange?: (range: LegendPageRecoveryRange) => void
   onProgress?: (progress: LegendAnalysisCollectionProgress) => void
   /** Opt-in projection after complete validation; never receives account keys or non-Legend rows. */
   onVerifiedPlayers?: (players: readonly LegendAnalysisVerifiedPlayer[]) => void
@@ -190,6 +188,10 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
   const pageRecovery = (state: 'started' | 'succeeded'): void => {
     try { options.onPageRecovery?.(state) } catch { /* Diagnostic failures cannot change acceptance. */ }
   }
+  const reportRecoveryRange = (range: LegendPageRecoveryRange): void => {
+    const safe = sanitizeLegendPageRecoveryRange(range)
+    try { if (safe) options.onPageRecoveryRange?.(safe) } catch { /* Diagnostics cannot change acceptance. */ }
+  }
   const read = async (page: number, phase: LegendAnalysisCollectionPhase = 'listing'): Promise<LegendAnalysisPage> => {
     cancelled()
     progress(phase, page)
@@ -260,8 +262,9 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
         previousPage: LegendAnalysisPage | null
       }
       let prefix: Prefix = { accepted: [], seen: new Set(), positions: new Map(), previous: null, boundary: false, previousPage: null }
-      // Prefix snapshots are replaced, never mutated; rollback excludes the entire previously accepted page.
-      let beforePrevious = prefix
+      // Immutable snapshots let a bounded range be rebuilt without changing any accepted rows until validation completes.
+      const savedPages = new Map<number, LegendAnalysisPage>()
+      const prefixes = new Map<number, Prefix>([[0, prefix]])
       let pagesRead = 0
       // Validate a whole candidate before mutating any accepted prefix, including its last row and Legend boundary.
       const inspect = (page: LegendAnalysisPage, base: Prefix) => {
@@ -319,74 +322,128 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
         positions: new Map([...base.positions, ...candidate.positions]),
         previous: candidate.nextPrevious, boundary: candidate.nextBoundary, previousPage: page,
       })
-      const adjacentOrderConflict = (page: LegendAnalysisPage): Pick<LegendPageRecoveryDecision, 'reason' | 'conflict'> | undefined => {
+      const internalOrderConflict = (page: LegendAnalysisPage): Pick<LegendPageRecoveryDecision, 'reason' | 'conflict'> | undefined => {
         const positions = new Map<string, LegendOrderPosition>()
-        const precedingKeys = new Set(prefix.previousPage?.entries.map(entryKey) ?? [])
         for (const [index, entry] of page.entries.entries()) {
           const key = entryKey(entry), prior = page.entries[index - 1]
           const current = entryPosition(page.page, index, entry)
           if (prior && entry.rank < prior.rank) return { reason: 'within-page-rank-order', conflict: { previous: entryPosition(page.page, index - 1, prior), current } }
           if (prior && entry.masterRating > prior.masterRating) return { reason: 'within-page-mr-order', conflict: { previous: entryPosition(page.page, index - 1, prior), current } }
           if (positions.has(key)) return { reason: 'within-page-duplicate', conflict: { previous: positions.get(key)!, current } }
-          if (prefix.seen.has(key) && !precedingKeys.has(key)) return { reason: 'earlier-page-duplicate', conflict: { previous: prefix.positions.get(key)!, current } }
           positions.set(key, current)
         }
         return undefined
       }
+      const recoveryStart = (page: LegendAnalysisPage): { fromPage: number; conflict?: LegendPageRecoveryDecision['conflict'] } => {
+        let fromPage = page.page - 1
+        let conflict: LegendPageRecoveryDecision['conflict']
+        for (const [index, entry] of page.entries.entries()) {
+          const previous = prefix.positions.get(entryKey(entry))
+          if (previous && (previous.page < fromPage || previous.page === fromPage && !conflict)) {
+            fromPage = previous.page
+            conflict = { previous, current: entryPosition(page.page, index, entry) }
+          }
+        }
+        return { fromPage, ...(conflict ? { conflict } : {}) }
+      }
       while (true) {
         pagesRead++
         const previousPage = prefix.previousPage
+        const rangeStart = recoveryStart(current)
+        const tooWide = current.page - rangeStart.fromPage + 1 > 6
         let candidate: ReturnType<typeof inspect> | undefined
         try { candidate = inspect(current, prefix) } catch (error) {
           if (!orderFailure || error !== orderFailure.error) throw error
           const rejection: Pick<LegendPageRecoveryDecision, 'reason' | 'conflict'> | undefined =
             orderFailure.diagnostic.boundary !== 'between-pages' ? { reason: 'within-page-order', conflict: {
               previous: orderFailure.diagnostic.previous, current: orderFailure.diagnostic.current } }
-            : pageRecoveryUsed ? { reason: 'recovery-already-used' }
+            : pageRecoveryUsed ? { reason: 'recovery-already-used', conflict: rangeStart.conflict }
               : !previousPage ? { reason: 'previous-page-missing' }
-                : previousPage.page + 1 !== current.page ? { reason: 'nonadjacent-page' } : adjacentOrderConflict(current)
+                : previousPage.page + 1 !== current.page ? { reason: 'nonadjacent-page' } : internalOrderConflict(current)
+                  ?? (tooWide ? { reason: 'recovery-range-too-wide', conflict: rangeStart.conflict } : undefined)
           pageRecoveryDecision = { trigger: orderFailure.error.validationCheck as 'rank-order' | 'mr-order', eligible: !rejection,
             reason: 'eligible', page: current.page, previousPage: previousPage?.page ?? null, recoveryUsed: pageRecoveryUsed, ...rejection }
           if (rejection) throw error
-          // Preserve the failed boundary while the current page is still displayed. Recovery reads use the normal transport.
-          await observeOrderFailure()
         }
         if (!candidate || candidate.duplicate) {
           if (candidate) {
             const rejection: Pick<LegendPageRecoveryDecision, 'reason' | 'conflict'> | undefined =
-              pageRecoveryUsed ? { reason: 'recovery-already-used' }
+              pageRecoveryUsed ? { reason: 'recovery-already-used', conflict: rangeStart.conflict }
                 : !previousPage ? { reason: 'previous-page-missing' }
                   : previousPage.page + 1 !== current.page ? { reason: 'nonadjacent-page' }
                     : candidate.withinPageDuplicate ? { reason: 'within-page-duplicate', conflict: candidate.withinPageDuplicateConflict }
-                      : candidate.earlierPageDuplicate ? { reason: 'earlier-page-duplicate', conflict: candidate.earlierPageDuplicateConflict } : undefined
+                      : tooWide ? { reason: 'recovery-range-too-wide', conflict: rangeStart.conflict } : undefined
             pageRecoveryDecision = { trigger: 'duplicate-entry', eligible: !rejection, reason: 'eligible', page: current.page,
               previousPage: previousPage?.page ?? null, recoveryUsed: pageRecoveryUsed, ...rejection }
           }
-          if (pageRecoveryUsed || !previousPage || previousPage.page + 1 !== current.page || candidate?.withinPageDuplicate || candidate?.earlierPageDuplicate) {
+          if (pageRecoveryUsed || !previousPage || previousPage.page + 1 !== current.page || candidate?.withinPageDuplicate || tooWide) {
             fail('duplicate-entry', 'duplicate-entry')
           }
+          const fromPage = rangeStart.fromPage, toPage = current.page
+          const requiredReads = toPage - fromPage + 1 + (fromPage > 1 ? 1 : 0)
+          if (requestCount + requiredReads > maxRequests) fail('request-limit', 'request-budget')
+          // Preserve the original document before any range/anchor navigation.
+          await observeOrderFailure()
           pageRecoveryUsed = true
           pageRecovery('started')
-          const adjacentAgain = await read(previousPage.page)
-          if (!samePageMembership(previousPage, adjacentAgain)) fail('source-changed', 'adjacent-recheck', recheckChanges(previousPage, adjacentAgain))
-          const adjacentCandidate = inspect(adjacentAgain, beforePrevious)
-          if (adjacentCandidate.duplicate) fail('duplicate-entry', 'duplicate-entry')
-          const rebuiltPrevious = appendPage(beforePrevious, adjacentAgain, adjacentCandidate)
-          const currentAgain = await read(current.page)
-          candidate = inspect(currentAgain, rebuiltPrevious)
-          if (candidate.duplicate) fail('duplicate-entry', 'duplicate-entry')
-          const rebuilt = appendPage(rebuiltPrevious, currentAgain, candidate)
-          // Both pages and both boundaries passed. Commit the replacement without publishing a partially rebuilt prefix.
-          prefix = rebuilt
-          beforePrevious = rebuiltPrevious
-          current = currentAgain
-          if (adjacentAgain.page === 1) first = adjacentAgain
-          pageRecovery('succeeded')
-          orderFailure = undefined
-          pageRecoveryDecision = undefined
+          const range: LegendPageRecoveryRange = { attempt: captureAttempt, fromPage, toPage, lastValidatedPage: null, status: 'started' }
+          reportRecoveryRange(range)
+          try {
+            const oldPages: LegendAnalysisPage[] = []
+            const requiredMembers = new Map<string, boolean>()
+            for (let number = fromPage; number <= toPage; number++) {
+              const oldPage = number === toPage ? current : savedPages.get(number)
+              if (!oldPage) fail('source-changed', 'range-recheck')
+              oldPages.push(oldPage)
+              for (const entry of oldPage.entries) {
+                const key = entryKey(entry)
+                if (requiredMembers.has(key) && requiredMembers.get(key) !== entry.isLegend) fail('source-changed', 'range-legend-changed')
+                requiredMembers.set(key, entry.isLegend)
+              }
+            }
+            let rebuilt = prefixes.get(fromPage - 1)
+            if (!rebuilt) fail('source-changed', 'range-recheck')
+            const replacements = new Map<number, { page: LegendAnalysisPage; prefix: Prefix }>()
+            const newMembers = new Map<string, boolean>()
+            for (const oldPage of oldPages) {
+              const replacement = await read(oldPage.page)
+              if (!samePageMetadata(oldPage, replacement)) fail('source-changed', 'range-recheck', recheckChanges(oldPage, replacement))
+              if (replacement.entries.some(entry => requiredMembers.has(entryKey(entry))
+                && requiredMembers.get(entryKey(entry)) !== entry.isLegend)) fail('source-changed', 'range-legend-changed')
+              const replacementCandidate = inspect(replacement, rebuilt)
+              if (replacementCandidate.duplicate) fail('duplicate-entry', 'duplicate-entry')
+              rebuilt = appendPage(rebuilt, replacement, replacementCandidate)
+              replacements.set(replacement.page, { page: replacement, prefix: rebuilt })
+              for (const entry of replacement.entries) newMembers.set(entryKey(entry), entry.isLegend)
+              range.lastValidatedPage = replacement.page
+              reportRecoveryRange(range)
+            }
+            if ([...requiredMembers].some(([key, legend]) => newMembers.has(key) && newMembers.get(key) !== legend)) fail('source-changed', 'range-legend-changed')
+            if ([...requiredMembers.keys()].some(key => !newMembers.has(key))) fail('source-changed', 'range-missing-members')
+            if (fromPage > 1) {
+              const anchor = savedPages.get(fromPage - 1)
+              if (!anchor) fail('source-changed', 'range-anchor-recheck')
+              const anchorAgain = await read(fromPage - 1)
+              if (!equal(stablePage(anchor), stablePage(anchorAgain))) fail('source-changed', 'range-anchor-recheck', recheckChanges(anchor, anchorAgain))
+            }
+            // Complete range membership, ordering and the unchanged left anchor passed. Publish the new snapshots atomically.
+            prefix = rebuilt
+            for (const [number, replacement] of replacements) {
+              savedPages.set(number, replacement.page); prefixes.set(number, replacement.prefix)
+            }
+            current = replacements.get(toPage)!.page
+            if (fromPage === 1) first = replacements.get(1)!.page
+            pageRecovery('succeeded')
+            range.status = 'succeeded'; reportRecoveryRange(range)
+            orderFailure = undefined
+            pageRecoveryDecision = undefined
+          } catch (error) {
+            range.status = 'failed'; reportRecoveryRange(range)
+            throw error
+          }
         } else {
-          beforePrevious = prefix
           prefix = appendPage(prefix, current, candidate)
+          savedPages.set(current.page, current); prefixes.set(current.page, prefix)
         }
         if (prefix.boundary || current.nextPage === null) break
         current = await read(current.nextPage)

@@ -139,6 +139,35 @@ test('daily stdout preserves a recovery rejection and numeric conflict through r
   for (const value of [PRIVATE, 'accountKey', 'playerId', 'playerName', 'raw']) assert.equal(text.includes(value), false)
 })
 
+test('daily stdout retains range progress through both sanitizers without adding it to the artifact contract', async t => {
+  const lines: unknown[] = []
+  t.mock.method(console, 'log', (...values: unknown[]) => { lines.push(...values) })
+  for (const status of ['started', 'succeeded', 'failed'] as const) {
+    const supplied = result(status === 'succeeded')
+    const range = { attempt: 1, fromPage: 3, toPage: 5,
+      lastValidatedPage: status === 'started' ? null : status === 'succeeded' ? 5 : 4, status }
+    const firstPass = summarizeLegendAnalysisCaptureReport({ ...supplied.report, pageRecoveryAttemptCount: 1,
+      pageRecoverySuccessCount: status === 'succeeded' ? 1 : 0, pageRecoveryRange: { ...range,
+        accountKey: PRIVATE, playerId: PRIVATE, playerName: PRIVATE, profileUrl: PRIVATE, raw: [PRIVATE] } })
+    assert.deepEqual(firstPass.pageRecoveryRange, range)
+    Object.assign(supplied.report, { pageRecoveryAttemptCount: firstPass.pageRecoveryAttemptCount,
+      pageRecoverySuccessCount: firstPass.pageRecoverySuccessCount, pageRecoveryRange: firstPass.pageRecoveryRange })
+    let marked = false
+    const env = environment()
+    const outcome = await runLegendDaily({ env, now: () => now, collect: async () => supplied,
+      validate: async path => { assert.ok(path.endsWith('public')); return { datasets: 0, entries: 0 } },
+      artifactReady: async value => {
+        assert.equal(value, env); assert.equal(Object.hasOwn(value, 'pageRecoveryRange'), false); marked = true
+      } })
+    assert.equal(marked, true)
+    assert.deepEqual(outcome, { succeeded: status === 'succeeded' })
+    const text = String(lines.at(-1)), emitted = JSON.parse(text).capture
+    assert.deepEqual(emitted.pageRecoveryRange, range)
+    for (const value of [PRIVATE, 'accountKey', 'playerId', 'playerName', 'profileUrl', 'raw']) assert.equal(text.includes(value), false)
+  }
+  assert.equal(lines.length, 3)
+})
+
 test('publisher uses fixed isolated bundle paths and the same workflow gate', async () => {
   let called = false
   await publishLegendDaily({ env: environment(), publish: async (input, output, includePlayers) => {

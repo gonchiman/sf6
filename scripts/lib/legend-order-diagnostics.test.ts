@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision } from './legend-order-diagnostics.ts'
+import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './legend-order-diagnostics.ts'
 import type { LegendOrderDiagnostic, LegendOrderRecheck, LegendPageRecoveryDecision } from './legend-order-diagnostics.ts'
 
 const diagnostic: LegendOrderDiagnostic = { boundary: 'within-page',
@@ -73,4 +73,16 @@ test('malformed recovery decisions and nested positions never escape the allowli
   assert.equal(sanitizeLegendPageRecoveryDecision({ get trigger(): never { throw new Error('secret') } }), undefined)
   assert.equal(sanitizeLegendPageRecoveryDecision({ ...base, conflict: { previous: diagnostic.previous,
     get current(): never { throw new Error('secret') } } }), undefined)
+})
+
+test('recovery range sanitizer bounds the span and progress and strips private values', () => {
+  const base = { attempt: 1, fromPage: 10, toPage: 14, lastValidatedPage: 14, status: 'succeeded' }
+  assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...base, secret: 'private', toJSON: () => 'private' }), base)
+  assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...base, lastValidatedPage: null, status: 'started' }), { ...base, lastValidatedPage: null, status: 'started' })
+  assert.deepEqual(sanitizeLegendPageRecoveryRange({ ...base, status: 'failed' }), { ...base, status: 'failed' })
+  for (const patch of [{ attempt: 0 }, { attempt: 4 }, { fromPage: 0 }, { toPage: 10 }, { toPage: 16 },
+    { lastValidatedPage: 9 }, { lastValidatedPage: 15 }, { lastValidatedPage: null }, { status: 'private' }, { toPage: Infinity }]) {
+    assert.equal(sanitizeLegendPageRecoveryRange({ ...base, ...patch }), undefined)
+  }
+  assert.equal(sanitizeLegendPageRecoveryRange({ get status(): never { throw new Error('private') } }), undefined)
 })

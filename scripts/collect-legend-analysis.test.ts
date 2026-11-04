@@ -8,6 +8,7 @@ import { LEGEND_ANALYSIS_CONDITIONS, LegendAnalysisDomError } from './lib/legend
 import { legendAnalysisPathWithin } from './lib/legend-analysis-files.ts'
 import { validateLegendAnalysisDirectory } from './validate-legend-analysis-data.ts'
 import { publishLegendAnalysisData } from './import-legend-analysis-data.ts'
+import { validateLegendDailyBundle } from './lib/legend-analysis-daily-bundle.ts'
 
 const SECRET = 'synthetic-secret-never-output'
 const state = { cookies: [{ name: 'synthetic', value: SECRET, domain: 'www.streetfighter.com', path: '/', expires: -1,
@@ -437,22 +438,22 @@ test('collector MR-order failure propagates fixed diagnostics through the CLI an
   assert.doesNotMatch(await readFile(resolve(data.output, 'public/index.json'), 'utf8'), /orderDiagnostic|orderRecheck|masterRating/)
 })
 
-test('an ineligible boundary recovery keeps its later conflict through retries and CAPTCHA without changing read counts or public files', async t => {
+test('a recovery range exceeding the page limit retains its conflict through retries and CAPTCHA without partial publication', async t => {
   for (const denied of [true, false]) {
     const data = await fixture(t), pages: number[] = []
     let rechecks = 0, profiles = 0
     data.transport.fetchPage = async (page, sourceUrl) => {
       pages.push(page); data.calls.read++
-      if (denied && pages.length === 4) throw new LegendAnalysisDomError('http-denied')
+      if (denied && pages.length === 8) throw new LegendAnalysisDomError('http-denied')
       const offset = (page - 1) * 20
       const entries = Array.from({ length: 20 }, (_, index) => ({
         accountKey: (offset + index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
-        rank: offset + index + 1, masterRating: 2400 - offset - index, isLegend: offset + index < 42,
+        rank: offset + index + 1, masterRating: 2400 - offset - index, isLegend: offset + index < 122,
         playerName: `Synthetic player ${offset + index + 1}`, playerId: String(offset + index + 1), region: '日本', platform: 'Steam',
       }))
-      if (pages.length === 3) {
-        entries[0].rank = 39 // Boundary reversal: previous page ended at rank 40.
-        // A later entry duplicates page 1, which prevents the adjacent-only recovery.
+      if (pages.length === 7) {
+        entries[0].rank = 119 // Boundary reversal: previous page ended at rank 120.
+        // The later duplicate requires seven pages, exceeding the bounded recovery range.
         entries[1].accountKey = (10).toString(16).padStart(64, '0')
         entries[1].playerId = '10'; entries[1].playerName = 'Synthetic player 10'
       }
@@ -468,13 +469,14 @@ test('an ineligible boundary recovery keeps its later conflict through retries a
       humanVerification: { wafHeaderChecked: true, wafAction: denied ? 'captcha' : null, domDetected: denied } })
     const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
     const safe = summarizeLegendAnalysisCaptureReport(result.report)
-    const expected = { trigger: 'rank-order', eligible: false, reason: 'earlier-page-duplicate', page: 3, previousPage: 2, recoveryUsed: false,
+    const expected = { trigger: 'rank-order', eligible: false, reason: 'recovery-range-too-wide', page: 7, previousPage: 6, recoveryUsed: false,
       conflict: { previous: { page: 1, rowIndex: 10, rank: 10, masterRating: 2391 },
-        current: { page: 3, rowIndex: 2, rank: 42, masterRating: 2359 } } }
+        current: { page: 7, rowIndex: 2, rank: 122, masterRating: 2279 } } }
     assert.equal(result.succeeded, !denied)
     assert.equal(safe.pageRecoveryAttemptCount, 0); assert.equal(safe.pageRecoverySuccessCount, 0)
-    assert.equal(safe.retryCount, 1); assert.equal(rechecks, 1); assert.equal(profiles, denied ? 0 : 42)
-    assert.deepEqual(pages, denied ? [1, 2, 3, 1] : [1, 2, 3, 1, 2, 3, 3, 1])
+    assert.equal(safe.retryCount, 1); assert.equal(rechecks, 1); assert.equal(profiles, denied ? 0 : 122)
+    assert.deepEqual(pages, denied ? [1, 2, 3, 4, 5, 6, 7, 1] : [1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7, 7, 1])
+    assert.equal(Object.hasOwn(safe, 'pageRecoveryRange'), false)
     assert.equal(safe.attemptFailures.length, 1)
     assert.equal(safe.attemptFailures[0].validationCheck, 'rank-order')
     assert.deepEqual(safe.attemptFailures[0].pageRecoveryDecision, expected)
@@ -488,8 +490,94 @@ test('an ineligible boundary recovery keeps its later conflict through retries a
       assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
     }
     for (const directory of ['public', 'public/players']) for (const filename of (await readdir(resolve(data.output, directory))).filter(name => name.endsWith('.json'))) {
-      assert.doesNotMatch(await readFile(resolve(data.output, directory, filename), 'utf8'), /pageRecoveryDecision|orderDiagnostic|orderRecheck|attemptFailures|earlier-page-duplicate/)
+      assert.doesNotMatch(await readFile(resolve(data.output, directory, filename), 'utf8'), /pageRecoveryRange|pageRecoveryDecision|orderDiagnostic|orderRecheck|attemptFailures|recovery-range-too-wide/)
     }
+  }
+})
+
+test('range recovery reports validated pages and survives later failures without publishing partial player data', async t => {
+  for (const stop of ['none', 'range', 'after-recovery', 'next-attempt'] as const) {
+    const data = await fixture(t), pages: number[] = []
+    let denied = false, profiles = 0
+    data.transport.fetchPage = async (page, sourceUrl) => {
+      pages.push(page); data.calls.read++
+      if ((stop === 'range' && pages.length === 7) || (stop === 'after-recovery' && pages.length === 10)
+        || (stop === 'next-attempt' && pages.length === 11)) {
+        denied = true
+        throw new LegendAnalysisDomError('http-denied')
+      }
+      const offset = (page - 1) * 20
+      const entries = Array.from({ length: 20 }, (_, index) => ({
+        accountKey: (offset + index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
+        rank: offset + index + 1, masterRating: 2400 - offset - index, isLegend: offset + index < 82,
+        playerName: `Synthetic player ${offset + index + 1}`, playerId: String(offset + index + 1), region: '日本', platform: 'Steam',
+      }))
+      if (pages.length === 5) {
+        entries[0].accountKey = (50).toString(16).padStart(64, '0')
+        entries[0].playerId = '50'; entries[0].playerName = 'Synthetic player 50'
+      }
+      if (stop === 'next-attempt' && pages.length === 10) entries[19].masterRating--
+      return { sourceUrl, page, pageSize: 20, totalCount: 800000, from: offset + 1, to: offset + 20,
+        nextPage: page + 1, actId: 'act-13', conditions: { ...LEGEND_ANALYSIS_CONDITIONS },
+        conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries }
+    }
+    data.transport.fetchPlayerRankedMatches = async () => { profiles++; return { ryu: 123 } }
+    data.transport.getDiagnostics = () => ({ requestCount: data.calls.read, lastAttemptedPage: pages.at(-1) ?? null,
+      successfulReadCount: data.calls.read - (denied ? 1 : 0), lastStep: denied ? 'ranking-navigation' : 'complete',
+      lastHttpStatus: denied ? 405 : 200, lastErrorCode: denied ? 'http-denied' : null,
+      humanVerification: { wafHeaderChecked: true, wafAction: denied ? 'captcha' : null, domDetected: denied } })
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+    const safe = summarizeLegendAnalysisCaptureReport(result.report)
+    const expectedRange = { attempt: 1, fromPage: 3, toPage: 5,
+      lastValidatedPage: stop === 'range' ? 3 : 5, status: stop === 'range' ? 'failed' : 'succeeded' }
+    assert.deepEqual(result.report.pageRecoveryRange, expectedRange)
+    assert.deepEqual(safe.pageRecoveryRange, expectedRange)
+    assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).pageRecoveryRange, expectedRange)
+    assert.equal(safe.pageRecoveryAttemptCount, 1)
+    assert.equal(safe.pageRecoverySuccessCount, stop === 'range' ? 0 : 1)
+    assert.equal(safe.retryCount, stop === 'next-attempt' ? 1 : 0)
+    assert.equal(result.succeeded, stop === 'none')
+    assert.equal(profiles, stop === 'none' ? 82 : 0)
+    const prefix = [1, 2, 3, 4, 5, 3, 4]
+    const expectedPages = stop === 'range' ? prefix
+      : stop === 'after-recovery' ? [...prefix, 5, 2, 5] : [...prefix, 5, 2, 5, 1]
+    assert.deepEqual(pages, expectedPages)
+    assert.equal(safe.requestCount, expectedPages.length)
+    assert.equal(safe.successfulReadCount, expectedPages.length - (denied ? 1 : 0))
+    assert.doesNotMatch(JSON.stringify(safe), /Synthetic player|accountKey|playerId|playerName|profileUrl|synthetic-secret/)
+    if (denied) {
+      assert.equal(safe.reason, 'access-unavailable')
+      assert.equal(safe.humanVerification.wafAction, 'captcha')
+      assert.equal(safe.captureAttempt, stop === 'next-attempt' ? 2 : 1)
+      assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json', 'players'])
+      assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+    } else {
+      assert.deepEqual(await validateLegendDailyBundle(resolve(data.output, 'public'), true), { datasets: 1, entries: 82 })
+      const players = JSON.parse(await readFile(resolve(data.output, 'public/players', `${safe.datasetId}.json`), 'utf8'))
+      assert.equal(players.players.length, 82)
+      assert.equal(new Set(players.players.map((row: { playerId: string }) => row.playerId)).size, 82)
+    }
+    for (const directory of ['public', 'public/players']) for (const filename of (await readdir(resolve(data.output, directory))).filter(name => name.endsWith('.json'))) {
+      assert.doesNotMatch(await readFile(resolve(data.output, directory, filename), 'utf8'), /pageRecoveryRange|lastValidatedPage|pageRecoveryDecision|orderDiagnostic|orderRecheck|attemptFailures/)
+    }
+  }
+})
+
+test('stdout range records allow only bounded progress and fixed states while preserving old reports', () => {
+  const base = { attempt: 1, fromPage: 3, toPage: 5, lastValidatedPage: 5, status: 'succeeded' }
+  for (const range of [base, { ...base, status: 'started', lastValidatedPage: null },
+    { ...base, status: 'failed', lastValidatedPage: 4 }]) {
+    const safe = summarizeLegendAnalysisCaptureReport({ pageRecoveryRange: { ...range,
+      playerId: SECRET, playerName: SECRET, accountKey: SECRET, raw: [SECRET], toJSON: () => SECRET } })
+    assert.deepEqual(safe.pageRecoveryRange, range)
+    assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).pageRecoveryRange, range)
+    assert.doesNotMatch(JSON.stringify(safe), /playerId|playerName|accountKey|raw|toJSON|synthetic-secret/)
+  }
+  for (const range of [undefined, null, { ...base, attempt: 0 }, { ...base, fromPage: 0 },
+    { ...base, toPage: 2 }, { ...base, toPage: 9 }, { ...base, lastValidatedPage: 6 },
+    { ...base, lastValidatedPage: null }, { ...base, status: SECRET }]) {
+    const safe = summarizeLegendAnalysisCaptureReport(range === undefined ? {} : { pageRecoveryRange: range })
+    assert.equal(Object.hasOwn(safe, 'pageRecoveryRange'), false)
   }
 })
 
