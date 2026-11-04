@@ -3,6 +3,7 @@ import test from 'node:test'
 import { buildSteamPlayerCountHourlyComparison, filterSteamPlayerCountObservations, getDefaultSteamPlayerCountRange,
   getSteamPlayerCountJstDate, getSteamPlayerCountUtcDates, parseSteamPlayerCountDateRange, parseSteamPlayerCountDay,
   parseSteamPlayerCountDayDescriptor, parseSteamPlayerCountManifest, parseSteamPlayerCountObservation,
+  getSteamPlayerCountComparisonRange, resolveSteamPlayerCountRange,
   STEAM_PLAYER_COUNT_APP_ID, STEAM_PLAYER_COUNT_SOURCE_URL } from './steamPlayerCount.ts'
 import type { SteamPlayerCountAppId, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
 import { DEFAULT_STEAM_PLAYER_COUNT_GAME, getSteamPlayerCountGame, STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
@@ -158,10 +159,50 @@ test('current-day coverage excludes future slots, while incomplete hours remain 
   assert.equal(rows[1].expectedSlots, 0)
 })
 
-test('default ranges use completed JST days and show the first current-day observation', () => {
+test('calendar periods include today and retain identical dates regardless of available game history', () => {
   const now = new Date('2026-11-01T03:00:00.000Z')
-  assert.deepEqual(getDefaultSteamPlayerCountRange(manifest(), now), { from: '2026-10-18', to: '2026-10-31' })
-  assert.deepEqual(getDefaultSteamPlayerCountRange(manifest([descriptor('2026-10-01'), descriptor('2026-11-01')]), now), { from: '2026-10-18', to: '2026-10-31' })
-  assert.deepEqual(getDefaultSteamPlayerCountRange(manifest([descriptor('2026-10-25'), descriptor('2026-10-31')]), now), { from: '2026-10-25', to: '2026-10-31' })
-  assert.deepEqual(getDefaultSteamPlayerCountRange(manifest([descriptor('2026-10-31', '2026-10-31T15:10:00.000Z')]), now), { from: '2026-11-01', to: '2026-11-01' })
+  for (const index of [null, manifest(), manifest([descriptor('2026-10-01')]),
+    manifest([descriptor('2026-10-31', '2026-10-31T15:10:00.000Z')])]) {
+    assert.deepEqual(resolveSteamPlayerCountRange('today', index, now), { from: '2026-11-01', to: '2026-11-01' })
+    assert.deepEqual(resolveSteamPlayerCountRange('yesterday', index, now), { from: '2026-10-31', to: '2026-10-31' })
+    assert.deepEqual(resolveSteamPlayerCountRange('7d', index, now), { from: '2026-10-26', to: '2026-11-01' })
+    assert.deepEqual(resolveSteamPlayerCountRange('30d', index, now), { from: '2026-10-03', to: '2026-11-01' })
+    assert.deepEqual(getDefaultSteamPlayerCountRange(index, now), resolveSteamPlayerCountRange('7d', index, now))
+    assert.deepEqual(resolveSteamPlayerCountRange(null, index, now), resolveSteamPlayerCountRange('7d', index, now))
+  }
+})
+
+test('relative periods roll over precisely at JST midnight across month and leap-year boundaries', () => {
+  assert.deepEqual(resolveSteamPlayerCountRange('today', null, new Date('2024-02-29T14:59:59.999Z')), { from: '2024-02-29', to: '2024-02-29' })
+  const midnight = new Date('2024-02-29T15:00:00.000Z')
+  assert.deepEqual(resolveSteamPlayerCountRange('today', null, midnight), { from: '2024-03-01', to: '2024-03-01' })
+  assert.deepEqual(resolveSteamPlayerCountRange('yesterday', null, midnight), { from: '2024-02-29', to: '2024-02-29' })
+  assert.deepEqual(resolveSteamPlayerCountRange('7d', null, midnight), { from: '2024-02-24', to: '2024-03-01' })
+  assert.deepEqual(resolveSteamPlayerCountRange('30d', null, midnight), { from: '2024-02-01', to: '2024-03-01' })
+})
+
+test('all follows observed JST bounds and custom ranges stay fixed without manifest clamping', () => {
+  const now = new Date('2026-11-02T03:00:00.000Z')
+  const index = manifest([descriptor('2026-10-31', '2026-10-31T15:00:00.000Z'), descriptor('2026-10-01', '2026-10-01T15:00:00.000Z')])
+  assert.deepEqual(resolveSteamPlayerCountRange('all', index, now), { from: '2026-10-02', to: '2026-11-01' })
+  assert.deepEqual(resolveSteamPlayerCountRange('all', manifest(), now), { from: '2026-11-02', to: '2026-11-02' })
+  const custom = { from: '2026-09-01', to: '2026-11-03' }
+  assert.deepEqual(resolveSteamPlayerCountRange(custom, index, now), custom)
+  assert.throws(() => resolveSteamPlayerCountRange({ from: '2026-11-03', to: '2026-09-01' }), /reversed/)
+})
+
+test('coverage excludes pre-collection dates without shortening the selected calendar or hiding later missing slots', () => {
+  const now = new Date('2026-11-02T03:00:00.000Z'), index = manifest([descriptor('2026-10-31', '2026-10-31T15:00:00.000Z')])
+  const selected = { from: '0002-01-01', to: '9999-12-31' }
+  const comparison = getSteamPlayerCountComparisonRange(selected, index, now)
+  assert.deepEqual(comparison, { from: '2026-11-01', to: '2026-11-02' })
+  assert.deepEqual(selected, { from: '0002-01-01', to: '9999-12-31' })
+  assert.equal(buildSteamPlayerCountHourlyComparison([], comparison, 'all', now)[0].totalDays, 2)
+  for (const empty of [getSteamPlayerCountComparisonRange(selected, manifest(), now),
+    getSteamPlayerCountComparisonRange({ from: '2026-10-01', to: '2026-10-31' }, index, now)]) {
+    assert.equal(empty, null)
+    const rows = buildSteamPlayerCountHourlyComparison([], empty, 'all', now)
+    assert.equal(rows.length, 24)
+    assert.ok(rows.every(row => row.mean === null && row.totalDays === 0 && row.expectedSlots === 0 && row.observedSlots === 0))
+  }
 })

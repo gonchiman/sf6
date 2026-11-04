@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type Ref } from 'react'
 import { timestampLabel } from '../lib/dateTime'
 import {
-  buildSteamPlayerCountHourlyComparison, filterSteamPlayerCountObservations, getSteamPlayerCountJstDate,
+  buildSteamPlayerCountHourlyComparison, filterSteamPlayerCountObservations, getSteamPlayerCountComparisonRange, getSteamPlayerCountJstDate,
+  parseSteamPlayerCountDate,
 } from '../lib/steamPlayerCount'
 import { useSteamPlayerCount } from '../lib/useSteamPlayerCount'
 import { createSteamPlayerCountFeed } from '../lib/steamPlayerCountFeed'
 import { DEFAULT_STEAM_PLAYER_COUNT_GAME, getSteamPlayerCountGame, STEAM_PLAYER_COUNT_GAMES } from '../lib/steamPlayerCountGames'
-import type { SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountDayType, SteamPlayerCountGame, SteamPlayerCountHourlyRow } from '../types/steamPlayerCount'
+import type { SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountDayType, SteamPlayerCountGame, SteamPlayerCountHourlyRow, SteamPlayerCountPeriod, SteamPlayerCountRangeSelection } from '../types/steamPlayerCount'
 import { ContentTabs } from './ContentTabs'
 import { DataLoadState } from './DataLoadState'
 import { StatisticsPanel } from './StatisticsPanel'
@@ -18,6 +19,9 @@ import '../steam-player-count.css'
 const TABS = [['hourly', '時間帯比較'], ['trend', '観測推移'], ['table', '時間帯一覧']] as const
 type Tab = (typeof TABS)[number][0]
 const staleAfterMs = 90 * 60 * 1000
+const PERIODS = [['today', '今日'], ['yesterday', '昨日'], ['7d', '直近7日'], ['30d', '直近30日'], ['all', '全期間'], ['custom', '日付指定']] as const satisfies readonly (readonly [SteamPlayerCountPeriod, string])[]
+const dateLabel = (date: string) => date.replaceAll('-', '/')
+const rangeLabel = ({ from, to }: SteamPlayerCountDateRange) => from === to ? dateLabel(from) : `${dateLabel(from)} 〜 ${dateLabel(to)}`
 
 function SteamPlayerCountTable({ rows }: { rows: readonly SteamPlayerCountHourlyRow[] }) {
   return <div className="data-table-scroll steam-player-count-table-scroll" role="region" aria-label="時間帯別の集計" tabIndex={0}>
@@ -39,6 +43,7 @@ export function SteamPlayerCountPage({ initialAppId = DEFAULT_STEAM_PLAYER_COUNT
   const [game, setGame] = useState(() => getSteamPlayerCountGame(initialAppId))
   const [dayType, setDayType] = useState<SteamPlayerCountDayType>('all')
   const [tab, setTab] = useState<Tab>('hourly')
+  const [selection, setSelection] = useState<SteamPlayerCountRangeSelection>('7d')
   const gameSelectRef = useRef<HTMLSelectElement>(null)
   const restoreGameFocus = useRef(false)
   useEffect(() => {
@@ -50,13 +55,13 @@ export function SteamPlayerCountPage({ initialAppId = DEFAULT_STEAM_PLAYER_COUNT
     restoreGameFocus.current = true
     setGame(getSteamPlayerCountGame(appId))
   }
-  // The data controller and requested date range belong to one game. Remounting
-  // them also hides the old game's data before the new feed's effect can run.
+  // Keep the user's period across games; only the data controller is remounted
+  // so the previous game's observations cannot appear under the new title.
   return <SteamPlayerCountGameView key={game.appId} game={game} onGameChange={changeGame} gameSelectRef={gameSelectRef}
-    dayType={dayType} onDayTypeChange={setDayType} tab={tab} onTabChange={setTab} />
+    dayType={dayType} onDayTypeChange={setDayType} tab={tab} onTabChange={setTab} selection={selection} onSelectionChange={setSelection} />
 }
 
-function SteamPlayerCountGameView({ game, onGameChange, gameSelectRef, dayType, onDayTypeChange, tab, onTabChange }: {
+function SteamPlayerCountGameView({ game, onGameChange, gameSelectRef, dayType, onDayTypeChange, tab, onTabChange, selection, onSelectionChange }: {
   game: SteamPlayerCountGame
   onGameChange: (appId: SteamPlayerCountAppId) => void
   gameSelectRef: Ref<HTMLSelectElement>
@@ -64,31 +69,35 @@ function SteamPlayerCountGameView({ game, onGameChange, gameSelectRef, dayType, 
   onDayTypeChange: (dayType: SteamPlayerCountDayType) => void
   tab: Tab
   onTabChange: (tab: Tab) => void
+  selection: SteamPlayerCountRangeSelection
+  onSelectionChange: (selection: SteamPlayerCountRangeSelection) => void
 }) {
-  const [requestedRange, setRequestedRange] = useState<SteamPlayerCountDateRange | null>(null)
   const feed = useMemo(() => createSteamPlayerCountFeed({ appId: game.appId }), [game.appId])
-  const { status, publication, range, observations, refreshError, refresh } = useSteamPlayerCount(requestedRange, feed)
+  const { status, publication, range, observations, refreshError, refresh } = useSteamPlayerCount(selection, feed)
+  const period = typeof selection === 'string' ? selection : 'custom'
   const now = new Date()
   const today = getSteamPlayerCountJstDate(now)
   const manifest = publication?.manifest
   const oldest = manifest?.days.map(day => getSteamPlayerCountJstDate(day.firstObservedAt)).sort()[0]
   const lastObservedAt = manifest?.days.map(day => day.lastObservedAt).sort().at(-1)
+  const newest = lastObservedAt ? getSteamPlayerCountJstDate(lastObservedAt) : undefined
   const stale = lastObservedAt ? now.getTime() - Date.parse(lastObservedAt) > staleAfterMs : false
   const filtered = useMemo(() => filterSteamPlayerCountObservations(observations, range, dayType), [observations, range, dayType])
-  const hourly = buildSteamPlayerCountHourlyComparison(observations, range, dayType, now)
+  const hourly = buildSteamPlayerCountHourlyComparison(observations, getSteamPlayerCountComparisonRange(range, manifest ?? null, now), dayType, now)
   const observedSlots = hourly.reduce((sum, row) => sum + row.observedSlots, 0)
   const expectedSlots = hourly.reduce((sum, row) => sum + row.expectedSlots, 0)
   const coverage = `観測 ${steamPlayerCountNumber(observedSlots)} / ${steamPlayerCountNumber(expectedSlots)} 区間`
   const available = !!manifest?.days.length
   const changeDate = (key: keyof SteamPlayerCountDateRange, value: string) => {
     if (!value) return
-    const bounded = value > today ? today : oldest && value < oldest ? oldest : value
-    const next = { ...range, [key]: bounded }
+    try { parseSteamPlayerCountDate(value) } catch { return }
+    const bounded = value > today ? today : value
+    const next = { ...(typeof selection === 'string' ? range : selection), [key]: bounded }
     if (next.from > next.to) {
       if (key === 'from') next.to = bounded
       else next.from = bounded
     }
-    setRequestedRange(next)
+    onSelectionChange(next)
   }
 
   return <section className="steam-player-count-page" aria-label="Steam同時接続数" data-steam-app-id={game.appId}>
@@ -115,14 +124,27 @@ function SteamPlayerCountGameView({ game, onGameChange, gameSelectRef, dayType, 
           }}>
           {STEAM_PLAYER_COUNT_GAMES.map(item => <option key={item.appId} value={item.appId}>{item.label}</option>)}
         </select></label>
-        <label><span>開始日</span><input type="date" aria-label="開始日" value={range.from} min={oldest} max={today}
-          disabled={!available} onChange={event => changeDate('from', event.target.value)} /></label>
-        <label><span>終了日</span><input type="date" aria-label="終了日" value={range.to} min={oldest} max={today}
-          disabled={!available} onChange={event => changeDate('to', event.target.value)} /></label>
-        <label><span>曜日</span><select aria-label="曜日" value={dayType} disabled={!available}
+        <label><span>曜日</span><select aria-label="曜日" value={dayType}
           onChange={event => onDayTypeChange(event.target.value as SteamPlayerCountDayType)}>
           <option value="all">すべて</option><option value="weekday">月〜金</option><option value="weekend">土・日</option>
         </select></label>
+        <div className="steam-player-count-period">
+          <span className="steam-player-count-filter-label">期間</span>
+          <div className="win-rates-view-selector steam-player-count-period-buttons" role="group" aria-label="期間">
+            {PERIODS.map(([value, label]) => <button key={value} className="win-rates-button" type="button" aria-pressed={period === value}
+              onClick={() => { if (period !== value) onSelectionChange(value === 'custom' ? { ...range } : value) }}>{label}</button>)}
+          </div>
+        </div>
+        {typeof selection !== 'string' && <div className="steam-player-count-custom-dates">
+          <label><span>開始日</span><input type="date" aria-label="開始日" value={selection.from} max={today}
+            onChange={event => changeDate('from', event.target.value)} /></label>
+          <label><span>終了日</span><input type="date" aria-label="終了日" value={selection.to} max={today}
+            onChange={event => changeDate('to', event.target.value)} /></label>
+        </div>}
+        <dl className="steam-player-count-range-summary" aria-live="polite" aria-atomic="true">
+          <div><dt>表示期間</dt><dd>{period === 'all' && !available ? '—' : rangeLabel(range)}</dd></div>
+          <div><dt>データ範囲</dt><dd>{oldest && newest ? rangeLabel({ from: oldest, to: newest }) : manifest ? '未取得' : status === 'error' ? '読込失敗' : '読込中'}</dd></div>
+        </dl>
       </div>
     </StatisticsPanel>
     {status === 'loading' ? <DataLoadState loading message={`${game.label}の観測データを読み込み中…`} />
