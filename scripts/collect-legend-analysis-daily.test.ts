@@ -136,33 +136,43 @@ test('daily stdout preserves a recovery rejection and numeric conflict through r
   assert.equal(lines.length, 1)
   const text = String(lines[0]), emitted = JSON.parse(text).capture
   assert.deepEqual(emitted.attemptFailures, firstPass.attemptFailures)
+  assert.equal(Object.hasOwn(emitted, 'pageRecoveryRanges'), false)
   for (const value of [PRIVATE, 'accountKey', 'playerId', 'playerName', 'raw']) assert.equal(text.includes(value), false)
 })
 
-test('daily stdout retains range progress through both sanitizers without adding it to the artifact contract', async t => {
+test('daily stdout retains all recovery histories through both sanitizers without adding them to the artifact contract', async t => {
   const lines: unknown[] = []
   t.mock.method(console, 'log', (...values: unknown[]) => { lines.push(...values) })
   for (const status of ['started', 'succeeded', 'failed'] as const) {
     const supplied = result(status === 'succeeded')
-    const range = { attempt: 1, fromPage: 3, toPage: 5,
+    const first = { attempt: 1, fromPage: 1, toPage: 2, lastValidatedPage: 2, status: 'succeeded' }
+    const range = { attempt: 2, fromPage: 3, toPage: 5,
       lastValidatedPage: status === 'started' ? null : status === 'succeeded' ? 5 : 4, status }
-    const firstPass = summarizeLegendAnalysisCaptureReport({ ...supplied.report, pageRecoveryAttemptCount: 1,
-      pageRecoverySuccessCount: status === 'succeeded' ? 1 : 0, pageRecoveryRange: { ...range,
+    const firstPass = summarizeLegendAnalysisCaptureReport({ ...supplied.report, pageRecoveryAttemptCount: 2,
+      pageRecoverySuccessCount: status === 'succeeded' ? 2 : 1,
+      pageRecoveryRanges: [{ ...first, accountKey: PRIVATE, playerId: PRIVATE }, { ...range, playerName: PRIVATE, raw: [PRIVATE] }],
+      pageRecoveryRange: { ...range,
         accountKey: PRIVATE, playerId: PRIVATE, playerName: PRIVATE, profileUrl: PRIVATE, raw: [PRIVATE] } })
     assert.deepEqual(firstPass.pageRecoveryRange, range)
+    assert.deepEqual(firstPass.pageRecoveryRanges, [first, range])
     Object.assign(supplied.report, { pageRecoveryAttemptCount: firstPass.pageRecoveryAttemptCount,
-      pageRecoverySuccessCount: firstPass.pageRecoverySuccessCount, pageRecoveryRange: firstPass.pageRecoveryRange })
+      pageRecoverySuccessCount: firstPass.pageRecoverySuccessCount, pageRecoveryRange: firstPass.pageRecoveryRange,
+      pageRecoveryRanges: firstPass.pageRecoveryRanges })
     let marked = false
     const env = environment()
     const outcome = await runLegendDaily({ env, now: () => now, collect: async () => supplied,
       validate: async path => { assert.ok(path.endsWith('public')); return { datasets: 0, entries: 0 } },
       artifactReady: async value => {
-        assert.equal(value, env); assert.equal(Object.hasOwn(value, 'pageRecoveryRange'), false); marked = true
+        assert.equal(value, env); assert.equal(Object.hasOwn(value, 'pageRecoveryRange'), false)
+        assert.equal(Object.hasOwn(value, 'pageRecoveryRanges'), false); marked = true
       } })
     assert.equal(marked, true)
     assert.deepEqual(outcome, { succeeded: status === 'succeeded' })
     const text = String(lines.at(-1)), emitted = JSON.parse(text).capture
     assert.deepEqual(emitted.pageRecoveryRange, range)
+    assert.deepEqual(emitted.pageRecoveryRanges, [first, range])
+    assert.equal(emitted.pageRecoveryAttemptCount, 2)
+    assert.equal(emitted.pageRecoverySuccessCount, status === 'succeeded' ? 2 : 1)
     for (const value of [PRIVATE, 'accountKey', 'playerId', 'playerName', 'profileUrl', 'raw']) assert.equal(text.includes(value), false)
   }
   assert.equal(lines.length, 3)

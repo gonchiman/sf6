@@ -21,6 +21,8 @@ import { normalizeDistributionHumanVerification } from './lib/distribution-human
 import type { DistributionHumanVerificationDiagnostics } from './lib/distribution-human-verification.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const LEGEND_LISTING_MAX_REQUESTS = 120
+const LEGEND_MAX_PAGE_RECOVERIES = Math.floor(LEGEND_LISTING_MAX_REQUESTS / 2)
 export const LEGEND_ANALYSIS_LOCAL_OUTPUT = resolve(ROOT, '.local/legend-analysis-daily/captures')
 export type LegendAnalysisStorageState = Exclude<NonNullable<BrowserContextOptions['storageState']>, string>
 export interface LegendAnalysisTransport {
@@ -56,6 +58,7 @@ export interface LegendAnalysisCaptureReport {
   pageRecoveryAttemptCount?: number
   pageRecoverySuccessCount?: number
   pageRecoveryRange?: LegendPageRecoveryRange
+  pageRecoveryRanges?: LegendPageRecoveryRange[]
   /** One-based whole-capture attempt; null until normal collection starts. */
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -95,6 +98,7 @@ export interface LegendAnalysisSafeCaptureReport {
   pageRecoveryAttemptCount: number
   pageRecoverySuccessCount: number
   pageRecoveryRange?: LegendPageRecoveryRange
+  pageRecoveryRanges?: LegendPageRecoveryRange[]
   retryCount: number
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -113,6 +117,21 @@ export interface LegendAnalysisSafeCaptureReport {
   recheckChangeKinds: LegendAnalysisRecheckChangeKind[] | null
   attemptFailures: LegendAnalysisAttemptFailure[]
   humanVerification: DistributionHumanVerificationDiagnostics
+}
+/** At most one final/progress record per recovery; never forward array serializers or arbitrary nested values. */
+function safePageRecoveryRanges(value: unknown): LegendPageRecoveryRange[] | undefined {
+  try {
+    if (!Array.isArray(value)) return undefined
+    const length = value.length
+    if (!Number.isSafeInteger(length) || length < 1 || length > LEGEND_MAX_PAGE_RECOVERIES) return undefined
+    const ranges: LegendPageRecoveryRange[] = []
+    for (let index = 0; index < length; index++) {
+      const range = sanitizeLegendPageRecoveryRange(value[index])
+      if (!range || range.attempt < (ranges.at(-1)?.attempt ?? 1)) return undefined
+      ranges.push(range)
+    }
+    return ranges
+  } catch { return undefined }
 }
 /** Bounded enum/scalar-only history; no error text, player identities or URLs can cross this boundary. */
 function safeAttemptFailures(value: unknown): LegendAnalysisAttemptFailure[] {
@@ -148,8 +167,9 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
   }
   const requestCount = bounded(input.requestCount, 0, 2000) ? input.requestCount : 0
   const successfulReadCount = bounded(input.successfulReadCount, 0, requestCount) ? input.successfulReadCount : 0
-  const pageRecoveryAttemptCount = bounded(input.pageRecoveryAttemptCount, 0, 1) ? input.pageRecoveryAttemptCount : 0
+  const pageRecoveryAttemptCount = bounded(input.pageRecoveryAttemptCount, 0, LEGEND_MAX_PAGE_RECOVERIES) ? input.pageRecoveryAttemptCount : 0
   const pageRecoveryRange = sanitizeLegendPageRecoveryRange(input.pageRecoveryRange)
+  const pageRecoveryRanges = safePageRecoveryRanges(input.pageRecoveryRanges)
   const recheckChangeKinds = Array.isArray(input.recheckChangeKinds) && input.recheckChangeKinds.length >= 1 && input.recheckChangeKinds.length <= 3
     && new Set(input.recheckChangeKinds).size === input.recheckChangeKinds.length
     && input.recheckChangeKinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind as LegendAnalysisRecheckChangeKind))
@@ -164,6 +184,7 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     pageRecoveryAttemptCount,
     pageRecoverySuccessCount: bounded(input.pageRecoverySuccessCount, 0, pageRecoveryAttemptCount) ? input.pageRecoverySuccessCount : 0,
     ...(pageRecoveryRange ? { pageRecoveryRange } : {}),
+    ...(pageRecoveryRanges ? { pageRecoveryRanges } : {}),
     retryCount: bounded(input.retryCount, 0, 2) ? input.retryCount : 0,
     captureAttempt: bounded(input.captureAttempt, 1, 3) ? input.captureAttempt : null,
     collectionPhase: LEGEND_ANALYSIS_COLLECTION_PHASES.includes(input.collectionPhase as LegendAnalysisCollectionPhase) ? input.collectionPhase as LegendAnalysisCollectionPhase : 'preparation',
@@ -253,6 +274,7 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
   const playerCapture: { rows: readonly LegendAnalysisVerifiedPlayer[] | null } = { rows: null }
   let enrichedPlayers: (LegendAnalysisVerifiedPlayer & { rankedMatchCount: number })[] | null = null
   let rankedMatchScope: LegendRankedMatchScope | null = null
+  let recoveryRangeIndex: number | null = null
   try {
     signal.throwIfAborted()
     let state: LegendAnalysisStorageState
@@ -265,16 +287,26 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
       fetchPage: (page, url) => transport!.fetchPage(page, url), confirmAct: () => transport!.confirmAct(), act: initial.act,
       ...(transport.recheckOrderFailure ? { recheckOrderFailure: (page: LegendAnalysisPage, rowIndex: number) => transport!.recheckOrderFailure!(page, rowIndex) } : {}),
       conditions: LEGEND_ANALYSIS_CONDITIONS, characterIds: initial.characterIds, characterNames: initial.characterNames,
-      membershipRule: 'official-legend-badge', membershipConfirmed: true, signal, now, maxRequests: 120, maxAttempts: 2,
+      membershipRule: 'official-legend-badge', membershipConfirmed: true, signal, now, maxRequests: LEGEND_LISTING_MAX_REQUESTS, maxAttempts: 2,
       ...(options.includePlayers ? { onVerifiedPlayers: (players: readonly LegendAnalysisVerifiedPlayer[]) => { playerCapture.rows = players } } : {}),
       onRetry: count => { if (Number.isSafeInteger(count) && count >= 1 && count <= 2) report.retryCount = count },
       onPageRecovery: state => {
-        if (state === 'started') report.pageRecoveryAttemptCount = 1
-        if (state === 'succeeded') report.pageRecoverySuccessCount = 1
+        if (state === 'started' && (report.pageRecoveryAttemptCount ?? 0) < LEGEND_MAX_PAGE_RECOVERIES) {
+          recoveryRangeIndex = report.pageRecoveryAttemptCount ?? 0
+          report.pageRecoveryAttemptCount = recoveryRangeIndex + 1
+        }
+        if (state === 'succeeded') report.pageRecoverySuccessCount = Math.min(
+          report.pageRecoveryAttemptCount ?? 0, (report.pageRecoverySuccessCount ?? 0) + 1)
       },
       onPageRecoveryRange: value => {
         const range = sanitizeLegendPageRecoveryRange(value)
-        if (range) report.pageRecoveryRange = range
+        if (range) {
+          report.pageRecoveryRange = range
+          if (recoveryRangeIndex !== null) {
+            report.pageRecoveryRanges ??= []
+            report.pageRecoveryRanges[recoveryRangeIndex] = range
+          }
+        }
       },
       onAttemptFailure: failure => { report.attemptFailures = safeAttemptFailures([...(report.attemptFailures ?? []), failure]) },
       onProgress: value => {

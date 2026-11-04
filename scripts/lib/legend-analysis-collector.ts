@@ -114,7 +114,7 @@ export interface CollectLegendAnalysisOptions {
   onRetry?: (retryCount: number) => void
   /** Receives fixed diagnostic fields for collection-validation failures, before retry or final throw. */
   onAttemptFailure?: (failure: LegendAnalysisAttemptFailure) => void
-  /** At most one bounded page-range recovery across all attempts; fixed states only, never row values. */
+  /** Every bounded page-range recovery shares the collection's request budget; fixed states only, never row values. */
   onPageRecovery?: (state: 'started' | 'succeeded') => void
   onPageRecoveryRange?: (range: LegendPageRecoveryRange) => void
   onProgress?: (progress: LegendAnalysisCollectionProgress) => void
@@ -155,6 +155,7 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
     || !['official-legend-badge', 'official-ranking-cutoff'].includes(options.membershipRule)) fail('configuration-invalid', 'configuration')
   if (options.membershipConfirmed !== true) fail('evidence-unconfirmed', 'membership-evidence')
   let requestCount = 0
+  // Historical diagnostic only: any earlier range started in this run, including earlier whole attempts.
   let pageRecoveryUsed = false
   let pageRecoveryDecision: LegendPageRecoveryDecision | undefined
   let captureAttempt = 0
@@ -357,10 +358,9 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
           const rejection: Pick<LegendPageRecoveryDecision, 'reason' | 'conflict'> | undefined =
             orderFailure.diagnostic.boundary !== 'between-pages' ? { reason: 'within-page-order', conflict: {
               previous: orderFailure.diagnostic.previous, current: orderFailure.diagnostic.current } }
-            : pageRecoveryUsed ? { reason: 'recovery-already-used', conflict: rangeStart.conflict }
-              : !previousPage ? { reason: 'previous-page-missing' }
-                : previousPage.page + 1 !== current.page ? { reason: 'nonadjacent-page' } : internalOrderConflict(current)
-                  ?? (tooWide ? { reason: 'recovery-range-too-wide', conflict: rangeStart.conflict } : undefined)
+            : !previousPage ? { reason: 'previous-page-missing' }
+              : previousPage.page + 1 !== current.page ? { reason: 'nonadjacent-page' } : internalOrderConflict(current)
+                ?? (tooWide ? { reason: 'recovery-range-too-wide', conflict: rangeStart.conflict } : undefined)
           pageRecoveryDecision = { trigger: orderFailure.error.validationCheck as 'rank-order' | 'mr-order', eligible: !rejection,
             reason: 'eligible', page: current.page, previousPage: previousPage?.page ?? null, recoveryUsed: pageRecoveryUsed, ...rejection }
           if (rejection) throw error
@@ -368,15 +368,14 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
         if (!candidate || candidate.duplicate) {
           if (candidate) {
             const rejection: Pick<LegendPageRecoveryDecision, 'reason' | 'conflict'> | undefined =
-              pageRecoveryUsed ? { reason: 'recovery-already-used', conflict: rangeStart.conflict }
-                : !previousPage ? { reason: 'previous-page-missing' }
-                  : previousPage.page + 1 !== current.page ? { reason: 'nonadjacent-page' }
-                    : candidate.withinPageDuplicate ? { reason: 'within-page-duplicate', conflict: candidate.withinPageDuplicateConflict }
-                      : tooWide ? { reason: 'recovery-range-too-wide', conflict: rangeStart.conflict } : undefined
+              !previousPage ? { reason: 'previous-page-missing' }
+                : previousPage.page + 1 !== current.page ? { reason: 'nonadjacent-page' }
+                  : candidate.withinPageDuplicate ? { reason: 'within-page-duplicate', conflict: candidate.withinPageDuplicateConflict }
+                    : tooWide ? { reason: 'recovery-range-too-wide', conflict: rangeStart.conflict } : undefined
             pageRecoveryDecision = { trigger: 'duplicate-entry', eligible: !rejection, reason: 'eligible', page: current.page,
               previousPage: previousPage?.page ?? null, recoveryUsed: pageRecoveryUsed, ...rejection }
           }
-          if (pageRecoveryUsed || !previousPage || previousPage.page + 1 !== current.page || candidate?.withinPageDuplicate || tooWide) {
+          if (!previousPage || previousPage.page + 1 !== current.page || candidate?.withinPageDuplicate || tooWide) {
             fail('duplicate-entry', 'duplicate-entry')
           }
           const fromPage = rangeStart.fromPage, toPage = current.page

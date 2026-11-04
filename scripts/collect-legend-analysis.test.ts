@@ -308,16 +308,20 @@ test('stdout report boundary accepts fixed enums and bounded integers and drops 
   assert.deepEqual(known.recheckChangeKinds, ['non-legend-entries', 'metadata'])
 })
 
-test('stdout bounds page recovery success by the single permitted attempt and defaults old reports to zero', () => {
+test('stdout bounds page recovery counters by the unchanged request budget and defaults old reports to zero', () => {
   for (const value of [{}, { pageRecoveryAttemptCount: 0, pageRecoverySuccessCount: 1 },
-    { pageRecoveryAttemptCount: 2, pageRecoverySuccessCount: 1 }]) {
+    { pageRecoveryAttemptCount: 61, pageRecoverySuccessCount: 1 }]) {
     const safe = summarizeLegendAnalysisCaptureReport(value)
     assert.equal(safe.pageRecoveryAttemptCount, 0)
     assert.equal(safe.pageRecoverySuccessCount, 0)
+    assert.equal(Object.hasOwn(safe, 'pageRecoveryRanges'), false)
   }
-  const safe = summarizeLegendAnalysisCaptureReport({ pageRecoveryAttemptCount: 1, pageRecoverySuccessCount: 1 })
-  assert.equal(safe.pageRecoveryAttemptCount, 1)
-  assert.equal(safe.pageRecoverySuccessCount, 1)
+  for (const count of [1, 2, 60]) {
+    const safe = summarizeLegendAnalysisCaptureReport({ pageRecoveryAttemptCount: count, pageRecoverySuccessCount: count })
+    assert.equal(safe.pageRecoveryAttemptCount, count)
+    assert.equal(safe.pageRecoverySuccessCount, count)
+  }
+  assert.equal(summarizeLegendAnalysisCaptureReport({ pageRecoveryAttemptCount: 2, pageRecoverySuccessCount: 3 }).pageRecoverySuccessCount, 0)
 })
 
 test('adjacent page recovery reports its result and never retries a denied recheck', async t => {
@@ -533,6 +537,8 @@ test('range recovery reports validated pages and survives later failures without
     assert.deepEqual(result.report.pageRecoveryRange, expectedRange)
     assert.deepEqual(safe.pageRecoveryRange, expectedRange)
     assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).pageRecoveryRange, expectedRange)
+    assert.deepEqual(safe.pageRecoveryRanges, [expectedRange])
+    assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).pageRecoveryRanges, [expectedRange])
     assert.equal(safe.pageRecoveryAttemptCount, 1)
     assert.equal(safe.pageRecoverySuccessCount, stop === 'range' ? 0 : 1)
     assert.equal(safe.retryCount, stop === 'next-attempt' ? 1 : 0)
@@ -563,6 +569,105 @@ test('range recovery reports validated pages and survives later failures without
   }
 })
 
+test('multiple recoveries retain one record per recovery through later failures and whole-capture retries', async t => {
+  for (const stop of ['none', 'second-range', 'after-second', 'retry-between'] as const) {
+    const data = await fixture(t), pages: number[] = [], triggered = new Set<string>()
+    let wholeAttempt = 1, endRecheck = false, denied = false, profiles = 0
+    data.transport.confirmAct = async () => { data.calls.act++; endRecheck = true }
+    data.transport.fetchPage = async (page, sourceUrl) => {
+      pages.push(page); data.calls.read++
+      if ((stop === 'second-range' && pages.length === 11) || (stop === 'after-second' && pages.length === 14)) {
+        denied = true; throw new LegendAnalysisDomError('http-denied')
+      }
+      const offset = (page - 1) * 20
+      const entries = Array.from({ length: 20 }, (_, index) => ({
+        accountKey: (offset + index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
+        rank: offset + index + 1, masterRating: 2400 - offset - index, isLegend: offset + index < 102,
+        playerName: `Synthetic player ${offset + index + 1}`, playerId: String(offset + index + 1), region: '日本', platform: 'Steam',
+      }))
+      const trigger = `${wholeAttempt}:${page}`
+      if ((page === 3 || (page === 6 && stop !== 'retry-between')) && !triggered.has(trigger)) {
+        triggered.add(trigger)
+        const id = page === 3 ? 10 : 70
+        entries[0].accountKey = id.toString(16).padStart(64, '0')
+        entries[0].playerId = String(id); entries[0].playerName = `Synthetic player ${id}`
+      }
+      if (endRecheck) {
+        endRecheck = false
+        if (stop === 'retry-between' && wholeAttempt === 1) { entries[19].masterRating--; wholeAttempt = 2 }
+      }
+      return { sourceUrl, page, pageSize: 20, totalCount: 800000, from: offset + 1, to: offset + 20,
+        nextPage: page + 1, actId: 'act-13', conditions: { ...LEGEND_ANALYSIS_CONDITIONS },
+        conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries }
+    }
+    data.transport.fetchPlayerRankedMatches = async () => { profiles++; return { ryu: 123 } }
+    data.transport.getDiagnostics = () => ({ requestCount: data.calls.read, lastAttemptedPage: pages.at(-1) ?? null,
+      successfulReadCount: data.calls.read - (denied ? 1 : 0), lastStep: denied ? 'ranking-navigation' : 'complete',
+      lastHttpStatus: denied ? 405 : 200, lastErrorCode: denied ? 'http-denied' : null,
+      humanVerification: { wafHeaderChecked: true, wafAction: denied ? 'captcha' : null, domDetected: denied } })
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
+    const safe = summarizeLegendAnalysisCaptureReport(result.report)
+    const first = { attempt: 1, fromPage: 1, toPage: 3, lastValidatedPage: 3, status: 'succeeded' }
+    const second = stop === 'retry-between' ? { ...first, attempt: 2 }
+      : { attempt: 1, fromPage: 4, toPage: 6, lastValidatedPage: stop === 'second-range' ? 4 : 6,
+        status: stop === 'second-range' ? 'failed' : 'succeeded' }
+    assert.deepEqual(result.report.pageRecoveryRanges, [first, second])
+    assert.deepEqual(safe.pageRecoveryRanges, [first, second])
+    assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).pageRecoveryRanges, [first, second])
+    assert.deepEqual(safe.pageRecoveryRange, second)
+    assert.equal(safe.pageRecoveryAttemptCount, 2)
+    assert.equal(safe.pageRecoverySuccessCount, stop === 'second-range' ? 1 : 2)
+    assert.equal(safe.retryCount, stop === 'retry-between' ? 1 : 0)
+    const expected = stop === 'retry-between'
+      ? [1, 2, 3, 1, 2, 3, 4, 5, 6, 6, 1, 2, 3, 1, 2, 3, 4, 5, 6, 6, 1]
+      : [1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 3, 6, 1].slice(0, stop === 'second-range' ? 11 : stop === 'after-second' ? 14 : 15)
+    assert.deepEqual(pages, expected)
+    assert.equal(safe.requestCount, expected.length)
+    assert.equal(result.succeeded, !denied)
+    assert.equal(profiles, denied ? 0 : 102)
+    assert.doesNotMatch(JSON.stringify(safe), /Synthetic player|accountKey|playerId|playerName|profileUrl|synthetic-secret/)
+    if (denied) {
+      assert.equal(safe.reason, 'access-unavailable'); assert.equal(safe.humanVerification.wafAction, 'captcha')
+      assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json', 'players'])
+      assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+    } else assert.deepEqual(await validateLegendDailyBundle(resolve(data.output, 'public'), true), { datasets: 1, entries: 102 })
+    for (const directory of ['public', 'public/players']) for (const filename of (await readdir(resolve(data.output, directory))).filter(name => name.endsWith('.json'))) {
+      assert.doesNotMatch(await readFile(resolve(data.output, directory, filename), 'utf8'), /pageRecoveryRange|lastValidatedPage|pageRecoveryDecision|attemptFailures/)
+    }
+  }
+})
+
+test('repeated recoveries stop at the existing 120 ranking requests without partial publication or extra requests', async t => {
+  const data = await fixture(t), pages: number[] = [], visited = new Set<number>()
+  data.transport.fetchPage = async (page, sourceUrl) => {
+    pages.push(page); data.calls.read++; assert.ok(data.calls.read <= 120)
+    const offset = (page - 1) * 20
+    const entries = Array.from({ length: 20 }, (_, index) => ({
+      accountKey: (offset + index + 1).toString(16).padStart(64, '0'), characterId: 'ryu',
+      rank: offset + index + 1, masterRating: 2400 - offset - index, isLegend: true,
+    }))
+    if (page > 1 && !visited.has(page)) entries[0].accountKey = offset.toString(16).padStart(64, '0')
+    visited.add(page)
+    return { sourceUrl, page, pageSize: 20, totalCount: 800000, from: offset + 1, to: offset + 20,
+      nextPage: page + 1, actId: 'act-13', conditions: { ...LEGEND_ANALYSIS_CONDITIONS },
+      conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries }
+  }
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
+  const safe = summarizeLegendAnalysisCaptureReport(result.report), expected = [1]
+  for (let page = 2; page <= 31; page++) { expected.push(page, page - 1, page); if (page > 2) expected.push(page - 2) }
+  assert.deepEqual(pages, expected); assert.equal(expected.length, 120)
+  assert.equal(result.succeeded, false); assert.equal(safe.reason, 'request-limit')
+  assert.equal(safe.requestCount, 120); assert.equal(safe.retryCount, 0)
+  assert.equal(safe.pageRecoveryAttemptCount, 30); assert.equal(safe.pageRecoverySuccessCount, 30)
+  const ranges = Array.from({ length: 30 }, (_, index) => ({ attempt: 1, fromPage: index + 1, toPage: index + 2,
+    lastValidatedPage: index + 2, status: 'succeeded' }))
+  assert.deepEqual(safe.pageRecoveryRanges, ranges)
+  assert.deepEqual(safe.pageRecoveryRange, ranges.at(-1))
+  assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).pageRecoveryRanges, ranges)
+  assert.deepEqual(await readdir(resolve(data.output, 'public')), ['index.json'])
+  assert.doesNotMatch(await readFile(resolve(data.output, 'public/index.json'), 'utf8'), /pageRecoveryRange|lastValidatedPage/)
+})
+
 test('stdout range records allow only bounded progress and fixed states while preserving old reports', () => {
   const base = { attempt: 1, fromPage: 3, toPage: 5, lastValidatedPage: 5, status: 'succeeded' }
   for (const range of [base, { ...base, status: 'started', lastValidatedPage: null },
@@ -579,6 +684,41 @@ test('stdout range records allow only bounded progress and fixed states while pr
     const safe = summarizeLegendAnalysisCaptureReport(range === undefined ? {} : { pageRecoveryRange: range })
     assert.equal(Object.hasOwn(safe, 'pageRecoveryRange'), false)
   }
+})
+
+test('stdout rebuilds bounded recovery histories without trusting array iterators, getters or private fields', () => {
+  const first = { attempt: 1, fromPage: 1, toPage: 3, lastValidatedPage: 3, status: 'succeeded' }
+  const second = { attempt: 2, fromPage: 4, toPage: 6, lastValidatedPage: 4, status: 'failed' }
+  const input = { pageRecoveryAttemptCount: 2, pageRecoverySuccessCount: 1, pageRecoveryRange: second,
+    pageRecoveryRanges: [{ ...first, playerId: SECRET, accountKey: SECRET, toJSON: () => SECRET },
+      { ...second, playerName: SECRET, profileUrl: SECRET, raw: [SECRET] }] }
+  const safe = summarizeLegendAnalysisCaptureReport(input)
+  assert.deepEqual(safe.pageRecoveryRanges, [first, second])
+  assert.deepEqual(safe.pageRecoveryRange, second)
+  assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe), safe)
+  assert.doesNotMatch(JSON.stringify(safe), /playerId|playerName|accountKey|profileUrl|raw|toJSON|synthetic-secret/)
+  assert.equal(Object.hasOwn(summarizeLegendAnalysisCaptureReport({ pageRecoveryRange: first }), 'pageRecoveryRanges'), false)
+  assert.equal(summarizeLegendAnalysisCaptureReport({ pageRecoveryRanges: Array(60).fill(first) }).pageRecoveryRanges?.length, 60)
+  const throwingItem = [first]
+  Object.defineProperty(throwingItem, '0', { get() { throw new Error(SECRET) } })
+  const throwingLength = new Proxy([first], { get(target, property, receiver) {
+    if (property === 'length') throw new Error(SECRET)
+    return Reflect.get(target, property, receiver)
+  } })
+  for (const pageRecoveryRanges of [null, {}, [], Array(61).fill(first), [first, { ...second, status: SECRET }],
+    [second, first], throwingItem, throwingLength]) {
+    const invalid = summarizeLegendAnalysisCaptureReport({ ...input, pageRecoveryRanges })
+    assert.equal(Object.hasOwn(invalid, 'pageRecoveryRanges'), false)
+    assert.deepEqual(invalid.pageRecoveryRange, second)
+    assert.equal(JSON.stringify(invalid).includes(SECRET), false)
+  }
+  let iteratorCalls = 0
+  const customIterator = [first]
+  Object.defineProperty(customIterator, Symbol.iterator, { value: function* () {
+    iteratorCalls++; for (let index = 0; index < 100; index++) yield { ...first, playerId: SECRET }
+  } })
+  assert.deepEqual(summarizeLegendAnalysisCaptureReport({ pageRecoveryRanges: customIterator }).pageRecoveryRanges, [first])
+  assert.equal(iteratorCalls, 0)
 })
 
 test('stdout allowlists recovery decisions and preserves legacy failures without optional decision records', () => {
