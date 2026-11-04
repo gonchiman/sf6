@@ -22,7 +22,7 @@ function fixture() {
     steps: index < 2 ? [{ name: index === 0 ? 'Wait for the existing collection' : 'Start and verify this collection',
       status: 'completed', conclusion: index === 0 ? 'success' : 'failure' }] : null,
   }))
-  const first = { ...run(111, '2026-10-31T09:18:52Z', '.github/workflows/sample-survey.yml'), conclusion: 'success' }
+  const first = { ...run(111, '2026-10-31T09:18:52Z', '.github/workflows/sample-survey.yml'), conclusion: 'success' as string | null }
   return { parentRunId: '333', firstRunId: '111', previousParentRunId: '222',
     parents: { total_count: 2, workflow_runs: [structuredClone(previous), current] }, previousParent: previous,
     previousJobs: { total_count: 5, jobs }, childRuns: { total_count: 1, workflow_runs: [first] } }

@@ -8,6 +8,7 @@ import { SampleSurveyReadError, SampleSurveyRetryableReadError } from './lib/sam
 import { createSampleSurveyCheckpointManifest, decryptSampleSurveyCheckpoint, encryptSampleSurveyCheckpoint } from './lib/sample-survey-cloud-checkpoint.ts'
 import type { SampleSurveyCheckpointContext } from './lib/sample-survey-cloud-checkpoint.ts'
 import type { SampleSurveyPlan, SampleSurveyRun } from '../src/types/sampleSurvey.ts'
+import { parseSampleSurveyRun } from '../src/lib/sampleSurvey.ts'
 
 const EPOCH = Date.parse('2026-11-02T00:00:00.000Z'), SOURCE = 'a'.repeat(40), KEY = Buffer.alloc(32, 53).toString('base64')
 const COOKIE = 'synthetic-buckler-session-private-value', TOKEN = 'synthetic-github-private-token'
@@ -38,7 +39,7 @@ test('separate cloud invocations decrypt a fixed production sample and process o
   let clock = EPOCH, sampled = 0, sampling = false, faults = 0, launchCount = 0, closeCount = 0
   const ciphertexts = new Map<string, Buffer>(), checkpoints = new Map<string, SampleSurveyCheckpoint>()
   const contexts: SampleSurveyCheckpointContext[] = [], writes: SampleSurveyRun[] = [], reports: SampleSurveyRun[] = [], retryLogs: string[] = []
-  const browserEnvironments: Record<string, string>[] = []
+  const browserEnvironments: Record<string, string | undefined>[] = []
   const rows = Array.from({ length: 2000 }, (_, i) => ({ accountId: String(8765400000 + i), value: 50000 - i, rankId: 36 }))
   const originalLaunch = chromium.launch
   chromium.launch = async options => {
@@ -74,7 +75,7 @@ test('separate cloud invocations decrypt a fixed production sample and process o
         const encoded = ciphertexts.get(expected.runId)!
         return { checkpoint: decryptSampleSurveyCheckpoint(encoded, secret, expected), manifest: createSampleSurveyCheckpointManifest(encoded) }
       },
-      write: async values => { writes.push(...values); return { datasets: values.length } }, validate: async () => ({ datasets: 1 }),
+      write: async values => { writes.push(...values.map(parseSampleSurveyRun)); return { datasets: values.length } }, validate: async () => ({ datasets: 1 }),
       artifactReady: async () => {}, logReport: report => { reports.push(report) }, logReadRetry: line => { retryLogs.push(line) },
     })
   }

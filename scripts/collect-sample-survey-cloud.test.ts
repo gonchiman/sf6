@@ -47,7 +47,7 @@ test('cloud entry is restricted to hosted Windows manual main workflow and consu
   for (const patch of [{ RUNNER_OS: 'Linux' }, { RUNNER_ENVIRONMENT: 'self-hosted' }, { GITHUB_REF: 'refs/heads/other' },
     { GITHUB_EVENT_NAME: 'schedule' }, { GITHUB_EVENT_NAME: 'pull_request' }, { GITHUB_REPOSITORY: 'other/sf6' },
     { GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/parallel-fetch-test.yml@refs/heads/main' }]) {
-    const env = { ...environment(), ...patch }
+    const env: Record<string, string | undefined> = { ...environment(), ...patch }
     assert.equal(isAllowedSampleSurveyCloudExecution(env), false)
     await assert.rejects(runSampleSurveyCloud({ env, createReader: async () => { throw new Error('must not launch') } }),
       (error: unknown) => error instanceof SampleSurveyCloudError && error.code === 'runner' && !error.message.includes(PRIVATE))
@@ -358,7 +358,7 @@ test('an invocation budget can be shortened without changing the sampling config
 test('missing checkpoint keys and duplicate run attempts fail before launching a browser', async () => {
   for (const patch of [{ SAMPLE_SURVEY_CHECKPOINT_KEY: undefined }, { SAMPLE_SURVEY_CHECKPOINT_KEY: PRIVATE },
     { GITHUB_RUN_ATTEMPT: '2' }, { GITHUB_RUN_ID: '' }, { SAMPLE_SURVEY_RESUME_RUN_ID: '12345' }]) {
-    const env = { ...environment(), ...patch }
+    const env: Record<string, string | undefined> = { ...environment(), ...patch }
     await assert.rejects(runSampleSurveyCloud({ env, now: () => now, createReader: async () => assert.fail('must not launch') }), SampleSurveyCloudError)
     assert.equal(env.SAMPLE_SURVEY_CHECKPOINT_KEY, undefined)
     assert.equal(env.BUCKLER_WEEKLY_SESSION, undefined)
