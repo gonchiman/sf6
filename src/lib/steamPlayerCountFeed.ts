@@ -1,5 +1,5 @@
-import type { SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
-import { getDefaultSteamPlayerCountRange, getSteamPlayerCountJstDate, getSteamPlayerCountUtcDates,
+import type { SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation, SteamPlayerCountRangeSelection } from '../types/steamPlayerCount.ts'
+import { getSteamPlayerCountJstDate, resolveSteamPlayerCountRange, parseSteamPlayerCountRangeSelection,
   parseSteamPlayerCountDateRange, parseSteamPlayerCountDay, parseSteamPlayerCountDayDescriptor, parseSteamPlayerCountManifest } from './steamPlayerCount.ts'
 import type { PublishedDataFeedOptions, PublishedDataPublication } from './publishedDataFeed.ts'
 import { DEFAULT_STEAM_PLAYER_COUNT_GAME, getSteamPlayerCountGame } from './steamPlayerCountGames.ts'
@@ -86,8 +86,8 @@ export function createSteamPlayerCountFeed(options: SteamPlayerCountFeedOptions 
 
   async function loadRange(publication: SteamPlayerCountPublication, range: SteamPlayerCountDateRange): Promise<SteamPlayerCountObservation[]> {
     const manifest = validatePublication(publication), selection = parseSteamPlayerCountDateRange(range)
-    const dates = new Set(getSteamPlayerCountUtcDates(selection))
-    const descriptors = manifest.days.filter(day => dates.has(day.date))
+    const descriptors = manifest.days.filter(day => getSteamPlayerCountJstDate(day.firstObservedAt) <= selection.to
+      && getSteamPlayerCountJstDate(day.lastObservedAt) >= selection.from)
     const days = await Promise.all(descriptors.map(day => loadDay(publication, day)))
     const all = days.flatMap(day => day.observations)
     if (new Set(all.map(item => item.id)).size !== all.length) throw new Error('Steam同時接続数の観測IDが日別ファイル間で重複しています。')
@@ -126,15 +126,18 @@ export interface SteamPlayerCountState {
 }
 
 const sameRange = (a: SteamPlayerCountDateRange | null, b: SteamPlayerCountDateRange | null): boolean => a?.from === b?.from && a?.to === b?.to
-export function initialSteamPlayerCountState(range: SteamPlayerCountDateRange | null = null, now = new Date()): SteamPlayerCountState {
-  return { status: 'loading', publication: null, range: range ? parseSteamPlayerCountDateRange(range) : getDefaultSteamPlayerCountRange(null, now), observations: [], refreshError: false }
+const sameSelection = (a: SteamPlayerCountRangeSelection, b: SteamPlayerCountRangeSelection): boolean =>
+  typeof a === 'string' || typeof b === 'string' ? a === b : sameRange(a, b)
+export function initialSteamPlayerCountState(selection: SteamPlayerCountRangeSelection | null = null, now = new Date()): SteamPlayerCountState {
+  return { status: 'loading', publication: null, range: resolveSteamPlayerCountRange(selection, null, now), observations: [], refreshError: false }
 }
 
 /** Keep a verified range intact if a later refresh is incomplete; selection changes load atomically. */
 export function createSteamPlayerCountController(feed: SteamPlayerCountFeed, onChange: (state: SteamPlayerCountState) => void,
-  initialRange: SteamPlayerCountDateRange | null = null, now: () => Date = () => new Date()) {
-  let desiredRange = initialRange ? parseSteamPlayerCountDateRange(initialRange) : null
-  let state = initialSteamPlayerCountState(desiredRange, now()), active = true
+  initialSelection: SteamPlayerCountRangeSelection | null = null, now: () => Date = () => new Date()) {
+  let selection = parseSteamPlayerCountRangeSelection(initialSelection)
+  let state = initialSteamPlayerCountState(selection, now()), active = true
+  let verified: SteamPlayerCountState | null = null
   let pending: Promise<void> | null = null
   let selectionVersion = 0
   function update(next: SteamPlayerCountState) {
@@ -142,37 +145,54 @@ export function createSteamPlayerCountController(feed: SteamPlayerCountFeed, onC
     state = next
     onChange(state)
   }
+  function resolvedRange(publication = state.publication): SteamPlayerCountDateRange {
+    return resolveSteamPlayerCountRange(selection, publication?.manifest ?? null, now())
+  }
+  function alignRange(publication = state.publication): SteamPlayerCountDateRange {
+    const range = resolvedRange(publication)
+    if (!sameRange(state.range, range)) update({ ...state, status: 'loading', range, observations: [], refreshError: false })
+    return range
+  }
   async function read(): Promise<void> {
-    let attempted: { publication: SteamPlayerCountPublication; range: SteamPlayerCountDateRange } | null = null
+    let attempted: SteamPlayerCountPublication | null = null
     try {
       const next = await feed.loadPublication()
       if (!active) return
       const accepted = shouldAcceptSteamPlayerCountPublication(state.publication, next)
       const publication = accepted ? next : state.publication!
+      attempted = publication
       for (;;) {
         const version = selectionVersion
-        const range = desiredRange ?? getDefaultSteamPlayerCountRange(publication.manifest, now())
-        attempted = { publication, range }
+        const range = alignRange(publication)
         let observations: SteamPlayerCountObservation[]
         try { observations = await feed.loadRange(publication, range) }
-        catch (error) { if (version !== selectionVersion && active) continue; throw error }
-        if (!active) return
-        if (version !== selectionVersion) continue
-        if (state.status === 'ready' && sameRange(state.range, range)) {
-          const ids = new Map(observations.map(item => [item.id, item]))
-          if (state.observations.some(item => JSON.stringify(ids.get(item.id)) !== JSON.stringify(item))) throw new Error('観測履歴が欠落または変更されています。')
+        catch (error) {
+          if (active && (version !== selectionVersion || !sameRange(range, resolvedRange(publication)))) continue
+          throw error
         }
-        update({ status: 'ready', publication, range, observations, refreshError: !accepted })
+        if (!active) return
+        if (version !== selectionVersion || !sameRange(range, resolvedRange(publication))) continue
+        if (verified) {
+          const ids = new Map(observations.map(item => [item.id, item]))
+          if (verified.observations.some(item => {
+            const date = getSteamPlayerCountJstDate(item.observedAt)
+            return date >= range.from && date <= range.to && JSON.stringify(ids.get(item.id)) !== JSON.stringify(item)
+          })) throw new Error('観測履歴が欠落または変更されています。')
+        }
+        verified = { status: 'ready', publication, range, observations, refreshError: !accepted }
+        update(verified)
         break
       }
     } catch {
-      if (active) update(state.status === 'ready' ? { ...state, refreshError: true } : {
-        ...state, ...(attempted ?? {}), status: 'error', observations: [], refreshError: false,
+      const publication = attempted ?? state.publication, range = resolvedRange(publication)
+      if (active) update(state.status === 'ready' && sameRange(state.range, range) ? { ...state, refreshError: true } : {
+        status: 'error', publication, range, observations: [], refreshError: false,
       })
     }
   }
   function refresh(): Promise<void> {
     if (!active) return Promise.resolve()
+    alignRange()
     if (pending) return pending
     if (state.status === 'error') update({ ...state, status: 'loading' })
     const request = read().finally(() => { if (pending === request) pending = null })
@@ -181,13 +201,14 @@ export function createSteamPlayerCountController(feed: SteamPlayerCountFeed, onC
   }
   return {
     getState: () => state,
+    getSelection: () => selection,
     refresh,
-    setRange(range: SteamPlayerCountDateRange | null) {
-      const selection = range ? parseSteamPlayerCountDateRange(range) : null
-      if (sameRange(selection, desiredRange)) return
-      desiredRange = selection
+    setRange(value: SteamPlayerCountRangeSelection | null) {
+      const next = parseSteamPlayerCountRangeSelection(value)
+      if (sameSelection(next, selection)) return
+      selection = next
       selectionVersion++
-      update({ ...state, status: 'loading', range: selection ?? getDefaultSteamPlayerCountRange(state.publication?.manifest ?? null, now()), observations: [], refreshError: false })
+      update({ ...state, status: 'loading', range: resolvedRange(), observations: [], refreshError: false })
       void refresh()
     },
     dispose() { active = false },

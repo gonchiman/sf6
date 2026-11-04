@@ -36,8 +36,13 @@ test('the page defaults to SF6 with all five game options available during loadi
   assert.equal((selector.match(/<option /g) ?? []).length, 5)
   assert.match(selector, /<option value="1364780" selected="">Street Fighter 6<\/option>/)
   assert.match(html, /Street Fighter 6の観測データを読み込み中/)
-  assert.match(html, /aria-label="開始日"/)
-  assert.match(html, /aria-label="終了日"/)
+  assert.doesNotMatch(html, /aria-label="開始日"|aria-label="終了日"/)
+  assert.match(html, /role="group" aria-label="期間"/)
+  for (const label of ['今日', '昨日', '直近7日', '直近30日', '全期間', '日付指定']) {
+    assert.match(html, new RegExp(`<button[^>]*aria-pressed="${label === '直近7日'}"[^>]*>${label}</button>`))
+  }
+  assert.match(html, /<dt>表示期間<\/dt>/)
+  assert.match(html, /<dt>データ範囲<\/dt><dd>読込中<\/dd>/)
   assert.match(html, /aria-label="曜日"/)
 })
 

@@ -1,6 +1,6 @@
 import type {
   SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountDayType,
-  SteamPlayerCountHourlyRow, SteamPlayerCountManifest, SteamPlayerCountObservation,
+  SteamPlayerCountHourlyRow, SteamPlayerCountManifest, SteamPlayerCountObservation, SteamPlayerCountRangeSelection,
 } from '../types/steamPlayerCount.ts'
 import { getSteamPlayerCountGame } from './steamPlayerCountGames.ts'
 
@@ -119,15 +119,47 @@ function matchesDayType(date: string, dayType: SteamPlayerCountDayType): boolean
   return dayType === 'all' || (dayType === 'weekend' ? weekend : !weekend)
 }
 
-/** Use observed bounds, not the UTC file names, when choosing a JST calendar range. */
+export function parseSteamPlayerCountRangeSelection(selection: SteamPlayerCountRangeSelection | null): SteamPlayerCountRangeSelection {
+  if (selection === null) return '7d'
+  if (typeof selection !== 'string') return parseSteamPlayerCountDateRange(selection)
+  if (!['today', 'yesterday', '7d', '30d', 'all'].includes(selection)) invalid('period')
+  return selection
+}
+
+function observedRange(manifest: SteamPlayerCountManifest | null): SteamPlayerCountDateRange | null {
+  if (!manifest?.days.length) return null
+  let first = manifest.days[0].firstObservedAt, last = manifest.days[0].lastObservedAt
+  for (const day of manifest.days) {
+    if (day.firstObservedAt < first) first = day.firstObservedAt
+    if (day.lastObservedAt > last) last = day.lastObservedAt
+  }
+  return { from: getSteamPlayerCountJstDate(first), to: getSteamPlayerCountJstDate(last) }
+}
+
+/** Calendar presets are shared across games; only "all" follows observed JST bounds. */
+export function resolveSteamPlayerCountRange(selection: SteamPlayerCountRangeSelection | null,
+  manifest: SteamPlayerCountManifest | null = null, now = new Date()): SteamPlayerCountDateRange {
+  const parsed = parseSteamPlayerCountRangeSelection(selection)
+  if (typeof parsed !== 'string') return parsed
+  const today = getSteamPlayerCountJstDate(now)
+  if (parsed === 'all') return observedRange(manifest) ?? { from: today, to: today }
+  if (parsed === 'yesterday') { const yesterday = shiftDate(today, -1); return { from: yesterday, to: yesterday } }
+  return { from: shiftDate(today, parsed === '7d' ? -6 : parsed === '30d' ? -29 : 0), to: today }
+}
+
 export function getDefaultSteamPlayerCountRange(manifest: SteamPlayerCountManifest | null, now = new Date()): SteamPlayerCountDateRange {
-  const today = getSteamPlayerCountJstDate(now), yesterday = shiftDate(today, -1)
-  const bounds = manifest?.days.flatMap(day => [getSteamPlayerCountJstDate(day.firstObservedAt), getSteamPlayerCountJstDate(day.lastObservedAt)]).sort() ?? []
-  if (!bounds.length) return { from: shiftDate(yesterday, -13), to: yesterday }
-  const first = bounds[0], last = bounds.at(-1)!
-  if (first === today) return { from: today, to: today }
-  const to = last < yesterday ? last : yesterday
-  return { from: first > shiftDate(to, -13) ? first : shiftDate(to, -13), to }
+  return resolveSteamPlayerCountRange('7d', manifest, now)
+}
+
+/** Keep the selected dates visible, but do not count days before collection began or after today. */
+export function getSteamPlayerCountComparisonRange(range: SteamPlayerCountDateRange,
+  manifest: SteamPlayerCountManifest | null, now = new Date()): SteamPlayerCountDateRange | null {
+  const selected = parseSteamPlayerCountDateRange(range), observed = observedRange(manifest)
+  if (!observed) return null
+  const today = getSteamPlayerCountJstDate(now)
+  const from = selected.from > observed.from ? selected.from : observed.from
+  const to = selected.to < today ? selected.to : today
+  return from <= to ? { from, to } : null
 }
 
 /** The request schedule does not determine a slot: only the actual observation time does. */
@@ -148,7 +180,8 @@ export function filterSteamPlayerCountObservations(observations: readonly SteamP
 
 /** Each complete date/hour contributes one mean; missing slots never become zero. */
 export function buildSteamPlayerCountHourlyComparison(observations: readonly SteamPlayerCountObservation[],
-  range: SteamPlayerCountDateRange, dayType: SteamPlayerCountDayType = 'all', now = new Date()): SteamPlayerCountHourlyRow[] {
+  range: SteamPlayerCountDateRange | null, dayType: SteamPlayerCountDayType = 'all', now = new Date()): SteamPlayerCountHourlyRow[] {
+  if (range === null) return Array.from({ length: 24 }, (_, hour) => ({ hour, mean: null, validDays: 0, totalDays: 0, observedSlots: 0, expectedSlots: 0 }))
   const { from, to } = parseSteamPlayerCountDateRange(range), today = getSteamPlayerCountJstDate(now)
   const dates: string[] = []
   for (let date = from; date <= to && date <= today; date = shiftDate(date, 1)) if (matchesDayType(date, dayType)) dates.push(date)
