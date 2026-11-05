@@ -9,8 +9,8 @@ import { collectLegendAnalysisDataset, LEGEND_ANALYSIS_COLLECTION_ERROR_CODES, L
   LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS, LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
 import type { LegendAnalysisCollectionErrorCode, LegendAnalysisCollectionPhase, LegendAnalysisPage,
   LegendAnalysisRecheckChangeKind, LegendAnalysisValidationCheck, LegendAnalysisVerifiedPlayer, LegendAnalysisAttemptFailure } from './lib/legend-analysis-collector.ts'
-import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './lib/legend-order-diagnostics.ts'
-import type { LegendOrderRecheck, LegendPageRecoveryRange } from './lib/legend-order-diagnostics.ts'
+import { sanitizeLegendEndpointRecheck, sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './lib/legend-order-diagnostics.ts'
+import type { LegendEndpointRecheck, LegendOrderRecheck, LegendPageRecoveryRange } from './lib/legend-order-diagnostics.ts'
 import { createLegendAnalysisPageReader, LEGEND_ANALYSIS_CONDITIONS, legendAnalysisPageUrl, LegendAnalysisDomError, sanitizeLegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import type { LegendAnalysisDomErrorCode, LegendAnalysisReaderStep, LegendClickFailure, LegendClickHit, LegendClickObservation, LegendRosterDiagnostics } from './lib/legend-analysis-dom.ts'
 import { checkLegendAnalysisParents, LEGEND_ANALYSIS_JSON_LIMIT, legendAnalysisFileInfo } from './lib/legend-analysis-files.ts'
@@ -59,6 +59,7 @@ export interface LegendAnalysisCaptureReport {
   pageRecoverySuccessCount?: number
   pageRecoveryRange?: LegendPageRecoveryRange
   pageRecoveryRanges?: LegendPageRecoveryRange[]
+  endpointRechecks?: LegendEndpointRecheck[]
   /** One-based whole-capture attempt; null until normal collection starts. */
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -99,6 +100,7 @@ export interface LegendAnalysisSafeCaptureReport {
   pageRecoverySuccessCount: number
   pageRecoveryRange?: LegendPageRecoveryRange
   pageRecoveryRanges?: LegendPageRecoveryRange[]
+  endpointRechecks?: LegendEndpointRecheck[]
   retryCount: number
   captureAttempt: number | null
   collectionPhase: LegendAnalysisCollectionPhase
@@ -131,6 +133,22 @@ function safePageRecoveryRanges(value: unknown): LegendPageRecoveryRange[] | und
       ranges.push(range)
     }
     return ranges
+  } catch { return undefined }
+}
+/** At most two endpoint observations per whole-capture attempt; copy only validated fields. */
+function safeEndpointRechecks(value: unknown): LegendEndpointRecheck[] | undefined {
+  try {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 6) return undefined
+    const records: LegendEndpointRecheck[] = []
+    const seen = new Set<string>()
+    for (let index = 0; index < value.length; index++) {
+      const item = sanitizeLegendEndpointRecheck(value[index])
+      if (!item || item.attempt < (records.at(-1)?.attempt ?? 1)) return undefined
+      const key = `${item.attempt}:${item.phase}`
+      if (seen.has(key)) return undefined
+      seen.add(key); records.push(item)
+    }
+    return records
   } catch { return undefined }
 }
 /** Bounded enum/scalar-only history; no error text, player identities or URLs can cross this boundary. */
@@ -170,6 +188,7 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
   const pageRecoveryAttemptCount = bounded(input.pageRecoveryAttemptCount, 0, LEGEND_MAX_PAGE_RECOVERIES) ? input.pageRecoveryAttemptCount : 0
   const pageRecoveryRange = sanitizeLegendPageRecoveryRange(input.pageRecoveryRange)
   const pageRecoveryRanges = safePageRecoveryRanges(input.pageRecoveryRanges)
+  const endpointRechecks = safeEndpointRechecks(input.endpointRechecks)
   const recheckChangeKinds = Array.isArray(input.recheckChangeKinds) && input.recheckChangeKinds.length >= 1 && input.recheckChangeKinds.length <= 3
     && new Set(input.recheckChangeKinds).size === input.recheckChangeKinds.length
     && input.recheckChangeKinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind as LegendAnalysisRecheckChangeKind))
@@ -185,6 +204,7 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     pageRecoverySuccessCount: bounded(input.pageRecoverySuccessCount, 0, pageRecoveryAttemptCount) ? input.pageRecoverySuccessCount : 0,
     ...(pageRecoveryRange ? { pageRecoveryRange } : {}),
     ...(pageRecoveryRanges ? { pageRecoveryRanges } : {}),
+    ...(endpointRechecks ? { endpointRechecks } : {}),
     retryCount: bounded(input.retryCount, 0, 2) ? input.retryCount : 0,
     captureAttempt: bounded(input.captureAttempt, 1, 3) ? input.captureAttempt : null,
     collectionPhase: LEGEND_ANALYSIS_COLLECTION_PHASES.includes(input.collectionPhase as LegendAnalysisCollectionPhase) ? input.collectionPhase as LegendAnalysisCollectionPhase : 'preparation',
@@ -309,6 +329,10 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
         }
       },
       onAttemptFailure: failure => { report.attemptFailures = safeAttemptFailures([...(report.attemptFailures ?? []), failure]) },
+      onEndpointRecheck: value => {
+        const records = safeEndpointRechecks([...(report.endpointRechecks ?? []), value])
+        if (records) report.endpointRechecks = records
+      },
       onProgress: value => {
         if (LEGEND_ANALYSIS_COLLECTION_PHASES.includes(value.phase)) report.collectionPhase = value.phase
         if (Number.isSafeInteger(value.attempt) && value.attempt >= 1 && value.attempt <= 3) report.captureAttempt = value.attempt

@@ -219,6 +219,68 @@ test('aggregate-only collection never calls player profile enrichment', async t 
   assert.equal((await readdir(resolve(data.output, 'public'))).includes('players'), false)
 })
 
+test('normal endpoint updates complete once and retain the validated listing values in both published datasets', async t => {
+  for (const includePlayers of [false, true]) {
+    const data = await fixture(t)
+    if (includePlayers) withPlayers(data.transport)
+    const read = data.transport.fetchPage
+    data.transport.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.calls.read > 1) value.entries[0].masterRating += data.calls.read
+      if (includePlayers && data.calls.read === 3) value.entries[0].playerName = 'Updated display name'
+      return value
+    }
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers },
+      { now, launch: async () => data.transport })
+    assert.equal(result.succeeded, true)
+    assert.equal(data.calls.read, 3)
+    assert.equal(result.report.retryCount, 0)
+    const safe = summarizeLegendAnalysisCaptureReport(result.report)
+    assert.deepEqual(safe.endpointRechecks, [
+      { attempt: 1, phase: 'end-recheck', page: 1, status: 'same-members-updated', changeKinds: ['master-rating'] },
+      { attempt: 1, phase: 'start-recheck', page: 1, status: 'same-members-updated', changeKinds: includePlayers ? ['master-rating', 'player-labels'] : ['master-rating'] },
+    ])
+    assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe).endpointRechecks, safe.endpointRechecks)
+    assert.doesNotMatch(JSON.stringify(safe), /Synthetic player|Updated display name|accountKey|playerId|synthetic-secret/)
+    const aggregate = JSON.parse(await readFile(resolve(data.output, 'public', `${safe.datasetId}.json`), 'utf8'))
+    assert.equal(aggregate.mr.max, 2400)
+    const directories = includePlayers ? ['public', 'public/players'] : ['public']
+    for (const directory of directories) for (const filename of (await readdir(resolve(data.output, directory))).filter(name => name.endsWith('.json'))) {
+      assert.doesNotMatch(await readFile(resolve(data.output, directory, filename), 'utf8'), /endpointRechecks|same-members-updated|Updated display name/)
+    }
+    if (includePlayers) {
+      const players = JSON.parse(await readFile(resolve(data.output, 'public/players', `${safe.datasetId}.json`), 'utf8'))
+      assert.equal(players.players[0].masterRating, 2400)
+      assert.equal(players.players[0].playerName, 'Synthetic player 0')
+      assert.equal(players.players[0].rankedMatchCount, 123)
+      await validateLegendDailyBundle(resolve(data.output, 'public'), true)
+    }
+  }
+})
+
+test('stdout endpoint diagnostics are bounded, copied and excluded from legacy reports', () => {
+  const end = { attempt: 1, phase: 'end-recheck', page: 26, status: 'unchanged', changeKinds: [] as string[] }
+  const start = { attempt: 1, phase: 'start-recheck', page: 1, status: 'same-members-updated', changeKinds: ['master-rating', 'row-order'] }
+  const dirty = [Object.assign({ ...end }, { accountKey: SECRET, toJSON: () => SECRET }),
+    Object.assign({ ...start, changeKinds: Object.assign([...start.changeKinds], { toJSON: () => SECRET }) }, { playerId: SECRET })]
+  Object.assign(dirty, { toJSON: () => SECRET })
+  const safe = summarizeLegendAnalysisCaptureReport({ endpointRechecks: dirty })
+  assert.deepEqual(safe.endpointRechecks, [end, start])
+  assert.deepEqual(summarizeLegendAnalysisCaptureReport(safe), safe)
+  assert.doesNotMatch(JSON.stringify(safe), /accountKey|playerId|toJSON|synthetic-secret/)
+  dirty[1].changeKinds.push('metadata')
+  assert.deepEqual(safe.endpointRechecks, [end, start])
+  const maximum = [1, 2, 3].flatMap(attempt => [{ ...end, attempt }, { ...start, attempt }])
+  assert.equal(summarizeLegendAnalysisCaptureReport({ endpointRechecks: maximum }).endpointRechecks?.length, 6)
+  for (const endpointRechecks of [undefined, null, [], {}, [...maximum, end], [end, end], [{ ...end, attempt: 2 }, start],
+    [{ ...start, status: SECRET }], [{ ...start, changeKinds: ['membership'] }]]) {
+    assert.equal(Object.hasOwn(summarizeLegendAnalysisCaptureReport({ endpointRechecks }), 'endpointRechecks'), false)
+  }
+  const throwing: unknown[] = [end]
+  Object.defineProperty(throwing, '0', { get() { throw new Error(SECRET) } })
+  assert.equal(summarizeLegendAnalysisCaptureReport({ endpointRechecks: throwing }).endpointRechecks, undefined)
+})
+
 test('failed close suppresses completed dataset; an existing staging root is refused', async t => {
   const data = await fixture(t)
   data.transport.close = async () => { throw new Error(SECRET) }
@@ -238,7 +300,7 @@ test('a whole-capture retry followed by HTTP 405 retains its retry count and pub
   failed.transport.fetchPage = async (page, url) => {
     if (failed.calls.read === 2) { failed.calls.read++; throw new LegendAnalysisDomError('http-error') }
     const result = await originalRead(page, url)
-    if (failed.calls.read === 2) result.entries[0].masterRating++
+    if (failed.calls.read === 2) result.entries[0].accountKey = 'f'.repeat(64)
     return result
   }
   failed.transport.getDiagnostics = () => ({ requestCount: failed.calls.read, lastHttpStatus: 405, lastErrorCode: 'http-error', lastStep: 'ranking-navigation',
@@ -541,7 +603,7 @@ test('range recovery reports validated pages and survives later failures without
         entries[0].accountKey = (50).toString(16).padStart(64, '0')
         entries[0].playerId = '50'; entries[0].playerName = 'Synthetic player 50'
       }
-      if (stop === 'next-attempt' && pages.length === 10) entries[19].masterRating--
+      if (stop === 'next-attempt' && pages.length === 10) entries[19].accountKey = 'f'.repeat(64)
       return { sourceUrl, page, pageSize: 20, totalCount: 800000, from: offset + 1, to: offset + 20,
         nextPage: page + 1, actId: 'act-13', conditions: { ...LEGEND_ANALYSIS_CONDITIONS },
         conditionsConfirmed: true, actConfirmed: true, rosterConfirmed: true, entries }
@@ -615,7 +677,7 @@ test('multiple recoveries retain one record per recovery through later failures 
       }
       if (endRecheck) {
         endRecheck = false
-        if (stop === 'retry-between' && wholeAttempt === 1) { entries[19].masterRating--; wholeAttempt = 2 }
+        if (stop === 'retry-between' && wholeAttempt === 1) { entries[19].accountKey = 'f'.repeat(64); wholeAttempt = 2 }
       }
       return { sourceUrl, page, pageSize: 20, totalCount: 800000, from: offset + 1, to: offset + 20,
         nextPage: page + 1, actId: 'act-13', conditions: { ...LEGEND_ANALYSIS_CONDITIONS },

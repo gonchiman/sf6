@@ -1,7 +1,7 @@
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS, parseLegendAnalysisDataset, summarizeLegendMr } from '../../src/lib/legendAnalysis.ts'
 import type { LegendAnalysisConditions, LegendAnalysisDataset, LegendMembershipRule } from '../../src/types/legendAnalysis.ts'
-import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './legend-order-diagnostics.ts'
-import type { LegendMissingMemberDetail, LegendOrderDiagnostic, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryDecision, LegendPageRecoveryIssue, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
+import { sanitizeLegendEndpointRecheck, sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './legend-order-diagnostics.ts'
+import type { LegendEndpointRecheck, LegendMissingMemberDetail, LegendOrderDiagnostic, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryDecision, LegendPageRecoveryIssue, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
 
 /** Private transient row. Salted account keys are never persisted. */
 export interface LegendAnalysisEntry {
@@ -117,6 +117,8 @@ export interface CollectLegendAnalysisOptions {
   /** Every bounded page-range recovery shares the collection's request budget; fixed states only, never row values. */
   onPageRecovery?: (state: 'started' | 'succeeded') => void
   onPageRecoveryRange?: (range: LegendPageRecoveryRange) => void
+  /** Endpoint membership checks expose fixed classifications only, never private rows or identifiers. */
+  onEndpointRecheck?: (value: LegendEndpointRecheck) => void
   onProgress?: (progress: LegendAnalysisCollectionProgress) => void
   /** Opt-in projection after complete validation; never receives account keys or non-Legend rows. */
   onVerifiedPlayers?: (players: readonly LegendAnalysisVerifiedPlayer[]) => void
@@ -588,14 +590,61 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
       }
       const { accepted, boundary } = prefix
       if (!accepted.length) fail('evidence-unconfirmed', 'legend-presence')
-      // Re-read the last observed page and then the start; comparison includes every private row.
+      const recheckEndpoint = async (before: LegendAnalysisPage, phase: LegendEndpointRecheck['phase'], requireTerminal = false): Promise<void> => {
+        const report = (status: LegendEndpointRecheck['status'], changeKinds: LegendEndpointRecheck['changeKinds']): void => {
+          const safe = sanitizeLegendEndpointRecheck({ attempt: captureAttempt, phase, page: before.page, status, changeKinds })
+          try { if (safe) options.onEndpointRecheck?.(safe) } catch { /* Diagnostics cannot change collection acceptance. */ }
+        }
+        let after: LegendAnalysisPage
+        try { after = await read(before.page, phase) } catch (error) {
+          // Transport/authentication failures keep their original classification; a malformed returned page is rejected here.
+          if (error instanceof LegendAnalysisCollectionError && ['source-changed', 'evidence-unconfirmed'].includes(error.code)) {
+            report('rejected', ['invalid-page'])
+          }
+          throw error
+        }
+        const changes = new Set<LegendEndpointRecheck['changeKinds'][number]>()
+        const priorByKey = new Map(before.entries.map(entry => [entryKey(entry), entry]))
+        const afterByKey = new Map(after.entries.map(entry => [entryKey(entry), entry]))
+        if (priorByKey.size !== afterByKey.size || [...priorByKey].some(([key, entry]) =>
+          !afterByKey.has(key) || afterByKey.get(key)!.playerId !== entry.playerId)) changes.add('membership')
+        for (const entry of after.entries) {
+          const prior = priorByKey.get(entryKey(entry))
+          if (!prior) continue
+          if (prior.rank !== entry.rank) changes.add('rank')
+          if (prior.masterRating !== entry.masterRating) changes.add('master-rating')
+          if (prior.playerName !== entry.playerName || prior.region !== entry.region || prior.platform !== entry.platform) changes.add('player-labels')
+          if (prior.isLegend !== entry.isLegend) changes.add('legend-status')
+        }
+        if (!equal(before.entries.map(entryKey), after.entries.map(entryKey))) changes.add('row-order')
+        if (!samePageMetadata(before, after) || requireTerminal && after.nextPage !== null) changes.add('metadata')
+        if (changes.has('metadata')) {
+          report('rejected', [...changes])
+          if (requireTerminal && after.nextPage !== null) fail('source-changed', 'terminal-coverage', ['metadata'])
+          fail('source-changed', phase, recheckChanges(before, after))
+        }
+        // Reuse full per-page validation without comparing newer values to an older neighboring page.
+        // Its diagnostic side effect belongs to listing failures, not final endpoint observations.
+        const previousOrderFailure = orderFailure
+        try {
+          const candidate = inspect(after, prefixes.get(0)!)
+          if (candidate.duplicate) fail('duplicate-entry', 'duplicate-entry')
+        } catch (error) {
+          changes.add('invalid-page'); report('rejected', [...changes]); throw error
+        } finally { orderFailure = previousOrderFailure }
+        if (changes.has('membership') || changes.has('legend-status')) {
+          report('rejected', [...changes])
+          fail('source-changed', phase, recheckChanges(before, after))
+        }
+        report(changes.size ? 'same-members-updated' : 'unchanged', [...changes])
+        // Keep the already validated capture, including all original ranks/MR and labels. Mixing newer
+        // endpoint values with older middle pages could manufacture an ordering inconsistency.
+      }
+      // Re-read all rows at both endpoints. Membership must persist; valid value updates may occur during capture.
       progress('act-recheck', null)
       await options.confirmAct?.()
-      const lastAgain = await read(current.page, 'end-recheck')
-      if (!equal(stablePage(current), stablePage(lastAgain))) fail('source-changed', 'end-recheck', recheckChanges(current, lastAgain))
-      if (!boundary && lastAgain.nextPage !== null) fail('source-changed', 'terminal-coverage', ['metadata'])
-      const firstAgain = await read(1, 'start-recheck')
-      if (!equal(stablePage(first), stablePage(firstAgain))) fail('source-changed', 'start-recheck', recheckChanges(first, firstAgain))
+      await recheckEndpoint(current, 'end-recheck', !boundary)
+      await recheckEndpoint(first, 'start-recheck')
       const endedAt = clock()
       if (Date.parse(endedAt) < Date.parse(startedAt)) fail('configuration-invalid', 'capture-clock')
       const dataset = parseLegendAnalysisDataset({

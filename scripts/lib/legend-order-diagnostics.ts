@@ -61,6 +61,15 @@ export interface LegendPageRecoveryRange {
   status: 'started' | 'succeeded' | 'failed'
   issues?: LegendPageRecoveryIssue[]
 }
+/** Endpoint comparisons disclose only the class of change, never player identities or values. */
+export interface LegendEndpointRecheck {
+  attempt: number
+  phase: 'start-recheck' | 'end-recheck'
+  page: number
+  status: 'unchanged' | 'same-members-updated' | 'rejected'
+  changeKinds: Array<'rank' | 'master-rating' | 'player-labels' | 'row-order'
+    | 'membership' | 'legend-status' | 'metadata' | 'invalid-page'>
+}
 export type LegendOrderRecheck = { status: 'failed' } | { status: 'unavailable'; elapsedMs: number } | {
   status: 'observed'
   elapsedMs: number
@@ -93,6 +102,33 @@ function position(value: unknown): LegendOrderPosition | undefined {
   const { page, rowIndex } = value
   if (!integer(page, 1, 1000000) || !integer(rowIndex, 1, 20)) return undefined
   return { page, rowIndex, ...numeric }
+}
+
+/** Copy the bounded enum array without consulting supplied iterators or serializers. */
+export function sanitizeLegendEndpointRecheck(value: unknown): LegendEndpointRecheck | undefined {
+  try {
+    if (!record(value)) return undefined
+    const { attempt, phase, page, status, changeKinds: rawKinds } = value
+    if (!integer(attempt, 1, 3) || !integer(page, 1, 1000000)
+      || (phase !== 'start-recheck' && phase !== 'end-recheck') || phase === 'start-recheck' && page !== 1
+      || (status !== 'unchanged' && status !== 'same-members-updated' && status !== 'rejected')
+      || !Array.isArray(rawKinds)) return undefined
+    const length = rawKinds.length
+    if (!integer(length, 0, 8)) return undefined
+    const changeKinds: LegendEndpointRecheck['changeKinds'] = []
+    let structuralChange = false
+    for (let index = 0; index < length; index++) {
+      const kind = rawKinds[index]
+      if (typeof kind !== 'string' || !['rank', 'master-rating', 'player-labels', 'row-order',
+        'membership', 'legend-status', 'metadata', 'invalid-page'].includes(kind)
+        || changeKinds.includes(kind as LegendEndpointRecheck['changeKinds'][number])) return undefined
+      if (['membership', 'legend-status', 'metadata', 'invalid-page'].includes(kind)) structuralChange = true
+      changeKinds.push(kind as LegendEndpointRecheck['changeKinds'][number])
+    }
+    if (status === 'unchanged' ? length !== 0 : length === 0
+      || (status === 'same-members-updated' ? structuralChange : !structuralChange)) return undefined
+    return { attempt, phase, page, status, changeKinds }
+  } catch { return undefined }
 }
 
 /** Fixed eligibility reason and numeric conflict only; identity lookup maps never leave the collector. */

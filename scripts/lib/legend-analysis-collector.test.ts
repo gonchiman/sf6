@@ -4,14 +4,14 @@ import { LEGEND_ANALYSIS_SOURCE } from '../../src/lib/legendAnalysis.ts'
 import { collectLegendAnalysisDataset, LegendAnalysisCollectionError } from './legend-analysis-collector.ts'
 import type { CollectLegendAnalysisOptions, LegendAnalysisAttemptFailure, LegendAnalysisEntry, LegendAnalysisPage } from './legend-analysis-collector.ts'
 import { LEGEND_ANALYSIS_CONDITIONS, LegendAnalysisDomError, legendAnalysisPageUrl } from './legend-analysis-dom.ts'
-import type { LegendMissingMemberDetail, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
+import type { LegendEndpointRecheck, LegendMissingMemberDetail, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
 
 const absentMember = (firstSeen: LegendOrderPosition, firstSeenSource: LegendMissingMemberDetail['firstSeenSource'],
   lastSeen = firstSeen, observations = 1): LegendMissingMemberDetail => ({ firstSeen, lastSeen, firstSeenSource, observations,
   accountPresence: 'absent-from-range', sameAccountRowsCount: 0, sameAccountPositions: [] })
 
 function fixture(rows?: LegendAnalysisEntry[], pageSize = 2) {
-  const values = rows ?? Array.from({ length: 4 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
+  const values: LegendAnalysisEntry[] = rows ?? Array.from({ length: 4 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
     characterId: index % 2 ? 'ken' : 'ryu', rank: index + 1, masterRating: 2400 - index, isLegend: index < 2 }))
   const requested: number[] = []
   let actChecks = 0
@@ -38,11 +38,17 @@ function adjacentFixture() {
 function overlapWith(entry: LegendAnalysisEntry, original: LegendAnalysisEntry): void {
   entry.accountKey = original.accountKey; entry.characterId = original.characterId
 }
+function replaceListedMember(entry: LegendAnalysisEntry): void {
+  entry.accountKey = 'f'.repeat(64)
+  if (entry.playerId !== undefined) entry.playerId = '999'
+}
 
 test('complete capture aggregates account-character entries and rechecks both endpoints', async () => {
   const data = fixture()
   const progress: Array<{ phase: string; attempt: number; page: number | null }> = []
+  const endpoints: LegendEndpointRecheck[] = []
   data.options.onProgress = value => { progress.push(value) }
+  data.options.onEndpointRecheck = value => { endpoints.push(value) }
   // A single account may legitimately have different listed characters.
   data.values[1].accountKey = data.values[0].accountKey
   const result = await collectLegendAnalysisDataset(data.options)
@@ -58,6 +64,162 @@ test('complete capture aggregates account-character entries and rechecks both en
   ])
   assert.equal(JSON.stringify(result).includes('accountKey'), false)
   assert.equal(JSON.stringify(result).includes(data.values[0].accountKey), false)
+  assert.deepEqual(endpoints, [
+    { attempt: 1, phase: 'end-recheck', page: 2, status: 'unchanged', changeKinds: [] },
+    { attempt: 1, phase: 'start-recheck', page: 1, status: 'unchanged', changeKinds: [] },
+  ])
+})
+
+test('endpoint value and label updates keep the complete validated capture without retry or mixing observations', async () => {
+  for (const target of [1, 2]) for (const kind of ['rank', 'master-rating', 'player-labels'] as const) {
+    const data = fixture(), read = data.options.fetchPage, endpoints: LegendEndpointRecheck[] = []
+    data.values.forEach((entry, index) => Object.assign(entry, { playerName: `Original ${index}`, playerId: `${index + 1}`, region: '日本', platform: 'Steam' }))
+    const before = structuredClone(data.values)
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === (target === 1 ? 4 : 3)) {
+        if (kind === 'rank') value.entries[1].rank = value.entries[0].rank
+        if (kind === 'master-rating') value.entries[0].masterRating += 10
+        if (kind === 'player-labels') Object.assign(value.entries[0], { playerName: 'New label', region: '米国', platform: 'PS5' })
+      }
+      return value
+    }
+    data.options.onEndpointRecheck = value => { endpoints.push(value) }
+    let outputs = 0
+    data.options.onVerifiedPlayers = players => {
+      outputs++
+      assert.deepEqual(players, before.slice(0, 2).map(({ accountKey: _key, isLegend: _legend, ...entry }) => entry))
+    }
+    const result = await collectLegendAnalysisDataset(data.options)
+    assert.equal(result.retryCount, 0); assert.equal(result.requestCount, 4); assert.equal(outputs, 1)
+    assert.equal(result.dataset.mr.max, 2400); assert.equal(result.dataset.mr.min, 2399)
+    assert.deepEqual(data.requested, [1, 2, 2, 1])
+    const changed = endpoints.find(event => event.page === target)!
+    assert.equal(changed.status, 'same-members-updated'); assert.deepEqual(changed.changeKinds, [kind])
+    assert.equal(endpoints.length, 2)
+    assert.doesNotMatch(JSON.stringify(endpoints), /Original|New label|accountKey|playerId|Steam|PS5/)
+  }
+})
+
+test('valid endpoint ties may reorder the same members while output retains the earlier ordering', async () => {
+  const data = fixture(), read = data.options.fetchPage, endpoints: LegendEndpointRecheck[] = []
+  data.values[1].rank = 1; data.values[1].masterRating = 2400
+  data.values.forEach((entry, index) => Object.assign(entry, { playerName: `Original ${index}`, playerId: `${index + 1}`, region: '日本', platform: 'Steam' }))
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (data.requested.length === 4) value.entries.reverse()
+    return value
+  }
+  data.options.onEndpointRecheck = value => { endpoints.push(value) }
+  data.options.onVerifiedPlayers = players => { assert.deepEqual(players.map(row => row.playerId), ['1', '2']) }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.retryCount, 0)
+  assert.deepEqual(endpoints[1], { attempt: 1, phase: 'start-recheck', page: 1, status: 'same-members-updated', changeKinds: ['row-order'] })
+})
+
+test('endpoint membership, public identity and Legend status changes still reject all output', async () => {
+  for (const target of [1, 2]) for (const kind of ['account', 'character', 'player-id', 'legend'] as const) {
+    const data = fixture(), read = data.options.fetchPage, endpoints: LegendEndpointRecheck[] = []
+    data.values.forEach((entry, index) => Object.assign(entry, { playerName: `Original ${index}`, playerId: `${index + 1}`, region: '日本', platform: 'Steam' }))
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === (target === 1 ? 4 : 3)) {
+        const entry = value.entries[kind === 'legend' && target === 1 ? 1 : 0]
+        if (kind === 'account') entry.accountKey = 'f'.repeat(64)
+        if (kind === 'character') entry.characterId = entry.characterId === 'ryu' ? 'ken' : 'ryu'
+        if (kind === 'player-id') entry.playerId = '999'
+        if (kind === 'legend') entry.isLegend = !entry.isLegend
+      }
+      return value
+    }
+    let outputs = 0
+    data.options.onVerifiedPlayers = () => { outputs++ }
+    data.options.onEndpointRecheck = value => { endpoints.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError
+      && error.validationCheck === (target === 1 ? 'start-recheck' : 'end-recheck'))
+    assert.equal(outputs, 0); assert.equal(endpoints.at(-1)?.status, 'rejected')
+    assert.ok(endpoints.at(-1)?.changeKinds.includes(kind === 'legend' ? 'legend-status' : 'membership'))
+  }
+})
+
+test('endpoint pages must independently pass order, duplicates, row positions and Legend continuity checks', async () => {
+  for (const target of [1, 2]) for (const kind of ['rank-order', 'mr-order', 'duplicate-entry', 'rank-position', 'legend-contiguity', 'entry-values'] as const) {
+    const data = fixture(Array.from({ length: 6 }, (_, index) => ({ accountKey: (index + 1).toString(16).padStart(64, '0'),
+      characterId: 'ryu', rank: index + 1, masterRating: 2400 - index, isLegend: index < 3 })), 3)
+    const read = data.options.fetchPage, endpoints: LegendEndpointRecheck[] = []
+    let passiveObservations = 0
+    data.options.recheckOrderFailure = async () => { passiveObservations++; return { status: 'unavailable', elapsedMs: 1000 } }
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length === (target === 1 ? 4 : 3)) {
+        if (kind === 'rank-order') value.entries[2].rank = value.entries[0].rank
+        if (kind === 'mr-order') value.entries[1].masterRating = value.entries[0].masterRating + 1
+        if (kind === 'duplicate-entry') overlapWith(value.entries[1], value.entries[0])
+        if (kind === 'rank-position') value.entries[1].rank = value.to + 1
+        if (kind === 'legend-contiguity') value.entries[1].isLegend = !value.entries[1].isLegend
+        if (kind === 'entry-values') value.entries[0].masterRating = -1
+      }
+      return value
+    }
+    data.options.onEndpointRecheck = value => { endpoints.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError && error.validationCheck === kind)
+    assert.equal(passiveObservations, 0)
+    assert.equal(endpoints.length, target === 1 ? 2 : 1)
+    assert.equal(endpoints.at(-1)?.status, 'rejected'); assert.ok(endpoints.at(-1)?.changeKinds.includes('invalid-page'))
+  }
+})
+
+test('single-page captures recheck both endpoints and never waive the first rank or terminal coverage', async () => {
+  for (const kind of ['valid-update', 'first-rank', 'new-next-page'] as const) {
+    const data = fixture([{ accountKey: '1'.padStart(64, '0'), characterId: 'ryu', rank: 1, masterRating: 2400, isLegend: true }], 1)
+    const read = data.options.fetchPage, endpoints: LegendEndpointRecheck[] = []
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (data.requested.length > 1) {
+        if (kind === 'valid-update') value.entries[0].masterRating += data.requested.length
+        if (kind === 'first-rank') value.entries[0].rank = 2
+        if (kind === 'new-next-page') { value.totalCount = 2; value.nextPage = 2 }
+      }
+      return value
+    }
+    data.options.onEndpointRecheck = value => { endpoints.push(value) }
+    if (kind === 'valid-update') {
+      const result = await collectLegendAnalysisDataset(data.options)
+      assert.equal(result.dataset.mr.max, 2400); assert.equal(result.requestCount, 3)
+      assert.deepEqual(endpoints.map(event => event.status), ['same-members-updated', 'same-members-updated'])
+    } else {
+      await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => error instanceof LegendAnalysisCollectionError
+        && error.validationCheck === (kind === 'first-rank' ? 'first-rank' : 'terminal-coverage'))
+      assert.equal(endpoints.length, 1); assert.equal(endpoints[0].status, 'rejected')
+      assert.ok(endpoints[0].changeKinds.includes(kind === 'first-rank' ? 'invalid-page' : 'metadata'))
+    }
+  }
+})
+
+test('endpoint diagnostics cannot change acceptance or mask denial and shared request bounds', async () => {
+  const data = fixture(), read = data.options.fetchPage
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (data.requested.length === 4) value.entries[0].masterRating++
+    return value
+  }
+  data.options.onEndpointRecheck = value => { value.changeKinds.push('membership'); throw new Error('diagnostic callback failed') }
+  assert.equal((await collectLegendAnalysisDataset(data.options)).retryCount, 0)
+  for (const kind of ['denied', 'budget'] as const) {
+    const next = fixture(), original = next.options.fetchPage, endpoints: LegendEndpointRecheck[] = [], retries: number[] = []
+    const denied = new LegendAnalysisDomError('http-denied')
+    next.options.fetchPage = async (page, url) => {
+      const value = await original(page, url)
+      if (kind === 'denied' && next.requested.length === 3) throw denied
+      return value
+    }
+    next.options.onEndpointRecheck = value => { endpoints.push(value) }
+    next.options.onRetry = value => { retries.push(value) }
+    await assert.rejects(collectLegendAnalysisDataset({ ...next.options, maxRequests: kind === 'budget' ? 3 : 120 }), error =>
+      kind === 'denied' ? error === denied : error instanceof LegendAnalysisCollectionError && error.validationCheck === 'request-budget')
+    assert.deepEqual(next.requested, [1, 2, 2]); assert.deepEqual(retries, [])
+    assert.equal(endpoints.length, kind === 'denied' ? 0 : 1)
+  }
 })
 
 test('opt-in player projection emits only accepted rows once after the final successful retry', async () => {
@@ -67,7 +229,7 @@ test('opt-in player projection emits only accepted rows once after the final suc
   let reads = 0
   data.options.fetchPage = async (page, url) => {
     const value = await read(page, url)
-    if (++reads === 4) value.entries[0].playerName = 'Changed during recheck'
+    if (++reads === 4) replaceListedMember(value.entries[0])
     return value
   }
   const callbacks: unknown[] = []
@@ -93,7 +255,7 @@ test('opt-in player projection rejects missing names before output and never run
       const read = data.options.fetchPage
       data.options.fetchPage = async (page, url) => {
         const value = await read(page, url)
-        if (data.requested.length % 4 === 0) value.entries[0].playerName = 'Changed during recheck'
+        if (data.requested.length % 4 === 0) replaceListedMember(value.entries[0])
         return value
       }
     }
@@ -263,6 +425,7 @@ test('refreshing page one changes the final start baseline but does not waive th
         value.entries.forEach(entry => { entry.masterRating++ })
         value.entries[0].playerName = 'Updated name'
       }
+      if (page === 1 && staleFinal && firstReads === 3) replaceListedMember(value.entries[0])
       return value
     }
     data.options.onVerifiedPlayers = players => {
@@ -278,6 +441,30 @@ test('refreshing page one changes the final start baseline but does not waive th
     assert.equal(projections, staleFinal ? 0 : 1)
     assert.deepEqual(data.requested, [1, 2, 1, 2, 3, 3, 1])
   }
+})
+
+test('endpoint value updates after range recovery preserve the recovered snapshot instead of mixing later values', async () => {
+  const data = adjacentFixture(), read = data.options.fetchPage, endpoints: LegendEndpointRecheck[] = []
+  data.values.forEach((entry, index) => Object.assign(entry, { playerName: `Original ${index}`, playerId: `${index + 1}`, region: '日本', platform: 'Steam' }))
+  let firstReads = 0, secondReads = 0
+  data.options.fetchPage = async (page, url) => {
+    const value = await read(page, url)
+    if (page === 2 && ++secondReads === 1) overlapWith(value.entries[0], data.values[1])
+    if (page === 1 && ++firstReads >= 2) {
+      value.entries.forEach(entry => { entry.masterRating += firstReads - 1 })
+      value.entries[0].playerName = firstReads === 2 ? 'Recovered label' : 'New endpoint label'
+    }
+    return value
+  }
+  let outputs = 0
+  data.options.onVerifiedPlayers = rows => {
+    outputs++; assert.equal(rows[0].masterRating, 2401); assert.equal(rows[0].playerName, 'Recovered label')
+  }
+  data.options.onEndpointRecheck = value => { endpoints.push(value) }
+  const result = await collectLegendAnalysisDataset(data.options)
+  assert.equal(result.dataset.mr.max, 2401); assert.equal(result.retryCount, 0); assert.equal(outputs, 1)
+  assert.deepEqual(endpoints.at(-1), { attempt: 1, phase: 'start-recheck', page: 1, status: 'same-members-updated', changeKinds: ['master-rating', 'player-labels'] })
+  assert.deepEqual(data.requested, [1, 2, 1, 2, 3, 3, 1])
 })
 
 test('range replacement rejects missing membership, character changes, Legend changes, duplicate membership and invalid Act', async () => {
@@ -456,7 +643,7 @@ test('attempt diagnostics report each failed recheck without changing bounded re
   let count = 0
   data.options.fetchPage = async (page, url) => {
     const value = await original(page, url)
-    if (++count % 3 === 0) value.entries[0].masterRating++
+    if (++count % 3 === 0) replaceListedMember(value.entries[0])
     return value
   }
   await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError
@@ -675,7 +862,7 @@ test('recheck mismatch kinds distinguish private Legend rows, non-Legend rows an
     const seen = new Map<number, number>()
     data.options.fetchPage = async (page, url) => {
       const value = await read(page, url), count = (seen.get(page) ?? 0) + 1; seen.set(page, count)
-      if (count === 2 && page === (legendChanged ? 1 : 2)) value.entries[0].masterRating++
+      if (count === 2 && page === (legendChanged ? 1 : 2)) replaceListedMember(value.entries[0])
       return value
     }
     await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error => {
@@ -699,7 +886,7 @@ test('changed first page on recheck fails after finite retries', async () => {
   let firstReads = 0
   data.options.fetchPage = async (page, url) => {
     const value = await original(page, url)
-    if (page === 1 && ++firstReads % 2 === 0) value.entries[0].masterRating++
+    if (page === 1 && ++firstReads % 2 === 0) replaceListedMember(value.entries[0])
     return value
   }
   await assert.rejects(collectLegendAnalysisDataset(data.options), error => error instanceof LegendAnalysisCollectionError && error.code === 'source-changed')
@@ -933,7 +1120,7 @@ test('successful boundary recovery clears its diagnostics before an unrelated en
   data.options.fetchPage = async (page, url) => {
     const value = await read(page, url)
     if (page === 2 && ++secondReads === 1) value.entries[0].rank = 1
-    if (page === 3 && ++thirdReads === 2) value.entries[0].masterRating++
+    if (page === 3 && ++thirdReads === 2) replaceListedMember(value.entries[0])
     return value
   }
   data.options.onAttemptFailure = value => { failures.push(value) }
@@ -1330,7 +1517,7 @@ test('the same range may recover in both whole attempts without resetting the sh
     data.options.fetchPage = async (page, url) => {
       const value = await read(page, url)
       if (page === 2 && [1, 3].includes(++secondReads)) value.entries[0].rank = 1
-      if (page === 3 && ++thirdReads === 2) value.entries[0].masterRating++
+      if (page === 3 && ++thirdReads === 2) replaceListedMember(value.entries[0])
       return value
     }
     data.options.onPageRecovery = value => { events.push(value) }
@@ -1392,7 +1579,7 @@ test('prior successful recoveries never waive internal corruption or the final e
         if (kind === 'internal-mr') value.entries[1].masterRating = 9999
         if (kind === 'internal-duplicate') overlapWith(value.entries[1], value.entries[0])
       }
-      if (kind === 'end' && count === 12 || kind === 'start' && count === 13) value.entries[0].masterRating++
+      if (kind === 'end' && count === 12 || kind === 'start' && count === 13) replaceListedMember(value.entries[0])
       return value
     }
     data.options.onPageRecovery = value => { events.push(value) }
@@ -1663,7 +1850,10 @@ test('the new left anchor and both final endpoints remain mandatory after expans
     let projections = 0
     data.options.fetchPage = async (page, url) => {
       const value = await read(page, url)
-      if (data.requested.length === failureRead) value.entries[0].masterRating++
+      if (data.requested.length === failureRead) {
+        if (failureRead === 12) value.entries[0].masterRating++
+        else replaceListedMember(value.entries[0])
+      }
       return value
     }
     data.options.onPageRecoveryRange = value => { ranges.push(value) }

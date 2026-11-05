@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './legend-order-diagnostics.ts'
-import type { LegendOrderDiagnostic, LegendOrderRecheck, LegendPageRecoveryDecision, LegendPageRecoveryIssue } from './legend-order-diagnostics.ts'
+import { sanitizeLegendEndpointRecheck, sanitizeLegendOrderDiagnostic, sanitizeLegendOrderRecheck, sanitizeLegendPageRecoveryDecision, sanitizeLegendPageRecoveryRange } from './legend-order-diagnostics.ts'
+import type { LegendEndpointRecheck, LegendOrderDiagnostic, LegendOrderRecheck, LegendPageRecoveryDecision, LegendPageRecoveryIssue } from './legend-order-diagnostics.ts'
 
 const diagnostic: LegendOrderDiagnostic = { boundary: 'within-page',
   previous: { page: 1, rowIndex: 1, rank: 1, masterRating: 2400 }, current: { page: 1, rowIndex: 2, rank: 2, masterRating: 2401 },
@@ -274,4 +274,80 @@ test('missing detail and edge-probe arrays ignore custom iterators and contain h
     { edgeProbes: [{ ...missingProbe, get unchanged(): never { throw new Error('private') } }] },
     { edgeProbes: [{ ...missingProbe, found: [{ previous: position(16), get current(): never { throw new Error('private') } }] }] },
   ]) assert.equal(sanitizeLegendPageRecoveryRange({ ...detailedRange, issues: [{ ...detailedMissing, ...patch }] }), undefined)
+})
+
+test('endpoint rechecks retain fixed outcomes and detached enum changes without private fields', () => {
+  const values: LegendEndpointRecheck[] = [
+    { attempt: 1, phase: 'start-recheck', page: 1, status: 'unchanged', changeKinds: [] },
+    { attempt: 2, phase: 'end-recheck', page: 26, status: 'same-members-updated',
+      changeKinds: ['rank', 'master-rating', 'player-labels', 'row-order'] },
+    { attempt: 3, phase: 'start-recheck', page: 1, status: 'rejected', changeKinds: ['membership', 'legend-status'] },
+    { attempt: 3, phase: 'end-recheck', page: 1000000, status: 'rejected',
+      changeKinds: ['rank', 'master-rating', 'player-labels', 'row-order', 'membership', 'legend-status', 'metadata', 'invalid-page'] },
+  ]
+  const secret = 'private-player-id-hash-name-url', toJSON = () => secret
+  for (const value of values) {
+    const changes = [...value.changeKinds]
+    Object.assign(changes, { accountKey: secret, toJSON })
+    const dirty = { ...value, changeKinds: changes, playerId: secret, playerName: secret, sourceUrl: secret, toJSON }
+    const safe = sanitizeLegendEndpointRecheck(dirty)
+    assert.deepEqual(safe, value)
+    assert.deepEqual(sanitizeLegendEndpointRecheck(safe), value)
+    assert.notEqual(safe, dirty)
+    assert.notEqual(safe!.changeKinds, changes)
+    assert.equal(Object.getPrototypeOf(safe), Object.prototype)
+    assert.doesNotMatch(JSON.stringify(safe), /private-player|playerId|playerName|accountKey|sourceUrl|toJSON/)
+    changes.push('membership')
+    assert.deepEqual(safe, value)
+  }
+})
+
+test('endpoint rechecks reject inconsistent success classifications and invalid bounds', () => {
+  const base: LegendEndpointRecheck = { attempt: 1, phase: 'start-recheck', page: 1,
+    status: 'same-members-updated', changeKinds: ['master-rating'] }
+  for (const value of [null, undefined, [], 1, 'private']) assert.equal(sanitizeLegendEndpointRecheck(value), undefined)
+  for (const patch of [{ attempt: 0 }, { attempt: 4 }, { attempt: 1.5 }, { attempt: '1' }, { attempt: Infinity },
+    { page: 0 }, { page: 1000001 }, { page: 2 }, { page: NaN }, { page: '1' }, { phase: 'private' },
+    { status: 'private' }, { changeKinds: null }, { changeKinds: {} }, { changeKinds: [] },
+    { changeKinds: ['private'] }, { changeKinds: [1] }, { changeKinds: [{ toString: () => 'rank' }] },
+    { changeKinds: ['rank', 'rank'] }, { changeKinds: Array(9).fill('rank') },
+    { status: 'unchanged', changeKinds: ['rank'] }, { status: 'rejected', changeKinds: [] },
+    { status: 'rejected', changeKinds: ['rank', 'master-rating', 'row-order'] },
+    ...['membership', 'legend-status', 'metadata', 'invalid-page'].map(kind => ({ changeKinds: [kind] }))]) {
+    assert.equal(sanitizeLegendEndpointRecheck({ ...base, ...patch }), undefined)
+  }
+  for (const kind of ['membership', 'legend-status', 'metadata', 'invalid-page']) {
+    const value = { ...base, status: 'rejected', changeKinds: [kind] }
+    assert.deepEqual(sanitizeLegendEndpointRecheck(value), value)
+  }
+  for (const kind of ['rank', 'master-rating', 'player-labels', 'row-order']) {
+    const value = { ...base, changeKinds: [kind] }
+    assert.deepEqual(sanitizeLegendEndpointRecheck(value), value)
+  }
+})
+
+test('endpoint diagnostics ignore array iterators and contain hostile property access', () => {
+  const base = { attempt: 1, phase: 'start-recheck', page: 1, status: 'same-members-updated', changeKinds: ['rank'] }
+  let iteratorCalls = 0
+  const changes = ['rank']
+  Object.defineProperty(changes, Symbol.iterator, { value: function* () { iteratorCalls++; yield 'private' } })
+  assert.deepEqual(sanitizeLegendEndpointRecheck({ ...base, changeKinds: changes }), base)
+  assert.equal(iteratorCalls, 0)
+  for (const property of ['attempt', 'phase', 'page', 'status', 'changeKinds']) {
+    const hostile = { ...base }
+    Object.defineProperty(hostile, property, { get(): never { throw new Error('private response') } })
+    assert.equal(sanitizeLegendEndpointRecheck(hostile), undefined)
+  }
+  for (const property of ['0', 'length']) {
+    const hostile = new Proxy(changes, { get(target, key, receiver) {
+      if (key === property) throw new Error('private response')
+      return Reflect.get(target, key, receiver)
+    } })
+    assert.equal(sanitizeLegendEndpointRecheck({ ...base, changeKinds: hostile }), undefined)
+  }
+  const sparse = new Array(1)
+  assert.equal(sanitizeLegendEndpointRecheck({ ...base, changeKinds: sparse }), undefined)
+  const revoked = Proxy.revocable(base, {})
+  revoked.revoke()
+  assert.equal(sanitizeLegendEndpointRecheck(revoked.proxy), undefined)
 })
