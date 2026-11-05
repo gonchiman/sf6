@@ -25,6 +25,26 @@ type Chart = typeof CHARTS[number][0]
 type View = typeof VIEWS[number][0]
 type Selection = { captureId: string; rowId: string; source: 'chart' | 'table' }
 
+export function LegendPlayersMatchSummary({ dataset }: { dataset: LegendPlayersDataset }) {
+  return <span className="monthly-statistics-panel-summary">対戦数：{dataset.rankedMatchScope
+    ? `${dataset.act.label}・ランクマッチ（Act全期間）`
+    : dataset.rankedMatchAvailability ? '取得失敗' : '未取得'}</span>
+}
+
+export function LegendPlayersCaptureInfo({ dataset }: { dataset: LegendPlayersDataset }) {
+  return <dl className="legend-players-capture">
+    <div><dt>対象</dt><dd>{dataset.act.label} · {dataset.conditions.region === 'all' ? '全地域' : dataset.conditions.region}
+      {' · '}{dataset.conditions.platform === 'all' ? '全プラットフォーム' : dataset.conditions.platform}</dd></div>
+    <div><dt>順位・MR取得区間</dt><dd><time dateTime={dataset.captureStartedAt}>{timestampLabel(dataset.captureStartedAt)}</time>
+      {' 〜 '}<time dateTime={dataset.captureEndedAt}>{timestampLabel(dataset.captureEndedAt)}</time></dd></div>
+    {dataset.rankedMatchScope && <div><dt>対戦数取得区間</dt><dd>
+      <time dateTime={dataset.rankedMatchScope.collectionStartedAt}>{timestampLabel(dataset.rankedMatchScope.collectionStartedAt)}</time>
+      {' 〜 '}<time dateTime={dataset.rankedMatchScope.collectionEndedAt}>{timestampLabel(dataset.rankedMatchScope.collectionEndedAt)}</time></dd></div>}
+    {dataset.rankedMatchAvailability && <div><dt>対戦数</dt><dd>取得失敗{' · '}
+      <time dateTime={dataset.rankedMatchAvailability.checkedAt}>{timestampLabel(dataset.rankedMatchAvailability.checkedAt)}</time></dd></div>}
+  </dl>
+}
+
 export function LegendPlayersPage() {
   const viewId = useId()
   const chartId = useId()
@@ -111,7 +131,7 @@ export function LegendPlayersPage() {
         <span className="monthly-statistics-panel-summary" role="status" aria-live="polite" aria-atomic="true" aria-label="表示件数">
           {integerFormat.format(visiblePlayers.length)} / {integerFormat.format(dataset.totalCount)} 件
         </span>
-        <span className="monthly-statistics-panel-summary">対戦数：{dataset.rankedMatchScope ? `${dataset.act.label}・ランクマッチ（Act全期間）` : '未取得'}</span>
+        <LegendPlayersMatchSummary dataset={dataset} />
       </div>}>
         <div className="win-rates-filters legend-players-filters">
           <label className="legend-players-name-filter"><span>プレイヤー名</span>
@@ -159,15 +179,7 @@ export function LegendPlayersPage() {
         <span>アカウント×キャラ</span>
         {publication?.source === 'bundled' && descriptors.length > 0 && <span>同梱データ</span>}
       </div>
-      {dataset && <dl className="legend-players-capture">
-        <div><dt>対象</dt><dd>{dataset.act.label} · {dataset.conditions.region === 'all' ? '全地域' : dataset.conditions.region}
-          {' · '}{dataset.conditions.platform === 'all' ? '全プラットフォーム' : dataset.conditions.platform}</dd></div>
-        <div><dt>順位・MR取得区間</dt><dd><time dateTime={dataset.captureStartedAt}>{timestampLabel(dataset.captureStartedAt)}</time>
-          {' 〜 '}<time dateTime={dataset.captureEndedAt}>{timestampLabel(dataset.captureEndedAt)}</time></dd></div>
-        {dataset.rankedMatchScope && <div><dt>対戦数取得区間</dt><dd>
-          <time dateTime={dataset.rankedMatchScope.collectionStartedAt}>{timestampLabel(dataset.rankedMatchScope.collectionStartedAt)}</time>
-          {' 〜 '}<time dateTime={dataset.rankedMatchScope.collectionEndedAt}>{timestampLabel(dataset.rankedMatchScope.collectionEndedAt)}</time></dd></div>}
-      </dl>}
+      {dataset && <LegendPlayersCaptureInfo dataset={dataset} />}
       {(refreshError || availability?.status === 'collection-failed' || availability?.status === 'verification-pending') && <div className="legend-players-status" role="status">
         {refreshError && <span>更新確認失敗</span>}
         {availability && <span>最新取得：{availabilityLabel}{' · '}

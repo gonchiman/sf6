@@ -27,14 +27,24 @@ export interface LegendRankedMatchScope {
   collectionEndedAt: string
 }
 
+/** Ranking rows are complete, but no current-Act profile counts have been published. */
+export interface LegendRankedMatchAvailability {
+  status: 'unavailable'
+  reason: 'authentication-unavailable' | 'source-unconfirmed' | 'source-changed' | 'access-unavailable'
+    | 'cancelled' | 'request-limit' | 'collection-failed'
+  checkedAt: string
+}
+
 /** Separately stored from the existing aggregate-only Legend dataset. */
 export interface LegendPlayersDataset extends Pick<LegendAnalysisDataset,
   'id' | 'captureStartedAt' | 'captureEndedAt' | 'generatedAt' | 'source' |
   'act' | 'definitionVersion' | 'membershipRule' | 'conditions' | 'totalCount' | 'validation'> {
-  schemaVersion: 1 | 2
+  schemaVersion: 1 | 2 | 3
   players: LegendPlayerRow[]
   /** Required in schemaVersion 2; never infer a profile collection time from ranking times. */
   rankedMatchScope?: LegendRankedMatchScope
+  /** Required only in schemaVersion 3, whose complete ranking rows have no match counts. */
+  rankedMatchAvailability?: LegendRankedMatchAvailability
 }
 
 export type LegendPlayerSortKey = 'rank' | 'playerName' | 'characterId' | 'masterRating' | 'playerId' | 'region' | 'platform' | 'rankedMatchCount'

@@ -1,7 +1,7 @@
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS,
   parseLegendAnalysisDescriptor, parseLegendAnalysisManifest } from './legendAnalysis.ts'
 import type { LegendPlayerRow, LegendPlayerSortDirection, LegendPlayerSortKey,
-  LegendPlayersDataset, LegendPlayersDescriptor, LegendPlayersManifest, LegendRankedMatchScope } from '../types/legendPlayers.ts'
+  LegendPlayersDataset, LegendPlayersDescriptor, LegendPlayersManifest, LegendRankedMatchAvailability, LegendRankedMatchScope } from '../types/legendPlayers.ts'
 
 function invalid(field: string): never { throw new Error(`レジェンドのプレイヤー一覧の形式が正しくありません（${field}）。`) }
 function record(value: unknown, field: string, keys: readonly string[]): Record<string, unknown> {
@@ -49,9 +49,10 @@ function descriptorFor(value: LegendPlayersDataset): LegendPlayersDescriptor {
 
 export function parseLegendPlayersDataset(value: unknown, expected?: LegendPlayersDescriptor): LegendPlayersDataset {
   const input = record(value, 'dataset', ['schemaVersion', 'id', 'captureStartedAt', 'captureEndedAt', 'generatedAt',
-    'source', 'act', 'definitionVersion', 'membershipRule', 'conditions', 'totalCount', 'validation', 'players', 'rankedMatchScope'])
-  if (input.schemaVersion !== 1 && input.schemaVersion !== 2) invalid('schemaVersion')
-  if (input.schemaVersion === 1 && Object.hasOwn(input, 'rankedMatchScope')) invalid('rankedMatchScope: unavailable in schemaVersion 1')
+    'source', 'act', 'definitionVersion', 'membershipRule', 'conditions', 'totalCount', 'validation', 'players', 'rankedMatchScope', 'rankedMatchAvailability'])
+  if (input.schemaVersion !== 1 && input.schemaVersion !== 2 && input.schemaVersion !== 3) invalid('schemaVersion')
+  if (input.schemaVersion !== 2 && Object.hasOwn(input, 'rankedMatchScope')) invalid(`rankedMatchScope: unavailable in schemaVersion ${input.schemaVersion}`)
+  if (input.schemaVersion !== 3 && Object.hasOwn(input, 'rankedMatchAvailability')) invalid(`rankedMatchAvailability: unavailable in schemaVersion ${input.schemaVersion}`)
   const source = record(input.source, 'source', ['url', 'title', 'population', 'metric', 'unit', 'notes'])
   if (source.unit !== 'account-character') invalid('source.unit')
   const act = record(input.act, 'act', ['id', 'label'])
@@ -61,6 +62,7 @@ export function parseLegendPlayersDataset(value: unknown, expected?: LegendPlaye
   const metadata = parseLegendPlayersManifest({ schemaVersion: 1, generatedAt: input.generatedAt,
     source: { url: source.url, title: source.title }, datasets: [descriptor] })
   let rankedMatchScope: LegendRankedMatchScope | undefined
+  let rankedMatchAvailability: LegendRankedMatchAvailability | undefined
   if (input.schemaVersion === 2) {
     const scope = record(input.rankedMatchScope, 'rankedMatchScope', ['actId', 'mode', 'collectionStartedAt', 'collectionEndedAt'])
     if (scope.actId !== descriptor.actId) invalid('rankedMatchScope.actId: different Act')
@@ -71,26 +73,36 @@ export function parseLegendPlayersDataset(value: unknown, expected?: LegendPlaye
       || collectionEndedAt > metadata.generatedAt) invalid('rankedMatchScope: invalid collection interval')
     rankedMatchScope = { actId: descriptor.actId, mode: 'ranked', collectionStartedAt, collectionEndedAt }
   }
+  if (input.schemaVersion === 3) {
+    const availability = record(input.rankedMatchAvailability, 'rankedMatchAvailability', ['status', 'reason', 'checkedAt'])
+    if (availability.status !== 'unavailable') invalid('rankedMatchAvailability.status')
+    if (!['authentication-unavailable', 'source-unconfirmed', 'source-changed', 'access-unavailable',
+      'cancelled', 'request-limit', 'collection-failed'].includes(availability.reason as string)) invalid('rankedMatchAvailability.reason')
+    const checkedAt = timestamp(availability.checkedAt, 'rankedMatchAvailability.checkedAt')
+    if (checkedAt < descriptor.captureEndedAt || checkedAt > metadata.generatedAt) invalid('rankedMatchAvailability: invalid check time')
+    rankedMatchAvailability = { status: 'unavailable', reason: availability.reason as LegendRankedMatchAvailability['reason'], checkedAt }
+  }
   if (!Array.isArray(input.players) || input.players.length !== descriptor.totalCount) invalid('players: count mismatch')
   const players: LegendPlayerRow[] = input.players.map((value, index) => {
     const row = record(value, 'player', ['id', 'playerName', 'characterId', 'rank', 'masterRating',
-      ...(input.schemaVersion === 2 ? ['playerId', 'region', 'platform', 'rankedMatchCount'] : [])])
+      ...(input.schemaVersion !== 1 ? ['playerId', 'region', 'platform'] : []),
+      ...(input.schemaVersion === 2 ? ['rankedMatchCount'] : [])])
     if (row.id !== `entry-${index + 1}`) invalid('player.id: capture-local ordinal required')
     const characterId = text(row.characterId, 'player.characterId', 40)
     if (!/^[a-z][a-z0-9_]{0,39}$/.test(characterId)) invalid('player.characterId')
     const result: LegendPlayerRow = { id: row.id, playerName: text(row.playerName, 'player.playerName', 128), characterId,
       rank: integer(row.rank, 'player.rank', 1), masterRating: integer(row.masterRating, 'player.masterRating', 0) }
-    if (input.schemaVersion === 2) {
+    if (input.schemaVersion !== 1) {
       const playerId = text(row.playerId, 'player.playerId', 20)
       if (!/^\d{1,20}$/.test(playerId)) invalid('player.playerId')
       result.playerId = playerId
       result.region = text(row.region, 'player.region', 128)
       result.platform = text(row.platform, 'player.platform', 128)
-      result.rankedMatchCount = integer(row.rankedMatchCount, 'player.rankedMatchCount', 0)
+      if (input.schemaVersion === 2) result.rankedMatchCount = integer(row.rankedMatchCount, 'player.rankedMatchCount', 0)
     }
     return result
   })
-  if (input.schemaVersion === 2 && new Set(players.map(row => `${row.playerId}:${row.characterId}`)).size !== players.length) {
+  if (input.schemaVersion !== 1 && new Set(players.map(row => `${row.playerId}:${row.characterId}`)).size !== players.length) {
     invalid('players: duplicate account-character entry')
   }
   if (players.some((row, index) => index > 0 && (row.rank < players[index - 1].rank
@@ -109,6 +121,7 @@ export function parseLegendPlayersDataset(value: unknown, expected?: LegendPlaye
     membershipRule: descriptor.membershipRule, conditions: descriptor.conditions, totalCount: descriptor.totalCount, players,
     validation: { status: 'verified', coverage: 'all-listed-legend-entries', checks, notes },
     ...(rankedMatchScope ? { rankedMatchScope } : {}),
+    ...(rankedMatchAvailability ? { rankedMatchAvailability } : {}),
   }
   if (expected && JSON.stringify(descriptorFor(dataset)) !== JSON.stringify(parseLegendPlayersDescriptor(expected))) {
     throw new Error('選択した取得日とプレイヤー一覧が一致しません。')

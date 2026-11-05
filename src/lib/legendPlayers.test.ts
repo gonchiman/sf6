@@ -37,6 +37,14 @@ function enrichedDataset(day = '28'): LegendPlayersDataset {
   }
 }
 
+function rankingOnlyDataset(day = '28'): LegendPlayersDataset {
+  const { rankedMatchScope: _scope, ...value } = enrichedDataset(day)
+  return { ...value, schemaVersion: 3,
+    rankedMatchAvailability: { status: 'unavailable', reason: 'access-unavailable', checkedAt: `2026-10-${day}T00:01:30.000Z` },
+    players: value.players.map(({ rankedMatchCount: _count, ...row }) => row),
+  }
+}
+
 test('player rows round-trip independently of aggregates, preserving duplicate names and tied ranks', () => {
   const value = dataset()
   assert.deepEqual(parseLegendPlayersDataset(JSON.parse(JSON.stringify(value)), createLegendPlayersDescriptor(value)), value)
@@ -212,6 +220,101 @@ test('schema 2 still rejects private IDs, profile links and authentication mater
   }
 })
 
+test('schema 3 preserves every verified ranking row and explicitly unavailable profile counts', () => {
+  const value = rankingOnlyDataset(), descriptor = createLegendPlayersDescriptor(value)
+  const parsed = parseLegendPlayersDataset(JSON.parse(JSON.stringify(value)), descriptor)
+  assert.deepEqual(parsed, value)
+  assert.deepEqual(descriptor, createLegendPlayersDescriptor(enrichedDataset()))
+  assert.deepEqual(descriptor, createLegendPlayersDescriptor(dataset()))
+  assert.equal(parsed.players[0].playerId, '0000000001')
+  assert.equal(parsed.players.filter(row => row.playerId === '0000000001').length, 2)
+  assert.equal(parsed.players.every(row => !Object.hasOwn(row, 'rankedMatchCount')), true)
+  assert.equal(Object.hasOwn(parsed, 'rankedMatchScope'), false)
+  assert.notEqual(parsed.rankedMatchAvailability, value.rankedMatchAvailability)
+  const mixed = manifest([value, enrichedDataset('27'), dataset('26')])
+  assert.deepEqual(parseLegendPlayersManifest(mixed), mixed)
+  for (const reason of ['authentication-unavailable', 'source-unconfirmed', 'source-changed', 'access-unavailable',
+    'cancelled', 'request-limit', 'collection-failed']) {
+    const expected = { ...value, rankedMatchAvailability: { ...value.rankedMatchAvailability, reason } }
+    assert.deepEqual(parseLegendPlayersDataset(expected), expected)
+  }
+})
+
+test('schema 3 never accepts partial, zero-filled or stale match counts and does not weaken schemas 1 or 2', () => {
+  const value = rankingOnlyDataset()
+  for (const rankedMatchCount of [undefined, null, 0, 123]) {
+    assert.throws(() => parseLegendPlayersDataset({ ...value,
+      players: [{ ...value.players[0], rankedMatchCount }, ...value.players.slice(1)] }), /unknown field/)
+  }
+  for (const rankedMatchScope of [undefined, null, enrichedDataset().rankedMatchScope]) {
+    assert.throws(() => parseLegendPlayersDataset({ ...value, rankedMatchScope }), /rankedMatchScope/)
+  }
+  for (const legacy of [dataset(), enrichedDataset()]) {
+    for (const rankedMatchAvailability of [undefined, null, value.rankedMatchAvailability]) {
+      assert.throws(() => parseLegendPlayersDataset({ ...legacy, rankedMatchAvailability }), /rankedMatchAvailability/)
+    }
+    assert.deepEqual(parseLegendPlayersDataset(legacy), legacy)
+    assert.equal(Object.hasOwn(parseLegendPlayersDataset(legacy), 'rankedMatchAvailability'), false)
+  }
+  const v2 = enrichedDataset()
+  assert.throws(() => parseLegendPlayersDataset({ ...v2, players: value.players }), /rankedMatchCount/)
+  assert.throws(() => parseLegendPlayersDataset({ ...value, schemaVersion: 2,
+    rankedMatchScope: v2.rankedMatchScope }), /rankedMatchAvailability/)
+})
+
+test('schema 3 validates the bounded failure reason and check time without carrying private diagnostics', () => {
+  const value = rankingOnlyDataset(), availability = value.rankedMatchAvailability!
+  for (const rankedMatchAvailability of [undefined, null, {}, { ...availability, status: 'available' },
+    { ...availability, reason: 'private-site-response' }, { ...availability, reason: null },
+    { ...availability, checkedAt: '2026-10-28T00:00:59.999Z' },
+    { ...availability, checkedAt: '2026-10-28T00:02:00.001Z' },
+    { ...availability, checkedAt: '2026-10-28T00:01:30Z' },
+    { ...availability, checkedAt: '2026-02-30T00:01:30.000Z' },
+    { ...availability, checkedAt: null }]) {
+    assert.throws(() => parseLegendPlayersDataset({ ...value, rankedMatchAvailability }), /rankedMatchAvailability/)
+  }
+  for (const field of ['status', 'reason', 'checkedAt'] as const) {
+    const { [field]: _missing, ...incomplete } = availability
+    assert.throws(() => parseLegendPlayersDataset({ ...value, rankedMatchAvailability: incomplete }), /rankedMatchAvailability/)
+  }
+  for (const checkedAt of [value.captureEndedAt, value.generatedAt]) {
+    assert.equal(parseLegendPlayersDataset({ ...value, rankedMatchAvailability: { ...availability, checkedAt } }).rankedMatchAvailability!.checkedAt, checkedAt)
+  }
+  for (const field of ['accountKey', 'profileUrl', 'storageState', 'cookies', 'error', 'rawHtml']) {
+    assert.throws(() => parseLegendPlayersDataset({ ...value, rankedMatchAvailability: { ...availability, [field]: 'must-not-persist' } }), /unknown field/)
+    assert.throws(() => parseLegendPlayersDataset({ ...value, [field]: 'must-not-persist' }), /unknown field/)
+    assert.throws(() => parseLegendPlayersDataset({ ...value,
+      players: value.players.map(row => ({ ...row, [field]: 'must-not-persist' })) }), /unknown field/)
+  }
+})
+
+test('schema 3 still requires complete identity fields, unique account-character rows and verified ordered coverage', () => {
+  const value = rankingOnlyDataset(), first = value.players[0]
+  for (const field of ['playerId', 'region', 'platform'] as const) {
+    const { [field]: _missing, ...incomplete } = first
+    for (const row of [incomplete, { ...first, [field]: null }, { ...first, [field]: '' }]) {
+      assert.throws(() => parseLegendPlayersDataset({ ...value, players: [row, ...value.players.slice(1)] }), new RegExp(field))
+    }
+  }
+  for (const playerId of [123, '123abc', ' 123', '1'.repeat(21)]) {
+    assert.throws(() => parseLegendPlayersDataset({ ...value, players: [{ ...first, playerId }, ...value.players.slice(1)] }), /playerId/)
+  }
+  for (const field of ['region', 'platform'] as const) for (const label of [' trailing ', 'line\nbreak', 'x'.repeat(129)]) {
+    assert.throws(() => parseLegendPlayersDataset({ ...value, players: [{ ...first, [field]: label }, ...value.players.slice(1)] }), new RegExp(field))
+  }
+  assert.throws(() => parseLegendPlayersDataset({ ...value, players: value.players.slice(0, 2) }), /count mismatch/)
+  assert.throws(() => parseLegendPlayersDataset({ ...value, players: [{ ...first, id: 'entry-2' }, ...value.players.slice(1)] }), /ordinal/)
+  assert.throws(() => parseLegendPlayersDataset({ ...value, players: [first,
+    { ...value.players[1], playerId: first.playerId, characterId: first.characterId }, value.players[2]] }), /duplicate account-character/)
+  for (const patch of [{ rank: 3 }, { masterRating: 2000 }]) {
+    assert.throws(() => parseLegendPlayersDataset({ ...value, players: [{ ...first, ...patch }, ...value.players.slice(1)] }), /ordering/)
+  }
+  for (const patch of [{ status: 'pending' }, { coverage: 'partial' }, { checks: [] }]) {
+    assert.throws(() => parseLegendPlayersDataset({ ...value, validation: { ...value.validation, ...patch } }), /validation/)
+  }
+  assert.throws(() => parseLegendPlayersDataset(value, { ...createLegendPlayersDescriptor(value), totalCount: 4 }), /一致しません/)
+})
+
 test('new-field sorting keeps missing legacy fields last in both directions and distinguishes zero', () => {
   const rows = [dataset().players[0], ...enrichedDataset().players.slice(1),
     { ...enrichedDataset().players[0], id: 'zero' }, { ...dataset().players[0], id: 'missing-2' }]
@@ -240,6 +343,22 @@ test('feed loads a complete player publication, omits credentials, and caches th
   const publication = await feed.loadPublication()
   assert.equal(publication.source, 'history')
   assert.deepEqual(await feed.loadDataset(publication, createLegendPlayersDescriptor(capture)), capture)
+  assert.equal(requests.length, 2)
+})
+
+test('feed accepts complete schema 3 ranking rows without inventing unavailable profile counts', async () => {
+  const capture = rankingOnlyDataset(), requests: string[] = []
+  const feed = createLegendPlayersFeed({ historyBaseUrl: remote, localBaseUrl: local, fetch: async input => {
+    const url = String(input); requests.push(url)
+    return json(url.endsWith('index.json') ? manifest([capture]) : capture)
+  } })
+  const publication = await feed.loadPublication()
+  assert.equal(publication.source, 'history')
+  const loaded = await feed.loadDataset(publication, createLegendPlayersDescriptor(capture))
+  assert.deepEqual(loaded, capture)
+  assert.deepEqual(sortLegendPlayers(loaded.players, 'rankedMatchCount', 'asc'), loaded.players)
+  assert.deepEqual(sortLegendPlayers(loaded.players, 'rankedMatchCount', 'desc'), loaded.players)
+  assert.equal(loaded.players.every(row => row.rankedMatchCount === undefined), true)
   assert.equal(requests.length, 2)
 })
 

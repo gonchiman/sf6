@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { BrowserContextOptions } from 'playwright'
 import { LEGEND_ANALYSIS_SOURCE, parseLegendAnalysisDataset, parseLegendAnalysisManifest } from '../src/lib/legendAnalysis.ts'
 import { createLegendPlayersDescriptor, parseLegendPlayersDataset, parseLegendPlayersManifest } from '../src/lib/legendPlayers.ts'
-import type { LegendPlayersDataset, LegendRankedMatchScope } from '../src/types/legendPlayers.ts'
+import type { LegendPlayersDataset, LegendRankedMatchAvailability, LegendRankedMatchScope } from '../src/types/legendPlayers.ts'
 import { collectLegendAnalysisDataset, LEGEND_ANALYSIS_COLLECTION_ERROR_CODES, LEGEND_ANALYSIS_COLLECTION_PHASES,
   LEGEND_ANALYSIS_COLLECTION_VALIDATION_CHECKS, LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS, LegendAnalysisCollectionError } from './lib/legend-analysis-collector.ts'
 import type { LegendAnalysisCollectionErrorCode, LegendAnalysisCollectionPhase, LegendAnalysisPage,
@@ -43,7 +43,7 @@ export interface LegendAnalysisTransport {
 export type LegendAnalysisFailureReason = 'authentication-unavailable' | 'source-unconfirmed' | 'source-changed'
   | 'access-unavailable' | 'cancelled' | 'request-limit' | 'collection-failed' | 'output-unavailable'
 export interface LegendAnalysisCaptureReport {
-  status: 'succeeded' | 'failed'
+  status: 'succeeded' | 'partial' | 'failed'
   reason: LegendAnalysisFailureReason | null
   startedAt: string
   endedAt: string
@@ -87,7 +87,7 @@ export interface LegendAnalysisCaptureReport {
   humanVerification?: DistributionHumanVerificationDiagnostics
 }
 export interface LegendAnalysisSafeCaptureReport {
-  status: 'succeeded' | 'failed'
+  status: 'succeeded' | 'partial' | 'failed'
   reason: LegendAnalysisFailureReason | null
   startedAt: string | null
   endedAt: string | null
@@ -194,7 +194,7 @@ export function summarizeLegendAnalysisCaptureReport(value: unknown): LegendAnal
     && input.recheckChangeKinds.every(kind => LEGEND_ANALYSIS_RECHECK_CHANGE_KINDS.includes(kind as LegendAnalysisRecheckChangeKind))
     ? input.recheckChangeKinds as LegendAnalysisRecheckChangeKind[] : null
   return {
-    status: input.status === 'succeeded' ? 'succeeded' : 'failed',
+    status: input.status === 'succeeded' ? 'succeeded' : input.status === 'partial' ? 'partial' : 'failed',
     reason: ['authentication-unavailable', 'source-unconfirmed', 'source-changed', 'access-unavailable', 'cancelled', 'request-limit', 'collection-failed', 'output-unavailable'].includes(input.reason as string) ? input.reason as LegendAnalysisFailureReason : null,
     startedAt: time(input.startedAt), endedAt: time(input.endedAt), requestCount, successfulReadCount,
     profileTotalCount: bounded(input.profileTotalCount, 0, 1000) ? input.profileTotalCount : 0,
@@ -294,6 +294,8 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
   const playerCapture: { rows: readonly LegendAnalysisVerifiedPlayer[] | null } = { rows: null }
   let enrichedPlayers: (LegendAnalysisVerifiedPlayer & { rankedMatchCount: number })[] | null = null
   let rankedMatchScope: LegendRankedMatchScope | null = null
+  let profileFailureReason: LegendRankedMatchAvailability['reason'] | null = null
+  const profileClock: { last: string | null } = { last: null }
   let recoveryRangeIndex: number | null = null
   try {
     signal.throwIfAborted()
@@ -338,34 +340,52 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
         if (Number.isSafeInteger(value.attempt) && value.attempt >= 1 && value.attempt <= 3) report.captureAttempt = value.attempt
       } })
     dataset = collected.dataset; report.retryCount = collected.retryCount
-    signal.throwIfAborted()
     if (options.includePlayers) {
-      if (!playerCapture.rows || !transport.fetchPlayerRankedMatches) throw new LegendAnalysisCollectionError('evidence-unconfirmed', 'entry-values')
-      const profiles = new Map<string, Set<string>>()
-      for (const row of playerCapture.rows) {
-        if (!profiles.has(row.playerId)) profiles.set(row.playerId, new Set())
-        profiles.get(row.playerId)!.add(row.characterId)
+      if (!playerCapture.rows || playerCapture.rows.length !== dataset.totalCount) throw new LegendAnalysisCollectionError('evidence-unconfirmed', 'entry-values')
+      const profileTime = (): string => {
+        let value: string
+        try { value = now().toISOString() } catch { throw new LegendAnalysisCollectionError('configuration-invalid', 'capture-clock') }
+        if (value < (profileClock.last ?? dataset!.captureEndedAt)) throw new LegendAnalysisCollectionError('configuration-invalid', 'capture-clock')
+        profileClock.last = value
+        return value
       }
-      if (profiles.size > 1000) throw new LegendAnalysisCollectionError('request-limit', 'request-budget')
-      report.profileTotalCount = profiles.size; report.profileReadCount = 0
-      const collectionStartedAt = now().toISOString(), counts = new Map<string, Record<string, number>>()
-      for (const [playerId, characters] of profiles) {
+      try {
         signal.throwIfAborted()
-        const value = await transport.fetchPlayerRankedMatches(playerId, [...characters])
-        const verifiedCounts: Record<string, number> = Object.create(null)
-        for (const characterId of characters) {
-          const count = value?.[characterId]
-          if (!Object.hasOwn(value ?? {}, characterId) || !Number.isSafeInteger(count) || count < 0) {
-            throw new LegendAnalysisCollectionError('evidence-unconfirmed', 'entry-values')
-          }
-          verifiedCounts[characterId] = count
+        if (!transport.fetchPlayerRankedMatches) throw new LegendAnalysisCollectionError('evidence-unconfirmed', 'entry-values')
+        const profiles = new Map<string, Set<string>>()
+        for (const row of playerCapture.rows) {
+          if (!profiles.has(row.playerId)) profiles.set(row.playerId, new Set())
+          profiles.get(row.playerId)!.add(row.characterId)
         }
-        counts.set(playerId, verifiedCounts); report.profileReadCount++
+        if (profiles.size > 1000) throw new LegendAnalysisCollectionError('request-limit', 'request-budget')
+        report.profileTotalCount = profiles.size; report.profileReadCount = 0
+        const collectionStartedAt = profileTime(), counts = new Map<string, Record<string, number>>()
+        for (const [playerId, characters] of profiles) {
+          signal.throwIfAborted()
+          const value = await transport.fetchPlayerRankedMatches(playerId, [...characters])
+          const verifiedCounts: Record<string, number> = Object.create(null)
+          for (const characterId of characters) {
+            const count = value?.[characterId]
+            if (!Object.hasOwn(value ?? {}, characterId) || !Number.isSafeInteger(count) || count < 0) {
+              throw new LegendAnalysisCollectionError('evidence-unconfirmed', 'entry-values')
+            }
+            verifiedCounts[characterId] = count
+          }
+          counts.set(playerId, verifiedCounts); report.profileReadCount++
+        }
+        rankedMatchScope = { actId: initial.act.id, mode: 'ranked', collectionStartedAt, collectionEndedAt: profileTime() }
+        enrichedPlayers = playerCapture.rows.map(row => ({ ...row, rankedMatchCount: counts.get(row.playerId)![row.characterId] }))
+        // Profile collection can span an Act boundary even after ranking validation completed.
+        await transport.confirmAct()
+        signal.throwIfAborted()
+      } catch (error) {
+        if (options.signal?.aborted || error instanceof LegendAnalysisCollectionError && error.validationCheck === 'capture-clock') throw error
+        // Ranking verification is complete for its recorded Act and interval. Stop enrichment
+        // immediately and discard every count; a profile failure cannot invalidate that ranking.
+        profileFailureReason = reason(error, signal) as LegendRankedMatchAvailability['reason']
+        enrichedPlayers = null; rankedMatchScope = null
       }
-      rankedMatchScope = { actId: initial.act.id, mode: 'ranked', collectionStartedAt, collectionEndedAt: now().toISOString() }
-      enrichedPlayers = playerCapture.rows.map(row => ({ ...row, rankedMatchCount: counts.get(row.playerId)![row.characterId] }))
-      // Profile collection can span an Act boundary even after ranking validation completed.
-      await transport.confirmAct()
+    } else {
       signal.throwIfAborted()
     }
   } catch (error) {
@@ -403,36 +423,48 @@ export async function runLegendAnalysisCollection(options: LegendAnalysisRunOpti
     }
   }
   report.endedAt = now().toISOString()
-  if (report.endedAt < report.startedAt) { report.endedAt = report.startedAt; dataset = null; report.reason = 'collection-failed' }
+  if (options.signal?.aborted) { dataset = null; report.reason = 'cancelled' }
+  if (report.endedAt < report.startedAt || profileClock.last !== null && report.endedAt < profileClock.last) {
+    report.endedAt = report.startedAt; dataset = null; report.reason = 'collection-failed'
+  }
   const generatedAt = report.endedAt
   try {
     if (dataset) {
       const verified = parseLegendAnalysisDataset(dataset)
+      const profileUnavailable = options.includePlayers && profileFailureReason !== null
+      const rankedMatchAvailability: LegendRankedMatchAvailability | undefined = profileUnavailable
+        ? { status: 'unavailable', reason: profileFailureReason!, checkedAt: generatedAt } : undefined
       const players: LegendPlayersDataset | null = options.includePlayers ? parseLegendPlayersDataset({
-        schemaVersion: 2, id: verified.id, captureStartedAt: verified.captureStartedAt, captureEndedAt: verified.captureEndedAt,
-        generatedAt, rankedMatchScope, source: { ...verified.source, metric: '掲載エントリーのプレイヤー情報・キャラクター・順位・MR・今Actランクマッチ対戦数',
-          notes: ['公式レジェンド掲載の取得期間内の断面。', '1行はアカウント×キャラクター単位。', '対戦数は掲載キャラのAct全期間のランクマッチ数で、レジェンド到達前も含む。'] },
+        schemaVersion: profileUnavailable ? 3 : 2, id: verified.id, captureStartedAt: verified.captureStartedAt, captureEndedAt: verified.captureEndedAt,
+        generatedAt, ...(profileUnavailable ? { rankedMatchAvailability } : { rankedMatchScope }),
+        source: { ...verified.source, metric: profileUnavailable ? '掲載エントリーのプレイヤー情報・キャラクター・順位・MR' : '掲載エントリーのプレイヤー情報・キャラクター・順位・MR・今Actランクマッチ対戦数',
+          notes: ['公式レジェンド掲載の取得期間内の断面。', '1行はアカウント×キャラクター単位。',
+            profileUnavailable ? '対戦数は取得未完了。途中の取得値や過去の値は補完しない。' : '対戦数は掲載キャラのAct全期間のランクマッチ数で、レジェンド到達前も含む。'] },
         act: verified.act, definitionVersion: verified.definitionVersion, membershipRule: verified.membershipRule,
         conditions: verified.conditions, totalCount: verified.totalCount,
-        players: (enrichedPlayers ?? []).map((row, index) => ({ id: `entry-${index + 1}`, ...row })),
+        players: (profileUnavailable ? playerCapture.rows! : enrichedPlayers ?? []).map((row, index) => ({ id: `entry-${index + 1}`, ...row })),
         validation: { ...verified.validation, notes: ['条件・Act・掲載判定・表示範囲・順位・MR順・重複と両端を確認した。',
-          '行IDは取得回内だけで使用する。プレイヤーIDは公開ユーザーコード。', '各プロフィールのユーザーコード・Act・ランクマッチ指定と掲載キャラの対戦数を確認した。'] },
+          '行IDは取得回内だけで使用する。プレイヤーIDは公開ユーザーコード。',
+          profileUnavailable ? 'ランキング全掲載行の検証は完了。対戦数の検証は未完了のため含めない。'
+            : '各プロフィールのユーザーコード・Act・ランクマッチ指定と掲載キャラの対戦数を確認した。'] },
       }) : null
+      const availability = profileUnavailable ? { status: 'collection-failed' as const, checkedAt: generatedAt,
+        message: 'ランキング一覧は取得済みです。対戦数の取得を完了できませんでした。' } : undefined
       const manifest = parseLegendAnalysisManifest({ schemaVersion: 1, generatedAt, source: LEGEND_ANALYSIS_SOURCE,
         datasets: [{ id: verified.id, path: `${verified.id}.json`, actId: verified.act.id, definitionVersion: verified.definitionVersion,
           membershipRule: verified.membershipRule, conditions: verified.conditions, captureStartedAt: verified.captureStartedAt,
-          captureEndedAt: verified.captureEndedAt, totalCount: verified.totalCount }] })
+          captureEndedAt: verified.captureEndedAt, totalCount: verified.totalCount }], ...(availability ? { availability } : {}) })
       if (players) {
         const playerDirectory = resolve(publicDirectory, 'players')
         const playerManifest = parseLegendPlayersManifest({ schemaVersion: 1, generatedAt, source: LEGEND_ANALYSIS_SOURCE,
-          datasets: [createLegendPlayersDescriptor(players)] })
+          datasets: [createLegendPlayersDescriptor(players)], ...(availability ? { availability } : {}) })
         await mkdir(playerDirectory, { mode: 0o700 })
         await writeJson(resolve(playerDirectory, `${players.id}.json`), players)
         await writeJson(resolve(playerDirectory, 'index.json'), playerManifest)
       }
       await writeJson(resolve(publicDirectory, `${verified.id}.json`), verified)
       await writeJson(resolve(publicDirectory, 'index.json'), manifest)
-      report.status = 'succeeded'; report.reason = null; report.datasetId = verified.id
+      report.status = profileUnavailable ? 'partial' : 'succeeded'; report.reason = profileFailureReason; report.datasetId = verified.id
     } else {
       await writeJson(resolve(publicDirectory, 'index.json'), parseLegendAnalysisManifest({ schemaVersion: 1, generatedAt,
         source: LEGEND_ANALYSIS_SOURCE, datasets: [], availability: { status: report.reason === 'source-unconfirmed' ? 'verification-pending' : 'collection-failed',

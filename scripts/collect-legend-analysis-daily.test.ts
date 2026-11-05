@@ -66,6 +66,19 @@ test('invalid sessions, browser errors and failed output validation never author
   assert.equal(marked, false)
 })
 
+test('output-unavailable reports cannot authorize an artifact even if partial output could validate', async () => {
+  const calls: string[] = []
+  const supplied = result(false)
+  const report = { ...supplied.report, reason: 'output-unavailable' as const }
+  await assert.rejects(runLegendDaily({ env: environment(), now: () => now,
+    collect: async () => { calls.push('collect'); return { succeeded: false, report } },
+    logReport: value => { calls.push('report'); assert.equal(value.reason, 'output-unavailable') },
+    validate: async () => { calls.push('validate'); return { datasets: 1, entries: 1 } },
+    artifactReady: async () => { calls.push('artifact') },
+  }), (error: unknown) => error instanceof LegendDailyError && error.code === 'output')
+  assert.deepEqual(calls, ['collect', 'report'])
+})
+
 test('daily stdout emits only a sanitized capture report, including when collection failed', async t => {
   const lines: unknown[] = []
   t.mock.method(console, 'log', (...values: unknown[]) => { lines.push(...values) })
@@ -208,7 +221,7 @@ test('daily workflow isolates authentication and gates player files behind expli
 
 test('player collection settings fail closed and valid opt-in reaches both collection and validation', async () => {
   for (const value of [undefined, '', 'TRUE', '1', 'unknown']) {
-    const env = { ...environment(), LEGEND_PLAYERS_ENABLED: value }
+    const env: Record<string, string | undefined> = { ...environment(), LEGEND_PLAYERS_ENABLED: value }
     assert.throws(() => legendDailyIncludesPlayers(env), /取得設定/)
     await assert.rejects(runLegendDaily({ env, now: () => now, collect: async () => { throw new Error('must not launch') } }), /取得設定/)
     assert.equal(env.BUCKLER_WEEKLY_SESSION, undefined)
@@ -230,7 +243,7 @@ async function bundleFixture(t: test.TestContext) {
   t.after(async () => { if (legendAnalysisPathWithin(parent, root)) await rm(root, { recursive: true, force: true }) })
   return root
 }
-async function writeBundle(root: string, includePlayers: boolean, day = '27', failed = false, playerSchemaVersion: 1 | 2 = 1) {
+async function writeBundle(root: string, includePlayers: boolean, day = '27', failed = false, playerSchemaVersion: 1 | 2 | 3 = 1) {
   const captured = `2026-10-${day}T00:00:00.000Z`
   const players = parseLegendPlayersDataset({ schemaVersion: 1, id: `legend-${captured.replace(/[:.]/g, '-')}`,
     captureStartedAt: captured, captureEndedAt: captured, generatedAt: captured,
@@ -239,16 +252,21 @@ async function writeBundle(root: string, includePlayers: boolean, day = '27', fa
     conditions: { region: 'all', platform: 'all', characters: 'all', users: 'source-default' }, totalCount: 1,
     players: [{ id: 'entry-1', playerName: '人工プレイヤー', characterId: 'ryu', rank: 1, masterRating: 2500 }],
     validation: { status: 'verified', coverage: 'all-listed-legend-entries', checks: [...LEGEND_ANALYSIS_VALIDATION_CHECKS], notes: ['人工テスト。'] } })
-  const playerDataset = playerSchemaVersion === 1 ? players : parseLegendPlayersDataset({ ...players, schemaVersion: 2,
+  const playerDataset = playerSchemaVersion === 1 ? players : playerSchemaVersion === 3 ? parseLegendPlayersDataset({ ...players, schemaVersion: 3,
+    generatedAt: bundleGeneratedAt,
+    rankedMatchAvailability: { status: 'unavailable', reason: 'access-unavailable', checkedAt: bundleGeneratedAt },
+    players: players.players.map(row => ({ ...row, playerId: '0001234567', region: '日本', platform: 'Steam' }))
+  }) : parseLegendPlayersDataset({ ...players, schemaVersion: 2,
     generatedAt: `2026-10-${day}T00:46:00.000Z`, rankedMatchScope: { actId: players.act.id, mode: 'ranked',
       collectionStartedAt: `2026-10-${day}T00:01:00.000Z`, collectionEndedAt: `2026-10-${day}T00:45:00.000Z` },
     players: players.players.map(row => ({ ...row, playerId: '0001234567', region: '日本', platform: 'Steam', rankedMatchCount: 0 })) })
   const { players: _rows, ...metadata } = players
-  const aggregate = { ...metadata, characterIds: ['ryu'],
+  const aggregate = { ...metadata, ...(playerSchemaVersion === 3 ? { generatedAt: bundleGeneratedAt } : {}), characterIds: ['ryu'],
     characters: [{ characterId: 'ryu', name: 'リュウ', count: 1, mr: summarizeLegendMr([2500]) }], mr: summarizeLegendMr([2500]) }
   const manifest = { schemaVersion: 1, generatedAt: bundleGeneratedAt, source: LEGEND_ANALYSIS_SOURCE,
     datasets: failed ? [] : [createLegendPlayersDescriptor(playerDataset)],
-    ...(failed ? { availability: { status: 'collection-failed', checkedAt: bundleGeneratedAt, message: '取得失敗' } } : {}) }
+    ...(failed || playerSchemaVersion === 3 ? { availability: { status: 'collection-failed', checkedAt: bundleGeneratedAt,
+      message: failed ? '取得失敗' : 'ランキング一覧は取得済みです。対戦数の取得を完了できませんでした。' } } : {}) }
   await mkdir(root, { recursive: true })
   await writeFile(resolve(root, 'index.json'), JSON.stringify(manifest))
   if (!failed) await writeFile(resolve(root, `${players.id}.json`), JSON.stringify(aggregate))
@@ -354,4 +372,90 @@ test('invalid v2 profile values leave both aggregate and player history unchange
     await assert.rejects(publishLegendDailyBundle(incoming, output, true, bundleGeneratedAt))
     assert.deepEqual(await bundleSnapshot(output), before)
   }
+})
+
+test('daily partial collection uploads a verified schema 3 ranking bundle while retaining failure notification', async t => {
+  const root = await bundleFixture(t), incoming = resolve(root, 'partial')
+  const datasetId = await writeBundle(incoming, true, '28', false, 3)
+  const calls: string[] = []
+  const supplied = { succeeded: false, report: { ...result(false).report, status: 'partial' as const,
+    startedAt: '2026-10-28T00:00:00.000Z', endedAt: bundleGeneratedAt, datasetId,
+    profileTotalCount: 1, profileReadCount: 0,
+    raw: PRIVATE, profileUrl: `https://example.com/${PRIVATE}`, storageState: { cookies: [PRIVATE] } } }
+  const outcome = await runLegendDaily({ env: { ...environment(), LEGEND_PLAYERS_ENABLED: 'true' }, now: () => now,
+    collect: async options => { calls.push('collect'); assert.equal(options.includePlayers, true); return supplied },
+    logReport: report => {
+      calls.push('report')
+      assert.equal(report.status, 'partial')
+      assert.equal(report.reason, 'access-unavailable')
+      assert.equal(report.datasetId, datasetId)
+      assert.doesNotMatch(JSON.stringify(report), /synthetic-legend-session|storageState|cookies|profileUrl|raw/)
+    },
+    validate: async (path, includePlayers) => {
+      calls.push('validate'); assert.ok(path.endsWith('public')); assert.equal(includePlayers, true)
+      const validated = await validateLegendDailyBundle(incoming, includePlayers)
+      assert.deepEqual(validated, { datasets: 1, entries: 1 })
+      return validated
+    }, artifactReady: async () => { calls.push('artifact') },
+  })
+  assert.deepEqual(outcome, { succeeded: false })
+  assert.deepEqual(calls, ['collect', 'report', 'validate', 'artifact'])
+})
+
+test('a v3 ranking-only publication adds both datasets and failure availability without altering v2 history', async t => {
+  const root = await bundleFixture(t), previous = resolve(root, 'v2'), incoming = resolve(root, 'v3'), output = resolve(root, 'public')
+  const oldId = await writeBundle(previous, true, '27', false, 2)
+  await publishLegendDailyBundle(previous, output, true, bundleGeneratedAt)
+  const before = await bundleSnapshot(output), newId = await writeBundle(incoming, true, '28', false, 3)
+  assert.deepEqual(await validateLegendDailyBundle(incoming, true), { datasets: 1, entries: 1 })
+  await publishLegendDailyBundle(incoming, output, true, bundleGeneratedAt)
+  const after = await bundleSnapshot(output)
+  for (const path of [`${oldId}.json`, `players/${oldId}.json`]) assert.equal(after[path], before[path])
+  const aggregate = JSON.parse(after[`${newId}.json`]), players = JSON.parse(after[`players/${newId}.json`])
+  const aggregateIndex = JSON.parse(after['index.json']), playerIndex = JSON.parse(after['players/index.json'])
+  assert.equal(aggregate.schemaVersion, 1)
+  assert.equal(players.schemaVersion, 3)
+  assert.equal(aggregate.totalCount, 1)
+  assert.equal(players.totalCount, 1)
+  assert.equal(players.players[0].playerId, '0001234567')
+  assert.equal(Object.hasOwn(players.players[0], 'rankedMatchCount'), false)
+  assert.equal(Object.hasOwn(players, 'rankedMatchScope'), false)
+  assert.equal(players.rankedMatchAvailability.reason, 'access-unavailable')
+  assert.equal(players.rankedMatchAvailability.checkedAt, bundleGeneratedAt)
+  assert.deepEqual(aggregateIndex.datasets, playerIndex.datasets)
+  assert.equal(playerIndex.datasets.length, 2)
+  const availability = { status: 'collection-failed', checkedAt: bundleGeneratedAt,
+    message: 'ランキング一覧は取得済みです。対戦数の取得を完了できませんでした。' }
+  assert.deepEqual(aggregateIndex.availability, availability)
+  assert.deepEqual(playerIndex.availability, availability)
+  // A fallback must be a new capture, never a rewrite of an existing complete profile capture.
+  const collision = resolve(root, 'collision')
+  await writeBundle(collision, true, '27', false, 3)
+  await assert.rejects(publishLegendDailyBundle(collision, output, true, bundleGeneratedAt))
+  assert.deepEqual(await bundleSnapshot(output), after)
+})
+
+test('incomplete identities, fabricated counts and missing v3 ranking rows cannot alter either history', async t => {
+  const root = await bundleFixture(t), previous = resolve(root, 'v2'), incoming = resolve(root, 'v3'), output = resolve(root, 'public')
+  await writeBundle(previous, true, '27', false, 2)
+  await publishLegendDailyBundle(previous, output, true, bundleGeneratedAt)
+  const before = await bundleSnapshot(output), id = await writeBundle(incoming, true, '28', false, 3)
+  const playerPath = resolve(incoming, `players/${id}.json`), original = await readFile(playerPath, 'utf8'), valid = JSON.parse(original)
+  const malformed = [
+    ...['playerId', 'region', 'platform'].map(field => ({ ...valid, players: valid.players.map((row: Record<string, unknown>) => {
+      const { [field]: _missing, ...incomplete } = row; return incomplete
+    }) })),
+    { ...valid, players: valid.players.map((row: Record<string, unknown>) => ({ ...row, rankedMatchCount: 0 })) },
+    { ...valid, players: valid.players.map((row: Record<string, unknown>) => ({ ...row, rankedMatchCount: 123 })) },
+    { ...valid, players: [] }, { ...valid, totalCount: 0, players: [] },
+    { ...valid, validation: { ...valid.validation, coverage: 'partial' } },
+  ]
+  for (const invalid of malformed) {
+    await writeFile(playerPath, JSON.stringify(invalid))
+    await assert.rejects(validateLegendDailyBundle(incoming, true))
+    await assert.rejects(publishLegendDailyBundle(incoming, output, true, bundleGeneratedAt))
+    assert.deepEqual(await bundleSnapshot(output), before)
+  }
+  await writeFile(playerPath, original)
+  assert.deepEqual(await validateLegendDailyBundle(incoming, true), { datasets: 1, entries: 1 })
 })

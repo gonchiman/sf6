@@ -61,6 +61,7 @@ export async function runLegendDaily(dependencies: {
   const safeReport = summarizeLegendAnalysisCaptureReport(result.report)
   const logReport = dependencies.logReport ?? (report => console.log(JSON.stringify({ capture: report })))
   logReport(safeReport)
+  if (safeReport.reason === 'output-unavailable') throw new LegendDailyError('output')
   try {
     await (dependencies.validate ?? validateLegendDailyBundle)(resolve(LEGEND_DAILY_OUTPUT, 'public'), includePlayers)
     await (dependencies.artifactReady ?? markRankDistributionArtifactReady)(env)
@@ -78,7 +79,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     throw new LegendDailyError('arguments')
   }
   const result = await runLegendDaily()
-  console.log(result.succeeded ? 'レジェンド帯の集計を完了しました。' : '取得に失敗しました。前回の正常データを維持する取得状況を保存しました。')
+  console.log(result.succeeded ? 'レジェンド帯の取得を完了しました。' : '未完了の取得項目があります。検証済みのデータと取得状況を保存しました。')
   if (!result.succeeded) process.exitCode = 1
 }
 

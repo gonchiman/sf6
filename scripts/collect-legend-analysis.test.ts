@@ -43,6 +43,25 @@ function withPlayers(transport: LegendAnalysisTransport): void {
   transport.fetchPlayerRankedMatches = async (_id, characters) => Object.fromEntries(characters.map(id => [id, 123]))
 }
 
+async function assertRankingWithoutCounts(output: string, datasetId: string | null, reason: string) {
+  assert.ok(datasetId)
+  const directory = resolve(output, 'public/players')
+  const players = JSON.parse(await readFile(resolve(directory, `${datasetId}.json`), 'utf8'))
+  assert.equal(players.schemaVersion, 3)
+  assert.equal(players.players.length, 2)
+  assert.deepEqual(players.players.map((row: { playerId: string }) => row.playerId), ['0000000001', '0000000002'])
+  assert.equal(Object.hasOwn(players, 'rankedMatchScope'), false)
+  assert.equal(players.players.every((row: object) => !Object.hasOwn(row, 'rankedMatchCount')), true)
+  assert.deepEqual(players.rankedMatchAvailability, { status: 'unavailable', reason, checkedAt: now().toISOString() })
+  const aggregate = JSON.parse(await readFile(resolve(output, 'public', `${datasetId}.json`), 'utf8'))
+  assert.equal(aggregate.totalCount, 2)
+  assert.equal(aggregate.mr.max, 2400)
+  const manifest = JSON.parse(await readFile(resolve(directory, 'index.json'), 'utf8'))
+  assert.match(manifest.availability.message, /ランキング一覧は取得済み.*対戦数/)
+  await validateLegendDailyBundle(resolve(output, 'public'), true)
+  assert.doesNotMatch(JSON.stringify(players), /accountKey|synthetic-secret/)
+}
+
 test('run persists aggregates only after all checks and successful browser closure', async t => {
   const data = await fixture(t)
   const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
@@ -168,7 +187,7 @@ test('one profile read covers multiple listed characters of the same account and
   assert.deepEqual(value.players.map((row: { rankedMatchCount: number }) => row.rankedMatchCount), [0, 345])
 })
 
-test('unavailable profile counts stop enrichment and never publish partial rows or substitute zero', async t => {
+test('unavailable profile counts preserve the complete ranking and never substitute zero', async t => {
   for (const count of [undefined, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
     const data = await fixture(t)
     withPlayers(data.transport)
@@ -178,7 +197,8 @@ test('unavailable profile counts stop enrichment and never publish partial rows 
     assert.equal(result.succeeded, false)
     assert.equal(result.report.reason, 'source-unconfirmed')
     assert.equal(reads, 1)
-    assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+    assert.equal(result.report.status, 'partial')
+    await assertRankingWithoutCounts(data.output, result.report.datasetId, 'source-unconfirmed')
   }
 })
 
@@ -198,17 +218,70 @@ test('profile CAPTCHA denial ends collection immediately and records bounded dia
   assert.equal(safe.humanVerification.wafAction, 'captcha')
   assert.equal(safe.profileReadCount, 0)
   assert.doesNotMatch(JSON.stringify(safe), /0000000001|Synthetic player/)
-  assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+  assert.equal(safe.status, 'partial')
+  await assertRankingWithoutCounts(data.output, safe.datasetId, 'access-unavailable')
 })
 
-test('Act changes after profile collection invalidate the whole capture', async t => {
+test('Act changes after profile collection discard counts while retaining the verified original Act ranking', async t => {
   const data = await fixture(t)
   withPlayers(data.transport)
   data.transport.confirmAct = async () => { if (++data.calls.act === 2) throw new LegendAnalysisDomError('act-changed') }
   const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true }, { now, launch: async () => data.transport })
   assert.equal(result.report.reason, 'source-changed')
   assert.equal(result.succeeded, false)
+  assert.equal(result.report.status, 'partial')
+  await assertRankingWithoutCounts(data.output, result.report.datasetId, 'source-changed')
+})
+
+test('enrichment stops at the first failure and discards even earlier confirmed counts', async t => {
+  for (const [errorCode, failureReason] of [['http-denied', 'access-unavailable'], ['authentication-required', 'authentication-unavailable'],
+    ['request-limit', 'request-limit'], ['act-changed', 'source-changed']] as const) {
+    const data = await fixture(t)
+    withPlayers(data.transport)
+    let profiles = 0
+    data.transport.fetchPlayerRankedMatches = async () => {
+      if (++profiles === 1) return { ryu: 0 }
+      throw new LegendAnalysisDomError(errorCode)
+    }
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true },
+      { now, launch: async () => data.transport })
+    assert.equal(result.succeeded, false); assert.equal(result.report.status, 'partial')
+    assert.equal(profiles, 2); assert.equal(data.calls.read, 3); assert.equal(data.calls.act, 1)
+    assert.equal(result.report.profileReadCount, 1)
+    await assertRankingWithoutCounts(data.output, result.report.datasetId, failureReason)
+  }
+})
+
+test('explicit caller cancellation never publishes a captured ranking after enrichment begins', async t => {
+  const data = await fixture(t), controller = new AbortController()
+  withPlayers(data.transport)
+  data.transport.fetchPlayerRankedMatches = async () => { controller.abort(); throw new Error(SECRET) }
+  const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true, signal: controller.signal },
+    { now, launch: async () => data.transport })
+  assert.equal(result.report.status, 'failed'); assert.equal(result.report.reason, 'cancelled')
+  assert.equal(result.report.datasetId, null)
   assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+})
+
+test('internal profile deadline retains ranking while close and clock failures suppress fallback publication', async t => {
+  for (const stop of ['deadline', 'close', 'clock'] as const) {
+    const data = await fixture(t), controller = new AbortController()
+    withPlayers(data.transport)
+    const timeout = t.mock.method(AbortSignal, 'timeout', () => controller.signal)
+    data.transport.fetchPlayerRankedMatches = async () => { controller.abort(); throw new Error(SECRET) }
+    if (stop === 'close') data.transport.close = async () => { throw new Error(SECRET) }
+    let times = 0
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true },
+      { now: () => stop === 'clock' && ++times >= 5 ? new Date('2026-10-15T00:00:00.000Z') : now(), launch: async () => data.transport })
+    timeout.mock.restore()
+    if (stop === 'deadline') {
+      assert.equal(result.report.status, 'partial')
+      await assertRankingWithoutCounts(data.output, result.report.datasetId, 'cancelled')
+    } else {
+      assert.equal(result.report.status, 'failed'); assert.equal(result.report.datasetId, null)
+      assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+    }
+  }
 })
 
 test('aggregate-only collection never calls player profile enrichment', async t => {
@@ -217,6 +290,22 @@ test('aggregate-only collection never calls player profile enrichment', async t 
   const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output }, { now, launch: async () => data.transport })
   assert.equal(result.succeeded, true)
   assert.equal((await readdir(resolve(data.output, 'public'))).includes('players'), false)
+})
+
+test('a temporarily invalid or reversed profile clock cannot become a partial ranking publication', async t => {
+  for (const badTime of [new Date(NaN), new Date('2026-10-15T00:00:00.000Z')]) {
+    const data = await fixture(t)
+    withPlayers(data.transport)
+    let times = 0, profiles = 0
+    data.transport.fetchPlayerRankedMatches = async () => { profiles++; return { ryu: 0 } }
+    const result = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true },
+      { now: () => ++times === 4 ? badTime : now(), launch: async () => data.transport })
+    assert.equal(result.report.status, 'failed')
+    assert.equal(result.report.validationCheck, 'capture-clock')
+    assert.equal(result.report.datasetId, null)
+    assert.equal(profiles, 0)
+    assert.deepEqual(await readdir(resolve(data.output, 'public/players')), ['index.json'])
+  }
 })
 
 test('normal endpoint updates complete once and retain the validated listing values in both published datasets', async t => {
