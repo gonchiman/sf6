@@ -13,6 +13,7 @@ import { StatisticsPanel } from './StatisticsPanel'
 import { SteamPlayerCountHourlyChart, SteamPlayerCountTrendChart, steamPlayerCountNumber } from './SteamPlayerCountCharts'
 import { SteamPlayerCountFilters } from './SteamPlayerCountFilters'
 import { SteamPlayerCountComparisonView } from './SteamPlayerCountComparisonView'
+import { SteamCollectionVersionHistory } from './SteamCollectionVersionHistory'
 import '../win-rates.css'
 import '../table.css'
 import '../steam-player-count.css'
@@ -60,9 +61,12 @@ export function SteamPlayerCountPage({ initialAppId = DEFAULT_STEAM_PLAYER_COUNT
   // Keep the user's period across games; only the data controller is remounted
   // so the previous game's observations cannot appear under the new title.
   return <div className="steam-player-count-page">
-    <div className="win-rates-view-selector steam-player-count-mode" role="group" aria-label="比較対象">
-      <button type="button" className="win-rates-button" aria-pressed={mode === 'single'} onClick={() => setMode('single')}>ゲーム別</button>
-      <button type="button" className="win-rates-button" aria-pressed={mode === 'comparison'} onClick={() => setMode('comparison')}>ゲーム比較</button>
+    <div className="steam-player-count-header">
+      <div className="win-rates-view-selector steam-player-count-mode" role="group" aria-label="比較対象">
+        <button type="button" className="win-rates-button" aria-pressed={mode === 'single'} onClick={() => setMode('single')}>ゲーム別</button>
+        <button type="button" className="win-rates-button" aria-pressed={mode === 'comparison'} onClick={() => setMode('comparison')}>ゲーム比較</button>
+      </div>
+      <SteamCollectionVersionHistory />
     </div>
     {mode === 'single' ? <SteamPlayerCountGameView key={game.appId} game={game} onGameChange={changeGame} gameSelectRef={gameSelectRef}
       dayType={dayType} onDayTypeChange={setDayType} tab={tab} onTabChange={setTab} selection={selection} onSelectionChange={setSelection} />

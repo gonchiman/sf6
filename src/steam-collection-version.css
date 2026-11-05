@@ -1,0 +1,24 @@
+.steam-player-count-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; min-width: 0; }
+.steam-collection-version { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 12px; color: var(--text-muted); }
+.steam-collection-version strong { color: var(--text-soft); font-weight: 500; }
+.steam-collection-version > .win-rates-button { font-size: 12px; }
+.steam-collection-dialog { width: min(800px, calc(100% - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; border: 1px solid var(--border-strong); padding: 24px; overflow: hidden; color: var(--text); background: var(--surface); box-shadow: 0 18px 60px #0003; }
+.steam-collection-dialog[open] { display: flex; flex-direction: column; gap: 20px; }
+.steam-collection-dialog::backdrop { background: #0006; }
+.steam-collection-dialog-header { display: flex; flex: 0 0 auto; align-items: start; justify-content: space-between; gap: 12px; }
+.steam-collection-dialog-header h2 { margin: 0 0 8px; color: var(--text); font-size: 18px; font-weight: 600; }
+.steam-collection-dialog-header h2:focus { outline: none; }
+.steam-collection-dialog-header > button { flex-shrink: 0; }
+.steam-collection-dialog-version { color: var(--text-muted); font-size: 12px; }
+.steam-collection-history-scroll { min-height: 0; }
+.steam-collection-history-table { min-width: 540px; line-height: 1.7; }
+.steam-collection-history-table th, .steam-collection-history-table td { padding: 10px 12px; vertical-align: top; text-align: left; }
+.steam-collection-history-table tr > :first-child { width: 96px; white-space: nowrap; }
+.steam-collection-history-table tr > :nth-child(2) { width: 165px; }
+.steam-collection-history-retrospective { display: block; color: var(--text-muted); font-size: 10px; font-weight: 400; }
+.steam-collection-history-commit { display: block; width: fit-content; margin-top: 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .steam-collection-dialog { width: calc(100% - 24px); max-height: calc(100dvh - 24px); padding: 16px; }
+  .steam-collection-dialog[open] { gap: 16px; }
+  .steam-collection-dialog-header h2 { font-size: 16px; }
+}
