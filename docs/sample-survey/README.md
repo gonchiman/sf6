@@ -37,10 +37,10 @@
 
 ワークフローは [sample-survey.yml](../../.github/workflows/sample-survey.yml)。mainへ反映後、Actionsの「Collect sample survey」から手動実行する。**この変更は手動実行の入口までで、定期実行のscheduleは設定していない。**
 
-- 対象LPランク：カンマ区切り。初期値MASTER。MRのみなら空欄。
+- 対象LPランク：カンマ区切り。初期値MASTER。MRのみなら `NONE` を指定し、MR帯の追加を有効にする。空欄はActionsの既定値MASTERに置き換わるため使わない。
 - 各ランク／MR帯の標本数：10〜1,000、10刻み。初期値10。
 - MR帯の追加：初期は無効。有効時は6帯を対象とする。
-- 取得時間上限：LPを含む場合は1〜120分。対象LPランクが空欄でMRのみの場合は1〜180分。初期10分で、準備・境界確認も含む。
+- 取得時間上限：LPを含む場合は1〜120分。対象LPランクが `NONE` でMRのみの場合は1〜180分。初期10分で、準備・境界確認も含む。
 - 保存認証：既存のリポジトリSecret `BUCKLER_WEEKLY_SESSION` を取得stepだけで利用する。保存済みであることは有効性の保証ではない。
 - 途中保存：専用Secret `SAMPLE_SURVEY_CHECKPOINT_KEY` で取得位置と途中観測を暗号化し、Actions Artifactへ保存する。認証情報は途中記録へ含めない。
 - 途中再開：`resume_run_id` に同じコード・調査条件で失敗した取得実行IDを指定する。`execution_budget_minutes` は今回起動の取得時間だけを短縮し、保存済みの調査条件は変更しない。

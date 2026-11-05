@@ -58,14 +58,17 @@ test('cloud inputs reuse rank/sample validation and cap wall time without accept
   assert.deepEqual(parseSampleSurveyCloudConfig({}), { ranks: ['MASTER'], rankSampleSize: 10, includeMr: false, mrSampleSize: 10, maxDurationMinutes: 10 })
   assert.deepEqual(parseSampleSurveyCloudConfig({ SAMPLE_SURVEY_RANKS: 'MASTER,GOLD', SAMPLE_SURVEY_INCLUDE_MR: 'true' }).ranks, ['GOLD', 'MASTER'])
   assert.deepEqual(parseSampleSurveyCloudConfig({ SAMPLE_SURVEY_RANKS: '', SAMPLE_SURVEY_INCLUDE_MR: 'true' }).ranks, [])
+  assert.deepEqual(parseSampleSurveyCloudConfig({ SAMPLE_SURVEY_RANKS: 'NONE', SAMPLE_SURVEY_INCLUDE_MR: 'true' }).ranks, [])
   for (const patch of [{ SAMPLE_SURVEY_RANKS: 'MASTER,MASTER' }, { SAMPLE_SURVEY_RANKS: '' }, { SAMPLE_SURVEY_RANKS: '$(secret)' },
     { SAMPLE_SURVEY_RANK_SAMPLE_SIZE: '11' }, { SAMPLE_SURVEY_RANK_SAMPLE_SIZE: '1e2' }, { SAMPLE_SURVEY_INCLUDE_MR: 'True' },
-    { SAMPLE_SURVEY_MAX_DURATION_MINUTES: '121' }, { SAMPLE_SURVEY_MAX_DURATION_MINUTES: '0' }]) {
+    { SAMPLE_SURVEY_MAX_DURATION_MINUTES: '121' }, { SAMPLE_SURVEY_MAX_DURATION_MINUTES: '0' },
+    { SAMPLE_SURVEY_RANKS: 'NONE' }, { SAMPLE_SURVEY_RANKS: 'NONE', SAMPLE_SURVEY_INCLUDE_MR: 'false' },
+    ...['NONE,MASTER', 'none', ' NONE ', 'NONE;'].map(ranks => ({ SAMPLE_SURVEY_RANKS: ranks, SAMPLE_SURVEY_INCLUDE_MR: 'true' }))]) {
     assert.throws(() => parseSampleSurveyCloudConfig(patch), SampleSurveyCloudError)
   }
 })
 test('only MR-only cloud collection may use the extended 180-minute budget', () => {
-  const mrOnly = { SAMPLE_SURVEY_RANKS: '', SAMPLE_SURVEY_INCLUDE_MR: 'true' }
+  const mrOnly = { SAMPLE_SURVEY_RANKS: 'NONE', SAMPLE_SURVEY_INCLUDE_MR: 'true' }
   for (const minutes of [1, 120, 121, 180]) {
     assert.equal(parseSampleSurveyCloudConfig({ ...mrOnly, SAMPLE_SURVEY_MAX_DURATION_MINUTES: String(minutes) }).maxDurationMinutes, minutes)
   }
@@ -89,7 +92,7 @@ test('MR-only collection can pass 120 simulated minutes but still stops at its 1
     let clock = now.getTime(), reads = 0, closed = false, written = false, marked = false
     const starts: number[] = []
     const result = await runSampleSurveyCloud({
-      env: { ...environment(), SAMPLE_SURVEY_RANKS: '', SAMPLE_SURVEY_INCLUDE_MR: 'true', SAMPLE_SURVEY_MAX_DURATION_MINUTES: '180' },
+      env: { ...environment(), SAMPLE_SURVEY_RANKS: 'NONE', SAMPLE_SURVEY_INCLUDE_MR: 'true', SAMPLE_SURVEY_MAX_DURATION_MINUTES: '180' },
       now: () => new Date(clock),
       createReader: async () => ({ readPage: async (target, page) => {
         assert.equal(target, 'mr'); assert.equal(page, 1)
@@ -332,7 +335,7 @@ test('workflow saves only encrypted private progress even on failure and keeps k
   const [collect, publish] = workflow.split('  save-history:')
   assert.match(workflow, /workflow_dispatch:/); assert.doesNotMatch(workflow, /schedule:|cron:/)
   assert.match(workflow, /group: rank-distribution-weekly-gonchiman-sf6/)
-  assert.ok(collect.includes("timeout-minutes: ${{ inputs.ranks == '' && inputs.include_mr && 210 || 150 }}"))
+  assert.ok(collect.includes("timeout-minutes: ${{ (inputs.ranks == 'NONE' || inputs.ranks == '') && inputs.include_mr && 210 || 150 }}"))
   assert.match(collect, /contents: read/); assert.doesNotMatch(collect, /contents: write/)
   assert.match(collect, /secrets\.BUCKLER_WEEKLY_SESSION/); assert.doesNotMatch(publish, /BUCKLER_WEEKLY_SESSION/)
   assert.match(collect, /sample-survey\/runs\/\*\.json/); assert.doesNotMatch(collect, /sqlite|private-session|\.html/)

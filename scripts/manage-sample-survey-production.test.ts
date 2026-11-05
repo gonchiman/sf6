@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { deflateRawSync } from 'node:zlib'
 import { readFile } from 'node:fs/promises'
 import { createSampleSurveyCheckpoint } from './lib/sample-survey-runner.ts'
+import { parseSampleSurveyCloudConfig } from './collect-sample-survey-cloud.ts'
 import { createSampleSurveyCheckpointManifest, encryptSampleSurveyCheckpoint } from './lib/sample-survey-cloud-checkpoint.ts'
 import type { SampleSurveyCheckpointManifest } from './lib/sample-survey-cloud-checkpoint.ts'
 import { SAMPLE_SURVEY_RESULTS_SOURCE } from '../src/lib/sampleSurveyResults.ts'
@@ -179,6 +180,34 @@ test('GitHub adapter pins dispatch to main and bounded numeric plan inputs', asy
   assert.ok(f.calls[0].limit <= 1024 * 1024)
   await assert.rejects(f.github.dispatch(6, SHA)); assert.equal(f.calls.length, 2)
   await assert.rejects(f.github.dispatch(2, 'refs/heads/feature')); assert.equal(f.calls.length, 2)
+})
+
+test('all five dispatched plans survive Actions input defaults and MR-only selects exactly 600 slots', async () => {
+  for (const stage of [1, 2, 3, 4, 5]) {
+    const f = mocked(args => args.some(arg => arg.endsWith('/commits/main')) ? { sha: SHA }
+      : { workflow_run_id: 123, run_url: 'https://api.github.com/repos/gonchiman/sf6/actions/runs/123',
+        html_url: 'https://github.com/gonchiman/sf6/actions/runs/123' })
+    await f.github.dispatch(stage, SHA)
+    const args = f.calls.find(call => call.args.includes('POST'))!.args
+    const input = (name: string) => {
+      const prefix = `inputs[${name}]=`
+      return args.find(value => value.startsWith(prefix))?.slice(prefix.length)
+    }
+    const config = parseSampleSurveyCloudConfig({
+      // Simulate the observed Actions behavior: empty ranks becomes default MASTER.
+      SAMPLE_SURVEY_RANKS: input('ranks') || 'MASTER',
+      SAMPLE_SURVEY_RANK_SAMPLE_SIZE: input('rank_sample_size'), SAMPLE_SURVEY_INCLUDE_MR: input('include_mr'),
+      SAMPLE_SURVEY_MR_SAMPLE_SIZE: input('mr_sample_size'), SAMPLE_SURVEY_MAX_DURATION_MINUTES: input('max_duration_minutes'),
+    })
+    assert.deepEqual(config, productionStage(stage).config)
+    if (stage === 5) {
+      assert.equal(input('ranks'), 'NONE')
+      const checkpoint = createSampleSurveyCheckpoint({ schemaVersion: 1, id: 'mr-only', createdAt: START, seed: '1'.repeat(64), config }, Date.parse(START))
+      assert.equal(checkpoint.report.strata.length, 6)
+      assert.ok(checkpoint.report.strata.every(row => row.id.startsWith('mr-') && row.requested === 100))
+      assert.equal(checkpoint.report.strata.reduce((sum, row) => sum + row.requested, 0), 600)
+    }
+  }
 })
 
 test('GitHub adapter does not repeat ambiguous dispatches or expose command errors', async () => {

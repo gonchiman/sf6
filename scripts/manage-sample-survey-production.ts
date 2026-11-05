@@ -204,7 +204,7 @@ export function createProductionGitHub(command: CloudGhCommand = runCloudGhComma
       await compatibleWorkflow(source, launch)
       // One POST only. Never resend a dispatch after an ambiguous response.
       return parseProductionDispatch(await api(`${API}/actions/workflows/${WORKFLOW}/dispatches`, ['--method', 'POST',
-        '-f', 'ref=main', '-F', 'return_run_details=true', '-f', `inputs[ranks]=${config.ranks.join(',')}`,
+        '-f', 'ref=main', '-F', 'return_run_details=true', '-f', `inputs[ranks]=${config.ranks.join(',') || 'NONE'}`,
         '-f', `inputs[rank_sample_size]=${config.rankSampleSize}`, '-f', `inputs[include_mr]=${config.includeMr}`,
         '-f', `inputs[mr_sample_size]=${config.mrSampleSize}`, '-f', `inputs[max_duration_minutes]=${config.maxDurationMinutes}`,
         '-f', `inputs[source_sha]=${source}`,

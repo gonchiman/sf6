@@ -46,7 +46,8 @@ export function parseSampleSurveyCloudConfig(env: Environment): SampleSurveyConf
     }
     const mr = env.SAMPLE_SURVEY_INCLUDE_MR ?? 'false', ranks = env.SAMPLE_SURVEY_RANKS ?? 'MASTER'
     if (!['true', 'false'].includes(mr) || ranks.length > 100) throw new Error()
-    const config = parseSampleSurveyConfig({ ranks: ranks === '' ? [] : ranks.split(',').map(rank => rank.trim()),
+    // Actions may replace an empty dispatch input with its default MASTER rank.
+    const config = parseSampleSurveyConfig({ ranks: ranks === 'NONE' || ranks === '' ? [] : ranks.split(',').map(rank => rank.trim()),
       rankSampleSize: number(env.SAMPLE_SURVEY_RANK_SAMPLE_SIZE, '10'), includeMr: mr === 'true',
       mrSampleSize: number(env.SAMPLE_SURVEY_MR_SAMPLE_SIZE, '10'), maxDurationMinutes: number(env.SAMPLE_SURVEY_MAX_DURATION_MINUTES, '10') })
     const maximumMinutes = config.ranks.length === 0 && config.includeMr ? 180 : 120
