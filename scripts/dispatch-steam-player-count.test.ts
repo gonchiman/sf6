@@ -16,6 +16,13 @@ function driverRun(id: string | number = '100', status = 'in_progress', conclusi
     head_repository: { full_name: 'gonchiman/sf6' }, created_at: '2026-11-01T00:00:00Z' }
 }
 
+function collectionRun(id: string | number = '200', status = 'completed', createdAt = start - 15 * 60_000, attempt = 1) {
+  return { id, status, run_attempt: attempt, event: 'workflow_dispatch', head_branch: 'main',
+    path: '.github/workflows/steam-player-count.yml', repository: { full_name: 'gonchiman/sf6' },
+    head_repository: { full_name: 'gonchiman/sf6' }, created_at: new Date(createdAt).toISOString(),
+    updated_at: new Date(createdAt + 30_000).toISOString() }
+}
+
 function proofJobs(id: string | number, conclusion = 'success') {
   return { total_count: 1, jobs: [{ name: 'dispatch', run_id: id, status: 'completed', conclusion,
     steps: [{ name: STEAM_DISPATCH_HANDOFF_PROOF_STEP, status: 'completed', conclusion: 'success' }] }] }
@@ -25,7 +32,8 @@ type RequestRecord = { url: string; method: string; time: number; options: Reque
 function fixture(options: { start?: number; request?: (request: RequestRecord) => Promise<Response | void> | Response | void;
   afterWait?: (ms: number) => void } = {}) {
   const state = { wall: options.start ?? start, elapsed: 0, requests: [] as RequestRecord[], waits: [] as number[], logs: [] as string[],
-    dispatcher: 'active', collector: 'active', latest: null as null | { created_at: string; head_branch: string; status: string },
+    dispatcher: 'active', collector: 'active', latest: null as null | ReturnType<typeof collectionRun>,
+    collectionDetail: null as null | ReturnType<typeof collectionRun>,
     currentRun: driverRun(), successors: [] as ReturnType<typeof driverRun>[], predecessor: driverRun('90', 'completed', 'success'),
     predecessorJobs: proofJobs('90') }
   const fetchData: typeof fetch = async (input, init) => {
@@ -39,7 +47,7 @@ function fixture(options: { start?: number; request?: (request: RequestRecord) =
         return new Response(null, { status: 204 })
       }
       // GitHub records creation after the request; this must not lose alternate slots.
-      state.latest = { created_at: new Date(state.wall + 1000).toISOString(), head_branch: 'main', status: 'completed' }
+      state.latest = collectionRun(String(1000 + state.requests.length), 'completed', state.wall + 1000)
       return new Response(null, { status: 204 })
     }
     if (request.url.endsWith('steam-player-count-dispatch.yml')) return Response.json({ state: state.dispatcher })
@@ -51,6 +59,8 @@ function fixture(options: { start?: number; request?: (request: RequestRecord) =
     if (request.url.endsWith(`/actions/runs/${state.currentRun.id}`)) return Response.json(state.currentRun)
     if (request.url.endsWith(`/actions/runs/${state.predecessor.id}`)) return Response.json(state.predecessor)
     if (request.url.endsWith(`/actions/runs/${state.predecessor.id}/attempts/${state.predecessor.run_attempt}/jobs?per_page=100`)) return Response.json(state.predecessorJobs)
+    const detail = state.collectionDetail ?? state.latest
+    if (detail && request.url.endsWith(`/actions/runs/${detail.id}`)) return Response.json(detail)
     assert.fail(`unexpected URL: ${request.url}`)
   }
   const run = (extra: Parameters<typeof runSteamPlayerCountDispatcher>[0] = {}) => runSteamPlayerCountDispatcher({
@@ -121,7 +131,7 @@ test('a backward wall clock jump cannot extend the monotonic generation budget',
 
 test('an existing run in the current aligned slot prevents a handoff duplicate', async () => {
   const f = fixture()
-  f.state.latest = { created_at: new Date(start + 1000).toISOString(), head_branch: 'main', status: 'completed' }
+  f.state.latest = collectionRun('200', 'completed', start + 1000)
   const result = await f.run({ durationMs: 16 * 60_000 })
   assert.equal(result.skipped, 1)
   assert.deepEqual(f.posts().map(item => item.time), [start + 15 * 60_000])
@@ -129,10 +139,177 @@ test('an existing run in the current aligned slot prevents a handoff duplicate',
 
 test('an unfinished collection prevents building a queue of new collection runs', async () => {
   const f = fixture()
-  f.state.latest = { created_at: new Date(start - 60 * 60_000).toISOString(), head_branch: 'main', status: 'in_progress' }
+  f.state.latest = collectionRun('200', 'in_progress', start - 60 * 60_000)
   const result = await f.run({ durationMs: 16 * 60_000 })
   assert.equal(result.skipped, 2)
   assert.equal(f.posts().length, 0)
+})
+
+test('a stale active list entry is rechecked once and a matching completed detail clears it', async () => {
+  const f = fixture()
+  f.state.latest = collectionRun('200', 'in_progress')
+  f.state.collectionDetail = collectionRun('200', 'completed')
+  const result = await f.run({ durationMs: 60_000 })
+  assert.equal(result.dispatched, 1)
+  assert.equal(result.failed, 0)
+  assert.equal(result.skipped, 0)
+  assert.deepEqual(f.collectorPosts().map(request => request.time), [start + 5000])
+  assert.equal(f.state.requests.filter(request => request.url.endsWith('/actions/runs/200')).length, 1)
+  assert.equal(f.state.requests.filter(request => request.url.endsWith('/runs?branch=main&per_page=1')).length, 2)
+  const events = f.state.logs.map(line => JSON.parse(line))
+  assert.equal(events.filter(event => event.event === 'collection-recheck').length, 1)
+  const detail = events.find(event => event.event === 'collection-state' && event.stage === 'collection-run-recheck')
+  assert.ok(detail)
+  assert.equal(detail.runId, '200')
+  assert.equal(detail.runAttempt, 1)
+  assert.equal(detail.runStatus, 'completed')
+  assert.equal(detail.runCreatedAt, f.state.collectionDetail.created_at)
+  assert.equal(detail.runUpdatedAt, f.state.collectionDetail.updated_at)
+})
+
+test('a genuinely unfinished run remains skipped after the bounded recheck', async () => {
+  for (const status of ['queued', 'in_progress', 'waiting', 'requested', 'pending']) {
+    const f = fixture()
+    f.state.latest = collectionRun('200', status)
+    const result = await f.run({ durationMs: 60_000 })
+    assert.equal(result.skipped, 1, status)
+    assert.equal(f.collectorPosts().length, 0)
+    assert.equal(f.state.requests.filter(request => request.url.endsWith('/actions/runs/200')).length, 1)
+    const skip = f.state.logs.map(line => JSON.parse(line)).find(event => event.event === 'slot-skipped')
+    assert.equal(skip.reason, 'active-run')
+    assert.equal(skip.runId, '200')
+    assert.equal(skip.runStatus, status)
+  }
+})
+
+test('current and future slot runs remain duplicates even when completed', async () => {
+  for (const [offset, reason] of [[1000, 'current-slot'], [15 * 60_000, 'future-slot']] as const) {
+    for (const status of ['completed', 'in_progress']) {
+      const f = fixture()
+      f.state.latest = collectionRun('200', status, start + offset)
+      const result = await f.run({ durationMs: 60_000 })
+      assert.equal(result.skipped, 1)
+      assert.equal(f.collectorPosts().length, 0)
+      assert.equal(f.state.requests.filter(request => request.url.includes('/actions/runs/')).length, 0)
+      assert.equal(f.state.logs.map(line => JSON.parse(line)).find(event => event.event === 'slot-skipped').reason, reason)
+    }
+  }
+})
+
+test('a completed old detail cannot clear a replaced, rerun, retimed or newer active list entry', async () => {
+  for (const change of ['id', 'attempt', 'created-at', 'updated-at']) {
+    let reads = 0
+    const f = fixture({ request: request => {
+      if (!request.url.endsWith('/runs?branch=main&per_page=1') || ++reads !== 2) return
+      const latest = { ...f.state.latest! }
+      if (change === 'id') latest.id = '201'
+      if (change === 'attempt') latest.run_attempt = 2
+      if (change === 'created-at') latest.created_at = new Date(start - 5 * 60_000).toISOString()
+      if (change === 'updated-at') latest.updated_at = new Date(start + 1000).toISOString()
+      return Response.json({ workflow_runs: [latest] })
+    } })
+    f.state.latest = collectionRun('200', 'in_progress')
+    f.state.collectionDetail = collectionRun('200', 'completed')
+    const result = await f.run({ durationMs: 60_000 })
+    assert.equal(f.collectorPosts().length, 0, change)
+    assert.equal(result.skipped, 1, change)
+    assert.equal(f.state.logs.map(line => JSON.parse(line)).find(event => event.event === 'slot-skipped').reason, 'run-changed', change)
+  }
+})
+
+test('a recheck detail cannot authorize another repository, workflow, branch or run identity', async () => {
+  for (const field of ['id', 'run_attempt', 'repository', 'head_repository', 'path', 'head_branch', 'event', 'created_at', 'updated_at']) {
+    const f = fixture()
+    f.state.latest = collectionRun('200', 'in_progress')
+    f.state.collectionDetail = collectionRun('200', 'completed')
+    const invalid: Record<string, unknown> = { ...f.state.collectionDetail }
+    if (field === 'id') invalid.id = '201'
+    else if (field === 'run_attempt') invalid.run_attempt = 0
+    else if (field === 'repository' || field === 'head_repository') invalid[field] = { full_name: 'other/private-secret' }
+    else invalid[field] = 'private-secret'
+    const broken = fixture({ request: request => request.url.endsWith('/actions/runs/200') ? Response.json(invalid) : undefined })
+    broken.state.latest = f.state.latest
+    const result = await broken.run({ durationMs: 60_000 })
+    assert.equal(result.failed, 1, field)
+    assert.equal(broken.collectorPosts().length, 0)
+    const failure = broken.state.logs.map(line => JSON.parse(line)).find(event => event.event === 'slot-failed')
+    assert.equal(failure.stage, 'collection-run-recheck')
+    assert.equal(failure.errorKind, 'invalid-response')
+    assert.ok(broken.state.logs.every(line => !line.includes('private-secret')))
+  }
+})
+
+test('disabling either workflow during the recheck wait prevents a new collection', async () => {
+  for (const field of ['dispatcher', 'collector'] as const) {
+    const f = fixture({ afterWait: ms => { if (ms === 5000) f.state[field] = 'disabled_manually' } })
+    f.state.latest = collectionRun('200', 'in_progress')
+    f.state.collectionDetail = collectionRun('200', 'completed')
+    const result = await f.run({ durationMs: 60_000 })
+    assert.equal(result.reason, field === 'dispatcher' ? 'dispatcher-disabled' : 'collector-disabled')
+    assert.equal(f.collectorPosts().length, 0)
+  }
+})
+
+test('the recheck wait and later API responses cannot exceed the slot or generation budget', async () => {
+  const exhausted = fixture()
+  exhausted.state.latest = collectionRun('200', 'in_progress')
+  await exhausted.run({ durationMs: 3000 })
+  assert.ok(exhausted.state.elapsed <= 3000)
+  assert.equal(exhausted.collectorPosts().length, 0)
+  assert.equal(exhausted.state.requests.filter(request => request.url.includes('/actions/runs/')).length, 0)
+
+  for (const phase of ['wait', 'detail', 'list']) {
+    let listReads = 0
+    const f = fixture({
+      afterWait: ms => { if (phase === 'wait' && ms === 5000) f.state.wall += 60_000 },
+      request: request => {
+        if (request.url.endsWith('/runs?branch=main&per_page=1')) listReads++
+        if (phase === 'detail' && request.url.endsWith('/actions/runs/200')
+          || phase === 'list' && request.url.endsWith('/runs?branch=main&per_page=1') && listReads === 2) {
+          f.state.wall += 60_000; f.state.elapsed += 60_000
+        }
+      },
+    })
+    f.state.latest = collectionRun('200', 'in_progress')
+    f.state.collectionDetail = collectionRun('200', 'completed')
+    await f.run({ durationMs: 120_000 })
+    assert.equal(f.collectorPosts().length, 0, phase)
+    assert.ok(f.state.logs.map(line => JSON.parse(line)).some(event =>
+      event.event === 'slot-skipped' && event.reason === 'late'
+      || event.event === 'slot-failed' && event.errorKind === 'budget-exhausted'), phase)
+  }
+})
+
+test('collection API failures record the exact safe stage and kind without response or credential data', async () => {
+  const cases = [
+    { stage: 'collector-status', path: 'steam-player-count.yml', kind: 'http', status: 503 },
+    { stage: 'collection-list', path: '/runs?branch=main&per_page=1', kind: 'invalid-json', status: 200 },
+    { stage: 'collection-list', path: '/runs?branch=main&per_page=1', kind: 'response-too-large', status: 200 },
+    { stage: 'collection-list', path: '/runs?branch=main&per_page=1', kind: 'invalid-response', status: 200 },
+    { stage: 'collection-dispatch', path: 'steam-player-count.yml/dispatches', kind: 'network', status: null },
+    { stage: 'collection-dispatch', path: 'steam-player-count.yml/dispatches', kind: 'timeout', status: null },
+    { stage: 'collection-run-recheck', path: '/actions/runs/200', kind: 'http', status: 502 },
+  ] as const
+  for (const entry of cases) {
+    const f = fixture({ request: request => {
+      if (!request.url.endsWith(entry.path)) return
+      if (entry.kind === 'network') throw new Error(`private response ${env.GH_TOKEN}`)
+      if (entry.kind === 'timeout') return new Promise<Response>(() => {})
+      if (entry.kind === 'invalid-response') return Response.json({ workflow_runs: [{ private: env.GH_TOKEN }] })
+      return new Response(entry.kind === 'response-too-large' ? 'private response'.repeat(10000) : `private response ${env.GH_TOKEN}`,
+        { status: entry.status! })
+    } })
+    if (entry.stage === 'collection-run-recheck') f.state.latest = collectionRun('200', 'in_progress')
+    const result = await f.run({ durationMs: 60_000, requestTimeoutMs: 10 })
+    assert.equal(result.failed, 1, `${entry.stage}/${entry.kind}`)
+    assert.equal(result.dispatched, 0)
+    const failure = f.state.logs.map(line => JSON.parse(line)).find(event => event.event === 'slot-failed')
+    assert.equal(failure.stage, entry.stage)
+    assert.equal(failure.errorKind, entry.kind)
+    if (entry.kind === 'http') assert.equal(failure.httpStatus, entry.status)
+    assert.ok(f.state.logs.every(line => !line.includes(env.GH_TOKEN) && !line.includes('private response')))
+    assert.ok(f.collectorPosts().length <= 1)
+  }
 })
 
 test('disabling the dispatcher stops the running generation at the next heartbeat', async () => {

@@ -12,6 +12,7 @@ export const STEAM_DISPATCH_HANDOFF_PROOF_STEP = 'Confirm Steam successor reserv
 const OFFSET_MS = 7 * 60 * 1000
 const MAX_LATENESS_MS = 60 * 1000
 const MAX_DISPATCH_ATTEMPTS = 22
+const COLLECTION_RECHECK_MS = 5_000
 const API = 'https://api.github.com/repos/gonchiman/sf6/actions/workflows/'
 const RUN_API = 'https://api.github.com/repos/gonchiman/sf6/actions/runs/'
 const DRIVER = 'steam-player-count-dispatch.yml'
@@ -20,15 +21,21 @@ const HANDOFF_POLL_MS = 10_000
 const MAX_HANDOFF_POLLS = 12
 const HANDOFF_JSON_LIMIT = 1024 * 1024
 type Environment = Record<string, string | undefined>
+type ErrorKind = 'http' | 'network' | 'timeout' | 'invalid-json' | 'response-too-large' | 'invalid-response' | 'budget-exhausted'
+type LogFields = Record<string, string | number | boolean | null>
 type StopReason = 'duration' | 'dispatcher-disabled' | 'collector-disabled' | 'access-denied' | 'rate-limited' | 'cancelled' | 'predecessor-rejected'
 export type SteamDispatchResult = { reason: StopReason; dispatched: number; skipped: number; failed: number;
   handoff: 'not-attempted' | 'confirmed' | 'failed'; successorRunId?: string }
 
 class DispatchRequestError extends Error {
   readonly status: number | null
-  constructor(status: number | null = null) {
+  readonly kind: ErrorKind
+  readonly stage: string | null
+  constructor(status: number | null = null, kind: ErrorKind = 'invalid-response', stage: string | null = null) {
     super('Steam取得の起動要求を確認できませんでした。')
     this.status = status
+    this.kind = kind
+    this.stage = stage
   }
 }
 
@@ -68,7 +75,7 @@ export function nextSteamDispatchBoundary(timestamp: number): number {
 const slotAt = (timestamp: number) => Math.floor((timestamp - OFFSET_MS) / STEAM_DISPATCH_INTERVAL_MS)
 
 async function boundedJson(response: Response, limit = 64 * 1024): Promise<unknown> {
-  if (!response.body) throw new DispatchRequestError()
+  if (!response.body) throw new DispatchRequestError(response.status, 'invalid-json')
   const reader = response.body.getReader(), chunks: Uint8Array[] = []
   let length = 0
   try {
@@ -76,16 +83,17 @@ async function boundedJson(response: Response, limit = 64 * 1024): Promise<unkno
       const item = await reader.read()
       if (item.done) break
       length += item.value.byteLength
-      if (length > limit) throw new DispatchRequestError()
+      if (length > limit) throw new DispatchRequestError(response.status, 'response-too-large')
       chunks.push(item.value)
     }
     const bytes = new Uint8Array(length)
     let offset = 0
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
-  } catch {
+    try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) }
+    catch { throw new DispatchRequestError(response.status, 'invalid-json') }
+  } catch (error) {
     void reader.cancel().catch(() => {})
-    throw new DispatchRequestError()
+    throw error instanceof DispatchRequestError ? error : new DispatchRequestError(response.status, 'network')
   } finally { reader.releaseLock() }
 }
 
@@ -97,19 +105,49 @@ function workflowActive(value: unknown): boolean {
   return value.state === 'active'
 }
 
-function hasCurrentOrRunningCollection(value: unknown, boundary: number): boolean {
-  if (!record(value) || !Array.isArray(value.workflow_runs) || value.workflow_runs.length > 1) throw new DispatchRequestError()
-  if (value.workflow_runs.length === 0) return false
-  const latest = value.workflow_runs[0]
+function collectionRun(latest: unknown) {
   if (!record(latest) || latest.head_branch !== 'main' || typeof latest.created_at !== 'string'
     || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(latest.created_at)
+    || typeof latest.updated_at !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(latest.updated_at)
+    || latest.event !== 'workflow_dispatch'
+    || ![`.github/workflows/${COLLECTOR}`, `.github/workflows/${COLLECTOR}@refs/heads/main`].includes(String(latest.path))
+    || !record(latest.repository) || latest.repository.full_name !== 'gonchiman/sf6'
+    || !record(latest.head_repository) || latest.head_repository.full_name !== 'gonchiman/sf6'
     || typeof latest.status !== 'string'
     || !['queued', 'in_progress', 'waiting', 'requested', 'pending', 'completed'].includes(latest.status)) throw new DispatchRequestError()
-  const createdAt = Date.parse(latest.created_at)
-  if (!Number.isFinite(createdAt)) throw new DispatchRequestError()
+  if (!Number.isFinite(Date.parse(latest.created_at)) || !Number.isFinite(Date.parse(latest.updated_at))) throw new DispatchRequestError()
+  return { id: positiveId(latest.id), attempt: positiveAttempt(latest.run_attempt), status: latest.status,
+    createdAt: latest.created_at, updatedAt: latest.updated_at }
+}
+type CollectionRun = ReturnType<typeof collectionRun>
+
+function latestCollection(value: unknown): CollectionRun | null {
+  if (!record(value) || !Array.isArray(value.workflow_runs) || value.workflow_runs.length > 1) throw new DispatchRequestError()
+  return value.workflow_runs.length === 0 ? null : collectionRun(value.workflow_runs[0])
+}
+
+function collectionBlock(run: CollectionRun | null, boundary: number): 'current-slot' | 'future-slot' | 'active-run' | null {
+  if (!run) return null
   // Compare aligned slots, not elapsed milliseconds: GitHub can create a run a
   // second after its dispatch, which must not suppress the next 15-minute slot.
-  return latest.status !== 'completed' || slotAt(createdAt) >= slotAt(boundary)
+  const difference = slotAt(Date.parse(run.createdAt)) - slotAt(boundary)
+  return difference > 0 ? 'future-slot' : difference === 0 ? 'current-slot' : run.status !== 'completed' ? 'active-run' : null
+}
+
+function collectionFields(run: CollectionRun | null): LogFields {
+  return { runId: run?.id ?? null, runAttempt: run?.attempt ?? null, runStatus: run?.status ?? null,
+    runCreatedAt: run?.createdAt ?? null, runUpdatedAt: run?.updatedAt ?? null }
+}
+
+// Only fixed operation names are logged, never URLs, headers or response bodies.
+function requestStage(path: string, method: 'GET' | 'POST'): string {
+  if (path === DRIVER) return 'dispatcher-status'
+  if (path === COLLECTOR) return 'collector-status'
+  if (method === 'POST') return path === `${COLLECTOR}/dispatches` ? 'collection-dispatch' : 'successor-dispatch'
+  if (path.startsWith(`${COLLECTOR}/runs?`)) return 'collection-list'
+  if (path.startsWith(`${DRIVER}/runs?`)) return 'successor-list'
+  return path.includes('/jobs?') ? 'predecessor-jobs' : 'dispatcher-run'
 }
 
 function dispatcherRun(value: unknown): { id: string; attempt: number; status: string; conclusion: string | null } {
@@ -173,20 +211,28 @@ export async function runSteamPlayerCountDispatcher(options: {
   let deadline = monotonicNow() + durationMs
   let dispatchAttempts = 0
   const result: SteamDispatchResult = { reason: 'duration', dispatched: 0, skipped: 0, failed: 0, handoff: 'not-attempted' }
-  const emit = (event: string, extra: Record<string, string | number> = {}) => write(JSON.stringify({ event, at: new Date(now()).toISOString(), ...extra }))
+  const emit = (event: string, extra: LogFields = {}) => write(JSON.stringify({ event, at: new Date(now()).toISOString(), ...extra }))
+  let stage = 'startup'
+  const errorFields = (error: unknown): LogFields => ({
+    stage: error instanceof DispatchRequestError ? error.stage ?? stage : stage,
+    errorKind: error instanceof DispatchRequestError ? error.kind : 'network',
+    httpStatus: error instanceof DispatchRequestError ? error.status : null,
+  })
   const remaining = () => Math.max(0, deadline - monotonicNow())
   const stopReason = (error: unknown): StopReason | null => error instanceof DispatchRequestError
     ? [401, 403, 404].includes(error.status ?? 0) ? 'access-denied' : error.status === 429 ? 'rate-limited' : null : null
 
   const request = async (path: string, method: 'GET' | 'POST' = 'GET', settings: {
-    deadline?: number; runEndpoint?: boolean; body?: unknown; limit?: number
+    deadline?: number; runEndpoint?: boolean; body?: unknown; limit?: number; stage?: string
   } = {}): Promise<unknown> => {
+    const operation = settings.stage ?? requestStage(path, method), started = monotonicNow()
+    stage = operation
     const requestRemaining = () => Math.max(0, (settings.deadline ?? deadline) - monotonicNow())
-    if (requestRemaining() <= 0) throw new DispatchRequestError()
+    if (requestRemaining() <= 0) throw new DispatchRequestError(null, 'budget-exhausted', operation)
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { controller.abort(); reject(new DispatchRequestError()) }, Math.min(timeoutMs, requestRemaining()))
+      timer = setTimeout(() => { controller.abort(); reject(new DispatchRequestError(null, 'timeout')) }, Math.min(timeoutMs, requestRemaining()))
     })
     try {
       return await Promise.race([timeout, (async () => {
@@ -198,19 +244,22 @@ export async function runSteamPlayerCountDispatcher(options: {
         })
         if (!response.ok) {
           void response.body?.cancel().catch(() => {})
-          throw new DispatchRequestError(response.status)
+          throw new DispatchRequestError(response.status, 'http')
         }
         if (method === 'POST') {
           // API versions can return either 204 or 200. Acknowledgement is enough;
           // do not follow or log response URLs and do not retry an ambiguous POST.
           void response.body?.cancel().catch(() => {})
-          if (response.status !== 200 && response.status !== 204) throw new DispatchRequestError()
+          if (response.status !== 200 && response.status !== 204) throw new DispatchRequestError(response.status)
           return null
         }
         return boundedJson(response, settings.limit)
       })()])
     } catch (error) {
-      throw error instanceof DispatchRequestError ? error : new DispatchRequestError()
+      const failure = error instanceof DispatchRequestError
+        ? new DispatchRequestError(error.status, error.kind, operation) : new DispatchRequestError(null, 'network', operation)
+      emit('request-failed', { ...errorFields(failure), elapsedMs: Math.max(0, Math.round(monotonicNow() - started)) })
+      throw failure
     } finally { if (timer) clearTimeout(timer); controller.abort() }
   }
 
@@ -227,6 +276,47 @@ export async function runSteamPlayerCountDispatcher(options: {
     if (run.id !== currentId || run.attempt !== currentAttempt) throw new DispatchRequestError()
     if (run.status === 'completed' || run.conclusion !== null) { result.reason = 'cancelled'; return false }
     return true
+  }
+
+  const slotWindowReason = (boundary: number): string | null => remaining() <= 0 ? 'budget-exhausted'
+    : now() - boundary >= MAX_LATENESS_MS ? 'late' : null
+  const slotFields = (boundary: number): LogFields => ({ scheduledAt: new Date(boundary).toISOString(),
+    delayMs: Math.max(0, now() - boundary), dispatchAttempts })
+  const logCollection = (run: CollectionRun | null, boundary: number) => emit('collection-state', {
+    ...slotFields(boundary), stage, ...collectionFields(run), reason: collectionBlock(run, boundary) ?? 'clear',
+  })
+
+  const recheckCollection = async (initial: CollectionRun, boundary: number, slotDeadline: number): Promise<{
+    run: CollectionRun | null; reason: string | null
+  }> => {
+    emit('collection-recheck', { ...slotFields(boundary), ...collectionFields(initial), reason: 'active-run', waitMs: COLLECTION_RECHECK_MS })
+    const pause = Math.min(COLLECTION_RECHECK_MS, Math.max(0, slotDeadline - monotonicNow()), remaining())
+    if (pause > 0) await wait(pause)
+    const expired = slotWindowReason(boundary)
+    if (expired) return { run: initial, reason: expired }
+    // A workflow disabled while waiting must not be restarted by the recheck.
+    if (!workflowActive(await request(DRIVER, 'GET', { deadline: slotDeadline }))) {
+      result.reason = 'dispatcher-disabled'; return { run: initial, reason: result.reason }
+    }
+    if (!workflowActive(await request(COLLECTOR, 'GET', { deadline: slotDeadline }))) {
+      result.reason = 'collector-disabled'; return { run: initial, reason: result.reason }
+    }
+    const detail = collectionRun(await request(initial.id, 'GET', {
+      deadline: slotDeadline, runEndpoint: true, stage: 'collection-run-recheck',
+    }))
+    if (detail.id !== initial.id) throw new DispatchRequestError()
+    logCollection(detail, boundary)
+    const latest = latestCollection(await request(`${COLLECTOR}/runs?branch=main&per_page=1`, 'GET', {
+      deadline: slotDeadline, stage: 'collection-list-recheck',
+    }))
+    logCollection(latest, boundary)
+    // A new run/attempt must not be cleared by completion of the earlier one.
+    if (!latest || detail.attempt !== initial.attempt || detail.createdAt !== initial.createdAt
+      || latest.id !== detail.id || latest.attempt !== detail.attempt || latest.createdAt !== detail.createdAt
+      || Date.parse(latest.updatedAt) > Date.parse(detail.updatedAt)) return { run: latest, reason: 'run-changed' }
+    const reason = collectionBlock(detail, boundary)
+    if (!reason) emit('collection-recheck-cleared', { ...slotFields(boundary), ...collectionFields(detail) })
+    return { run: detail, reason }
   }
 
   if (predecessorIdText) {
@@ -248,6 +338,7 @@ export async function runSteamPlayerCountDispatcher(options: {
             if (hasHandoffProof(proof, predecessorId)) { approved = true; break }
           }
         } catch (error) {
+          emit('predecessor-check-failed', errorFields(error))
           if (stopReason(error)) break
         }
         const pause = Math.min(HANDOFF_POLL_MS, Math.max(0, phaseDeadline - monotonicNow()))
@@ -271,11 +362,13 @@ export async function runSteamPlayerCountDispatcher(options: {
   while (remaining() > 0) {
     const heartbeatStarted = monotonicNow()
     let enabled: boolean | null = null
+    let heartbeatFailure: LogFields = {}
     try { enabled = workflowActive(await request(DRIVER)) }
     catch (error) {
+      heartbeatFailure = errorFields(error)
+      emit('heartbeat-unavailable', heartbeatFailure)
       const reason = stopReason(error)
       if (reason) { result.reason = reason; break }
-      emit('heartbeat-unavailable')
     }
     if (remaining() <= 0) break
     if (enabled === false) { result.reason = 'dispatcher-disabled'; break }
@@ -285,27 +378,36 @@ export async function runSteamPlayerCountDispatcher(options: {
       nextBoundary = nextSteamDispatchBoundary(now() + 1)
       if (enabled === null) {
         result.failed++
-        emit('slot-failed', { scheduledAt: new Date(boundary).toISOString() })
-      } else if (now() - boundary > MAX_LATENESS_MS || dispatchAttempts >= MAX_DISPATCH_ATTEMPTS) {
+        emit('slot-failed', { ...slotFields(boundary), ...heartbeatFailure, reason: 'heartbeat-unavailable' })
+      } else if (slotWindowReason(boundary) || dispatchAttempts >= MAX_DISPATCH_ATTEMPTS) {
         result.skipped++
-        emit('slot-skipped', { scheduledAt: new Date(boundary).toISOString() })
+        emit('slot-skipped', { ...slotFields(boundary), stage: 'slot-window', reason: slotWindowReason(boundary) ?? 'attempt-limit' })
       } else {
+        let observed: CollectionRun | null = null
         try {
-          if (!workflowActive(await request(COLLECTOR))) { result.reason = 'collector-disabled'; break }
-          const latest = await request(`${COLLECTOR}/runs?branch=main&per_page=1`)
-          if (remaining() <= 0) break
-          if (now() - boundary > MAX_LATENESS_MS || hasCurrentOrRunningCollection(latest, boundary)) {
+          const slotDeadline = Math.min(deadline, monotonicNow() + Math.max(0, MAX_LATENESS_MS - (now() - boundary)))
+          if (!workflowActive(await request(COLLECTOR, 'GET', { deadline: slotDeadline }))) { result.reason = 'collector-disabled'; break }
+          observed = latestCollection(await request(`${COLLECTOR}/runs?branch=main&per_page=1`, 'GET', { deadline: slotDeadline }))
+          logCollection(observed, boundary)
+          let blocked = slotWindowReason(boundary) ?? collectionBlock(observed, boundary)
+          if (blocked === 'active-run' && observed) {
+            const checked = await recheckCollection(observed, boundary, slotDeadline)
+            observed = checked.run; blocked = checked.reason
+            if (result.reason !== 'duration') break
+          }
+          blocked = slotWindowReason(boundary) ?? blocked
+          if (blocked) {
             result.skipped++
-            emit('slot-skipped', { scheduledAt: new Date(boundary).toISOString() })
+            emit('slot-skipped', { ...slotFields(boundary), stage, ...collectionFields(observed), reason: blocked })
           } else {
             dispatchAttempts++
-            await request(`${COLLECTOR}/dispatches`, 'POST')
+            await request(`${COLLECTOR}/dispatches`, 'POST', { deadline: slotDeadline })
             result.dispatched++
-            emit('dispatched', { scheduledAt: new Date(boundary).toISOString() })
+            emit('dispatched', { ...slotFields(boundary), stage: 'collection-dispatch' })
           }
         } catch (error) {
           result.failed++
-          emit('slot-failed', { scheduledAt: new Date(boundary).toISOString() })
+          emit('slot-failed', { ...slotFields(boundary), ...collectionFields(observed), ...errorFields(error), reason: 'request-or-response-failed' })
           const reason = stopReason(error)
           if (reason) { result.reason = reason; break }
         }
@@ -344,6 +446,7 @@ export async function runSteamPlayerCountDispatcher(options: {
           continue
         }
       } catch (error) {
+        emit('handoff-check-failed', errorFields(error))
         const reason = stopReason(error)
         if (reason) { result.reason = reason; break }
       }
