@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-04T18:47:02.065Z",
+  "generatedAt": "2026-11-05T18:47:44.896Z",
   "source": {
     "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/league",
     "title": "Buckler LPランキング"
@@ -90,5 +90,10 @@
       "captureEndedAt": "2026-10-15T13:15:49.224Z",
       "totalCount": 3061539
     }
-  ]
+  ],
+  "availability": {
+    "status": "collection-failed",
+    "message": "BucklerからCAPTCHAを要求されたため、ランク分布の取得を停止しました。",
+    "checkedAt": "2026-11-05T18:47:44.883Z"
+  }
 }
