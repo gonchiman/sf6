@@ -70,7 +70,7 @@ npm run build
 
 ## 日次実行
 
-`.github/workflows/legend-analysis-daily.yml` に毎日22:45 JST（UTC `45 13 * * *`）のscheduleと手動実行を定義する。**ローカル実装しただけではGitHub上で実行されない。mainへ反映した後、手動実行を検証する。** GitHub Actionsの開始時刻には遅れが生じ得る。
+`.github/workflows/legend-analysis-daily.yml` に毎日05:15 JST（前日20:15 UTC、cron `15 20 * * *`）のscheduleと手動実行を定義する。**ローカル実装しただけではGitHub上で実行されない。mainへ反映した後、手動実行を検証する。** GitHub Actionsの開始時刻には遅れが生じ得る。
 
 - 取得jobは読み取り権限だけを持ち、既存の `BUCKLER_WEEKLY_SESSION` を実行時に検証・環境変数から削除し、ブラウザーへは必要なOS環境だけを渡す。
 - 取得jobの上限は一覧有効時130分、集計専用時20分。内部期限後の終了処理と成果物検証の時間を確保する。

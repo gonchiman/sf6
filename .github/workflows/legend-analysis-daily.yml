@@ -2,7 +2,7 @@ name: Collect daily Legend analysis
 
 on:
   schedule:
-    - cron: '45 13 * * *' # Every day at 22:45 Asia/Tokyo
+    - cron: '15 20 * * *' # Every day at 05:15 Asia/Tokyo (20:15 UTC on the previous day)
   workflow_dispatch:
     inputs:
       include_players:

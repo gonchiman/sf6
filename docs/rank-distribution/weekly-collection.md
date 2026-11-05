@@ -28,7 +28,7 @@
 
 ## 実行と保存
 
-LPからMRへの呼出しは`workflow_call`を使い、定期実行・LP取得成功・LP保存成功・`MR_DISTRIBUTION_WEEKLY_ENABLED=true`をすべて満たした場合だけ実行する。LPが失敗して失敗記録の保存だけ成功した場合もMRは見送る。手動LPはMRを連動させず、手動MRは独立して起動できる。手動取得や別workflowの同時実行を一括で防ぐ仕組みではない。Legendの予定時刻22:45 JSTと開始時刻を離すが、混雑による遅延時の重複までは保証しない。
+LPからMRへの呼出しは`workflow_call`を使い、定期実行・LP取得成功・LP保存成功・`MR_DISTRIBUTION_WEEKLY_ENABLED=true`をすべて満たした場合だけ実行する。LPが失敗して失敗記録の保存だけ成功した場合もMRは見送る。手動LPはMRを連動させず、手動MRは独立して起動できる。手動取得や別workflowの同時実行を一括で防ぐ仕組みではない。Legendの予定時刻05:15 JSTと開始時刻を離すが、混雑による遅延時の重複までは保証しない。
 
 `.github/workflows/rank-distribution-weekly.yml`をリポジトリの標準ブランチへ登録済みで、毎日19:30 JST（UTC 10:30）にGitHub hosted WindowsとEdgeで取得する設定になっている。PCとローカルアプリの起動は不要。`workflow_dispatch`による動作確認も同じ処理を使う。GitHub側の混雑などで予定時刻から遅れる場合がある。
 

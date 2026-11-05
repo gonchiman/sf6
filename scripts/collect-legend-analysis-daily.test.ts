@@ -204,7 +204,7 @@ test('publisher uses fixed isolated bundle paths and the same workflow gate', as
 test('daily workflow isolates authentication and gates player files behind explicit manual or schedule opt-in', async () => {
   const workflow = await readFile(new URL('../.github/workflows/legend-analysis-daily.yml', import.meta.url), 'utf8')
   const [collect, publish] = workflow.split('  save-history:')
-  assert.match(workflow, /cron: '45 13 \* \* \*'/)
+  assert.match(workflow, /cron: '15 20 \* \* \*'/)
   assert.match(collect, /contents: read/)
   assert.doesNotMatch(collect, /contents: write/)
   assert.match(collect, /secrets\.BUCKLER_WEEKLY_SESSION/)
