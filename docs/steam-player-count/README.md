@@ -47,6 +47,8 @@ Steam版の格闘ゲーム5作品の同時接続数を定期観測し、ゲー�
 
 処理の版と変更内容は [変更履歴](CHANGELOG.md) で管理する。Actionsの各jobの「Record Steam collection process version」とサマリーで、起動役・取得・履歴保存それぞれの版とコミットを確認できる。ローカルでの版確認は `node scripts/lib/steam-collection-version.ts --version`。
 
+ページ上部には「取得処理：実装版」と「変更履歴」を表示する。ゲーム別・ゲーム比較の共通部分に置き、観測データの読み込み中や失敗時にも利用できる。履歴ダイアログには版・コミット日時（JST）・変更内容・コミットへのリンクを新しい順に表示し、後付けの版名を区別する。Escape、閉じるボタン、背景クリックで閉じ、開いたボタンへフォーカスを戻す。これはページに同梱した実装の版であり、稼働中のActionsや最新観測の取得版を表さない。取得CLIと画面は `src/lib/steamCollectionVersion.ts` の定義を共有し、観測JSONの形式は変更しない。
+
 - 有効化後はActionsの「Schedule Steam player count every 15 minutes」をmain・`mode: standard`で手動実行すると起動役が始まり、次の07・22・37・52分から取得する。引き継ぎ元ID・attemptは手動起動では空欄にする。起動役は長時間`in_progress`のままで正常。各観測の成否は「Collect Steam player count」の短いrunで確認する。
 - 起動役を停止するには同workflowを無効化する。動作中の起動役も最大約60秒の確認間隔で無効化を検知して終了する。直ちに止める場合は動作中・交代待ちのrunもキャンセルする。すでに起動済みの取得jobは別runなので必要なら個別に止める。
 - 再開は同workflowを有効化し、mainで手動実行する。取得workflowだけが無効化されている場合は、そちらも有効化する。

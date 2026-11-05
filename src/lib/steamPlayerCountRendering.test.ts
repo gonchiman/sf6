@@ -5,6 +5,7 @@ import { createElement, type ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer, type ViteDevServer } from 'vite'
 import { STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
+import { STEAM_COLLECTION_VERSION } from './steamCollectionVersion.ts'
 import type { SteamPlayerCountAppId, SteamPlayerCountHourlyRow, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
 import type { SteamPlayerCountGameComparison } from '../types/steamPlayerCountComparison.ts'
 
@@ -13,6 +14,7 @@ let Hourly: ComponentType<{ rows: SteamPlayerCountHourlyRow[] }>
 let Trend: ComponentType<{ observations: SteamPlayerCountObservation[] }>
 let Page: ComponentType<{ initialAppId?: SteamPlayerCountAppId; initialMode?: 'single' | 'comparison' }>
 let ComparisonTable: ComponentType<{ comparison: SteamPlayerCountGameComparison }>
+let VersionDialog: ComponentType<{ onClose: () => void }>
 before(async () => {
   server = await createServer({ root: fileURLToPath(new URL('../../', import.meta.url)), configFile: false,
     server: { middlewareMode: true, watch: null }, appType: 'custom', logLevel: 'error', optimizeDeps: { noDiscovery: true, include: [] } })
@@ -23,6 +25,8 @@ before(async () => {
   Page = page.SteamPlayerCountPage
   const comparison = await server.ssrLoadModule('/src/components/SteamPlayerCountComparisonView.tsx')
   ComparisonTable = comparison.SteamPlayerCountGameComparisonTable
+  const versions = await server.ssrLoadModule('/src/components/SteamCollectionVersionHistory.tsx')
+  VersionDialog = versions.SteamCollectionVersionDialog
 })
 after(async () => { await server?.close() })
 const observation = (minute: number, playerCount = 20000): SteamPlayerCountObservation => ({
@@ -30,6 +34,59 @@ const observation = (minute: number, playerCount = 20000): SteamPlayerCountObser
   requestStartedAt: new Date(Date.UTC(2026, 9, 31, 0, minute)).toISOString(), playerCount, runId: null, runAttempt: null,
 })
 const renderTrend = (observations: SteamPlayerCountObservation[]) => renderToStaticMarkup(createElement(Trend, { observations }))
+
+test('both page modes expose the implementation version and history before observations load', () => {
+  for (const initialMode of ['single', 'comparison'] as const) {
+    const html = renderToStaticMarkup(createElement(Page, { initialMode }))
+    assert.match(html, /観測データを読み込み中/)
+    assert.ok(html.includes(`取得処理：<strong>実装版 ${STEAM_COLLECTION_VERSION}</strong>`))
+    const historyButtons = html.match(/<button[^>]*aria-haspopup="dialog"[^>]*>変更履歴<\/button>/g) ?? []
+    assert.equal(historyButtons.length, 1)
+    assert.doesNotMatch(historyButtons[0], /disabled/)
+    assert.doesNotMatch(html, /稼働中|最新取得版|<dialog/)
+  }
+})
+
+test('the version dialog has an accessible heading, close action and labelled history table', () => {
+  const html = renderToStaticMarkup(createElement(VersionDialog, { onClose: () => {} }))
+  const titleId = html.match(/<dialog[^>]*aria-labelledby="([^"]+)"/)?.[1]
+  assert.ok(titleId)
+  const heading = html.match(/<h2[^>]*>取得処理の変更履歴<\/h2>/)?.[0]
+  assert.ok(heading?.includes(`id="${titleId}"`))
+  assert.match(heading, /tabindex="-1"/)
+  assert.match(html, /<button[^>]*type="button"[^>]*>閉じる<\/button>/)
+  assert.match(html, /role="region" aria-label="取得処理の変更履歴" tabindex="0"/)
+  assert.match(html, /<caption[^>]*>取得処理の版・コミット日時・変更内容<\/caption>/)
+  for (const label of ['版', 'コミット日時（JST）', '変更内容']) {
+    assert.ok(html.includes(`<th scope="col">${label}</th>`))
+  }
+  assert.doesNotMatch(html, /稼働中|最新取得版/)
+})
+
+test('history preserves both v2 changes, four retrospective releases and chronological commit links', () => {
+  const html = renderToStaticMarkup(createElement(VersionDialog, { onClose: () => {} }))
+  const rows = html.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1].match(/<tr>[\s\S]*?<\/tr>/g) ?? []
+  assert.equal(rows.length, 6)
+  const expected = [
+    ['v2', '2026-11-05T19:28:01+09:00', '95a35bf'],
+    ['v2', '2026-11-05T18:42:49+09:00', 'c07e354'],
+    ['v1', '2026-11-02T17:31:21+09:00', '528819d'],
+    ['v0.3', '2026-11-02T13:32:22+09:00', '6fe802d'],
+    ['v0.2', '2026-11-01T12:32:43+09:00', 'dd50d56'],
+    ['v0.1', '2026-10-31T19:33:09+09:00', '14b0e36'],
+  ]
+  for (const [index, [version, committedAt, shortSha]] of expected.entries()) {
+    const row = rows[index]
+    assert.ok(row.includes(`<th scope="row">${version}`))
+    assert.ok(row.includes(`dateTime="${committedAt}"`))
+    const commitLink = row.match(/<a[^>]*href="https:\/\/github.com\/gonchiman\/sf6\/commit\/([a-f0-9]{40})"[^>]*>/)
+    assert.ok(commitLink)
+    assert.ok(commitLink[1].startsWith(shortSha))
+    assert.match(commitLink[0], /target="_blank" rel="noreferrer"/)
+    assert.equal(row.includes('後付けの版名'), index >= 2)
+  }
+  assert.equal((html.match(/後付けの版名/g) ?? []).length, 4)
+})
 
 test('the page defaults to SF6 with all five game options available during loading', () => {
   const html = renderToStaticMarkup(createElement(Page))

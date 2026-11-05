@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { reportSteamCollectionVersion, steamCollectionVersion, STEAM_COLLECTION_VERSION } from './steam-collection-version.ts'
 import type { SteamCollectionComponent } from './steam-collection-version.ts'
+import { STEAM_COLLECTION_HISTORY, STEAM_COLLECTION_VERSION as browserVersion } from '../../src/lib/steamCollectionVersion.ts'
 
 const sourceSha = 'a'.repeat(40)
 const privateValue = 'private-token-must-not-appear'
@@ -15,6 +16,37 @@ const cli = fileURLToPath(new URL('./steam-collection-version.ts', import.meta.u
 const child = (args: string[], env: Record<string, string | undefined> = {}) => spawnSync(process.execPath, [cli, ...args], {
   encoding: 'utf8', windowsHide: true, timeout: 10_000,
   env: { ...process.env, GITHUB_ACTIONS: 'false', GITHUB_STEP_SUMMARY: '', ...env },
+})
+
+test('the browser and CLI share the current version and documented implementation history', async () => {
+  assert.equal(browserVersion, STEAM_COLLECTION_VERSION)
+  assert.equal(STEAM_COLLECTION_HISTORY[0].version, STEAM_COLLECTION_VERSION)
+  assert.equal(STEAM_COLLECTION_HISTORY[0].retrospective, false)
+  assert.equal(new Set(STEAM_COLLECTION_HISTORY.map(release => release.version)).size, STEAM_COLLECTION_HISTORY.length)
+  const changelog = await readFile(new URL('../../docs/steam-player-count/CHANGELOG.md', import.meta.url), 'utf8')
+  let previousReleaseStart = Infinity
+  const commitShas = new Set<string>()
+  for (const release of STEAM_COLLECTION_HISTORY) {
+    assert.ok(release.changes.length > 0)
+    assert.ok(changelog.includes(`## ${release.version} —`))
+    let previousChangeAt = 0
+    for (const change of release.changes) {
+      assert.match(change.commitSha, /^[0-9a-f]{40}$/)
+      assert.ok(!commitShas.has(change.commitSha), 'each implementation commit must appear once')
+      commitShas.add(change.commitSha)
+      assert.match(change.committedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/)
+      const committedAt = Date.parse(change.committedAt)
+      assert.ok(Number.isFinite(committedAt) && committedAt >= previousChangeAt)
+      assert.ok(committedAt < previousReleaseStart, 'release histories must not overlap')
+      previousChangeAt = committedAt
+      assert.ok(changelog.includes(`/commit/${change.commitSha})`), `undocumented commit: ${change.commitSha}`)
+      assert.ok(changelog.includes(change.committedAt.slice(0, 19).replace('T', ' ')), 'commit time must match the documented JST time')
+      assert.ok(changelog.includes(change.summary), 'the short history must agree with the changelog')
+    }
+    previousReleaseStart = Date.parse(release.changes[0].committedAt)
+  }
+  assert.equal(STEAM_COLLECTION_HISTORY.find(release => release.version === 'v2')?.changes.length, 2,
+    'v2 records its behavior change and the later version-reporting introduction separately')
 })
 
 test('component reports preserve previous summary content and identify each checked-out job separately', async () => {

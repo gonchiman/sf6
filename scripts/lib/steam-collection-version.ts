@@ -1,9 +1,9 @@
 import { appendFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { STEAM_COLLECTION_VERSION } from '../../src/lib/steamCollectionVersion.ts'
 
-// Bump together with docs/steam-player-count/CHANGELOG.md when collection behavior changes.
-export const STEAM_COLLECTION_VERSION = 'v2'
+export { STEAM_COLLECTION_VERSION } from '../../src/lib/steamCollectionVersion.ts'
 export type SteamCollectionComponent = 'dispatcher' | 'collector' | 'publisher'
 type Environment = Record<string, string | undefined>
 const labels: Record<SteamCollectionComponent, string> = {
