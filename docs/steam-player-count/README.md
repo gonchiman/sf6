@@ -45,6 +45,8 @@ Steam版の格闘ゲーム5作品の同時接続数を定期観測し、ゲー�
 
 ### 起動・停止と確認
 
+処理の版と変更内容は [変更履歴](CHANGELOG.md) で管理する。Actionsの各jobの「Record Steam collection process version」とサマリーで、起動役・取得・履歴保存それぞれの版とコミットを確認できる。ローカルでの版確認は `node scripts/lib/steam-collection-version.ts --version`。
+
 - 有効化後はActionsの「Schedule Steam player count every 15 minutes」をmain・`mode: standard`で手動実行すると起動役が始まり、次の07・22・37・52分から取得する。引き継ぎ元ID・attemptは手動起動では空欄にする。起動役は長時間`in_progress`のままで正常。各観測の成否は「Collect Steam player count」の短いrunで確認する。
 - 起動役を停止するには同workflowを無効化する。動作中の起動役も最大約60秒の確認間隔で無効化を検知して終了する。直ちに止める場合は動作中・交代待ちのrunもキャンセルする。すでに起動済みの取得jobは別runなので必要なら個別に止める。
 - 再開は同workflowを有効化し、mainで手動実行する。取得workflowだけが無効化されている場合は、そちらも有効化する。

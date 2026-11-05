@@ -48,8 +48,10 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      - name: Record Steam collection process version
+        run: node scripts/lib/steam-collection-version.ts dispatcher
       - name: Test the clock and dispatch failures without network access
-        run: node --test scripts/dispatch-steam-player-count.test.ts
+        run: node --test scripts/lib/steam-collection-version.test.ts scripts/dispatch-steam-player-count.test.ts
       - name: Dispatch current observations and reserve the successor
         id: dispatch
         env:

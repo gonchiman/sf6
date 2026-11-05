@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { STEAM_COLLECTION_VERSION } from './lib/steam-collection-version.ts'
 import { isAllowedSteamDispatcher, nextSteamDispatchBoundary, resolveSteamDispatchDuration, runSteamPlayerCountDispatcher,
   STEAM_DISPATCH_DURATION_MS, STEAM_DISPATCH_HANDOFF_CHECK_MS, STEAM_DISPATCH_HANDOFF_MS,
   STEAM_DISPATCH_HANDOFF_PROOF_STEP, STEAM_DISPATCH_INTERVAL_MS } from './dispatch-steam-player-count.ts'
@@ -94,6 +95,33 @@ test('bounds one generation to 330 minutes and dispatches 22 aligned observation
     assert.deepEqual(JSON.parse(String(request.options?.body)), { ref: 'main' })
   }
   assert.ok(f.state.logs.every(message => !message.includes(env.GH_TOKEN)))
+})
+
+test('dispatcher logs retain the checked-out version on success, skips and request failures', async () => {
+  const sourceSha = 'b'.repeat(40)
+  for (const scenario of ['success', 'skip', 'failure']) {
+    const f = fixture({ request: request => {
+      if (scenario === 'failure' && request.url.endsWith('steam-player-count.yml')) {
+        throw new Error('private-network-error-must-not-appear')
+      }
+    } })
+    if (scenario === 'skip') f.state.latest = collectionRun('200', 'completed', start)
+    await f.run({ durationMs: 60_000, env: { ...env, GITHUB_SHA: sourceSha } })
+    const logs = f.state.logs.map(message => JSON.parse(message))
+    const expectedEvent = scenario === 'success' ? 'dispatched' : scenario === 'skip' ? 'slot-skipped' : 'slot-failed'
+    assert.ok(logs.some(log => log.event === expectedEvent), scenario)
+    for (const log of logs) {
+      assert.equal(log.component, 'dispatcher')
+      assert.equal(log.processVersion, STEAM_COLLECTION_VERSION)
+      assert.equal(log.codeSha, sourceSha)
+    }
+    assert.ok(f.state.logs.every(message => !message.includes(env.GH_TOKEN)
+      && !message.includes('private-network-error-must-not-appear')))
+  }
+  const unknown = fixture()
+  await unknown.run({ durationMs: 60_000, env: { ...env, GITHUB_SHA: 'unsafe-private-sha' } })
+  assert.ok(unknown.state.logs.every(message => JSON.parse(message).codeSha === null
+    && !message.includes('unsafe-private-sha')))
 })
 
 test('starts at the next existing minute offset and does not emit an out-of-cycle observation', async () => {
