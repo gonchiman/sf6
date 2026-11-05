@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
 import { appendFile } from 'node:fs/promises'
+import { steamCollectionVersion } from './lib/steam-collection-version.ts'
 
 export const STEAM_DISPATCH_INTERVAL_MS = 15 * 60 * 1000
 export const STEAM_DISPATCH_DURATION_MS = 330 * 60 * 1000
@@ -211,7 +212,8 @@ export async function runSteamPlayerCountDispatcher(options: {
   let deadline = monotonicNow() + durationMs
   let dispatchAttempts = 0
   const result: SteamDispatchResult = { reason: 'duration', dispatched: 0, skipped: 0, failed: 0, handoff: 'not-attempted' }
-  const emit = (event: string, extra: LogFields = {}) => write(JSON.stringify({ event, at: new Date(now()).toISOString(), ...extra }))
+  const identity = steamCollectionVersion('dispatcher', env)
+  const emit = (event: string, extra: LogFields = {}) => write(JSON.stringify({ event, at: new Date(now()).toISOString(), ...extra, ...identity }))
   let stage = 'startup'
   const errorFields = (error: unknown): LogFields => ({
     stage: error instanceof DispatchRequestError ? error.stage ?? stage : stage,
