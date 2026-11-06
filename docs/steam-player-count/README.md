@@ -60,6 +60,14 @@ Steam版の格闘ゲーム5作品の同時接続数を定期観測し、ゲー�
 - 起動役のログには引き継ぎ要求・確認・失敗と後続run IDを記録し、成功時のActionsサマリーにも後続IDを残す。無効化・認証拒否・レート制限などで通常時間より前に停止した場合や、親の確認に失敗した場合は後続を自動予約しない。
 - `collection-state`・`collection-recheck`・`collection-recheck-cleared`で判定前後のrun ID・attempt・状態・作成/更新時刻を記録する。`slot-skipped`は`active-run`・`current-slot`・`future-slot`・`run-changed`・`late`・`attempt-limit`・`budget-exhausted`を区別する。`slot-failed`・`request-failed`には固定の処理段階、HTTP番号、通信/timeout/JSON/サイズ/形式エラーの分類を残し、予定時刻・遅延・試行数と照合できるようにする。認証情報・ヘッダー・レスポンス本文・任意の例外メッセージは記録しない。
 
+### 取得履歴
+
+- 「取得履歴」タブはゲーム・期間・曜日の選択を使い、予定枠ごとに日本時間、結果、選択作品の取得数、欠測理由と確認できる実行のリンクを新しい順に表示する。まだ処理を確認できない枠、理由を確認できない欠測、履歴自体の読込失敗を区別する。集計の読込状態と履歴の読込状態は別に扱う。
+- 起動役は取得workflowに予定時刻を渡す。定期照合workflowは毎時17分に直近24時間のGitHub Actions実行、完了済みの起動役ログ、取得ジョブの結果と公開済みの観測を照合する。起動役のログが確定するまで、起動時の欠測理由の反映に数時間かかることがある。最新の枠は20分の猶予を設け、実行中と確認できる場合は引き続き「確認中」とする。
+- 照合結果は既存の履歴ブランチの `collection-history/days/YYYY-MM-DD.json` にUTC日付で保存する。形式は `{ schemaVersion: 1, date, checkedAt, slots }`。予定時刻を行のキーとし、実測時刻とrun ID・attemptを別に保持する。同じ枠の結果を更新し、別の15分区間で観測した再実行は過去の枠の取得成功に数えない。
+- 同じ履歴ブランチへの書き込みは既存のconcurrency groupで直列化する。照合workflowが書き込むのは `collection-history/` 以下の公開用JSON。公開項目は予定時刻・実測時刻・検証済みrun ID・固定の理由コード・HTTP番号に限る。
+- 予定時刻を保存していない観測は、実測と実行記録の時刻を使って表示する。理由は根拠のある記録だけを表示する。2026年11月6日08:22（JST）の起動失敗は [該当ログ](https://github.com/gonchiman/sf6/actions/runs/42086539856) から確認し、同梱データに記録する。
+
 作品ごとの履歴がまだ存在しない最初の公開では、そのmainコミットの同梱履歴をハッシュ・形式検証して初期履歴へコピーし、それから新しい観測を追加する。これにより同梱した初回実測が自動取得へ切り替わる際も残る。既存履歴は同梱データで上書きしない。追加作品の同梱manifestは初期状態では空であり、未取得を0人として扱わない。配信用JSONは`.gitattributes`でLFを固定し、checkout時の改行変換によるハッシュ不一致を防ぐ。
 
 pushが拒否された場合は最大3回まで最新履歴を再取得し、同じartifactを再マージする。生成JSONをforce pushしたり、競合した観測を捨てたりしない。公開失敗時は保持されたartifactから公開jobを再実行する。artifact名は取得jobのoutputを引き継ぐため、公開jobだけの再実行で変わる`GITHUB_RUN_ATTEMPT`に影響されない。保持期間を過ぎたartifactやGitHub側で開始されなかった取得は自動復元できない。
@@ -146,6 +154,6 @@ node --test scripts/collect-steam-player-count.test.ts scripts/publish-steam-pla
 node --test scripts/dispatch-steam-player-count.test.ts
 ```
 
-単発取得・ローカル取り込みは定期取得の有効化や履歴ブランチへのpushを行わない。取得データの公開・履歴ブランチへの書き込みは固定mainのworkflowから呼ぶ`publish-steam-player-count-history.ts`に限定する。起動役のPOSTも固定mainのworkflowから固定の取得workflow・起動workflowだけを対象にする。synthetic testでは実Steam APIやGitHub APIへ接続しない。
+単発取得・ローカル取り込みは定期取得の有効化や履歴ブランチへのpushを行わない。取得データと取得履歴の公開は、固定mainのworkflowから使う`publish-steam-player-count-history.ts`に集約する。起動役のPOSTも固定mainのworkflowから固定の取得workflow・起動workflowだけを対象にする。synthetic testでは実Steam APIやGitHub APIへ接続しない。
 
 既存のLegend取得workflowから、取得と公開の権限分離・artifact受け渡し・専用履歴ブランチの構成を再利用した。Steamの高頻度観測、日別ファイル、SHA-256照合、実時刻の時間帯集計は専用処理として実装する。`arknights_2`の取得コードはtimeout・限定retry・検証後保存の参照元とし、実行時の外部ローカルパス依存は追加しない。

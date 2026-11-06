@@ -85,3 +85,11 @@
   .steam-player-count-selection select, .steam-player-count-page .win-rates-button { min-height: 44px; }
   .steam-player-count-filters input, .steam-player-count-filters select, .steam-player-count-selection select { font-size: 16px; }
 }
+.steam-collection-history-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.steam-collection-history-table { min-width: 520px; }
+.steam-collection-history-table tr > :nth-child(2) { white-space: nowrap; }
+.steam-collection-history-table ul { margin: 0; padding: 0; list-style: none; }
+.steam-collection-history-table li + li { margin-top: 4px; }
+.steam-collection-history-gap { font-weight: 600; }
+.steam-collection-history-pagination { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.steam-collection-history-count { margin-inline-start: 4px; color: var(--text-muted); font-size: 12px; font-weight: 400; }

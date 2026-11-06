@@ -403,7 +403,8 @@ export async function runSteamPlayerCountDispatcher(options: {
             emit('slot-skipped', { ...slotFields(boundary), stage, ...collectionFields(observed), reason: blocked })
           } else {
             dispatchAttempts++
-            await request(`${COLLECTOR}/dispatches`, 'POST', { deadline: slotDeadline })
+            await request(`${COLLECTOR}/dispatches`, 'POST', { deadline: slotDeadline,
+              body: { ref: 'main', inputs: { scheduled_at: new Date(boundary).toISOString() } } })
             result.dispatched++
             emit('dispatched', { ...slotFields(boundary), stage: 'collection-dispatch' })
           }

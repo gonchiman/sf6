@@ -92,7 +92,8 @@ test('bounds one generation to 330 minutes and dispatches 22 aligned observation
   }
   for (const request of f.posts()) {
     assert.equal(request.url, 'https://api.github.com/repos/gonchiman/sf6/actions/workflows/steam-player-count.yml/dispatches')
-    assert.deepEqual(JSON.parse(String(request.options?.body)), { ref: 'main' })
+    assert.deepEqual(JSON.parse(String(request.options?.body)), { ref: 'main',
+      inputs: { scheduled_at: new Date(request.time).toISOString() } })
   }
   assert.ok(f.state.logs.every(message => !message.includes(env.GH_TOKEN)))
 })
@@ -134,7 +135,10 @@ test('starts at the next existing minute offset and does not emit an out-of-cycl
 test('request latency does not accumulate into a progressively later schedule', async () => {
   const f = fixture({ request: () => { f.state.wall += 1000; f.state.elapsed += 1000 } })
   await f.run({ durationMs: 46 * 60_000 })
-  assert.deepEqual(f.posts().map(item => item.time), [0, 1, 2, 3].map(index => start + index * 15 * 60_000 + 3000))
+  const slots = [0, 1, 2, 3].map(index => start + index * STEAM_DISPATCH_INTERVAL_MS)
+  assert.deepEqual(f.posts().map(item => item.time), slots.map(slot => slot + 3000))
+  assert.deepEqual(f.posts().map(item => JSON.parse(String(item.options?.body)).inputs.scheduled_at),
+    slots.map(slot => new Date(slot).toISOString()))
 })
 
 test('a forward clock jump skips missed slots without catch-up requests', async () => {

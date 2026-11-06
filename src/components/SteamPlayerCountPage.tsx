@@ -16,14 +16,15 @@ import { SteamPlayerCountHourlyChart, SteamPlayerCountTrendChart, steamPlayerCou
 import { SteamPlayerCountFilters, SteamPlayerCountRangeSummary } from './SteamPlayerCountFilters'
 import { SteamPlayerCountComparisonView } from './SteamPlayerCountComparisonView'
 import { SteamPlayerCountGameKey } from './SteamPlayerCountComparisonCharts'
+import { SteamCollectionHistoryPanel } from './SteamCollectionHistoryPanel'
 import { SteamCollectionVersionHistory } from './SteamCollectionVersionHistory'
 import '../win-rates.css'
 import '../table.css'
 import '../steam-player-count.css'
 
-const SINGLE_TABS = [['hourly', '時間帯比較'], ['trend', '観測推移'], ['table', '時間帯一覧']] as const
-const COMPARISON_TABS = [['hourly', '時間帯比較'], ['summary', '期間比較'], ['table', '時間帯一覧']] as const
-type SingleTab = (typeof SINGLE_TABS)[number][0]
+const SINGLE_TABS = [['hourly', '時間帯比較'], ['trend', '観測推移'], ['table', '時間帯一覧'], ['history', '取得履歴']] as const
+const COMPARISON_TABS = [['hourly', '時間帯比較'], ['summary', '期間比較'], ['table', '時間帯一覧'], ['history', '取得履歴']] as const
+type SingleTab = Exclude<(typeof SINGLE_TABS)[number][0], 'history'>
 type Tab = SingleTab | (typeof COMPARISON_TABS)[number][0]
 const GAME_OPTIONS = STEAM_PLAYER_COUNT_GAMES.map(game => ({ id: String(game.appId), name: steamPlayerCountGameLabel(game.appId) }))
 const staleAfterMs = 90 * 60 * 1000
@@ -107,17 +108,23 @@ export function SteamPlayerCountPage({ initialAppIds = [DEFAULT_STEAM_PLAYER_COU
       <SteamPlayerCountFilters dayType={dayType} onDayTypeChange={setDayType} selection={selection}
         onSelectionChange={setSelection} range={state.range} now={state.now} />
     </StatisticsPanel>
-    {state.status === 'loading' ? <DataLoadState loading message={`${game?.label ?? '選択したゲーム'}の観測データを読み込み中…`} />
-      : state.status === 'error' ? <DataLoadState
-        message={game ? `${game.label}の観測データを読み込めませんでした。` : `比較データの読込失敗${failedLabels ? `：${failedLabels}` : ''}`}
-        onRetry={state.refresh} />
-      : <>
-        <ContentTabs id="steam-player-count" label="表示内容" options={tabs} value={tab} onChange={setTab} className="steam-player-count-tabs" />
-        {entry ? <SteamPlayerCountGameView key={entry.game.appId} entry={entry} state={state} dayType={dayType}
-          tab={tab === 'summary' ? 'hourly' : tab} selection={selection} />
-          : <SteamPlayerCountComparisonView state={state} dayType={dayType} selection={selection} tab={tab === 'trend' ? 'hourly' : tab}
-            scale={scale} onScaleChange={setScale} metric={metric} onMetricChange={setMetric} />}
-      </>}
+    <ContentTabs id="steam-player-count" label="表示内容" options={tabs} value={tab} onChange={setTab} className="steam-player-count-tabs" />
+    {tab === 'history' || state.status !== 'ready'
+      ? tabs.filter(([id]) => id !== 'history').map(([id]) => <section key={id} className="steam-player-count-panel"
+        id={`steam-player-count-panel-${id}`} role="tabpanel" aria-labelledby={`steam-player-count-tab-${id}`} hidden={tab !== id}>
+        {tab === id && (state.status === 'loading'
+          ? <DataLoadState loading message={`${game?.label ?? '選択したゲーム'}の観測データを読み込み中…`} />
+          : <DataLoadState message={game ? `${game.label}の観測データを読み込めませんでした。` : `比較データの読込失敗${failedLabels ? `：${failedLabels}` : ''}`}
+            onRetry={state.refresh} />)}
+      </section>)
+      : entry ? <SteamPlayerCountGameView key={entry.game.appId} entry={entry} state={state} dayType={dayType}
+        tab={tab === 'summary' ? 'hourly' : tab} selection={selection} />
+        : <SteamPlayerCountComparisonView state={state} dayType={dayType} selection={selection} tab={tab === 'trend' ? 'hourly' : tab}
+          scale={scale} onScaleChange={setScale} metric={metric} onMetricChange={setMetric} />}
+    <section className="steam-player-count-panel" id="steam-player-count-panel-history" role="tabpanel"
+      aria-labelledby="steam-player-count-tab-history" hidden={tab !== 'history'}>
+      {tab === 'history' && <SteamCollectionHistoryPanel state={state} selection={selection} dayType={dayType} appIds={appIds} onRefreshObservations={state.refresh} />}
+    </section>
     <SteamPlayerCountRangeSummary selection={selection} range={state.range} dataRange={state.dataRange} status={state.status}
       dataRangeLabel={game ? 'データ範囲' : '共通データ範囲'} now={state.now} />
   </section>

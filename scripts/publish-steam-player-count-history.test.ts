@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { publishSteamPlayerCountHistory, STEAM_HISTORY_BRANCH, STEAM_HISTORY_REMOTE } from './publish-steam-player-count-history.ts'
+import { publishSteamCollectionHistory, publishSteamPlayerCountHistory, STEAM_HISTORY_BRANCH, STEAM_HISTORY_REMOTE } from './publish-steam-player-count-history.ts'
 import { collectSteamPlayerCounts } from './collect-steam-player-count.ts'
 import { getSteamPlayerCountGame, STEAM_PLAYER_COUNT_GAMES } from '../src/lib/steamPlayerCountGames.ts'
 import type { SteamPlayerCountAppId } from '../src/types/steamPlayerCount.ts'
@@ -101,6 +101,8 @@ test('refuses an unexpected branch and rejects unauthorized execution before any
 test('workflow separates collection from queued publishing and retains the original artifact name on publisher reruns', async () => {
   const workflow = await readFile(new URL('../.github/workflows/steam-player-count.yml', import.meta.url), 'utf8')
   assert.match(workflow, /workflow_dispatch:/)
+  assert.match(workflow, /scheduled_at:\s*\n\s*description:[^\n]+\n\s*type: string\s*\n\s*required: false/)
+  assert.ok(workflow.includes("inputs.scheduled_at && format('Steam observation {0}', inputs.scheduled_at) || 'Steam observation manual'"))
   assert.doesNotMatch(workflow, /\bschedule:|\bcron:/)
   assert.match(workflow, /queue: max/)
   assert.match(workflow, /needs\.collect\.outputs\.artifact_name/)
@@ -114,6 +116,36 @@ test('workflow separates collection from queued publishing and retains the origi
   assert.match(collection, /timeout-minutes: 10/)
   assert.match(collection, /if: always\(\) && steps\.collect\.outputs\.artifact_ready == 'true'/)
   assert.match(publisher, /if: always\(\) && needs\.collect\.outputs\.artifact_ready == 'true' && needs\.collect\.outputs\.successful_games != '0'/)
+})
+
+const reconciliationEnv = { ...env, GITHUB_WORKFLOW_REF: 'gonchiman/sf6/.github/workflows/steam-collection-history.yml@refs/heads/main' }
+
+test('collection reconciliation replays on the isolated history branch and stages only collection-history', async t => {
+  const f = await setup(t, { failures: 1 })
+  const directories: string[] = []
+  await publishSteamCollectionHistory(async historyRoot => {
+    directories.push(historyRoot)
+    await mkdir(join(historyRoot, 'collection-history'), { recursive: true })
+    await writeFile(join(historyRoot, 'collection-history', 'index.json'), '{}')
+  }, { ...f.dependencies, env: reconciliationEnv })
+  assert.equal(directories.length, 2)
+  assert.equal(new Set(directories).size, 1)
+  assert.equal(f.counts().pushes, 2)
+  assert.equal(f.calls.filter(args => args[0] === 'reset').length, 2)
+  assert.deepEqual(f.calls.filter(args => args[0] === 'add'), Array(2).fill(['add', '--', 'collection-history']))
+  assert.equal(f.seedCount(), 0)
+})
+
+test('reconciliation requires its fixed workflow and shares the observation writer queue', async t => {
+  const f = await setup(t)
+  await assert.rejects(publishSteamCollectionHistory(async () => assert.fail('unexpected update'), f.dependencies), /workflow/)
+  assert.deepEqual(f.calls, [])
+  const [observation, reconciliation] = await Promise.all(['steam-player-count.yml', 'steam-collection-history.yml'].map(name =>
+    readFile(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8')))
+  assert.ok(reconciliation.includes('group: steam-player-count-history-gonchiman-sf6'))
+  assert.ok(observation.includes('group: steam-player-count-history-gonchiman-sf6'))
+  assert.match(reconciliation, /cancel-in-progress: false\s*\n\s*queue: max/)
+  assert.match(reconciliation, /actions: read\s*\n\s*contents: write/)
 })
 
 test('batch publisher preserves the legacy SF6 directory and seeds only absent game directories on an existing branch', async t => {
