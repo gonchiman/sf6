@@ -13,7 +13,7 @@ import { ContentTabs } from './ContentTabs'
 import { DataLoadState } from './DataLoadState'
 import { StatisticsPanel } from './StatisticsPanel'
 import { SteamPlayerCountHourlyChart, SteamPlayerCountTrendChart, steamPlayerCountNumber } from './SteamPlayerCountCharts'
-import { SteamPlayerCountFilters } from './SteamPlayerCountFilters'
+import { SteamPlayerCountFilters, SteamPlayerCountRangeSummary } from './SteamPlayerCountFilters'
 import { SteamPlayerCountComparisonView } from './SteamPlayerCountComparisonView'
 import { SteamPlayerCountGameKey } from './SteamPlayerCountComparisonCharts'
 import { SteamCollectionVersionHistory } from './SteamCollectionVersionHistory'
@@ -93,7 +93,7 @@ export function SteamPlayerCountPage({ initialAppIds = [DEFAULT_STEAM_PLAYER_COU
       {stale && <span>最終観測から90分以上</span>}
       <button className="win-rates-button" type="button" onClick={state.refresh}>更新を確認</button>
     </div>}
-    <StatisticsPanel title="表示条件" headerContent={<span className="monthly-statistics-panel-summary">日本時間</span>}>
+    <StatisticsPanel id="steam-player-count-conditions" title="表示条件" headerContent={<span className="monthly-statistics-panel-summary">日本時間</span>}>
       <ComparisonSelection items={GAME_OPTIONS} selectedIds={appIds.map(String)} onChange={changeGames}
         label="ゲーム" selectionLabel="選択中のゲーム" pickerLabel="ゲームを選択" legendLabel="ゲーム"
         renderKey={id => <SteamPlayerCountGameKey appId={Number(id) as SteamPlayerCountAppId} />}
@@ -105,8 +105,7 @@ export function SteamPlayerCountPage({ initialAppIds = [DEFAULT_STEAM_PLAYER_COU
             onClick={() => changeGames(GAME_OPTIONS.map(option => option.id))}>全選択</button>
         </div>} />
       <SteamPlayerCountFilters dayType={dayType} onDayTypeChange={setDayType} selection={selection}
-        onSelectionChange={setSelection} range={state.range} dataRange={state.dataRange} status={state.status}
-        available={state.dataRange !== null} dataRangeLabel={game ? 'データ範囲' : '共通データ範囲'} now={state.now} />
+        onSelectionChange={setSelection} range={state.range} now={state.now} />
     </StatisticsPanel>
     {state.status === 'loading' ? <DataLoadState loading message={`${game?.label ?? '選択したゲーム'}の観測データを読み込み中…`} />
       : state.status === 'error' ? <DataLoadState
@@ -119,6 +118,8 @@ export function SteamPlayerCountPage({ initialAppIds = [DEFAULT_STEAM_PLAYER_COU
           : <SteamPlayerCountComparisonView state={state} dayType={dayType} selection={selection} tab={tab === 'trend' ? 'hourly' : tab}
             scale={scale} onScaleChange={setScale} metric={metric} onMetricChange={setMetric} />}
       </>}
+    <SteamPlayerCountRangeSummary selection={selection} range={state.range} dataRange={state.dataRange} status={state.status}
+      dataRangeLabel={game ? 'データ範囲' : '共通データ範囲'} now={state.now} />
   </section>
 }
 
