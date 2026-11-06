@@ -106,8 +106,9 @@ export function createSteamPlayerCountComparisonController(appIds: readonly Stea
       }
       return { game, publication: next }
     })
-    // A regression in one title must not combine the old title with newly refreshed peers.
-    if (staleIds.length) { fail(staleIds); return }
+    // One game can still read the selected dates from its verified publication.
+    // A comparison must not combine that publication with newly refreshed peers.
+    if (staleIds.length && sources.length > 1) { fail(staleIds); return }
     knownPublications = publications
     for (;;) {
       const readingVersion = version, startedAt = clock(), resolved = ranges(selection, publications, startedAt)

@@ -57,22 +57,20 @@
 .steam-player-count-table tr > :first-child { white-space: nowrap; }
 .steam-player-count-table .is-unavailable { color: var(--text-muted); }
 .steam-player-count-basis { margin: 0; }
-.steam-player-count-mode { align-self: start; justify-self: start; }
-.steam-player-count-comparison .comparison-selection { margin-bottom: 18px; }
-.steam-player-count-comparison .comparison-grid-options { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.steam-player-count-comparison .comparison-grid-option { min-width: 0; }
-.steam-player-count-comparison .comparison-grid-name { overflow-wrap: anywhere; }
+.steam-player-count-page .comparison-selection { margin-bottom: 18px; }
+.steam-player-count-game-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-inline-start: auto; }
+.steam-player-count-page .comparison-grid-options { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.steam-player-count-page .comparison-grid-name { overflow-wrap: anywhere; }
 .steam-player-count-comparison-controls { width: fit-content; max-width: 100%; margin-bottom: 18px; }
 .steam-player-count-game-key { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .steam-player-count-table-unit { display: block; font-size: 11px; font-weight: 400; margin-top: 5px; }
 .steam-player-count-comparison-table { min-width: 680px; }
-.steam-player-count-comparison .steam-player-count-range-summary dt { flex-basis: 96px; }
+.steam-player-count-range-summary dt { flex-basis: 96px; }
 .steam-player-count-game-updates { border-top: 1px solid var(--border); padding-top: 12px; }
 @container comparison-selection (max-width: 680px) {
-  .steam-player-count-comparison .comparison-grid-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 760px) {
-  .steam-player-count-comparison .comparison-grid-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .steam-player-count-page .comparison-grid-options { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .steam-player-count-page .comparison-grid-option { grid-column: span 2; }
+  .steam-player-count-page .comparison-grid-option:nth-child(n + 4) { grid-column: span 3; }
 }
 @media (max-width: 640px) {
   .steam-player-count-page { gap: 14px; }

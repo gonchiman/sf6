@@ -1,22 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { timestampLabel } from '../lib/dateTime'
 import { buildSteamPlayerCountGameComparison } from '../lib/steamPlayerCountComparison'
 import { resolveSteamPlayerCountTimeWindow } from '../lib/steamPlayerCount'
-import { STEAM_PLAYER_COUNT_GAMES } from '../lib/steamPlayerCountGames'
 import { steamPlayerCountGameLabel } from '../lib/steamPlayerCountGameColors'
-import { useSteamPlayerCountComparison } from '../lib/useSteamPlayerCountComparison'
-import type { SteamPlayerCountAppId, SteamPlayerCountDayType, SteamPlayerCountRangeSelection } from '../types/steamPlayerCount'
+import type { SteamPlayerCountComparisonState } from '../lib/steamPlayerCountComparisonFeed'
+import type { SteamPlayerCountDayType, SteamPlayerCountRangeSelection } from '../types/steamPlayerCount'
 import type { SteamPlayerCountGameComparison } from '../types/steamPlayerCountComparison'
-import { ComparisonSelection } from './ComparisonSelection'
-import { ContentTabs } from './ContentTabs'
-import { DataLoadState } from './DataLoadState'
 import { StatisticsPanel } from './StatisticsPanel'
-import { SteamPlayerCountFilters } from './SteamPlayerCountFilters'
 import { steamPlayerCountNumber } from './SteamPlayerCountCharts'
 import { SteamPlayerCountGameHourlyChart, SteamPlayerCountGameKey, SteamPlayerCountGameSummaryChart } from './SteamPlayerCountComparisonCharts'
-
-const TABS = [['hourly', '時間帯比較'], ['summary', '期間比較'], ['table', '時間帯一覧']] as const
-type Tab = (typeof TABS)[number][0]
 
 export function SteamPlayerCountGameComparisonTable({ comparison }: { comparison: SteamPlayerCountGameComparison }) {
   return <div className="data-table-scroll steam-player-count-table-scroll" role="region" aria-label="ゲーム別・時間帯別の集計" tabIndex={0}>
@@ -44,73 +36,51 @@ export function SteamPlayerCountGameComparisonTable({ comparison }: { comparison
   </div>
 }
 
-export function SteamPlayerCountComparisonView({ appIds, onAppIdsChange, dayType, onDayTypeChange, selection, onSelectionChange }: {
-  appIds: readonly SteamPlayerCountAppId[]
-  onAppIdsChange: (value: SteamPlayerCountAppId[]) => void
+export function SteamPlayerCountComparisonView({ state, dayType, selection, tab, scale, onScaleChange, metric, onMetricChange }: {
+  state: SteamPlayerCountComparisonState
   dayType: SteamPlayerCountDayType
-  onDayTypeChange: (value: SteamPlayerCountDayType) => void
   selection: SteamPlayerCountRangeSelection
-  onSelectionChange: (value: SteamPlayerCountRangeSelection) => void
+  tab: 'hourly' | 'summary' | 'table'
+  scale: 'people' | 'index'
+  onScaleChange: (value: 'people' | 'index') => void
+  metric: 'mean' | 'peak'
+  onMetricChange: (value: 'mean' | 'peak') => void
 }) {
-  const [tab, setTab] = useState<Tab>('hourly')
-  const [scale, setScale] = useState<'people' | 'index'>('people')
-  const [metric, setMetric] = useState<'mean' | 'peak'>('mean')
-  const state = useSteamPlayerCountComparison(appIds, selection)
   const comparison = useMemo(() => buildSteamPlayerCountGameComparison(state.entries, state.comparisonRange, dayType, state.now,
     resolveSteamPlayerCountTimeWindow(selection, state.now)), [state.entries, state.comparisonRange, state.now, dayType, selection])
-  const coverage = `共通 ${comparison.commonDays} 日・${steamPlayerCountNumber(comparison.commonHours)} 時間（${steamPlayerCountNumber(comparison.commonSlots)} 区間）`
-  const failedLabels = state.failedAppIds.map(steamPlayerCountGameLabel).join('・')
+  const coverage = `共通観測 ${comparison.commonDays} 日・${steamPlayerCountNumber(comparison.commonHours)} 時間（${steamPlayerCountNumber(comparison.commonSlots)} 区間）`
+  const unavailable = <div className="steam-player-count-empty" role="status">算出不可</div>
 
-  return <section className="steam-player-count-page steam-player-count-comparison" aria-label="Steam同時接続数のゲーム比較">
-    <div className="steam-player-count-context"><span>対象：Steam・世界全体・全モード</span><span>時刻：JST</span><span>取得予定：15分ごと</span></div>
-    <StatisticsPanel title="表示条件" headerContent={<span className="monthly-statistics-panel-summary">日本時間</span>}>
-      <ComparisonSelection items={STEAM_PLAYER_COUNT_GAMES.map(game => ({ id: String(game.appId), name: steamPlayerCountGameLabel(game.appId) }))}
-        selectedIds={appIds.map(String)} onChange={ids => onAppIdsChange(STEAM_PLAYER_COUNT_GAMES.filter(game => ids.includes(String(game.appId))).map(game => game.appId))}
-        label="比較ゲーム" selectionLabel="比較中のゲーム" pickerLabel="ゲームを選択" legendLabel="ゲーム"
-        renderKey={id => <SteamPlayerCountGameKey appId={Number(id) as SteamPlayerCountAppId} />}
-        layout="grid" showOptionKeys minimumSelectionLabel={null} selectionCountLabel={count => `${count}作品`} />
-      <SteamPlayerCountFilters dayType={dayType} onDayTypeChange={onDayTypeChange} selection={selection}
-        onSelectionChange={onSelectionChange} range={state.range} dataRange={state.dataRange} status={state.status}
-        available={state.dataRange !== null} dataRangeLabel="共通データ範囲" now={state.now} />
-    </StatisticsPanel>
-    {state.refreshError && <div className="steam-player-count-message" role="status">
-      <span>更新確認失敗{failedLabels ? `：${failedLabels}` : ''}</span><span>前回確認済みデータ</span>
-      <button type="button" className="win-rates-button" onClick={state.refresh}>更新を確認</button>
-    </div>}
-    {state.status === 'loading' ? <DataLoadState loading message="比較するゲームの観測データを読み込み中…" />
-      : state.status === 'error' ? <DataLoadState message={`比較データの読込失敗${failedLabels ? `：${failedLabels}` : ''}`} onRetry={state.refresh} />
-        : <>
-          <ContentTabs id="steam-game-comparison" label="比較の表示内容" options={TABS} value={tab} onChange={setTab} className="steam-player-count-tabs" />
-          <section className="steam-player-count-panel" id="steam-game-comparison-panel-hourly" role="tabpanel"
-            aria-labelledby="steam-game-comparison-tab-hourly" hidden={tab !== 'hourly'}>
-            <StatisticsPanel title="時間帯別の平均同時接続数" headerContent={<span className="monthly-statistics-panel-summary">{coverage}</span>}>
-              <div className="win-rates-view-selector steam-player-count-comparison-controls" role="group" aria-label="折れ線の表示尺度">
-                <button type="button" className="win-rates-button" aria-pressed={scale === 'people'} onClick={() => setScale('people')}>人数</button>
-                <button type="button" className="win-rates-button" aria-pressed={scale === 'index'} onClick={() => setScale('index')}>各ゲーム平均＝100</button>
-              </div>
-              <SteamPlayerCountGameHourlyChart series={comparison.series} scale={scale} />
-            </StatisticsPanel>
-          </section>
-          <section className="steam-player-count-panel" id="steam-game-comparison-panel-summary" role="tabpanel"
-            aria-labelledby="steam-game-comparison-tab-summary" hidden={tab !== 'summary'}>
-            <StatisticsPanel title={metric === 'mean' ? '期間平均の同時接続数' : '期間内の観測最大同時接続数'}
-              headerContent={<span className="monthly-statistics-panel-summary">{coverage}</span>}>
-              <div className="win-rates-view-selector steam-player-count-comparison-controls" role="group" aria-label="棒グラフの集計値">
-                <button type="button" className="win-rates-button" aria-pressed={metric === 'mean'} onClick={() => setMetric('mean')}>期間平均</button>
-                <button type="button" className="win-rates-button" aria-pressed={metric === 'peak'} onClick={() => setMetric('peak')}>観測最大</button>
-              </div>
-              <SteamPlayerCountGameSummaryChart series={comparison.series} metric={metric} />
-            </StatisticsPanel>
-          </section>
-          <section className="steam-player-count-panel" id="steam-game-comparison-panel-table" role="tabpanel"
-            aria-labelledby="steam-game-comparison-tab-table" hidden={tab !== 'table'}>
-            <StatisticsPanel title="時間帯別の集計" headerContent={<span className="monthly-statistics-panel-summary">{coverage}</span>}>
-              <SteamPlayerCountGameComparisonTable comparison={comparison} />
-            </StatisticsPanel>
-          </section>
-          <p className="steam-player-count-meta steam-player-count-basis">対象：全選択ゲームで1時間4区間がそろった日時・平均：日ごとに等重み
-            {tab === 'hourly' && scale === 'index' ? '・指数の基準：ゲーム別の期間平均＝100' : ''}</p>
-        </>}
+  return <>
+    <section className="steam-player-count-panel" id="steam-player-count-panel-hourly" role="tabpanel"
+      aria-labelledby="steam-player-count-tab-hourly" hidden={tab !== 'hourly'}>
+      <StatisticsPanel title="時間帯別の平均同時接続数" headerContent={<span className="monthly-statistics-panel-summary">{coverage}</span>}>
+        <div className="win-rates-view-selector steam-player-count-comparison-controls" role="group" aria-label="折れ線の表示尺度">
+          <button type="button" className="win-rates-button" aria-pressed={scale === 'people'} onClick={() => onScaleChange('people')}>人数</button>
+          <button type="button" className="win-rates-button" aria-pressed={scale === 'index'} onClick={() => onScaleChange('index')}>各ゲーム平均＝100</button>
+        </div>
+        {comparison.commonHours > 0 ? <SteamPlayerCountGameHourlyChart series={comparison.series} scale={scale} /> : unavailable}
+      </StatisticsPanel>
+    </section>
+    <section className="steam-player-count-panel" id="steam-player-count-panel-summary" role="tabpanel"
+      aria-labelledby="steam-player-count-tab-summary" hidden={tab !== 'summary'}>
+      <StatisticsPanel title={metric === 'mean' ? '期間平均の同時接続数' : '期間内の観測最大同時接続数'}
+        headerContent={<span className="monthly-statistics-panel-summary">{coverage}</span>}>
+        <div className="win-rates-view-selector steam-player-count-comparison-controls" role="group" aria-label="棒グラフの集計値">
+          <button type="button" className="win-rates-button" aria-pressed={metric === 'mean'} onClick={() => onMetricChange('mean')}>期間平均</button>
+          <button type="button" className="win-rates-button" aria-pressed={metric === 'peak'} onClick={() => onMetricChange('peak')}>観測最大</button>
+        </div>
+        {comparison.commonHours > 0 ? <SteamPlayerCountGameSummaryChart series={comparison.series} metric={metric} /> : unavailable}
+      </StatisticsPanel>
+    </section>
+    <section className="steam-player-count-panel" id="steam-player-count-panel-table" role="tabpanel"
+      aria-labelledby="steam-player-count-tab-table" hidden={tab !== 'table'}>
+      <StatisticsPanel title="時間帯別の集計" headerContent={<span className="monthly-statistics-panel-summary">{coverage}</span>}>
+        <SteamPlayerCountGameComparisonTable comparison={comparison} />
+      </StatisticsPanel>
+    </section>
+    <p className="steam-player-count-meta steam-player-count-basis">対象：全選択ゲームで1時間4区間がそろった日時・平均：日ごとに等重み
+      {tab === 'hourly' && scale === 'index' ? '・指数の基準：ゲーム別の期間平均＝100' : ''}</p>
     {state.entries.length > 0 && <dl className="steam-player-count-collection steam-player-count-game-updates">
       {state.entries.map(entry => {
         const latest = entry.publication.manifest.days.map(day => day.lastObservedAt).sort().at(-1)
@@ -118,8 +88,8 @@ export function SteamPlayerCountComparisonView({ appIds, onAppIdsChange, dayType
           aria-label={`${entry.game.label}の取得元（新しいタブ）`}>{steamPlayerCountGameLabel(entry.game.appId)}</a></dt>
           <dd>{latest ? <>最終観測 <time dateTime={latest}>{timestampLabel(latest)}</time></> : '未取得'}
             {entry.publication.source === 'bundled' ? '・同梱データ' : ''}
-            {latest && Date.now() - Date.parse(latest) > 90 * 60 * 1000 ? '・90分以上更新なし' : ''}</dd></div>
+            {latest && state.now.getTime() - Date.parse(latest) > 90 * 60 * 1000 ? '・90分以上更新なし' : ''}</dd></div>
       })}
     </dl>}
-  </section>
+  </>
 }
