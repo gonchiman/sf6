@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-06T11:34:42.922Z",
+  "generatedAt": "2026-11-06T11:46:33.397Z",
   "source": {
     "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/master",
     "title": "Buckler MRランキング"
@@ -134,5 +134,10 @@
       "captureEndedAt": "2026-10-29T04:16:54.833Z",
       "totalCount": 500
     }
-  ]
+  ],
+  "availability": {
+    "status": "collection-failed",
+    "checkedAt": "2026-11-06T11:46:04.660Z",
+    "message": "プレイヤー一覧の取得を完了できませんでした。"
+  }
 }
