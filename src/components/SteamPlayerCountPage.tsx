@@ -97,7 +97,7 @@ export function SteamPlayerCountPage({ initialAppIds = [DEFAULT_STEAM_PLAYER_COU
     <StatisticsPanel id="steam-player-count-conditions" title="表示条件" headerContent={<span className="monthly-statistics-panel-summary">日本時間</span>}>
       <ComparisonSelection items={GAME_OPTIONS} selectedIds={appIds.map(String)} onChange={changeGames}
         label="ゲーム" selectionLabel="選択中のゲーム" pickerLabel="ゲームを選択" legendLabel="ゲーム"
-        renderKey={id => <SteamPlayerCountGameKey appId={Number(id) as SteamPlayerCountAppId} />}
+        renderKey={id => <SteamPlayerCountGameKey appId={Number(id) as SteamPlayerCountAppId} markerOnly />}
         layout="grid" showOptionKeys minimumSelectionLabel={null} selectionCountLabel={count => `${count}作品`}
         gridActions={<div className="steam-player-count-game-actions" role="group" aria-label="ゲーム選択の操作">
           <button type="button" className="win-rates-button" disabled={game?.appId === DEFAULT_STEAM_PLAYER_COUNT_GAME.appId}
