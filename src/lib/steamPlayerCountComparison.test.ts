@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildSteamPlayerCountGameComparison } from './steamPlayerCountComparison.ts'
+import { resolveSteamPlayerCountRange, resolveSteamPlayerCountTimeWindow } from './steamPlayerCount.ts'
 import { STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
 import type { SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
 
@@ -108,4 +109,45 @@ test('input order and a common scaling of counts do not alter comparison members
     assert.deepEqual([9, 10].map(hour => item.hourly[hour].mean! / item.periodMean! * 100), [50, 150])
   }
   assert.throws(() => buildSteamPlayerCountGameComparison([inputs[0], inputs[0]], range, 'all', now), /重複/)
+})
+
+test('rolling comparisons exclude outside peaks, keep partial dates separate and preserve equal-day weighting', () => {
+  const clock = new Date('2026-11-03T03:20:00.000Z')
+  const selected = resolveSteamPlayerCountRange('24h', null, clock), window = resolveSteamPlayerCountTimeWindow('24h', clock)!
+  const first = [
+    ...hour('2026-11-02', 2, 10000), // Before the 24-hour window.
+    ...hour('2026-11-02', 4, 100), ...hour('2026-11-02', 5, 300), ...hour('2026-11-03', 0, 1000),
+    ...['20', '30', '45'].map(minute => observation(`2026-11-02T03:${minute}:00.000Z`, 9000)),
+    ...['00', '15', '30'].map(minute => observation(`2026-11-03T03:${minute}:00.000Z`, 8000)),
+  ]
+  const second = first.map(item => ({ ...item, playerCount: item.playerCount * 2 }))
+  const result = buildSteamPlayerCountGameComparison([{ game: sf6, observations: first }, { game: tekken, observations: second }], selected, 'all', clock, window)
+  assert.equal(result.totalDays, 2)
+  assert.equal(result.hourly[0].totalDays, 1)
+  assert.equal(result.commonDays, 2)
+  assert.equal(result.commonHours, 3)
+  assert.equal(result.commonSlots, 12)
+  assert.equal(result.expectedSlots, 97)
+  assert.deepEqual(result.series.map(series => [series.periodMean, series.peak]), [[600, 1000], [1200, 2000]])
+  assert.deepEqual(result.hourly[12], { hour: 12, mean: null, validDays: 0, totalDays: 2, observedSlots: 5, expectedSlots: 5 })
+  assert.ok(result.series.every(series => series.hourly[12].mean === null))
+})
+
+test('rolling comparisons accept four observed zero quarters before the hour ends and exclude mismatched boundary observations', () => {
+  const clock = new Date('2026-11-03T03:50:00.000Z')
+  const selected = resolveSteamPlayerCountRange('24h', null, clock), window = resolveSteamPlayerCountTimeWindow('24h', clock)!
+  const first = hour('2026-11-03', 3, 0)
+  const second = hour('2026-11-03', 3, 0, 60)
+  const complete = buildSteamPlayerCountGameComparison([{ game: sf6, observations: first }, { game: tekken, observations: second }], selected, 'all', clock, window)
+  assert.deepEqual(complete.series.map(series => [series.hourly[12].mean, series.periodMean, series.peak]), [[0, 0, 0], [0, 0, 0]])
+  assert.equal(complete.commonHours, 1)
+  const missing = buildSteamPlayerCountGameComparison([{ game: sf6, observations: first }, { game: tekken, observations: second.slice(0, 3) }], selected, 'all', clock, window)
+  assert.ok(missing.series.every(series => series.periodMean === null && series.peak === null))
+  assert.equal(missing.commonHours, 0)
+  const boundary = buildSteamPlayerCountGameComparison([
+    { game: sf6, observations: [observation(window.from, 0), observation(window.to, 0)] },
+    { game: tekken, observations: [observation(new Date(Date.parse(window.from) - 1).toISOString(), 500), observation(window.to, 0)] },
+  ], selected, 'all', clock, window)
+  assert.equal(boundary.hourly[12].observedSlots, 1)
+  assert.equal(boundary.commonHours, 0)
 })

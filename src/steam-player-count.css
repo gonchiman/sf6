@@ -3,9 +3,10 @@
 .steam-player-count-filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px 12px; border: 0; padding: 0; background: transparent; }
 .steam-player-count-period, .steam-player-count-custom-dates, .steam-player-count-range-summary { grid-column: 1 / -1; min-width: 0; }
 .steam-player-count-filter-label { display: block; margin-bottom: 6px; color: var(--text-soft); font-size: 12px; }
-.steam-player-count-period-buttons { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.steam-player-count-period-buttons { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .steam-player-count-period-buttons .win-rates-button { min-width: 0; padding-inline: 6px; }
 .steam-player-count-custom-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.steam-player-count-date-presets { grid-column: 1 / -1; justify-self: start; }
 .steam-player-count-range-summary { display: grid; gap: 5px; margin: 0; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; font-variant-numeric: tabular-nums; }
 .steam-player-count-range-summary > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
 .steam-player-count-range-summary dt { flex: 0 0 72px; color: var(--text-muted); font-size: 12px; }
@@ -76,8 +77,10 @@
 @media (max-width: 640px) {
   .steam-player-count-page { gap: 14px; }
   .steam-player-count-filters { grid-template-columns: minmax(0, 1fr); }
-  .steam-player-count-period-buttons { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .steam-player-count-period-buttons { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+  .steam-player-count-period-buttons .win-rates-button { grid-column: span 2; }
   .steam-player-count-period-buttons .win-rates-button + .win-rates-button { border-left: 1px solid var(--border-strong); }
+  .steam-player-count-period-buttons .win-rates-button:nth-child(n + 4) { grid-column: span 3; }
   .steam-player-count-selection-values { gap: 6px 12px; }
 }
 @media (max-width: 400px) {

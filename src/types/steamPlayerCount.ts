@@ -43,7 +43,8 @@ export interface SteamPlayerCountManifest {
 }
 
 export interface SteamPlayerCountDateRange { from: string; to: string }
-export type SteamPlayerCountPeriod = 'today' | 'yesterday' | '7d' | '30d' | 'all' | 'custom'
+export interface SteamPlayerCountTimeWindow { from: string; to: string }
+export type SteamPlayerCountPeriod = '24h' | 'today' | 'yesterday' | '7d' | '30d' | 'all' | 'custom'
 export type SteamPlayerCountRangeSelection = Exclude<SteamPlayerCountPeriod, 'custom'> | SteamPlayerCountDateRange
 export type SteamPlayerCountDayType = 'all' | 'weekday' | 'weekend'
 

@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { createSteamPlayerCountController, createSteamPlayerCountFeed, shouldAcceptSteamPlayerCountPublication,
   STEAM_PLAYER_COUNT_HISTORY_BASE_URL, type SteamPlayerCountPublication } from './steamPlayerCountFeed.ts'
-import { getSteamPlayerCountJstDate, STEAM_PLAYER_COUNT_APP_ID, STEAM_PLAYER_COUNT_SOURCE_URL } from './steamPlayerCount.ts'
+import { filterSteamPlayerCountObservations, getSteamPlayerCountJstDate, resolveSteamPlayerCountTimeWindow,
+  STEAM_PLAYER_COUNT_APP_ID, STEAM_PLAYER_COUNT_SOURCE_URL } from './steamPlayerCount.ts'
 import { getSteamPlayerCountGame, STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
 import { startPublishedDataRefresh } from './publishedDataRefresh.ts'
 import type { SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountManifest, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
@@ -372,7 +373,7 @@ test('large custom ranges request only manifest shards whose observed JST dates 
 })
 
 test('relative controller selections recalculate on refresh after JST midnight without clamping to the manifest', async () => {
-  for (const selection of ['today', 'yesterday', '7d', '30d', null] as const) {
+  for (const selection of ['24h', 'today', 'yesterday', '7d', '30d', null] as const) {
     let now = new Date('2026-10-31T14:59:59.999Z')
     const ranges: SteamPlayerCountDateRange[] = []
     const controller = createSteamPlayerCountController({ loadPublication: async () => publication([]),
@@ -383,11 +384,107 @@ test('relative controller selections recalculate on refresh after JST midnight w
     await controller.refresh()
     const expected = selection === 'today' ? { from: '2026-11-01', to: '2026-11-01' }
       : selection === 'yesterday' ? { from: '2026-10-31', to: '2026-10-31' }
-      : selection === '30d' ? { from: '2026-10-03', to: '2026-11-01' } : { from: '2026-10-26', to: '2026-11-01' }
+      : selection === '30d' ? { from: '2026-10-02', to: '2026-11-01' }
+        : selection === '7d' ? { from: '2026-10-25', to: '2026-11-01' } : { from: '2026-10-31', to: '2026-11-01' }
     assert.equal(controller.getState().status, 'ready')
     assert.deepEqual(controller.getState().range, expected)
     assert.deepEqual(ranges.at(-1), expected)
+    assert.equal(controller.getState().now.getTime(), now.getTime())
   }
+})
+
+test('24-hour refreshes advance their clock within the same dates and do not re-read endlessly as time passes', async () => {
+  let now = new Date('2026-11-01T03:00:00.000Z'), reads = 0
+  const values = day('2026-10-31', ['00:00', '03:00']).observations
+  const controller = createSteamPlayerCountController({ loadPublication: async () => publication(),
+    loadRange: async (_publication, range) => {
+      reads++
+      assert.ok(reads <= 2, 'clock movement within a date must not trigger another read')
+      now = new Date(now.getTime() + 250)
+      return inRange(values, range)
+    },
+  }, () => {}, null, () => now)
+  await controller.refresh()
+  assert.equal(controller.getSelection(), '24h')
+  assert.equal(controller.getState().now.toISOString(), '2026-11-01T03:00:00.250Z')
+  // The feed retains complete dates so prior observations remain covered by the immutable-overlap check.
+  assert.deepEqual(controller.getState().observations, values)
+  now = new Date('2026-11-01T03:05:00.000Z')
+  const pending = controller.refresh()
+  assert.equal(controller.getState().now.toISOString(), '2026-11-01T03:05:00.000Z')
+  await pending
+  assert.equal(controller.getState().status, 'ready')
+  assert.equal(controller.getState().now.toISOString(), '2026-11-01T03:05:00.250Z')
+  assert.equal(reads, 2)
+})
+
+test('7-day and 30-day controllers retain full dates while their display windows move by elapsed time', async () => {
+  for (const [selection, days] of [['7d', 7], ['30d', 30]] as const) {
+    let now = new Date('2026-11-06T03:10:00.000Z')
+    const start = now.getTime() - days * 24 * 60 * 60 * 1000
+    const values = [start - 1, start, start + 5 * 60 * 1000, now.getTime()].map(time => observation(new Date(time).toISOString()))
+    const storedDays: SteamPlayerCountDay[] = [...new Set(values.map(item => item.observedAt.slice(0, 10)))].map(date => ({
+      schemaVersion: 1, appId: STEAM_PLAYER_COUNT_APP_ID, date, observations: values.filter(item => item.observedAt.startsWith(date)),
+    }))
+    const controller = createSteamPlayerCountController({ loadPublication: async () => publication(storedDays),
+      loadRange: async (_publication, range) => inRange(values, range) }, () => {}, selection, () => now)
+    await controller.refresh()
+    const first = controller.getState()
+    assert.deepEqual(first.range, { from: days === 7 ? '2026-10-30' : '2026-10-07', to: '2026-11-06' })
+    assert.deepEqual(first.observations, values)
+    assert.deepEqual(filterSteamPlayerCountObservations(first.observations, first.range, 'all',
+      resolveSteamPlayerCountTimeWindow(controller.getSelection(), first.now)), values.slice(1))
+    now = new Date(now.getTime() + 5 * 60 * 1000)
+    await controller.refresh()
+    const refreshed = controller.getState()
+    assert.deepEqual(refreshed.range, first.range)
+    assert.equal(refreshed.now.getTime(), now.getTime())
+    assert.deepEqual(filterSteamPlayerCountObservations(refreshed.observations, refreshed.range, 'all',
+      resolveSteamPlayerCountTimeWindow(controller.getSelection(), refreshed.now)), values.slice(2))
+  }
+})
+
+test('24-hour failed refreshes advance the clock but preserve data only while its requested dates remain valid', async () => {
+  for (const failure of ['publication', 'range']) {
+    let now = new Date('2026-10-31T14:50:00.000Z'), fail = false
+    const values = day().observations
+    const controller = createSteamPlayerCountController({
+      loadPublication: async () => { if (fail && failure === 'publication') throw new Error('offline'); return publication() },
+      loadRange: async (_publication, range) => { if (fail && failure === 'range') throw new Error('missing'); return inRange(values, range) },
+    }, () => {}, '24h', () => now)
+    await controller.refresh()
+    const verified = controller.getState().observations
+    now = new Date('2026-10-31T14:55:00.000Z'); fail = true
+    await controller.refresh()
+    assert.equal(controller.getState().status, 'ready')
+    assert.equal(controller.getState().refreshError, true)
+    assert.equal(controller.getState().observations, verified)
+    assert.equal(controller.getState().now.getTime(), now.getTime())
+    now = new Date('2026-10-31T15:00:00.000Z')
+    await controller.refresh()
+    assert.equal(controller.getState().status, 'error')
+    assert.deepEqual(controller.getState().observations, [])
+    assert.deepEqual(controller.getState().range, { from: '2026-10-31', to: '2026-11-01' })
+    assert.equal(controller.getState().now.getTime(), now.getTime())
+  }
+})
+
+test('a pending 24-hour read crossing midnight settles once with matching dates and clock', async () => {
+  let now = new Date('2026-10-31T14:59:59.900Z'), reads = 0
+  const ready: { range: SteamPlayerCountDateRange; now: Date }[] = []
+  const values = day('2026-10-31', ['00:00', '15:00']).observations
+  const controller = createSteamPlayerCountController({ loadPublication: async () => publication(),
+    loadRange: async (_publication, range) => {
+      reads++
+      assert.ok(reads <= 2)
+      now = new Date(now.getTime() + 200)
+      return inRange(values, range)
+    },
+  }, state => { if (state.status === 'ready') ready.push({ range: state.range, now: state.now }) }, '24h', () => now)
+  await controller.refresh()
+  assert.equal(reads, 2)
+  assert.deepEqual(ready, [{ range: { from: '2026-10-31', to: '2026-11-01' }, now }])
+  assert.deepEqual(controller.getState().observations, values)
 })
 
 test('custom dates remain fixed when a preset with identical dates is changed before midnight', async () => {
@@ -492,7 +589,7 @@ test('a rolling period still rejects changed or missing observations in its over
   corrupted = true; now = new Date('2026-10-31T15:00:00.000Z')
   await controller.refresh()
   assert.equal(controller.getState().status, 'error')
-  assert.deepEqual(controller.getState().range, { from: '2026-10-26', to: '2026-11-01' })
+  assert.deepEqual(controller.getState().range, { from: '2026-10-25', to: '2026-11-01' })
   assert.deepEqual(controller.getState().observations, [])
 })
 

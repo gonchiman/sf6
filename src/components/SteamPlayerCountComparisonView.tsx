@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { timestampLabel } from '../lib/dateTime'
 import { buildSteamPlayerCountGameComparison } from '../lib/steamPlayerCountComparison'
+import { resolveSteamPlayerCountTimeWindow } from '../lib/steamPlayerCount'
 import { STEAM_PLAYER_COUNT_GAMES } from '../lib/steamPlayerCountGames'
 import { steamPlayerCountGameLabel } from '../lib/steamPlayerCountGameColors'
 import { useSteamPlayerCountComparison } from '../lib/useSteamPlayerCountComparison'
@@ -55,8 +56,8 @@ export function SteamPlayerCountComparisonView({ appIds, onAppIdsChange, dayType
   const [scale, setScale] = useState<'people' | 'index'>('people')
   const [metric, setMetric] = useState<'mean' | 'peak'>('mean')
   const state = useSteamPlayerCountComparison(appIds, selection)
-  const comparison = useMemo(() => buildSteamPlayerCountGameComparison(state.entries, state.comparisonRange, dayType, state.now),
-    [state.entries, state.comparisonRange, state.now, dayType])
+  const comparison = useMemo(() => buildSteamPlayerCountGameComparison(state.entries, state.comparisonRange, dayType, state.now,
+    resolveSteamPlayerCountTimeWindow(selection, state.now)), [state.entries, state.comparisonRange, state.now, dayType, selection])
   const coverage = `共通 ${comparison.commonDays} 日・${steamPlayerCountNumber(comparison.commonHours)} 時間（${steamPlayerCountNumber(comparison.commonSlots)} 区間）`
   const failedLabels = state.failedAppIds.map(steamPlayerCountGameLabel).join('・')
 
@@ -70,7 +71,7 @@ export function SteamPlayerCountComparisonView({ appIds, onAppIdsChange, dayType
         layout="grid" showOptionKeys minimumSelectionLabel={null} selectionCountLabel={count => `${count}作品`} />
       <SteamPlayerCountFilters dayType={dayType} onDayTypeChange={onDayTypeChange} selection={selection}
         onSelectionChange={onSelectionChange} range={state.range} dataRange={state.dataRange} status={state.status}
-        available={state.dataRange !== null} dataRangeLabel="共通データ範囲" />
+        available={state.dataRange !== null} dataRangeLabel="共通データ範囲" now={state.now} />
     </StatisticsPanel>
     {state.refreshError && <div className="steam-player-count-message" role="status">
       <span>更新確認失敗{failedLabels ? `：${failedLabels}` : ''}</span><span>前回確認済みデータ</span>

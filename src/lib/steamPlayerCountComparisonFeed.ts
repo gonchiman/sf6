@@ -61,13 +61,13 @@ function ranges(selection: SteamPlayerCountRangeSelection, publications: readonl
   return { range, dataRange, comparisonRange }
 }
 
-export function initialSteamPlayerCountComparisonState(selection: SteamPlayerCountRangeSelection = '7d', now = new Date()): SteamPlayerCountComparisonState {
+export function initialSteamPlayerCountComparisonState(selection: SteamPlayerCountRangeSelection = '24h', now = new Date()): SteamPlayerCountComparisonState {
   return { status: 'loading', ...ranges(parseSteamPlayerCountRangeSelection(selection), [], now), entries: [], refreshError: false, failedAppIds: [], now }
 }
 
 /** Commit a whole comparison together, retaining its last verified snapshot on a partial refresh failure. */
 export function createSteamPlayerCountComparisonController(appIds: readonly SteamPlayerCountAppId[],
-  onChange: (state: SteamPlayerCountComparisonState) => void, initialSelection: SteamPlayerCountRangeSelection = '7d', options: ControllerOptions = {}) {
+  onChange: (state: SteamPlayerCountComparisonState) => void, initialSelection: SteamPlayerCountRangeSelection = '24h', options: ControllerOptions = {}) {
   const ids = steamPlayerCountComparisonAppIds(appIds)
   const sources = ids.map(appId => ({ game: getSteamPlayerCountGame(appId), feed: (options.createFeed ?? sharedFeed)(appId) }))
   const clock = options.now ?? (() => new Date())
@@ -81,12 +81,13 @@ export function createSteamPlayerCountComparisonController(appIds: readonly Stea
   function align() {
     const now = clock(), resolved = ranges(selection, verified?.entries ?? knownPublications, now)
     if (!sameRange(state.range, resolved.range)) update({ ...state, ...resolved, status: 'loading', entries: [], refreshError: false, failedAppIds: [], now })
+    else if (state.now.getTime() !== now.getTime()) update({ ...state, now })
   }
   function fail(failedAppIds: readonly SteamPlayerCountAppId[]) {
     if (!active) return
     const now = clock(), resolved = ranges(selection, verified?.entries ?? knownPublications, now)
     if (verified && verifiedSelectionKey === selectionKey(selection) && sameRange(verified.range, resolved.range)) {
-      update({ ...verified, refreshError: true, failedAppIds })
+      update({ ...verified, ...resolved, refreshError: true, failedAppIds, now })
     }
     else update({ status: 'error', ...resolved, entries: [], refreshError: false, failedAppIds, now })
   }
@@ -111,6 +112,7 @@ export function createSteamPlayerCountComparisonController(appIds: readonly Stea
     for (;;) {
       const readingVersion = version, startedAt = clock(), resolved = ranges(selection, publications, startedAt)
       if (!sameRange(state.range, resolved.range)) update({ ...state, ...resolved, status: 'loading', entries: [], refreshError: false, failedAppIds: [], now: startedAt })
+      else if (state.now.getTime() !== startedAt.getTime()) update({ ...state, now: startedAt })
       const loads = await Promise.allSettled(publications.map((entry, index) => sources[index].feed.loadRange(entry.publication, resolved.range)))
       if (!active) return
       const endedAt = clock(), latest = ranges(selection, publications, endedAt)
