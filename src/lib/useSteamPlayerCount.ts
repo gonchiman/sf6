@@ -4,7 +4,7 @@ import { createSteamPlayerCountController, initialSteamPlayerCountState, steamPl
 import { startPublishedDataRefresh } from './publishedDataRefresh.ts'
 
 const selectionKey = (selection: SteamPlayerCountRangeSelection | null): string => typeof selection === 'string' ? selection
-  : selection ? JSON.stringify([selection.from, selection.to]) : '7d'
+  : selection ? JSON.stringify([selection.from, selection.to]) : '24h'
 
 export function useSteamPlayerCount(selection: SteamPlayerCountRangeSelection | null = null, feed: SteamPlayerCountFeed = steamPlayerCountFeed) {
   const key = selectionKey(selection)

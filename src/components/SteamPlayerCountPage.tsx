@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type Ref } from 'react'
 import { timestampLabel } from '../lib/dateTime'
 import {
   buildSteamPlayerCountHourlyComparison, filterSteamPlayerCountObservations, getSteamPlayerCountComparisonRange, getSteamPlayerCountJstDate,
+  resolveSteamPlayerCountTimeWindow,
 } from '../lib/steamPlayerCount'
 import { useSteamPlayerCount } from '../lib/useSteamPlayerCount'
 import { createSteamPlayerCountFeed } from '../lib/steamPlayerCountFeed'
@@ -46,7 +47,7 @@ export function SteamPlayerCountPage({ initialAppId = DEFAULT_STEAM_PLAYER_COUNT
   const [game, setGame] = useState(() => getSteamPlayerCountGame(initialAppId))
   const [dayType, setDayType] = useState<SteamPlayerCountDayType>('all')
   const [tab, setTab] = useState<Tab>('hourly')
-  const [selection, setSelection] = useState<SteamPlayerCountRangeSelection>('7d')
+  const [selection, setSelection] = useState<SteamPlayerCountRangeSelection>('24h')
   const gameSelectRef = useRef<HTMLSelectElement>(null)
   const restoreGameFocus = useRef(false)
   useEffect(() => {
@@ -87,15 +88,15 @@ function SteamPlayerCountGameView({ game, onGameChange, gameSelectRef, dayType, 
   onSelectionChange: (selection: SteamPlayerCountRangeSelection) => void
 }) {
   const feed = useMemo(() => createSteamPlayerCountFeed({ appId: game.appId }), [game.appId])
-  const { status, publication, range, observations, refreshError, refresh } = useSteamPlayerCount(selection, feed)
-  const now = new Date()
+  const { status, publication, range, observations, refreshError, refresh, now } = useSteamPlayerCount(selection, feed)
   const manifest = publication?.manifest
   const oldest = manifest?.days.map(day => getSteamPlayerCountJstDate(day.firstObservedAt)).sort()[0]
   const lastObservedAt = manifest?.days.map(day => day.lastObservedAt).sort().at(-1)
   const newest = lastObservedAt ? getSteamPlayerCountJstDate(lastObservedAt) : undefined
   const stale = lastObservedAt ? now.getTime() - Date.parse(lastObservedAt) > staleAfterMs : false
-  const filtered = useMemo(() => filterSteamPlayerCountObservations(observations, range, dayType), [observations, range, dayType])
-  const hourly = buildSteamPlayerCountHourlyComparison(observations, getSteamPlayerCountComparisonRange(range, manifest ?? null, now), dayType, now)
+  const timeWindow = useMemo(() => resolveSteamPlayerCountTimeWindow(selection, now), [selection, now])
+  const filtered = useMemo(() => filterSteamPlayerCountObservations(observations, range, dayType, timeWindow), [observations, range, dayType, timeWindow])
+  const hourly = buildSteamPlayerCountHourlyComparison(observations, getSteamPlayerCountComparisonRange(range, manifest ?? null, now), dayType, now, timeWindow)
   const observedSlots = hourly.reduce((sum, row) => sum + row.observedSlots, 0)
   const expectedSlots = hourly.reduce((sum, row) => sum + row.expectedSlots, 0)
   const coverage = `観測 ${steamPlayerCountNumber(observedSlots)} / ${steamPlayerCountNumber(expectedSlots)} 区間`

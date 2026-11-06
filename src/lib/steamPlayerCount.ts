@@ -1,6 +1,6 @@
 import type {
   SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountDay, SteamPlayerCountDayDescriptor, SteamPlayerCountDayType,
-  SteamPlayerCountHourlyRow, SteamPlayerCountManifest, SteamPlayerCountObservation, SteamPlayerCountRangeSelection,
+  SteamPlayerCountHourlyRow, SteamPlayerCountManifest, SteamPlayerCountObservation, SteamPlayerCountRangeSelection, SteamPlayerCountTimeWindow,
 } from '../types/steamPlayerCount.ts'
 import { getSteamPlayerCountGame } from './steamPlayerCountGames.ts'
 
@@ -120,10 +120,27 @@ function matchesDayType(date: string, dayType: SteamPlayerCountDayType): boolean
 }
 
 export function parseSteamPlayerCountRangeSelection(selection: SteamPlayerCountRangeSelection | null): SteamPlayerCountRangeSelection {
-  if (selection === null) return '7d'
+  if (selection === null) return '24h'
   if (typeof selection !== 'string') return parseSteamPlayerCountDateRange(selection)
-  if (!['today', 'yesterday', '7d', '30d', 'all'].includes(selection)) invalid('period')
+  if (!['24h', 'today', 'yesterday', '7d', '30d', 'all'].includes(selection)) invalid('period')
   return selection
+}
+
+/** The exact observation window is separate from the calendar dates used to load shards. */
+export function resolveSteamPlayerCountTimeWindow(selection: SteamPlayerCountRangeSelection | null,
+  now = new Date()): SteamPlayerCountTimeWindow | null {
+  const parsed = parseSteamPlayerCountRangeSelection(selection)
+  const days = parsed === '24h' ? 1 : parsed === '7d' ? 7 : parsed === '30d' ? 30 : null
+  if (days === null) return null
+  if (!Number.isFinite(now.getTime())) invalid('timestamp')
+  return { from: new Date(now.getTime() - days * DAY_MS).toISOString(), to: now.toISOString() }
+}
+
+function timeWindowBounds(window: SteamPlayerCountTimeWindow | null): { from: number; to: number } {
+  if (!window) return { from: -Infinity, to: Infinity }
+  const from = Date.parse(timestamp(window.from, 'time window from')), to = Date.parse(timestamp(window.to, 'time window to'))
+  if (from > to) invalid('time window: reversed')
+  return { from, to }
 }
 
 function observedRange(manifest: SteamPlayerCountManifest | null): SteamPlayerCountDateRange | null {
@@ -136,19 +153,21 @@ function observedRange(manifest: SteamPlayerCountManifest | null): SteamPlayerCo
   return { from: getSteamPlayerCountJstDate(first), to: getSteamPlayerCountJstDate(last) }
 }
 
-/** Calendar presets are shared across games; only "all" follows observed JST bounds. */
+/** Cover the exact rolling window with JST shard dates; only "all" follows observed bounds. */
 export function resolveSteamPlayerCountRange(selection: SteamPlayerCountRangeSelection | null,
   manifest: SteamPlayerCountManifest | null = null, now = new Date()): SteamPlayerCountDateRange {
   const parsed = parseSteamPlayerCountRangeSelection(selection)
   if (typeof parsed !== 'string') return parsed
   const today = getSteamPlayerCountJstDate(now)
+  const window = resolveSteamPlayerCountTimeWindow(parsed, now)
+  if (window) return { from: getSteamPlayerCountJstDate(window.from), to: getSteamPlayerCountJstDate(window.to) }
   if (parsed === 'all') return observedRange(manifest) ?? { from: today, to: today }
   if (parsed === 'yesterday') { const yesterday = shiftDate(today, -1); return { from: yesterday, to: yesterday } }
-  return { from: shiftDate(today, parsed === '7d' ? -6 : parsed === '30d' ? -29 : 0), to: today }
+  return { from: today, to: today }
 }
 
 export function getDefaultSteamPlayerCountRange(manifest: SteamPlayerCountManifest | null, now = new Date()): SteamPlayerCountDateRange {
-  return resolveSteamPlayerCountRange('7d', manifest, now)
+  return resolveSteamPlayerCountRange('24h', manifest, now)
 }
 
 /** Keep the selected dates visible, but do not count days before collection began or after today. */
@@ -164,28 +183,47 @@ export function getSteamPlayerCountComparisonRange(range: SteamPlayerCountDateRa
 
 /** The request schedule does not determine a slot: only the actual observation time does. */
 export function filterSteamPlayerCountObservations(observations: readonly SteamPlayerCountObservation[],
-  range: SteamPlayerCountDateRange, dayType: SteamPlayerCountDayType = 'all'): SteamPlayerCountObservation[] {
+  range: SteamPlayerCountDateRange, dayType: SteamPlayerCountDayType = 'all', window: SteamPlayerCountTimeWindow | null = null): SteamPlayerCountObservation[] {
   const { from, to } = parseSteamPlayerCountDateRange(range)
+  const bounds = timeWindowBounds(window)
   matchesDayType(from, dayType)
   const slots = new Map<number, SteamPlayerCountObservation>()
   for (const observation of observations) {
     const date = getSteamPlayerCountJstDate(observation.observedAt)
     if (date < from || date > to || !matchesDayType(date, dayType)) continue
-    const slot = Math.floor(Date.parse(observation.observedAt) / STEAM_PLAYER_COUNT_SLOT_MS)
+    const observedAt = Date.parse(observation.observedAt)
+    if (observedAt < bounds.from || observedAt > bounds.to) continue
+    const slot = Math.floor(observedAt / STEAM_PLAYER_COUNT_SLOT_MS)
     const previous = slots.get(slot)
     if (!previous || compareObservations(observation, previous) < 0) slots.set(slot, observation)
   }
   return [...slots.values()].sort(compareObservations)
 }
 
+/** Count JST dates that contain at least one eligible quarter in the selected window. */
+export function getSteamPlayerCountEligibleDates(range: SteamPlayerCountDateRange | null,
+  dayType: SteamPlayerCountDayType = 'all', now = new Date(), window: SteamPlayerCountTimeWindow | null = null): string[] {
+  if (range === null) return []
+  const { from, to } = parseSteamPlayerCountDateRange(range), today = getSteamPlayerCountJstDate(now)
+  const bounds = timeWindowBounds(window), end = Math.min(bounds.to, now.getTime())
+  if (end < bounds.from) return []
+  const dates: string[] = []
+  for (let date = from; date <= to && date <= today; date = shiftDate(date, 1)) {
+    if (!matchesDayType(date, dayType)) continue
+    const dateStart = dateMilliseconds(date) - JST_OFFSET_MS
+    if (!window || dateStart <= end && dateStart + DAY_MS > bounds.from) dates.push(date)
+  }
+  return dates
+}
+
 /** Each complete date/hour contributes one mean; missing slots never become zero. */
 export function buildSteamPlayerCountHourlyComparison(observations: readonly SteamPlayerCountObservation[],
-  range: SteamPlayerCountDateRange | null, dayType: SteamPlayerCountDayType = 'all', now = new Date()): SteamPlayerCountHourlyRow[] {
+  range: SteamPlayerCountDateRange | null, dayType: SteamPlayerCountDayType = 'all', now = new Date(),
+  window: SteamPlayerCountTimeWindow | null = null): SteamPlayerCountHourlyRow[] {
   if (range === null) return Array.from({ length: 24 }, (_, hour) => ({ hour, mean: null, validDays: 0, totalDays: 0, observedSlots: 0, expectedSlots: 0 }))
-  const { from, to } = parseSteamPlayerCountDateRange(range), today = getSteamPlayerCountJstDate(now)
-  const dates: string[] = []
-  for (let date = from; date <= to && date <= today; date = shiftDate(date, 1)) if (matchesDayType(date, dayType)) dates.push(date)
-  const selected = filterSteamPlayerCountObservations(observations, range, dayType).filter(item => Date.parse(item.observedAt) <= now.getTime())
+  const bounds = timeWindowBounds(window), end = Math.min(bounds.to, now.getTime())
+  const dates = getSteamPlayerCountEligibleDates(range, dayType, now, window)
+  const selected = filterSteamPlayerCountObservations(observations, range, dayType, window).filter(item => Date.parse(item.observedAt) <= now.getTime())
   const byHour = new Map<string, SteamPlayerCountObservation[]>()
   for (const observation of selected) {
     const jst = new Date(Date.parse(observation.observedAt) + JST_OFFSET_MS), key = `${jst.toISOString().slice(0, 10)}:${jst.getUTCHours()}`
@@ -194,18 +232,23 @@ export function buildSteamPlayerCountHourlyComparison(observations: readonly Ste
     byHour.set(key, values)
   }
   return Array.from({ length: 24 }, (_, hour) => {
-    let observedSlots = 0, expectedSlots = 0
+    let observedSlots = 0, expectedSlots = 0, totalDays = 0
     const means: number[] = []
     for (const date of dates) {
+      let eligibleSlots = 0
+      for (let quarter = 0; quarter < 4; quarter++) {
+        const slotStart = dateMilliseconds(date) - JST_OFFSET_MS + hour * 60 * 60 * 1000 + quarter * STEAM_PLAYER_COUNT_SLOT_MS
+        if (slotStart <= end && slotStart + STEAM_PLAYER_COUNT_SLOT_MS > bounds.from) eligibleSlots++
+      }
+      if (window && eligibleSlots === 0) continue
+      totalDays++
+      expectedSlots += eligibleSlots
       const values = byHour.get(`${date}:${hour}`) ?? []
       observedSlots += values.length
-      for (let quarter = 0; quarter < 4; quarter++) {
-        if (dateMilliseconds(date) - JST_OFFSET_MS + hour * 60 * 60 * 1000 + quarter * STEAM_PLAYER_COUNT_SLOT_MS <= now.getTime()) expectedSlots++
-      }
       if (values.length === 4) means.push(values.reduce((sum, item) => sum + item.playerCount / 4, 0))
     }
     return { hour, mean: means.length ? means.reduce((sum, mean) => sum + mean / means.length, 0) : null,
-      validDays: means.length, totalDays: dates.length, observedSlots, expectedSlots }
+      validDays: means.length, totalDays, observedSlots, expectedSlots }
   })
 }
 

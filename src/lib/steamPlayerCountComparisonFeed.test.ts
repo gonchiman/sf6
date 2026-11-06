@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
 import type { SteamPlayerCountAppId, SteamPlayerCountDateRange, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
-import { getSteamPlayerCountJstDate } from './steamPlayerCount.ts'
+import { filterSteamPlayerCountObservations, getSteamPlayerCountJstDate, resolveSteamPlayerCountTimeWindow } from './steamPlayerCount.ts'
 import { createSteamPlayerCountComparisonController, steamPlayerCountComparisonAppIds, type SteamPlayerCountComparisonState } from './steamPlayerCountComparisonFeed.ts'
 import type { SteamPlayerCountFeed, SteamPlayerCountPublication } from './steamPlayerCountFeed.ts'
 import { getSteamPlayerCountGame } from './steamPlayerCountGames.ts'
@@ -72,13 +72,13 @@ test('all uses the intersection of observed JST dates, and loads exactly that ra
   assert.equal(state.now.toISOString(), clock().toISOString())
 })
 
-test('presets keep calendar dates while the comparison starts at the latest collection start', async () => {
+test('rolling presets load every intersecting date while the comparison starts at the latest collection start', async () => {
   const data = fixture()
   data.values.set(ids[0], value(ids[0], ['2026-10-31T00:00:00.000Z', '2026-11-03T00:00:00.000Z']))
   data.values.set(ids[1], value(ids[1], ['2026-11-02T00:00:00.000Z', '2026-11-03T00:00:00.000Z']))
   const controller = createSteamPlayerCountComparisonController(ids, () => {}, '7d', { createFeed: data.createFeed, now: clock })
   await controller.refresh()
-  assert.deepEqual(controller.getState().range, { from: '2026-10-29', to: '2026-11-04' })
+  assert.deepEqual(controller.getState().range, { from: '2026-10-28', to: '2026-11-04' })
   assert.deepEqual(controller.getState().dataRange, selected)
   assert.deepEqual(controller.getState().comparisonRange, { from: '2026-11-02', to: '2026-11-04' })
 })
@@ -121,7 +121,7 @@ test('partial refresh failures retain all previously verified game values as one
   await controller.refresh()
   assert.equal(controller.getState().status, 'ready')
   assert.equal(controller.getState().entries, old.entries)
-  assert.equal(controller.getState().now, old.now)
+  assert.equal(controller.getState().now.getTime(), old.now.getTime())
   assert.equal(controller.getState().refreshError, true)
   assert.deepEqual(controller.getState().failedAppIds, [ids[1]])
   data.rangeFailures.clear()
@@ -251,6 +251,110 @@ test('JST midnight failures do not show yesterday under today', async () => {
   assert.equal(controller.getState().status, 'error')
   assert.deepEqual(controller.getState().range, { from: '2026-11-03', to: '2026-11-03' })
   assert.deepEqual(controller.getState().entries, [])
+})
+
+test('24-hour comparisons share a completion clock and refresh within the same dates without repeated reads', async () => {
+  const data = fixture()
+  let now = new Date('2026-11-03T03:00:00.000Z'), reads = 0
+  const times = ['2026-11-02T00:00:00.000Z', '2026-11-02T03:00:00.000Z', '2026-11-03T00:00:00.000Z']
+  ids.forEach(id => data.values.set(id, value(id, times)))
+  const controller = createSteamPlayerCountComparisonController(ids, () => {}, undefined, {
+    now: () => now, createFeed: appId => {
+      const base = data.createFeed(appId)
+      return { ...base, loadRange: async (publication, range) => {
+        reads++
+        assert.ok(reads <= 4, 'clock movement within a date must not restart the batch')
+        now = new Date(now.getTime() + 100)
+        return base.loadRange(publication, range)
+      } }
+    },
+  })
+  await controller.refresh()
+  assert.equal(controller.getSelection(), '24h')
+  assert.equal(reads, 2)
+  assert.equal(controller.getState().now.toISOString(), '2026-11-03T03:00:00.200Z')
+  assert.ok(controller.getState().entries.every(entry => entry.observations.length === 3))
+  now = new Date('2026-11-03T03:05:00.000Z')
+  const pending = controller.refresh()
+  assert.equal(controller.getState().now.toISOString(), '2026-11-03T03:05:00.000Z')
+  await pending
+  assert.equal(reads, 4)
+  assert.equal(controller.getState().status, 'ready')
+  assert.equal(controller.getState().now.toISOString(), '2026-11-03T03:05:00.200Z')
+})
+
+test('7-day and 30-day comparisons use one moving time window for every selected game', async () => {
+  for (const [selection, days] of [['7d', 7], ['30d', 30]] as const) {
+    const data = fixture()
+    let now = new Date('2026-11-06T03:10:00.000Z')
+    const start = now.getTime() - days * 24 * 60 * 60 * 1000
+    const times = [start - 1, start, start + 5 * 60 * 1000, now.getTime()].map(time => new Date(time).toISOString())
+    ids.forEach(id => data.values.set(id, value(id, times)))
+    const controller = createSteamPlayerCountComparisonController(ids, () => {}, selection, { createFeed: data.createFeed, now: () => now })
+    await controller.refresh()
+    const first = controller.getState()
+    const expectedRange = { from: days === 7 ? '2026-10-30' : '2026-10-07', to: '2026-11-06' }
+    assert.deepEqual(first.range, expectedRange)
+    assert.ok(data.requestedRanges.every(item => JSON.stringify(item.range) === JSON.stringify(expectedRange)))
+    const displayedTimes = () => {
+      const state = controller.getState(), window = resolveSteamPlayerCountTimeWindow(controller.getSelection(), state.now)
+      return state.entries.map(entry => filterSteamPlayerCountObservations(entry.observations, state.range, 'all', window).map(item => item.observedAt))
+    }
+    assert.deepEqual(displayedTimes(), ids.map(() => times.slice(1)))
+    now = new Date(now.getTime() + 5 * 60 * 1000)
+    await controller.refresh()
+    assert.deepEqual(controller.getState().range, expectedRange)
+    assert.equal(controller.getState().now.getTime(), now.getTime())
+    assert.deepEqual(displayedTimes(), ids.map(() => times.slice(2)))
+  }
+})
+
+test('24-hour comparison failures move the clock without mixing titles and discard obsolete midnight bounds', async () => {
+  for (const failure of ['publication', 'range']) {
+    const data = fixture()
+    let now = new Date('2026-11-02T14:50:00.000Z')
+    const controller = createSteamPlayerCountComparisonController(ids, () => {}, '24h', { createFeed: data.createFeed, now: () => now })
+    await controller.refresh()
+    const verified = controller.getState().entries
+    now = new Date('2026-11-02T14:55:00.000Z')
+    if (failure === 'publication') data.publicationFailures.add(ids[0])
+    else data.rangeFailures.add(ids[0])
+    await controller.refresh()
+    assert.equal(controller.getState().status, 'ready')
+    assert.equal(controller.getState().entries, verified)
+    assert.equal(controller.getState().refreshError, true)
+    assert.equal(controller.getState().now.getTime(), now.getTime())
+    now = new Date('2026-11-02T15:00:00.000Z')
+    await controller.refresh()
+    assert.equal(controller.getState().status, 'error')
+    assert.deepEqual(controller.getState().entries, [])
+    assert.deepEqual(controller.getState().range, { from: '2026-11-02', to: '2026-11-03' })
+    assert.equal(controller.getState().now.getTime(), now.getTime())
+  }
+})
+
+test('a 24-hour comparison crossing midnight retries dates once and publishes only matching clock and values', async () => {
+  const data = fixture()
+  let now = new Date('2026-11-02T14:59:59.900Z'), reads = 0
+  const ready: SteamPlayerCountComparisonState[] = []
+  ids.forEach(id => data.values.set(id, value(id, ['2026-11-02T00:00:00.000Z', '2026-11-02T15:00:00.000Z'])))
+  const controller = createSteamPlayerCountComparisonController(ids, state => { if (state.status === 'ready') ready.push(state) }, '24h', {
+    now: () => now, createFeed: appId => {
+      const base = data.createFeed(appId)
+      return { ...base, loadRange: async (publication, range) => {
+        reads++
+        assert.ok(reads <= 4)
+        now = new Date(now.getTime() + 100)
+        return base.loadRange(publication, range)
+      } }
+    },
+  })
+  await controller.refresh()
+  assert.equal(reads, 4)
+  assert.equal(ready.length, 1)
+  assert.deepEqual(ready[0].range, { from: '2026-11-02', to: '2026-11-03' })
+  assert.equal(ready[0].now.getTime(), now.getTime())
+  assert.ok(ready[0].entries.every(entry => entry.observations.length === 2))
 })
 
 test('disposing while a request is pending suppresses every late result', async () => {

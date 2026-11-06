@@ -15,6 +15,7 @@ let Trend: ComponentType<{ observations: SteamPlayerCountObservation[] }>
 let Page: ComponentType<{ initialAppId?: SteamPlayerCountAppId; initialMode?: 'single' | 'comparison' }>
 let ComparisonTable: ComponentType<{ comparison: SteamPlayerCountGameComparison }>
 let VersionDialog: ComponentType<{ onClose: () => void }>
+let Filters: ComponentType<import('react').ComponentProps<typeof import('../components/SteamPlayerCountFilters.tsx').SteamPlayerCountFilters>>
 before(async () => {
   server = await createServer({ root: fileURLToPath(new URL('../../', import.meta.url)), configFile: false,
     server: { middlewareMode: true, watch: null }, appType: 'custom', logLevel: 'error', optimizeDeps: { noDiscovery: true, include: [] } })
@@ -27,6 +28,8 @@ before(async () => {
   ComparisonTable = comparison.SteamPlayerCountGameComparisonTable
   const versions = await server.ssrLoadModule('/src/components/SteamCollectionVersionHistory.tsx')
   VersionDialog = versions.SteamCollectionVersionDialog
+  const filters = await server.ssrLoadModule('/src/components/SteamPlayerCountFilters.tsx')
+  Filters = filters.SteamPlayerCountFilters
 })
 after(async () => { await server?.close() })
 const observation = (minute: number, playerCount = 20000): SteamPlayerCountObservation => ({
@@ -99,10 +102,11 @@ test('the page defaults to SF6 with all five game options available during loadi
   assert.match(html, /Street Fighter 6の観測データを読み込み中/)
   assert.doesNotMatch(html, /aria-label="開始日"|aria-label="終了日"/)
   assert.match(html, /role="group" aria-label="期間"/)
-  for (const label of ['今日', '昨日', '直近7日', '直近30日', '全期間', '日付指定']) {
-    assert.match(html, new RegExp(`<button[^>]*aria-pressed="${label === '直近7日'}"[^>]*>${label}</button>`))
+  for (const label of ['直近24時間', '直近7日', '直近30日', '全期間', '日付指定']) {
+    assert.match(html, new RegExp(`<button[^>]*aria-pressed="${label === '直近24時間'}"[^>]*>${label}</button>`))
   }
   assert.match(html, /<dt>表示期間<\/dt>/)
+  assert.doesNotMatch(html, /日付の候補|>今日<|>昨日</)
   assert.match(html, /<dt>データ範囲<\/dt><dd>読込中<\/dd>/)
   assert.match(html, /aria-label="曜日"/)
 })
@@ -132,12 +136,39 @@ test('comparison mode starts with all five games and shared period controls whil
     assert.ok(selectedGames[index].includes(label))
   }
   assert.match(html, /role="group" aria-label="期間"/)
-  for (const label of ['今日', '昨日', '直近7日', '直近30日', '全期間', '日付指定']) {
-    assert.match(html, new RegExp(`<button[^>]*aria-pressed="${label === '直近7日'}"[^>]*>${label}</button>`))
+  for (const label of ['直近24時間', '直近7日', '直近30日', '全期間', '日付指定']) {
+    assert.match(html, new RegExp(`<button[^>]*aria-pressed="${label === '直近24時間'}"[^>]*>${label}</button>`))
   }
   assert.match(html, /aria-label="曜日"/)
   assert.match(html, /<dt>共通データ範囲<\/dt><dd>読込中<\/dd>/)
   assert.match(html, /比較するゲームの観測データを読み込み中/)
+  assert.doesNotMatch(html, /日付の候補|>今日<|>昨日</)
+})
+
+test('all rolling periods show exact time bounds and date presets stay inside custom selection', () => {
+  const props = { dayType: 'all' as const, onDayTypeChange: () => {}, onSelectionChange: () => {},
+    range: { from: '2026-11-04', to: '2026-11-05' }, dataRange: null, available: false,
+    status: 'error' as const, now: new Date('2026-11-05T13:30:00.000Z') }
+  for (const [selection, start] of [['24h', '2026-11-04'], ['7d', '2026-10-29'], ['30d', '2026-10-06']] as const) {
+    const rolling = renderToStaticMarkup(createElement(Filters, { ...props, selection }))
+    assert.ok(rolling.includes(`<time dateTime="${start}T13:30:00.000Z">${start.replaceAll('-', '/')} 22:30</time>`))
+    assert.ok(rolling.includes('<time dateTime="2026-11-05T13:30:00.000Z">2026/11/05 22:30 JST</time>'))
+    assert.match(rolling, /読込失敗/)
+    assert.doesNotMatch(rolling, /type="date"|日付の候補|>今日<|>昨日</)
+  }
+  const calendar = renderToStaticMarkup(createElement(Filters, { ...props, selection: 'today', range: { from: '2026-11-05', to: '2026-11-05' } }))
+  assert.match(calendar, /<dt>表示期間<\/dt><dd>2026\/11\/05<\/dd>/)
+  assert.doesNotMatch(calendar, /<time/)
+  assert.match(calendar, /<button[^>]*aria-pressed="true"[^>]*>日付指定<\/button>/)
+  assert.match(calendar, /<button[^>]*aria-pressed="true"[^>]*>今日<\/button>/)
+  const custom = renderToStaticMarkup(createElement(Filters, { ...props, selection: props.range }))
+  assert.match(custom, /<dt>表示期間<\/dt><dd>2026\/11\/04 〜 2026\/11\/05<\/dd>/)
+  assert.match(custom, /aria-label="開始日"[^>]*value="2026-11-04"/)
+  assert.match(custom, /aria-label="終了日"[^>]*value="2026-11-05"/)
+  assert.match(custom, /role="group" aria-label="日付の候補"/)
+  for (const label of ['今日', '昨日']) assert.match(custom, new RegExp(`<button[^>]*aria-pressed="false"[^>]*>${label}</button>`))
+  const yesterday = renderToStaticMarkup(createElement(Filters, { ...props, selection: { from: '2026-11-04', to: '2026-11-04' } }))
+  assert.match(yesterday, /<button[^>]*aria-pressed="true"[^>]*>昨日<\/button>/)
 })
 
 test('the comparison table distinguishes zero from missing means and retains shared coverage', () => {
