@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { LEGEND_ANALYSIS_SOURCE } from '../../src/lib/legendAnalysis.ts'
 import { collectLegendAnalysisDataset, LegendAnalysisCollectionError } from './legend-analysis-collector.ts'
-import type { CollectLegendAnalysisOptions, LegendAnalysisAttemptFailure, LegendAnalysisEntry, LegendAnalysisPage } from './legend-analysis-collector.ts'
+import type { CollectLegendAnalysisOptions, LegendAnalysisAttemptFailure, LegendAnalysisEntry, LegendAnalysisPage, LegendAnalysisVerifiedPlayer } from './legend-analysis-collector.ts'
 import { LEGEND_ANALYSIS_CONDITIONS, LegendAnalysisDomError, legendAnalysisPageUrl } from './legend-analysis-dom.ts'
 import type { LegendEndpointRecheck, LegendMissingMemberDetail, LegendOrderPosition, LegendOrderRecheck, LegendPageRecoveryRange } from './legend-order-diagnostics.ts'
 
@@ -1333,7 +1333,7 @@ test('range missing members, changed Legend membership and anchor changes are di
         if (kind === 'missing') value.entries[0] = { ...value.entries[0], accountKey: 'f'.repeat(64), playerId: '999', playerName: 'New unconfirmed member' }
         if (kind === 'legend') value.entries[0].isLegend = false
       }
-      if (page === 1 && ++anchorReads === 2 && kind === 'anchor') value.entries[0].masterRating++
+      if (page === 1 && ++anchorReads === 2 && kind === 'anchor') replaceListedMember(value.entries[0])
       return value
     }
     data.options.onPageRecoveryRange = value => { ranges.push(value) }
@@ -1356,6 +1356,43 @@ test('range missing members, changed Legend membership and anchor changes are di
     } else {
       assert.deepEqual(ranges.at(-1), { attempt: 1, fromPage: 2, toPage: 4, lastValidatedPage: kind === 'legend' ? 3 : 4, status: 'failed' })
       assert.deepEqual(data.requested, kind === 'anchor' ? [1, 2, 3, 4, 2, 3, 4, 1] : [1, 2, 3, 4, 2, 3, 4])
+    }
+  }
+})
+
+test('anchor updates avoid a new sweep only when membership and the page seam stay valid', async () => {
+  for (const change of ['value-update', 'legend-status', 'internal-order', 'boundary-order'] as const) {
+    const data = movedRangeFixture(), read = data.options.fetchPage
+    let projected: readonly LegendAnalysisVerifiedPlayer[] = []
+    data.options.fetchPage = async (page, url) => {
+      const value = await read(page, url)
+      if (page === 1 && data.requested.length === 8) {
+        if (change === 'value-update') {
+          value.entries[0].masterRating++
+          value.entries[0].playerName = 'Updated on recheck'
+        } else if (change === 'legend-status') {
+          value.entries[1].isLegend = false
+        } else if (change === 'internal-order') {
+          value.entries[1].masterRating = value.entries[0].masterRating + 1
+        } else {
+          value.entries[1].masterRating = data.replacements[0].masterRating - 1
+        }
+      }
+      return value
+    }
+    data.options.onVerifiedPlayers = rows => { projected = rows }
+    if (change === 'value-update') {
+      const result = await collectLegendAnalysisDataset(data.options)
+      assert.equal(result.retryCount, 0)
+      assert.deepEqual(data.requested, [1, 2, 3, 4, 2, 3, 4, 1, 4, 1])
+      assert.equal(projected.length, 7)
+      assert.equal(projected[0].masterRating, data.values[0].masterRating)
+      assert.equal(projected[0].playerName, data.values[0].playerName)
+    } else {
+      await assert.rejects(collectLegendAnalysisDataset({ ...data.options, maxAttempts: 1 }), error =>
+        error instanceof LegendAnalysisCollectionError && error.validationCheck === 'range-anchor-recheck')
+      assert.deepEqual(data.requested, [1, 2, 3, 4, 2, 3, 4, 1])
+      assert.deepEqual(projected, [])
     }
   }
 })
@@ -1850,10 +1887,7 @@ test('the new left anchor and both final endpoints remain mandatory after expans
     let projections = 0
     data.options.fetchPage = async (page, url) => {
       const value = await read(page, url)
-      if (data.requested.length === failureRead) {
-        if (failureRead === 12) value.entries[0].masterRating++
-        else replaceListedMember(value.entries[0])
-      }
+      if (data.requested.length === failureRead) replaceListedMember(value.entries[0])
       return value
     }
     data.options.onPageRecoveryRange = value => { ranges.push(value) }

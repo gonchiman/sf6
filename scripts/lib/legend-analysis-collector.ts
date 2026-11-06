@@ -325,6 +325,11 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
         positions: new Map([...base.positions, ...candidate.positions]),
         previous: candidate.nextPrevious, boundary: candidate.nextBoundary, previousPage: page,
       })
+      const inspectRecheck = (page: LegendAnalysisPage): ReturnType<typeof inspect> => {
+        const previousOrderFailure = orderFailure
+        try { return inspect(page, prefixes.get(0)!) }
+        finally { orderFailure = previousOrderFailure }
+      }
       const internalOrderConflict = (page: LegendAnalysisPage): Pick<LegendPageRecoveryDecision, 'reason' | 'conflict'> | undefined => {
         const positions = new Map<string, LegendOrderPosition>()
         for (const [index, entry] of page.entries.entries()) {
@@ -561,7 +566,22 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
                 const anchor = savedPages.get(fromPage - 1)
                 if (!anchor) fail('source-changed', 'range-anchor-recheck')
                 const anchorAgain = await read(fromPage - 1)
-                if (!equal(stablePage(anchor), stablePage(anchorAgain))) fail('source-changed', 'range-anchor-recheck', recheckChanges(anchor, anchorAgain))
+                if (!equal(stablePage(anchor), stablePage(anchorAgain))) {
+                  const originalMembers = new Map(anchor.entries.map(entry => [entryKey(entry), entry]))
+                  const sameMembers = anchorAgain.entries.every(entry => {
+                    const original = originalMembers.get(entryKey(entry))
+                    return original !== undefined && original.isLegend === entry.isLegend && original.playerId === entry.playerId
+                  })
+                  const last = anchorAgain.entries.at(-1)!, next = replacements.get(fromPage)!.page.entries[0]
+                  const boundaryValid = last.rank <= next.rank && last.masterRating >= next.masterRating
+                  let pageValid = false
+                  if (samePageMetadata(anchor, anchorAgain) && sameMembers && boundaryValid) {
+                    try { pageValid = !inspectRecheck(anchorAgain).duplicate }
+                    catch (error) { if (!(error instanceof LegendAnalysisCollectionError)) throw error }
+                  }
+                  if (!pageValid) fail('source-changed', 'range-anchor-recheck', recheckChanges(anchor, anchorAgain))
+                  // Keep the previously validated prefix so new values cannot shift the preceding boundary.
+                }
               }
               // Only the complete expanded range can replace accepted rows, after membership, order and anchor validation.
               prefix = rebuilt
@@ -625,13 +645,12 @@ export async function collectLegendAnalysisDataset(options: CollectLegendAnalysi
         }
         // Reuse full per-page validation without comparing newer values to an older neighboring page.
         // Its diagnostic side effect belongs to listing failures, not final endpoint observations.
-        const previousOrderFailure = orderFailure
         try {
-          const candidate = inspect(after, prefixes.get(0)!)
+          const candidate = inspectRecheck(after)
           if (candidate.duplicate) fail('duplicate-entry', 'duplicate-entry')
         } catch (error) {
           changes.add('invalid-page'); report('rejected', [...changes]); throw error
-        } finally { orderFailure = previousOrderFailure }
+        }
         if (changes.has('membership') || changes.has('legend-status')) {
           report('rejected', [...changes])
           fail('source-changed', phase, recheckChanges(before, after))
