@@ -12,11 +12,13 @@ type Scale = 'people' | 'index'
 type Metric = 'mean' | 'peak'
 const indexFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 })
 
-export function SteamPlayerCountGameKey({ appId }: { appId: number }) {
+export function SteamPlayerCountGameKey({ appId, markerOnly = false }: { appId: number; markerOnly?: boolean }) {
   const style = steamPlayerCountGameStyle(appId)
-  return <svg className="steam-game-series-key" width="34" height="14" viewBox="0 0 34 14" aria-hidden="true">
-    <line x1={1} x2={33} y1={7} y2={7} stroke={style.color} strokeWidth={2} strokeDasharray={style.dashArray} />
-    <SeriesMarker shape={style.marker} x={17} y={7} size={3} color={style.color} />
+  const width = markerOnly ? 14 : 34
+  return <svg className={markerOnly ? 'steam-game-series-key steam-game-series-key-marker' : 'steam-game-series-key'}
+    width={width} height="14" viewBox={`0 0 ${width} 14`} aria-hidden="true">
+    {!markerOnly && <line x1={1} x2={33} y1={7} y2={7} stroke={style.color} strokeWidth={2} strokeDasharray={style.dashArray} />}
+    <SeriesMarker shape={style.marker} x={width / 2} y={7} size={3} color={style.color} />
   </svg>
 }
 
