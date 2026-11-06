@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-05",
+  "checkedAt": "2026-11-06T10:13:31.000Z",
+  "slots": [
+    {
+      "scheduledAt": "2026-11-05T23:22:00.000Z",
+      "dispatch": {
+        "runId": "42086539856",
+        "attempt": 1,
+        "reason": "failed",
+        "httpStatus": 500
+      },
+      "games": []
+    }
+  ]
+}

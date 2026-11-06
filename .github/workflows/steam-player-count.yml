@@ -1,8 +1,14 @@
 name: Collect Steam player count
+run-name: "${{ inputs.scheduled_at && format('Steam observation {0}', inputs.scheduled_at) || 'Steam observation manual' }}"
 
 on:
   # The bounded dispatcher starts this workflow every 15 minutes.
   workflow_dispatch:
+    inputs:
+      scheduled_at:
+        description: '取得予定枠のUTC時刻（自動設定。手動起動では空欄）'
+        type: string
+        required: false
 
 permissions:
   contents: read
