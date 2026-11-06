@@ -5,6 +5,7 @@ import { createElement, type ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer, type ViteDevServer } from 'vite'
 import { STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
+import { steamPlayerCountGameLabel } from './steamPlayerCountGameColors.ts'
 import { STEAM_COLLECTION_VERSION } from './steamCollectionVersion.ts'
 import type { SteamPlayerCountAppId, SteamPlayerCountHourlyRow, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
 import type { SteamPlayerCountGameComparison } from '../types/steamPlayerCountComparison.ts'
@@ -12,7 +13,7 @@ import type { SteamPlayerCountGameComparison } from '../types/steamPlayerCountCo
 let server: ViteDevServer
 let Hourly: ComponentType<{ rows: SteamPlayerCountHourlyRow[] }>
 let Trend: ComponentType<{ observations: SteamPlayerCountObservation[] }>
-let Page: ComponentType<{ initialAppId?: SteamPlayerCountAppId; initialMode?: 'single' | 'comparison' }>
+let Page: ComponentType<{ initialAppIds?: readonly SteamPlayerCountAppId[] }>
 let ComparisonTable: ComponentType<{ comparison: SteamPlayerCountGameComparison }>
 let VersionDialog: ComponentType<{ onClose: () => void }>
 let Filters: ComponentType<import('react').ComponentProps<typeof import('../components/SteamPlayerCountFilters.tsx').SteamPlayerCountFilters>>
@@ -38,9 +39,10 @@ const observation = (minute: number, playerCount = 20000): SteamPlayerCountObser
 })
 const renderTrend = (observations: SteamPlayerCountObservation[]) => renderToStaticMarkup(createElement(Trend, { observations }))
 
-test('both page modes expose the implementation version and history before observations load', () => {
-  for (const initialMode of ['single', 'comparison'] as const) {
-    const html = renderToStaticMarkup(createElement(Page, { initialMode }))
+test('the page exposes the implementation version and history before observations load for any selection size', () => {
+  for (const count of [1, 2]) {
+    const initialAppIds = STEAM_PLAYER_COUNT_GAMES.slice(0, count).map(game => game.appId)
+    const html = renderToStaticMarkup(createElement(Page, { initialAppIds }))
     assert.match(html, /観測データを読み込み中/)
     assert.ok(html.includes(`取得処理：<strong>実装版 ${STEAM_COLLECTION_VERSION}</strong>`))
     const historyButtons = html.match(/<button[^>]*aria-haspopup="dialog"[^>]*>変更履歴<\/button>/g) ?? []
@@ -91,58 +93,58 @@ test('history preserves both v2 changes, four retrospective releases and chronol
   assert.equal((html.match(/後付けの版名/g) ?? []).length, 4)
 })
 
-test('the page defaults to SF6 with all five game options available during loading', () => {
-  const html = renderToStaticMarkup(createElement(Page))
-  assert.match(html, /data-steam-app-id="1364780"/)
-  const selector = html.match(/<select[^>]*aria-label="ゲーム"[^>]*>[\s\S]*?<\/select>/)?.[0]
-  assert.ok(selector)
-  assert.doesNotMatch(selector, /disabled/)
-  assert.equal((selector.match(/<option /g) ?? []).length, 5)
-  assert.match(selector, /<option value="1364780" selected="">Street Fighter 6<\/option>/)
-  assert.match(html, /Street Fighter 6の観測データを読み込み中/)
-  assert.doesNotMatch(html, /aria-label="開始日"|aria-label="終了日"/)
-  assert.match(html, /role="group" aria-label="期間"/)
+function assertGameSelection(html: string, selectedAppIds: readonly SteamPlayerCountAppId[]) {
+  const labelId = html.match(/<span id="([^"]+)">ゲーム<\/span>/)?.[1]
+  assert.ok(labelId)
+  assert.ok(html.includes(`role="group" aria-labelledby="${labelId}"`))
+  const buttons = html.match(/<button[^>]*class="[^"]*comparison-grid-option[^"]*"[^>]*>[\s\S]*?<\/button>/g) ?? []
+  assert.equal(buttons.length, STEAM_PLAYER_COUNT_GAMES.length)
+  for (const [index, game] of STEAM_PLAYER_COUNT_GAMES.entries()) {
+    const pressed = selectedAppIds.includes(game.appId)
+    assert.ok(buttons[index].includes(`>${steamPlayerCountGameLabel(game.appId)}<`))
+    assert.ok(buttons[index].includes(`aria-pressed="${pressed}"`))
+    assert.ok(buttons[index].includes(`aria-disabled="${pressed && selectedAppIds.length === 1}"`))
+  }
+  assert.doesNotMatch(html, /<select[^>]*aria-label="ゲーム"|>ゲーム別<|>ゲーム比較</)
+}
+
+function assertSharedPeriodControls(html: string) {
+  assert.equal((html.match(/>表示条件<\/h2>/g) ?? []).length, 1)
+  assert.equal((html.match(/role="group" aria-label="期間"/g) ?? []).length, 1)
   for (const label of ['直近24時間', '直近7日', '直近30日', '全期間', '日付指定']) {
     assert.match(html, new RegExp(`<button[^>]*aria-pressed="${label === '直近24時間'}"[^>]*>${label}</button>`))
   }
   assert.match(html, /<dt>表示期間<\/dt>/)
-  assert.doesNotMatch(html, /日付の候補|>今日<|>昨日</)
-  assert.match(html, /<dt>データ範囲<\/dt><dd>読込中<\/dd>/)
   assert.match(html, /aria-label="曜日"/)
+  assert.doesNotMatch(html, /aria-label="開始日"|aria-label="終了日"|日付の候補|>今日<|>昨日</)
+}
+
+test('the page defaults to SF6 with one shared selector and period controls during loading', () => {
+  const html = renderToStaticMarkup(createElement(Page))
+  assertGameSelection(html, [1364780])
+  assertSharedPeriodControls(html)
+  assert.match(html, /Street Fighter 6の観測データを読み込み中/)
+  assert.match(html, /<dt>データ範囲<\/dt><dd>読込中<\/dd>/)
 })
 
 test('every selected game has its own source and loading state without another game’s counts', () => {
   for (const game of STEAM_PLAYER_COUNT_GAMES) {
-    const html = renderToStaticMarkup(createElement(Page, { initialAppId: game.appId }))
-    assert.ok(html.includes(`data-steam-app-id="${game.appId}"`))
+    const html = renderToStaticMarkup(createElement(Page, { initialAppIds: [game.appId] }))
+    assertGameSelection(html, [game.appId])
     assert.ok(html.includes(`href="${game.sourceUrl}"`))
     assert.ok(html.includes(`ゲーム：${game.label}`))
     assert.ok(html.includes(`${game.label}の観測データを読み込み中`))
-    assert.ok(html.includes(`<option value="${game.appId}" selected="">`))
     assert.doesNotMatch(html, /<strong>\d[\d,]* 人<\/strong>|最終観測|公開日時/)
-    const selector = html.match(/<select[^>]*aria-label="ゲーム"[^>]*>/)?.[0]
-    assert.ok(selector)
-    assert.doesNotMatch(selector, /disabled/)
   }
 })
 
-test('comparison mode starts with all five games and shared period controls while loading', () => {
-  const html = renderToStaticMarkup(createElement(Page, { initialMode: 'comparison' }))
-  assert.match(html, /aria-label="Steam同時接続数のゲーム比較"/)
-  const selectedGames = html.match(/<button[^>]*class="[^"]*comparison-grid-option[^"]*"[^>]*>[\s\S]*?<\/button>/g) ?? []
-  assert.equal(selectedGames.length, 5)
-  for (const [index, label] of ['SF6', 'TEKKEN 8', 'GGST', 'GBVSR', 'KOF XV'].entries()) {
-    assert.match(selectedGames[index], /aria-pressed="true"/)
-    assert.ok(selectedGames[index].includes(label))
-  }
-  assert.match(html, /role="group" aria-label="期間"/)
-  for (const label of ['直近24時間', '直近7日', '直近30日', '全期間', '日付指定']) {
-    assert.match(html, new RegExp(`<button[^>]*aria-pressed="${label === '直近24時間'}"[^>]*>${label}</button>`))
-  }
-  assert.match(html, /aria-label="曜日"/)
+test('two selected games use the same controls and report a common data range', () => {
+  const initialAppIds = STEAM_PLAYER_COUNT_GAMES.slice(0, 2).map(game => game.appId)
+  const html = renderToStaticMarkup(createElement(Page, { initialAppIds }))
+  assertGameSelection(html, initialAppIds)
+  assertSharedPeriodControls(html)
   assert.match(html, /<dt>共通データ範囲<\/dt><dd>読込中<\/dd>/)
-  assert.match(html, /比較するゲームの観測データを読み込み中/)
-  assert.doesNotMatch(html, /日付の候補|>今日<|>昨日</)
+  assert.match(html, /観測データを読み込み中/)
 })
 
 test('all rolling periods show exact time bounds and date presets stay inside custom selection', () => {

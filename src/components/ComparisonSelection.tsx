@@ -16,6 +16,7 @@ type Props = {
   emptyLabel?: string
   showOptionKeys?: boolean
   layout?: 'picker' | 'grid'
+  gridActions?: ReactNode
   selectionCountLabel?: (count: number) => string
   minimumSelectionLabel?: string | null
 }
@@ -23,7 +24,7 @@ type Props = {
 /** Shared comparison selection; the picker restores focus after chip removal. */
 export function ComparisonSelection({ items, selectedIds, onChange, label, selectionLabel, pickerLabel,
   legendLabel, renderKey, searchLabel, emptyLabel = '該当する項目がありません', showOptionKeys = false,
-  layout = 'picker', selectionCountLabel = count => `${count}件選択中`, minimumSelectionLabel = '1件以上選択' }: Props) {
+  layout = 'picker', gridActions, selectionCountLabel = count => `${count}件選択中`, minimumSelectionLabel = '1件以上選択' }: Props) {
   const [search, setSearch] = useState('')
   const searchId = useId()
   const labelId = useId()
@@ -51,6 +52,7 @@ export function ComparisonSelection({ items, selectedIds, onChange, label, selec
   if (layout === 'grid') return <div className="comparison-selection comparison-selection-grid">
     <div className="comparison-grid-heading">
       <span id={labelId}>{label}</span>
+      {gridActions}
       <span className="comparison-grid-count" aria-live="polite" aria-atomic="true">{selectionCountLabel(selectedIds.length)}</span>
     </div>
     <div className="comparison-grid-options" role="group" aria-labelledby={labelId} aria-describedby={minimumSelectionLabel ? hintId : undefined}>

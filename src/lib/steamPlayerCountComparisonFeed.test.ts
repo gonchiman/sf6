@@ -176,6 +176,30 @@ test('bundled fallback or a regressed publication cannot mix with newly updated 
   }
 })
 
+test('one game can load newly selected dates from its verified publication after a bundled fallback', async () => {
+  const data = fixture()
+  const appId = ids[0]
+  const history = value(appId, ['2026-11-02T00:00:00.000Z', '2026-11-03T00:00:00.000Z'])
+  data.values.set(appId, history)
+  const initial = { from: '2026-11-02', to: '2026-11-02' }
+  const controller = createSteamPlayerCountComparisonController([appId], () => {}, initial, { createFeed: data.createFeed, now: clock })
+  await controller.refresh()
+  assert.deepEqual(controller.getState().entries[0].observations, [history.observations[0]])
+
+  data.values.set(appId, value(appId, ['2026-11-03T00:00:00.000Z'], 10, 'bundled'))
+  const next = { from: '2026-11-03', to: '2026-11-03' }
+  controller.setRange(next)
+  await controller.refresh()
+
+  const state = controller.getState()
+  assert.equal(state.status, 'ready')
+  assert.deepEqual(state.range, next)
+  assert.equal(state.entries[0].publication, history.publication)
+  assert.deepEqual(state.entries[0].observations, [history.observations[1]])
+  assert.equal(state.refreshError, true)
+  assert.deepEqual(state.failedAppIds, [appId])
+})
+
 test('a range change cannot mix a stale title with updated peers or restore the previous range', async () => {
   for (const regression of ['bundled', 'empty'] as const) {
     const data = fixture()
