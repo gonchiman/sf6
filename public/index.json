@@ -1,11 +1,27 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-06T11:46:33.397Z",
+  "generatedAt": "2026-11-07T01:29:08.450Z",
   "source": {
     "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/master",
     "title": "Buckler MRランキング"
   },
   "datasets": [
+    {
+      "id": "legend-2026-11-07T00-07-40-858Z",
+      "path": "legend-2026-11-07T00-07-40-858Z.json",
+      "actId": "act-14",
+      "definitionVersion": "legend-listed-v1",
+      "membershipRule": "official-legend-badge",
+      "conditions": {
+        "region": "all",
+        "platform": "all",
+        "characters": "all",
+        "users": "source-default"
+      },
+      "captureStartedAt": "2026-11-07T00:07:40.858Z",
+      "captureEndedAt": "2026-11-07T00:10:04.791Z",
+      "totalCount": 503
+    },
     {
       "id": "legend-2026-11-06T10-12-29-637Z",
       "path": "legend-2026-11-06T10-12-29-637Z.json",
@@ -278,10 +294,5 @@
       "captureEndedAt": "2026-10-17T16:42:47.921Z",
       "totalCount": 501
     }
-  ],
-  "availability": {
-    "status": "collection-failed",
-    "checkedAt": "2026-11-06T11:46:04.660Z",
-    "message": "取得元が今回のアクセスを受け付けなかったため、集計を完了できませんでした。取得完了データのみを表示します。"
-  }
+  ]
 }
