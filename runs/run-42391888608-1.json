@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "run-42391888608-1",
+  "startedAt": "2026-11-07T17:18:34.295Z",
+  "endedAt": "2026-11-07T17:27:36.660Z",
+  "event": "schedule",
+  "status": "succeeded",
+  "failureReason": null,
+  "datasetId": "max-mr-estimate-2026-11-07T17-18-38-647Z",
+  "capture": {
+    "schemaVersion": 1,
+    "status": "succeeded",
+    "startedAt": "2026-11-07T17:18:34.298Z",
+    "endedAt": "2026-11-07T17:27:36.660Z",
+    "stage": "complete",
+    "reason": null,
+    "readFailureCode": null,
+    "requestCount": 106,
+    "successfulReadCount": 106,
+    "retryCount": 0,
+    "confirmedBoundaryCount": 25,
+    "datasetSaved": true,
+    "imported": false,
+    "browserClosed": true,
+    "initialSignInConfirmed": true,
+    "readableWithoutSignInReadCount": 0,
+    "diagnostics": {
+      "lastAttemptedPage": 7967,
+      "lastSuccessfulPage": 7967,
+      "lastHttpStatus": 200,
+      "lastAuthenticationEvidence": "logout-control",
+      "lastLoginRequiredHeading": false,
+      "lastRankingReadable": true,
+      "humanVerification": {
+        "wafHeaderChecked": true,
+        "wafAction": null,
+        "domDetected": false
+      }
+    },
+    "sessionRefreshCount": 0
+  }
+}
