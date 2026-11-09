@@ -6,6 +6,7 @@ import { disableRankDistributionDiagnostics } from './collect-rank-distribution.
 import { markRankDistributionArtifactReady, rankDistributionCloudBrowserEnvironment } from './collect-rank-distribution-cloud.ts'
 import { parseBucklerWeeklySession, BUCKLER_WEEKLY_SESSION_SECRET } from './lib/buckler-weekly-session.ts'
 import { validateLegendDailyBundle } from './lib/legend-analysis-daily-bundle.ts'
+import { buildLegendCollectionDraft, writeLegendCollectionDraft } from './lib/legend-collection-run.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const LEGEND_DAILY_OUTPUT = resolve(ROOT, '.local/legend-analysis-daily/output')
@@ -43,6 +44,7 @@ export async function runLegendDaily(dependencies: {
   validate?: typeof validateLegendDailyBundle
   artifactReady?: (env: Environment) => Promise<void>
   logReport?: (report: LegendAnalysisSafeCaptureReport) => void
+  observeCapture?: (report: LegendAnalysisSafeCaptureReport, entries: number | null) => void
 } = {}): Promise<{ succeeded: boolean }> {
   const env = dependencies.env ?? process.env
   const raw = env[BUCKLER_WEEKLY_SESSION_SECRET]
@@ -61,11 +63,14 @@ export async function runLegendDaily(dependencies: {
   const safeReport = summarizeLegendAnalysisCaptureReport(result.report)
   const logReport = dependencies.logReport ?? (report => console.log(JSON.stringify({ capture: report })))
   logReport(safeReport)
-  if (safeReport.reason === 'output-unavailable') throw new LegendDailyError('output')
+  let entries: number | null = null
   try {
-    await (dependencies.validate ?? validateLegendDailyBundle)(resolve(LEGEND_DAILY_OUTPUT, 'public'), includePlayers)
+    if (safeReport.reason === 'output-unavailable') throw new LegendDailyError('output')
+    const validated = await (dependencies.validate ?? validateLegendDailyBundle)(resolve(LEGEND_DAILY_OUTPUT, 'public'), includePlayers)
+    entries = validated.entries
     await (dependencies.artifactReady ?? markRankDistributionArtifactReady)(env)
   } catch { throw new LegendDailyError('output') }
+  finally { if (includePlayers) dependencies.observeCapture?.(safeReport, entries) }
   return { succeeded: result.succeeded }
 }
 
@@ -78,9 +83,26 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     delete process.env[BUCKLER_WEEKLY_SESSION_SECRET]
     throw new LegendDailyError('arguments')
   }
-  const result = await runLegendDaily()
-  console.log(result.succeeded ? 'レジェンド帯の取得を完了しました。' : '未完了の取得項目があります。検証済みのデータと取得状況を保存しました。')
-  if (!result.succeeded) process.exitCode = 1
+  let capture: { report: LegendAnalysisSafeCaptureReport; entries: number | null } | undefined
+  let reason: 'authentication-unavailable' | 'collection-failed' = 'collection-failed'
+  try {
+    const result = await runLegendDaily({ observeCapture: (report, entries) => { capture = { report, entries } } })
+    console.log(result.succeeded ? 'レジェンド帯の取得を完了しました。' : '未完了の取得項目があります。検証済みのデータと取得状況を保存しました。')
+    if (!result.succeeded) process.exitCode = 1
+  } catch (error) {
+    if (error instanceof LegendDailyError && error.code === 'session') reason = 'authentication-unavailable'
+    throw error
+  } finally {
+    if (isAllowedLegendDailyExecution(process.env) && process.env.LEGEND_PLAYERS_ENABLED === 'true') {
+      try {
+        const run = buildLegendCollectionDraft(process.env, capture, reason, new Date().toISOString())
+        await writeLegendCollectionDraft(process.env, run)
+      } catch {
+        console.error('取得結果の記録を引き渡せませんでした。')
+        process.exitCode = 1
+      }
+    }
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

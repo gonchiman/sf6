@@ -1,0 +1,12 @@
+.collection-history-dialog { width: min(var(--collection-history-width, 800px), calc(100% - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; border: 1px solid var(--border-strong); padding: 24px; overflow: hidden; color: var(--text); background: var(--surface); box-shadow: 0 18px 60px #0003; }
+.collection-history-dialog[open] { display: flex; flex-direction: column; gap: 20px; }
+.collection-history-dialog::backdrop { background: #0006; }
+.collection-history-dialog-header { display: flex; flex: 0 0 auto; align-items: start; justify-content: space-between; gap: 12px; }
+.collection-history-dialog-header h2 { margin: 0 0 8px; color: var(--text); font-size: 18px; font-weight: 600; }
+.collection-history-dialog-header h2:focus { outline: none; }
+.collection-history-dialog-header > button { flex-shrink: 0; }
+@media (max-width: 640px) {
+  .collection-history-dialog { width: calc(100% - 24px); max-height: calc(100dvh - 24px); padding: 16px; }
+  .collection-history-dialog[open] { gap: 16px; }
+  .collection-history-dialog-header h2 { font-size: 16px; }
+}

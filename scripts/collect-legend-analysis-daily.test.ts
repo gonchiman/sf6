@@ -10,6 +10,9 @@ import { legendAnalysisPathWithin } from './lib/legend-analysis-files.ts'
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS, summarizeLegendMr } from '../src/lib/legendAnalysis.ts'
 import { createLegendPlayersDescriptor, parseLegendPlayersDataset } from '../src/lib/legendPlayers.ts'
 import { summarizeLegendAnalysisCaptureReport } from './collect-legend-analysis.ts'
+import { LEGEND_COLLECTION_HISTORY_PATH, parseLegendCollectionHistory } from '../src/lib/legendCollectionHistory.ts'
+import { buildLegendCollectionDraft, finalizeLegendCollectionRun, writeLegendCollectionDraft } from './lib/legend-collection-run.ts'
+import { updateLegendCollectionHistory } from './record-legend-analysis-daily.ts'
 
 const PRIVATE = 'synthetic-legend-session'
 const now = new Date('2026-10-16T13:30:00.000Z')
@@ -203,7 +206,8 @@ test('publisher uses fixed isolated bundle paths and the same workflow gate', as
 
 test('daily workflow isolates authentication and gates player files behind explicit manual or schedule opt-in', async () => {
   const workflow = await readFile(new URL('../.github/workflows/legend-analysis-daily.yml', import.meta.url), 'utf8')
-  const [collect, publish] = workflow.split('  save-history:')
+  const git = await readFile(new URL('./legend-analysis-history-git.ps1', import.meta.url), 'utf8')
+  const [collect, publish, record] = workflow.split(/  (?:save-history|record-result):/)
   assert.match(workflow, /cron: '15 20 \* \* \*'/)
   assert.match(collect, /contents: read/)
   assert.doesNotMatch(collect, /contents: write/)
@@ -215,8 +219,95 @@ test('daily workflow isolates authentication and gates player files behind expli
   assert.match(workflow, /include_players:[\s\S]*type: boolean[\s\S]*default: false/)
   assert.match(workflow, /github\.event_name == 'workflow_dispatch' && inputs\.include_players/)
   assert.match(workflow, /github\.event_name == 'schedule' && vars\.LEGEND_PLAYERS_DAILY_ENABLED == 'true'/)
-  assert.match(publish, /git add -- public/)
-  assert.doesNotMatch(publish, /--force/)
+  assert.match(publish, /-Action save-data/)
+  assert.match(publish, /needs\.collect\.outputs\.collection_attempt/)
+  assert.match(record, /if: always\(\).*inputs\.include_players.*LEGEND_PLAYERS_DAILY_ENABLED/)
+  assert.match(record, /needs: \[collect, save-history\]/)
+  assert.match(record, /needs\.save-history\.result/)
+  assert.match(record, /-Action save-result/)
+  assert.doesNotMatch(record, /BUCKLER_WEEKLY_SESSION/)
+  assert.match(git, /git add -- public/)
+  assert.match(git, /git add -- collection-history\/legend-runs\.json/)
+  assert.doesNotMatch(git, /--force/)
+})
+
+test('player collection outcome distinguishes explicit CAPTCHA, generic access failures and saved rows', async t => {
+  const root = await bundleFixture(t)
+  const output = resolve(root, 'step-output')
+  await writeFile(output, 'artifact_ready=true\n')
+  const env = { ...environment(), GITHUB_RUN_ID: '42426148449', GITHUB_RUN_ATTEMPT: '1', GITHUB_OUTPUT: output }
+  const endedAt = '2026-11-07T23:43:04.258Z'
+  const report = { ...result(false).report, endedAt, lastHttpStatus: 405, lastAttemptedPage: 19, profileReadCount: 11,
+    profileTotalCount: 12, raw: PRIVATE, humanVerification: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: true } }
+  const capture = summarizeLegendAnalysisCaptureReport(report)
+  const stopped = buildLegendCollectionDraft(env, { report: capture, entries: 0 }, 'collection-failed', endedAt)
+  assert.equal(stopped.reason, 'captcha')
+  assert.equal(stopped.phase, 'listing')
+  assert.equal(stopped.lastAttemptedPage, 19)
+  assert.equal(stopped.rankingCount, null)
+  assert.equal(stopped.rankedMatchCount, null)
+  await writeLegendCollectionDraft(env, stopped)
+  const outputText = await readFile(output, 'utf8')
+  assert.equal(outputText, `artifact_ready=true\ncollection_result=${JSON.stringify(stopped)}\n`)
+  for (const key of ['synthetic-legend-session', 'lastHttpStatus', 'humanVerification', 'profileReadCount']) assert.ok(!outputText.includes(key))
+
+  for (const [humanVerification, reason] of [
+    [null, 'access-unavailable'],
+    [{ wafHeaderChecked: false, wafAction: 'captcha', domDetected: true }, 'human-verification'],
+    [{ wafHeaderChecked: true, wafAction: 'challenge', domDetected: false }, 'human-verification'],
+  ] as const) {
+    const reportWithoutCaptcha = summarizeLegendAnalysisCaptureReport({ ...report, humanVerification })
+    assert.equal(buildLegendCollectionDraft(env, { report: reportWithoutCaptcha, entries: 0 }, 'collection-failed', endedAt).reason, reason)
+  }
+  const datasetId = 'legend-2026-11-07T23-38-47-865Z'
+  const partial = buildLegendCollectionDraft(env, { report: { ...capture, status: 'partial', datasetId }, entries: 503 }, 'collection-failed', endedAt)
+  assert.equal(partial.phase, 'profiles')
+  assert.equal(partial.rankingCount, 503)
+  assert.equal(partial.rankedMatchCount, 0)
+  assert.equal(partial.lastAttemptedPage, null)
+  const completed = buildLegendCollectionDraft(env, { report: { ...capture, status: 'succeeded', datasetId }, entries: 503 }, 'collection-failed', endedAt)
+  assert.equal(completed.phase, 'complete')
+  assert.equal(completed.rankedMatchCount, 503)
+  assert.equal(completed.reason, null)
+})
+
+test('publication result keeps failed and retried saves separate from collection failure', async t => {
+  const root = await bundleFixture(t)
+  const env = { ...environment(), GITHUB_RUN_ID: '42316199947', GITHUB_RUN_ATTEMPT: '1' }
+  const finishedAt = '2026-11-07T01:28:41.000Z', saveEndedAt = '2026-11-07T01:29:25.000Z'
+  const report = summarizeLegendAnalysisCaptureReport({ ...result(true).report, endedAt: finishedAt,
+    datasetId: 'legend-2026-11-07T00-07-40-858Z' })
+  const draft = buildLegendCollectionDraft(env, { report, entries: 503 }, 'collection-failed', finishedAt)
+  const failed = finalizeLegendCollectionRun({ ...env, LEGEND_SAVE_JOB_RESULT: 'failure',
+    LEGEND_COLLECTION_RESULT: JSON.stringify(draft) }, saveEndedAt)
+  assert.equal(failed.outcome, 'save-failed')
+  assert.equal(failed.endedAt, draft.endedAt)
+  assert.equal(failed.datasetId, null)
+  assert.equal(failed.rankedMatchCount, null)
+  await updateLegendCollectionHistory(root, failed)
+
+  const stopped = finalizeLegendCollectionRun({ ...env, GITHUB_RUN_ID: '42426148449', LEGEND_COLLECT_JOB_RESULT: 'failure', LEGEND_COLLECT_STEP_OUTCOME: 'skipped',
+    LEGEND_COLLECTION_STARTED_AT: '2026-11-07T23:38:47.000Z' }, '2026-11-07T23:43:04.000Z')
+  assert.equal(stopped.phase, 'preparation')
+  assert.equal(finalizeLegendCollectionRun({ ...env, LEGEND_COLLECT_JOB_RESULT: 'failure' }, finishedAt).phase, 'unknown')
+  await updateLegendCollectionHistory(root, stopped)
+
+  const retriedSave = finalizeLegendCollectionRun({ ...env, GITHUB_RUN_ATTEMPT: '2', LEGEND_COLLECTION_ATTEMPT: '1',
+    LEGEND_SAVE_JOB_RESULT: 'success', LEGEND_COLLECTION_RESULT: JSON.stringify(draft) }, '2026-11-07T23:50:00.000Z')
+  assert.deepEqual(retriedSave, draft)
+  await updateLegendCollectionHistory(root, retriedSave)
+  await updateLegendCollectionHistory(root, retriedSave)
+  const historyPath = resolve(root, LEGEND_COLLECTION_HISTORY_PATH)
+  const history = parseLegendCollectionHistory(JSON.parse(await readFile(historyPath, 'utf8')))
+  assert.deepEqual(history.runs, [stopped, draft])
+
+  for (let attempt = 2; attempt <= 11; attempt++) {
+    await updateLegendCollectionHistory(root, { ...stopped, runAttempt: attempt })
+  }
+  const limited = parseLegendCollectionHistory(JSON.parse(await readFile(historyPath, 'utf8')))
+  assert.deepEqual(limited.runs.map(run => run.runAttempt), [11, 10, 9, 8, 7, 6, 5, 4, 3, 2])
+  assert.throws(() => finalizeLegendCollectionRun({ ...env, LEGEND_ARTIFACT_READY: 'true', LEGEND_COLLECT_JOB_RESULT: 'failure' }, finishedAt),
+    /Missing collection result/)
 })
 
 test('player collection settings fail closed and valid opt-in reaches both collection and validation', async () => {
