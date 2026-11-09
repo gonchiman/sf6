@@ -30,7 +30,18 @@ jobs:
       contents: read
     outputs:
       artifact_ready: ${{ steps.collect.outputs.artifact_ready }}
+      collection_result: ${{ steps.collect.outputs.collection_result }}
+      collection_outcome: ${{ steps.collect.outcome }}
+      collection_attempt: ${{ steps.start.outputs.attempt }}
+      started_at: ${{ steps.start.outputs.started_at }}
+      ended_at: ${{ steps.finish.outputs.ended_at }}
     steps:
+      - name: Record collection job start
+        id: start
+        shell: pwsh
+        run: |
+          $time = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", [Globalization.CultureInfo]::InvariantCulture)
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value @("started_at=$time", "attempt=$env:GITHUB_RUN_ATTEMPT") -Encoding utf8
       - name: Checkout collection code from this main commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,6 +59,7 @@ jobs:
         id: collect
         env:
           BUCKLER_WEEKLY_SESSION: ${{ secrets.BUCKLER_WEEKLY_SESSION }}
+          LEGEND_COLLECTION_STARTED_AT: ${{ steps.start.outputs.started_at }}
         run: node scripts/collect-legend-analysis-daily.ts --collect
       - name: Upload validated aggregate and optional player JSON only
         if: always() && steps.collect.outputs.artifact_ready == 'true'
@@ -62,6 +74,13 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 90
+      - name: Record collection job end
+        if: always()
+        id: finish
+        shell: pwsh
+        run: |
+          $time = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", [Globalization.CultureInfo]::InvariantCulture)
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "ended_at=$time" -Encoding utf8
 
   save-history:
     if: always() && needs.collect.outputs.artifact_ready == 'true' && github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main'
@@ -70,6 +89,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+    outputs:
+      save_outcome: ${{ steps.save.outcome }}
     steps:
       - name: Checkout publisher code from this main commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,56 +103,55 @@ jobs:
           node-version: 24
       - name: Prepare isolated aggregate history branch
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $historyPath = Join-Path $env:GITHUB_WORKSPACE '.local/legend-analysis-daily/history'
-          New-Item -ItemType Directory -Path $historyPath -Force | Out-Null
-          Set-Location -LiteralPath $historyPath
-          git init --initial-branch=codex/legend-analysis-history
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to initialize aggregate history' }
-          git remote add origin https://github.com/gonchiman/sf6.git
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to set aggregate history remote' }
-          $existingRef = git ls-remote --heads origin refs/heads/codex/legend-analysis-history
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect aggregate history' }
-          if ($existingRef) {
-            git fetch --depth=1 origin refs/heads/codex/legend-analysis-history
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to load aggregate history' }
-            git reset --hard FETCH_HEAD
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to restore aggregate history' }
-          }
+        run: ./scripts/legend-analysis-history-git.ps1 -Action prepare
       - name: Download this run's validated JSON
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: legend-analysis-daily-${{ github.run_id }}-${{ github.run_attempt }}
+          name: legend-analysis-daily-${{ github.run_id }}-${{ needs.collect.outputs.collection_attempt }}
           path: .local/legend-analysis-daily/incoming/public
           digest-mismatch: error
       - name: Validate and merge immutable aggregate and player history
         run: node scripts/publish-legend-analysis-daily.ts
       - name: Save aggregate history
-        working-directory: .local/legend-analysis-daily/history
+        id: save
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if ((git branch --show-current) -ne 'codex/legend-analysis-history') { throw 'Unexpected history branch' }
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- public
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to stage aggregate history' }
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) { exit 0 }
-          if ($LASTEXITCODE -ne 1) { throw 'Unable to compare aggregate history' }
-          git commit -m 'Save daily Legend analysis'
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to commit aggregate history' }
-          $credential = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$env:GH_TOKEN"))
-          $env:GIT_CONFIG_COUNT = '1'
-          $env:GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader'
-          $env:GIT_CONFIG_VALUE_0 = "AUTHORIZATION: basic $credential"
-          try {
-            git push origin HEAD:refs/heads/codex/legend-analysis-history
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to save aggregate history' }
-          } finally {
-            Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0
-            $credential = $null
-          }
+        run: ./scripts/legend-analysis-history-git.ps1 -Action save-data
+
+  record-result:
+    if: always() && github.repository == 'gonchiman/sf6' && github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.include_players) || (github.event_name == 'schedule' && vars.LEGEND_PLAYERS_DAILY_ENABLED == 'true'))
+    needs: [collect, save-history]
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout recording code from this main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Prepare isolated result history branch
+        shell: pwsh
+        run: ./scripts/legend-analysis-history-git.ps1 -Action prepare
+      - name: Record the collection and data publication outcome
+        env:
+          LEGEND_COLLECTION_RESULT: ${{ needs.collect.outputs.collection_result }}
+          LEGEND_COLLECTION_ATTEMPT: ${{ needs.collect.outputs.collection_attempt }}
+          LEGEND_COLLECTION_STARTED_AT: ${{ needs.collect.outputs.started_at }}
+          LEGEND_COLLECTION_ENDED_AT: ${{ needs.collect.outputs.ended_at }}
+          LEGEND_ARTIFACT_READY: ${{ needs.collect.outputs.artifact_ready }}
+          LEGEND_COLLECT_STEP_OUTCOME: ${{ needs.collect.outputs.collection_outcome }}
+          LEGEND_COLLECT_JOB_RESULT: ${{ needs.collect.result }}
+          LEGEND_SAVE_JOB_RESULT: ${{ needs.save-history.outputs.save_outcome || needs.save-history.result }}
+        run: node scripts/record-legend-analysis-daily.ts
+      - name: Save result history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: ./scripts/legend-analysis-history-git.ps1 -Action save-result

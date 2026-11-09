@@ -6,19 +6,24 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer, type ViteDevServer } from 'vite'
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS } from './legendAnalysis.ts'
 import type { LegendPlayerRow, LegendPlayersDataset } from '../types/legendPlayers.ts'
+import type { LegendCollectionRun } from './legendCollectionHistory.ts'
 
 let server: ViteDevServer
+let Page: ComponentType
 let CaptureInfo: ComponentType<{ dataset: LegendPlayersDataset }>
 let MatchSummary: ComponentType<{ dataset: LegendPlayersDataset }>
 let Table: ComponentType<{ rows: readonly LegendPlayerRow[]; names: ReadonlyMap<string, string> | null }>
+let ResultsDialog: ComponentType<import('react').ComponentProps<typeof import('../components/LegendCollectionResults.tsx').LegendCollectionResultsDialog>>
 before(async () => {
   // Avoid the application Vite config, which starts acquisition services.
   server = await createServer({ root: fileURLToPath(new URL('../../', import.meta.url)), configFile: false,
     server: { middlewareMode: true, watch: null }, appType: 'custom', logLevel: 'error', optimizeDeps: { noDiscovery: true, include: [] } })
   const page = await server.ssrLoadModule('/src/components/LegendPlayersPage.tsx')
+  Page = page.LegendPlayersPage
   CaptureInfo = page.LegendPlayersCaptureInfo
   MatchSummary = page.LegendPlayersMatchSummary
   Table = (await server.ssrLoadModule('/src/components/LegendPlayersTable.tsx')).LegendPlayersTable
+  ResultsDialog = (await server.ssrLoadModule('/src/components/LegendCollectionResults.tsx')).LegendCollectionResultsDialog
 })
 after(async () => { await server?.close() })
 
@@ -87,4 +92,48 @@ test('legacy captures remain uncollected rather than being labelled failed', () 
   assert.match(renderSummary(value), />対戦数：未取得<\/span>/)
   assert.doesNotMatch(html, /取得失敗|対戦数取得区間|00:05:00/)
   assert.deepEqual(finalCells(renderTable(value)), ['未取得', '未取得'])
+})
+
+test('collection results remain available before a player snapshot has loaded', () => {
+  const html = renderToStaticMarkup(createElement(Page))
+  assert.match(html, /<button[^>]*aria-haspopup="dialog"[^>]*>取得結果<\/button>/)
+  assert.match(html, /取得記録を読み込み中/)
+  assert.doesNotMatch(html, /<select|<dialog/)
+})
+
+test('collection history separates saved coverage, incomplete acquisition, and save failure', () => {
+  const complete: LegendCollectionRun = {
+    runId: '42316199947', runAttempt: 1, trigger: 'schedule',
+    startedAt: '2026-11-07T00:07:00.000Z', endedAt: '2026-11-07T01:28:00.000Z',
+    outcome: 'succeeded', phase: 'complete', reason: null, lastAttemptedPage: null,
+    datasetId: 'legend-2026-11-07T00-07-40-858Z', rankingCount: 503, rankedMatchCount: 503,
+  }
+  const stopped: LegendCollectionRun = {
+    ...complete, runId: '42426148449', startedAt: '2026-11-07T23:38:00.000Z', endedAt: '2026-11-07T23:43:00.000Z',
+    outcome: 'stopped', phase: 'listing', reason: 'captcha', lastAttemptedPage: 19,
+    datasetId: null, rankingCount: null, rankedMatchCount: null,
+  }
+  const partial: LegendCollectionRun = {
+    ...complete, runId: '42316199946', runAttempt: 2, trigger: 'workflow_dispatch',
+    outcome: 'partial', phase: 'profiles', reason: 'access-unavailable', rankedMatchCount: 0,
+  }
+  const saveFailure: LegendCollectionRun = {
+    ...complete, runId: '42316199945', outcome: 'save-failed', phase: 'saving',
+    reason: 'output-unavailable', datasetId: null, rankingCount: null, rankedMatchCount: null,
+  }
+  const renderResults = (status: 'ready' | 'error', runs: LegendCollectionRun[]) =>
+    renderToStaticMarkup(createElement(ResultsDialog, { status, runs, retry: () => {}, onClose: () => {} }))
+  const html = renderResults('ready', [stopped, complete, partial, saveFailure])
+  const [stopRow, completeRow, partialRow, saveRow] = html.match(/<li[^>]*>[\s\S]*?<\/li>/g) ?? []
+  assert.match(stopRow, /2026\/11\/08 8:38/)
+  assert.match(stopRow, /CAPTCHAで停止/)
+  assert.match(stopRow, /19ページ目で停止/)
+  assert.match(stopRow, /<dt>対戦数<\/dt><dd>未実施<\/dd>/)
+  assert.match(completeRow, /取得完了.*503\/503件/)
+  assert.match(partialRow, /手動.*順位・MRのみ保存.*503件保存.*<dt>対戦数<\/dt><dd>未取得<\/dd>/)
+  assert.match(partialRow, /\/actions\/runs\/42316199946\/attempts\/2/)
+  assert.match(saveRow, /保存失敗.*<dt>新規保存<\/dt><dd>なし<\/dd>/)
+  assert.doesNotMatch(saveRow, /CAPTCHA|\/503件/)
+  assert.match(renderResults('ready', []), /履歴未記録/)
+  assert.match(renderResults('error', [complete]), /取得結果の読込失敗.*取得完了/)
 })

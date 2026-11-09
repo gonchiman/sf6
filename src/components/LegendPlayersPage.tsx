@@ -5,9 +5,11 @@ import { timestampLabel } from '../lib/dateTime'
 import { legendPlayersFeed } from '../lib/legendPlayersFeed'
 import { filterLegendPlayers, legendPlayerCharacterOptions } from '../lib/legendPlayers'
 import { usePublishedData } from '../lib/usePublishedData'
+import { useLegendCollectionHistory } from '../lib/useLegendCollectionHistory'
 import type { LegendPlayersDataset } from '../types/legendPlayers'
 import { DataLoadState } from './DataLoadState'
 import { ContentTabs } from './ContentTabs'
+import { LegendCollectionResults } from './LegendCollectionResults'
 import { LegendPlayersTable } from './LegendPlayersTable'
 import { LegendPlayersRankChart } from './LegendPlayersRankChart'
 import { LegendPlayersCharacterChart, LegendPlayersMrChart } from './LegendPlayersSummaryCharts'
@@ -53,6 +55,7 @@ export function LegendPlayersPage() {
   const [selection, setSelection] = useState<Selection | null>(null)
   const [filters, setFilters] = useState({ query: '', characterId: '' })
   const { status, publication, selectedId, setSelectedId, refreshError, retry } = usePublishedData(legendPlayersFeed)
+  const collectionHistory = useLegendCollectionHistory()
   const [loaded, setLoaded] = useState<DatasetState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
   const [names, setNames] = useState<ReadonlyMap<string, string> | null>(null)
@@ -94,6 +97,8 @@ export function LegendPlayersPage() {
   const availability = manifest?.availability
   const availabilityLabel = availability?.status === 'collection-failed' ? '取得失敗'
     : availability?.status === 'verification-pending' ? '検証待ち' : '未取得'
+  const legacyCollectionStatus = collectionHistory.runs.length === 0 && availability?.status !== 'not-collected'
+    ? availability : undefined
   const emptyMessage = !descriptor ? availabilityLabel
     : current?.status === 'error' ? '読込失敗' : loadingDataset ? '読み込み中…' : '0件（取得確認済み）'
   // Entry IDs are local to one capture; a different date must never inherit its selection.
@@ -105,18 +110,18 @@ export function LegendPlayersPage() {
     if (source === 'table') setChart('rank')
   }
 
-  if (status === 'loading') return <DataLoadState loading message="取得記録を読み込み中…" />
-  if (!manifest) return <DataLoadState message="取得記録の読込失敗" onRetry={retry} />
-
   return <section className="legend-players-page" aria-label="レジェンド帯分析2">
-    {descriptors.length > 0 && <div className="legend-players-toolbar">
-      <label className="legend-players-capture-select"><span>取得日</span>
+    <div className="legend-players-toolbar">
+      {descriptors.length > 0 && <label className="legend-players-capture-select"><span>取得日</span>
         <select aria-label="取得日" value={selectedId ?? ''} onChange={event => { setSelection(null); setSelectedId(event.target.value) }}>
           {descriptors.map(item => <option key={item.id} value={item.id}>{item.actId.replace(/^act-/, 'Act ')} · {timestampLabel(item.captureEndedAt)}</option>)}
         </select>
-      </label>
-    </div>}
+      </label>}
+      <LegendCollectionResults {...collectionHistory} />
+    </div>
 
+    {status === 'loading' ? <DataLoadState loading message="取得記録を読み込み中…" />
+      : !manifest ? <DataLoadState message="取得記録の読込失敗" onRetry={retry} /> : <>
     <ContentTabs id={viewId} label="レジェンド帯分析2の表示" className="legend-players-view-tabs"
       options={VIEWS} value={view} onChange={setView} />
 
@@ -180,12 +185,13 @@ export function LegendPlayersPage() {
         {publication?.source === 'bundled' && descriptors.length > 0 && <span>同梱データ</span>}
       </div>
       {dataset && <LegendPlayersCaptureInfo dataset={dataset} />}
-      {(refreshError || availability?.status === 'collection-failed' || availability?.status === 'verification-pending') && <div className="legend-players-status" role="status">
+      {(refreshError || legacyCollectionStatus) && <div className="legend-players-status" role="status">
         {refreshError && <span>更新確認失敗</span>}
-        {availability && <span>最新取得：{availabilityLabel}{' · '}
-          <time dateTime={availability.checkedAt}>{timestampLabel(availability.checkedAt)}</time></span>}
+        {legacyCollectionStatus && <span>最新取得：{availabilityLabel}{' · '}
+          <time dateTime={legacyCollectionStatus.checkedAt}>{timestampLabel(legacyCollectionStatus.checkedAt)}</time></span>}
         <button className="win-rates-button" type="button" onClick={retry}>更新を再確認</button>
       </div>}
     </footer>
+    </>}
   </section>
 }

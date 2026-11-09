@@ -7,6 +7,29 @@
 .legend-players-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; font-size: 12px; color: var(--text-muted); }
 .legend-players-capture-select { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; max-width: 100%; }
 .legend-players-capture-select select { max-width: 100%; padding: 7px 8px; border: 1px solid var(--border); border-radius: 0; color: var(--text); background: var(--surface); font: inherit; }
+.legend-collection-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.legend-collection-summary > .win-rates-button { font-size: inherit; }
+.legend-collection-summary strong { color: var(--text-soft); font-weight: 600; }
+.legend-collection-dialog { --collection-history-width: 620px; }
+.legend-collection-dialog .collection-history-dialog-header h2 { margin-bottom: 0; }
+.legend-collection-dialog-content { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.legend-collection-dialog-content > p { margin: 0; color: var(--text-muted); }
+.legend-collection-runs { margin: 0; padding: 0; list-style: none; }
+.legend-collection-dialog-content > .legend-players-status + .legend-collection-runs { margin-top: 12px; }
+.legend-collection-run { border-top: 1px solid var(--border); padding: 12px 0; }
+.legend-collection-run:last-child { padding-bottom: 0; }
+.legend-collection-run-heading, .legend-collection-run-time { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.legend-collection-run-heading { justify-content: space-between; }
+.legend-collection-run-time { gap: 2px 6px; color: var(--text-soft); font-size: 12px; font-variant-numeric: tabular-nums; }
+.legend-collection-run-details { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.legend-collection-run-details > div { display: flex; gap: 4px; }
+.legend-collection-run-details dt { color: var(--text-muted); }
+.legend-collection-run-details dd { margin: 0; }
+.legend-collection-run > a { font-size: 12px; }
+@media (pointer: coarse) {
+  .legend-collection-summary > .win-rates-button, .legend-collection-dialog button { min-height: 44px; }
+  .legend-collection-run > a { display: inline-flex; align-items: center; min-height: 44px; }
+}
 .legend-players-data-info { display: grid; gap: 12px; min-width: 0; padding-top: 16px; border-top: 1px solid var(--border); }
 .legend-players-source { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; font-size: 12px; color: var(--text-muted); }
 .legend-players-capture { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; font-size: 12px; }
