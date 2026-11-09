@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "date": "2026-11-08",
-  "checkedAt": "2026-11-08T23:43:31.447Z",
+  "checkedAt": "2026-11-09T06:28:07.830Z",
   "slots": [
     {
       "scheduledAt": "2026-11-08T00:07:00.000Z",
@@ -3800,6 +3800,46 @@
           "runId": "42536027336",
           "attempt": 1,
           "observedAt": "2026-11-08T23:37:13.534Z"
+        }
+      ]
+    },
+    {
+      "scheduledAt": "2026-11-08T23:52:00.000Z",
+      "games": [
+        {
+          "appId": 1364780,
+          "status": "published",
+          "runId": "42537213478",
+          "attempt": 1,
+          "observedAt": "2026-11-08T23:52:10.490Z"
+        },
+        {
+          "appId": 1778820,
+          "status": "published",
+          "runId": "42537213478",
+          "attempt": 1,
+          "observedAt": "2026-11-08T23:52:10.584Z"
+        },
+        {
+          "appId": 1384160,
+          "status": "published",
+          "runId": "42537213478",
+          "attempt": 1,
+          "observedAt": "2026-11-08T23:52:10.695Z"
+        },
+        {
+          "appId": 2157560,
+          "status": "published",
+          "runId": "42537213478",
+          "attempt": 1,
+          "observedAt": "2026-11-08T23:52:10.741Z"
+        },
+        {
+          "appId": 1498570,
+          "status": "published",
+          "runId": "42537213478",
+          "attempt": 1,
+          "observedAt": "2026-11-08T23:52:10.766Z"
         }
       ]
     }
