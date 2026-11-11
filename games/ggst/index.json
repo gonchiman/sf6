@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "appId": 1384160,
   "sourceUrl": "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=1384160",
-  "generatedAt": "2026-11-11T12:07:27.356Z",
+  "generatedAt": "2026-11-11T12:22:30.492Z",
   "days": [
     {
       "date": "2026-11-02",
@@ -79,10 +79,10 @@
     {
       "date": "2026-11-11",
       "path": "days/2026-11-11.json",
-      "sha256": "fe57d2d75375d356dcc83b4a8f81ac36c5a13ebdabe516cca8f7a7a2e6beb9f0",
-      "observationCount": 49,
+      "sha256": "32dba7c4509fb631ea5aa15dd7692a97052c6cfa35935416c1f6f67151c793e0",
+      "observationCount": 50,
       "firstObservedAt": "2026-11-11T00:07:10.979Z",
-      "lastObservedAt": "2026-11-11T12:07:14.646Z"
+      "lastObservedAt": "2026-11-11T12:22:14.180Z"
     }
   ]
 }
