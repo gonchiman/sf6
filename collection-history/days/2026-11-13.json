@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-13",
+  "checkedAt": "2026-11-13T00:23:54.450Z",
+  "slots": [
+    {
+      "scheduledAt": "2026-11-13T00:07:00.000Z",
+      "games": [
+        {
+          "appId": 1364780,
+          "status": "published",
+          "runId": "43334441313",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:07:11.402Z"
+        },
+        {
+          "appId": 1778820,
+          "status": "published",
+          "runId": "43334441313",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:07:11.544Z"
+        },
+        {
+          "appId": 1384160,
+          "status": "published",
+          "runId": "43334441313",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:07:11.583Z"
+        },
+        {
+          "appId": 2157560,
+          "status": "published",
+          "runId": "43334441313",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:07:11.738Z"
+        },
+        {
+          "appId": 1498570,
+          "status": "published",
+          "runId": "43334441313",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:07:11.948Z"
+        }
+      ]
+    },
+    {
+      "scheduledAt": "2026-11-13T00:22:00.000Z",
+      "games": [
+        {
+          "appId": 1364780,
+          "status": "published",
+          "runId": "43336485069",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:22:11.949Z"
+        },
+        {
+          "appId": 1778820,
+          "status": "published",
+          "runId": "43336485069",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:22:11.966Z"
+        },
+        {
+          "appId": 1384160,
+          "status": "published",
+          "runId": "43336485069",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:22:12.025Z"
+        },
+        {
+          "appId": 2157560,
+          "status": "published",
+          "runId": "43336485069",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:22:12.135Z"
+        },
+        {
+          "appId": 1498570,
+          "status": "published",
+          "runId": "43336485069",
+          "attempt": 1,
+          "observedAt": "2026-11-13T00:22:12.228Z"
+        }
+      ]
+    }
+  ]
+}
