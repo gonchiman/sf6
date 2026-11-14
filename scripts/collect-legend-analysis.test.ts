@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import test from 'node:test'
-import { runLegendAnalysisCollection, summarizeLegendAnalysisCaptureReport } from './collect-legend-analysis.ts'
+import { runLegendAnalysisCollection, runLegendRankedMatchCollection, summarizeLegendAnalysisCaptureReport } from './collect-legend-analysis.ts'
 import type { LegendAnalysisTransport } from './collect-legend-analysis.ts'
 import { LEGEND_ANALYSIS_CONDITIONS, LegendAnalysisDomError } from './lib/legend-analysis-dom.ts'
 import { legendAnalysisPathWithin } from './lib/legend-analysis-files.ts'
@@ -106,6 +106,71 @@ test('explicit player opt-in persists v2 fields with public IDs and a separate p
   assert.doesNotMatch(JSON.stringify(players), /accountKey|profile\/|cookies|storageState|synthetic-secret/)
   assert.doesNotMatch(JSON.stringify(result), /Synthetic player|playerName|accountKey/)
   assert.doesNotMatch(await readFile(resolve(data.output, 'public', manifest.datasets[0].path), 'utf8'), /Synthetic player|playerName|entry-1/)
+})
+
+test('split collection saves the verified ranking first, then adds counts for the same rows without reading the ranking again', async t => {
+  const data = await fixture(t)
+  withPlayers(data.transport)
+  let rankingBudget: number | undefined
+  data.transport.fetchPlayerRankedMatches = async () => { assert.fail('ranking phase opened a profile for match counts') }
+  const first = await runLegendAnalysisCollection({ storageState: state, outputDirectory: data.output, includePlayers: true, rankingOnly: true }, {
+    now, launch: async (_state, _signal, _env, includePlayers, profileCapture, maxRequests) => {
+      assert.equal(includePlayers, true)
+      assert.equal(profileCapture, undefined)
+      rankingBudget = maxRequests
+      return data.transport
+    },
+  })
+  assert.equal(first.succeeded, true)
+  assert.equal(data.calls.close, 1)
+  const path = resolve(data.output, 'public', 'players', `${first.report.datasetId}.json`)
+  const original = await readFile(path, 'utf8'), ranking = JSON.parse(original)
+  assert.equal(ranking.schemaVersion, 4)
+  assert.equal(ranking.rankedMatchAvailability, undefined)
+  assert.equal(ranking.rankedMatchScope, undefined)
+  assert.equal(ranking.players[0].rankedMatchCount, undefined)
+
+  data.transport.initialize = async () => assert.fail('profile collection initialized the ranking reader')
+  data.transport.fetchPage = async () => assert.fail('profile collection read a ranking page')
+  const visited: string[] = []
+  data.transport.fetchPlayerRankedMatches = async (id, characters) => {
+    visited.push(id)
+    return Object.fromEntries(characters.map(character => [character, visited.length - 1]))
+  }
+  const later = () => new Date('2026-10-16T01:03:00.000Z')
+  const second = await runLegendRankedMatchCollection({ storageState: state, ranking }, { now: later,
+    launch: async (_state, _signal, _env, includePlayers, profileCapture, maxRequests) => {
+      assert.equal(includePlayers, true)
+      assert.deepEqual(profileCapture, { act: { id: 'act-13', label: 'Act 13' }, firstPlayerId: '0000000001', characterIds: ['ryu'] })
+      assert.equal(rankingBudget! + maxRequests!, 2000)
+      return data.transport
+    },
+  })
+  assert.equal(second.succeeded, true)
+  assert.deepEqual(second.supplement, { schemaVersion: 1, datasetId: first.report.datasetId, generatedAt: later().toISOString(),
+    rankedMatchScope: { actId: 'act-13', mode: 'ranked', collectionStartedAt: later().toISOString(), collectionEndedAt: later().toISOString() },
+    counts: [{ id: 'entry-1', playerId: '0000000001', characterId: 'ryu', rankedMatchCount: 0 },
+      { id: 'entry-2', playerId: '0000000002', characterId: 'ryu', rankedMatchCount: 1 }] })
+  assert.deepEqual(visited, ['0000000001', '0000000002'])
+  assert.equal(data.calls.act, 2)
+  assert.equal(data.calls.close, 2)
+  assert.equal(await readFile(path, 'utf8'), original)
+
+  data.transport.fetchPlayerRankedMatches = async (id) => {
+    if (id === '0000000001') return { ryu: 50 }
+    throw new LegendAnalysisDomError('http-denied')
+  }
+  data.transport.getDiagnostics = () => ({ requestCount: 4, lastAttemptedPage: null, successfulReadCount: 0,
+    lastStep: 'profile-filter', lastErrorCode: 'http-denied',
+    humanVerification: { wafHeaderChecked: true, wafAction: 'captcha', domDetected: false } })
+  const stopped = await runLegendRankedMatchCollection({ storageState: state, ranking }, { now: later, launch: async () => data.transport })
+  assert.equal(stopped.succeeded, false)
+  assert.equal(stopped.report.status, 'partial')
+  assert.equal(stopped.report.profileReadCount, 1)
+  assert.equal(stopped.report.humanVerification?.wafAction, 'captcha')
+  assert.deepEqual(stopped.supplement, { schemaVersion: 1, datasetId: first.report.datasetId, generatedAt: later().toISOString(),
+    rankedMatchAvailability: { status: 'unavailable', reason: 'access-unavailable', checkedAt: later().toISOString() } })
+  assert.equal(await readFile(path, 'utf8'), original)
 })
 
 test('incomplete player capture writes only failure manifests and no fabricated or partial rows', async t => {

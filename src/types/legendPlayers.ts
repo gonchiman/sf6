@@ -35,11 +35,29 @@ export interface LegendRankedMatchAvailability {
   checkedAt: string
 }
 
+export interface LegendRankedMatchCount {
+  id: string
+  playerId: string
+  characterId: string
+  rankedMatchCount: number
+}
+
+/** The final match count result for one previously published ranking capture. */
+export type LegendRankedMatchSupplement = {
+  schemaVersion: 1
+  datasetId: string
+  generatedAt: string
+} & (
+  { rankedMatchScope: LegendRankedMatchScope; counts: LegendRankedMatchCount[]; rankedMatchAvailability?: never }
+  | { rankedMatchAvailability: LegendRankedMatchAvailability; rankedMatchScope?: never; counts?: never }
+)
+
 /** Separately stored from the existing aggregate-only Legend dataset. */
 export interface LegendPlayersDataset extends Pick<LegendAnalysisDataset,
   'id' | 'captureStartedAt' | 'captureEndedAt' | 'generatedAt' | 'source' |
   'act' | 'definitionVersion' | 'membershipRule' | 'conditions' | 'totalCount' | 'validation'> {
-  schemaVersion: 1 | 2 | 3
+  /** Version 4 stores the ranking before the independent match count result. */
+  schemaVersion: 1 | 2 | 3 | 4
   players: LegendPlayerRow[]
   /** Required in schemaVersion 2; never infer a profile collection time from ranking times. */
   rankedMatchScope?: LegendRankedMatchScope

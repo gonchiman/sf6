@@ -10,8 +10,8 @@ import type { LegendCollectionRun } from './legendCollectionHistory.ts'
 
 let server: ViteDevServer
 let Page: ComponentType
-let CaptureInfo: ComponentType<{ dataset: LegendPlayersDataset }>
-let MatchSummary: ComponentType<{ dataset: LegendPlayersDataset }>
+let CaptureInfo: ComponentType<import('react').ComponentProps<typeof import('../components/LegendPlayersPage.tsx').LegendPlayersCaptureInfo>>
+let MatchSummary: ComponentType<import('react').ComponentProps<typeof import('../components/LegendPlayersPage.tsx').LegendPlayersMatchSummary>>
 let Table: ComponentType<{ rows: readonly LegendPlayerRow[]; names: ReadonlyMap<string, string> | null }>
 let ResultsDialog: ComponentType<import('react').ComponentProps<typeof import('../components/LegendCollectionResults.tsx').LegendCollectionResultsDialog>>
 before(async () => {
@@ -27,7 +27,7 @@ before(async () => {
 })
 after(async () => { await server?.close() })
 
-function dataset(version: 1 | 2 | 3): LegendPlayersDataset {
+function dataset(version: 1 | 2 | 3 | 4): LegendPlayersDataset {
   const value: LegendPlayersDataset = {
     schemaVersion: version, id: 'legend-2026-11-05T00-00-00-000Z', captureStartedAt: '2026-11-05T00:00:00.000Z',
     captureEndedAt: '2026-11-05T00:02:00.000Z', generatedAt: '2026-11-05T00:06:00.000Z',
@@ -92,6 +92,16 @@ test('legacy captures remain uncollected rather than being labelled failed', () 
   assert.match(renderSummary(value), />対戦数：未取得<\/span>/)
   assert.doesNotMatch(html, /取得失敗|対戦数取得区間|00:05:00/)
   assert.deepEqual(finalCells(renderTable(value)), ['未取得', '未取得'])
+})
+
+test('split rankings display immediately with a pending match count and preserve the ranking interval', () => {
+  const value = dataset(4), html = renderInfo(value)
+  assert.match(renderSummary(value), />対戦数：取得待ち<\/span>/)
+  assert.match(html, /<dt>対戦数<\/dt><dd>取得待ち<\/dd>/)
+  assert.ok(html.includes(`dateTime="${value.captureEndedAt}"`))
+  assert.deepEqual(finalCells(renderTable(value)), ['未取得', '未取得'])
+  assert.match(renderToStaticMarkup(createElement(MatchSummary, { dataset: value, state: 'unavailable' })), /対戦数：未取得/)
+  assert.match(renderToStaticMarkup(createElement(MatchSummary, { dataset: value, state: 'error' })), /対戦数：読込失敗/)
 })
 
 test('collection results remain available before a player snapshot has loaded', () => {

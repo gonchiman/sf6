@@ -3,10 +3,11 @@ import { japaneseCharacterNames } from '../lib/characterNames'
 import { loadCharacterManifest } from '../lib/characters'
 import { timestampLabel } from '../lib/dateTime'
 import { legendPlayersFeed } from '../lib/legendPlayersFeed'
-import { filterLegendPlayers, legendPlayerCharacterOptions } from '../lib/legendPlayers'
+import { applyLegendRankedMatchSupplement, filterLegendPlayers, legendPlayerCharacterOptions } from '../lib/legendPlayers'
+import { startPublishedDataRefresh } from '../lib/publishedDataRefresh'
 import { usePublishedData } from '../lib/usePublishedData'
 import { useLegendCollectionHistory } from '../lib/useLegendCollectionHistory'
-import type { LegendPlayersDataset } from '../types/legendPlayers'
+import type { LegendPlayersDataset, LegendRankedMatchSupplement } from '../types/legendPlayers'
 import { DataLoadState } from './DataLoadState'
 import { ContentTabs } from './ContentTabs'
 import { LegendCollectionResults } from './LegendCollectionResults'
@@ -20,6 +21,10 @@ import '../legend-players.css'
 type DatasetState = { key: string; version: number } & (
   { status: 'loading' | 'error' } | { status: 'ready'; dataset: LegendPlayersDataset }
 )
+type MatchSupplementState = { key: string } & (
+  { status: 'error' } | { status: 'ready'; value: LegendRankedMatchSupplement }
+)
+type MatchReadState = 'waiting' | 'unavailable' | 'error'
 const integerFormat = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 0 })
 const CHARTS = [['rank', '順位とMR'], ['characters', 'キャラ別掲載数'], ['mr', 'MR帯の分布']] as const
 const VIEWS = [['table', 'プレイヤー一覧'], ['chart', 'グラフ']] as const
@@ -27,13 +32,18 @@ type Chart = typeof CHARTS[number][0]
 type View = typeof VIEWS[number][0]
 type Selection = { captureId: string; rowId: string; source: 'chart' | 'table' }
 
-export function LegendPlayersMatchSummary({ dataset }: { dataset: LegendPlayersDataset }) {
-  return <span className="monthly-statistics-panel-summary">対戦数：{dataset.rankedMatchScope
-    ? `${dataset.act.label}・ランクマッチ（Act全期間）`
-    : dataset.rankedMatchAvailability ? '取得失敗' : '未取得'}</span>
+function matchStatusLabel(dataset: LegendPlayersDataset, state?: MatchReadState): string {
+  return dataset.rankedMatchAvailability ? '取得失敗' : state === 'error' ? '読込失敗'
+    : dataset.schemaVersion === 4 && state !== 'unavailable' ? '取得待ち' : '未取得'
 }
 
-export function LegendPlayersCaptureInfo({ dataset }: { dataset: LegendPlayersDataset }) {
+export function LegendPlayersMatchSummary({ dataset, state }: { dataset: LegendPlayersDataset; state?: MatchReadState }) {
+  return <span className="monthly-statistics-panel-summary" aria-live="polite">対戦数：{dataset.rankedMatchScope
+    ? `${dataset.act.label}・ランクマッチ（Act全期間）`
+    : matchStatusLabel(dataset, state)}</span>
+}
+
+export function LegendPlayersCaptureInfo({ dataset, state }: { dataset: LegendPlayersDataset; state?: MatchReadState }) {
   return <dl className="legend-players-capture">
     <div><dt>対象</dt><dd>{dataset.act.label} · {dataset.conditions.region === 'all' ? '全地域' : dataset.conditions.region}
       {' · '}{dataset.conditions.platform === 'all' ? '全プラットフォーム' : dataset.conditions.platform}</dd></div>
@@ -44,6 +54,8 @@ export function LegendPlayersCaptureInfo({ dataset }: { dataset: LegendPlayersDa
       {' 〜 '}<time dateTime={dataset.rankedMatchScope.collectionEndedAt}>{timestampLabel(dataset.rankedMatchScope.collectionEndedAt)}</time></dd></div>}
     {dataset.rankedMatchAvailability && <div><dt>対戦数</dt><dd>取得失敗{' · '}
       <time dateTime={dataset.rankedMatchAvailability.checkedAt}>{timestampLabel(dataset.rankedMatchAvailability.checkedAt)}</time></dd></div>}
+    {dataset.schemaVersion === 4 && !dataset.rankedMatchScope && !dataset.rankedMatchAvailability
+      && <div><dt>対戦数</dt><dd>{matchStatusLabel(dataset, state)}</dd></div>}
   </dl>
 }
 
@@ -57,6 +69,7 @@ export function LegendPlayersPage() {
   const { status, publication, selectedId, setSelectedId, refreshError, retry } = usePublishedData(legendPlayersFeed)
   const collectionHistory = useLegendCollectionHistory()
   const [loaded, setLoaded] = useState<DatasetState | null>(null)
+  const [matchSupplement, setMatchSupplement] = useState<MatchSupplementState | null>(null)
   const [datasetVersion, setDatasetVersion] = useState(0)
   const [names, setNames] = useState<ReadonlyMap<string, string> | null>(null)
   const [namesError, setNamesError] = useState(false)
@@ -89,7 +102,52 @@ export function LegendPlayersPage() {
   }, [publication, descriptor, requestKey, datasetVersion])
 
   const current = loaded?.key === requestKey && loaded.version === datasetVersion ? loaded : null
-  const dataset = current?.status === 'ready' ? current.dataset : null
+  const ranking = current?.status === 'ready' ? current.dataset : null
+  const supplementKey = publication?.source === 'history' && ranking?.schemaVersion === 4
+    ? `${publication.baseUrl}${ranking.id}` : null
+
+  useEffect(() => {
+    if (!publication || !descriptor || !supplementKey) return
+    const controller = new AbortController()
+    const selection = { publication, descriptor, key: supplementKey }
+    let pending = false
+    let complete = false
+    async function refreshMatches() {
+      if (pending || complete || controller.signal.aborted) return
+      pending = true
+      try {
+        const value = await legendPlayersFeed.loadRankedMatchSupplement(selection.publication, selection.descriptor, controller.signal)
+        if (controller.signal.aborted) return
+        complete = value !== null
+        setMatchSupplement(value ? { key: selection.key, status: 'ready', value } : null)
+      } catch {
+        if (!controller.signal.aborted) setMatchSupplement({ key: selection.key, status: 'error' })
+      } finally {
+        pending = false
+      }
+    }
+    void refreshMatches()
+    const stopRefresh = startPublishedDataRefresh(() => { void refreshMatches() })
+    return () => {
+      controller.abort()
+      stopRefresh()
+    }
+  }, [publication, descriptor, supplementKey])
+
+  const currentMatch = matchSupplement?.key === supplementKey ? matchSupplement : null
+  const failedMatchRun = ranking?.schemaVersion === 4 && collectionHistory.runs.find(run =>
+    run.datasetId === ranking.id && run.rankingCount === ranking.totalCount && run.endedAt >= ranking.captureEndedAt)
+  const failedMatchAt = failedMatchRun && failedMatchRun.outcome === 'partial' ? failedMatchRun.endedAt : null
+  const dataset = useMemo(() => {
+    if (!ranking || ranking.schemaVersion !== 4) return ranking
+    const supplement = currentMatch?.status === 'ready' ? currentMatch.value : null
+    if (supplement) return applyLegendRankedMatchSupplement(ranking, supplement)
+    if (failedMatchAt) return { ...ranking,
+      rankedMatchAvailability: { status: 'unavailable' as const, reason: 'collection-failed' as const, checkedAt: failedMatchAt } }
+    return ranking
+  }, [ranking, currentMatch, failedMatchAt])
+  const matchReadState: MatchReadState = currentMatch?.status === 'error' ? 'error'
+    : supplementKey && ranking?.id === descriptors[0]?.id ? 'waiting' : 'unavailable'
   const visiblePlayers = useMemo(() => filterLegendPlayers(dataset?.players ?? [], filters), [dataset, filters])
   const characterOptions = useMemo(() => legendPlayerCharacterOptions(dataset?.players ?? [], names, filters.characterId),
     [dataset, names, filters.characterId])
@@ -136,7 +194,7 @@ export function LegendPlayersPage() {
         <span className="monthly-statistics-panel-summary" role="status" aria-live="polite" aria-atomic="true" aria-label="表示件数">
           {integerFormat.format(visiblePlayers.length)} / {integerFormat.format(dataset.totalCount)} 件
         </span>
-        <LegendPlayersMatchSummary dataset={dataset} />
+        <LegendPlayersMatchSummary dataset={dataset} state={matchReadState} />
       </div>}>
         <div className="win-rates-filters legend-players-filters">
           <label className="legend-players-name-filter"><span>プレイヤー名</span>
@@ -184,7 +242,7 @@ export function LegendPlayersPage() {
         <span>アカウント×キャラ</span>
         {publication?.source === 'bundled' && descriptors.length > 0 && <span>同梱データ</span>}
       </div>
-      {dataset && <LegendPlayersCaptureInfo dataset={dataset} />}
+      {dataset && <LegendPlayersCaptureInfo dataset={dataset} state={matchReadState} />}
       {(refreshError || legacyCollectionStatus) && <div className="legend-players-status" role="status">
         {refreshError && <span>更新確認失敗</span>}
         {legacyCollectionStatus && <span>最新取得：{availabilityLabel}{' · '}

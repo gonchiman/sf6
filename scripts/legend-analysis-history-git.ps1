@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory)]
-  [ValidateSet('prepare', 'save-data', 'save-result')]
+  [ValidateSet('prepare', 'save-data', 'save-matches', 'save-result')]
   [string]$Action
 )
 
@@ -36,6 +36,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Unable to configure Legend history author' }
 if ($Action -eq 'save-data') {
   git add -- public
   $message = 'Save daily Legend analysis'
+} elseif ($Action -eq 'save-matches') {
+  git add -- match-counts
+  $message = 'Save daily Legend ranked match counts'
 } else {
   git add -- collection-history/legend-runs.json
   $message = 'Save Legend collection result'

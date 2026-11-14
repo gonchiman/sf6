@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { LEGEND_ANALYSIS_SOURCE, LEGEND_ANALYSIS_VALIDATION_CHECKS } from './legendAnalysis.ts'
-import { createLegendPlayersDescriptor, filterLegendPlayers, legendPlayerCharacterOptions, parseLegendPlayersDataset, parseLegendPlayersDescriptor,
-  parseLegendPlayersManifest, sortLegendPlayers } from './legendPlayers.ts'
+import { applyLegendRankedMatchSupplement, createLegendPlayersDescriptor, filterLegendPlayers, legendPlayerCharacterOptions,
+  parseLegendPlayersDataset, parseLegendPlayersDescriptor, parseLegendPlayersManifest, parseLegendRankedMatchSupplement,
+  sortLegendPlayers } from './legendPlayers.ts'
 import { createLegendPlayersFeed } from './legendPlayersFeed.ts'
-import type { LegendPlayersDataset, LegendPlayersManifest } from '../types/legendPlayers.ts'
+import type { LegendPlayersDataset, LegendPlayersManifest, LegendRankedMatchSupplement } from '../types/legendPlayers.ts'
 
 function dataset(day = '28'): LegendPlayersDataset {
   return {
@@ -42,6 +43,21 @@ function rankingOnlyDataset(day = '28'): LegendPlayersDataset {
   return { ...value, schemaVersion: 3,
     rankedMatchAvailability: { status: 'unavailable', reason: 'access-unavailable', checkedAt: `2026-10-${day}T00:01:30.000Z` },
     players: value.players.map(({ rankedMatchCount: _count, ...row }) => row),
+  }
+}
+
+function splitRankingDataset(): LegendPlayersDataset {
+  const { rankedMatchAvailability: _availability, ...value } = rankingOnlyDataset()
+  return { ...value, schemaVersion: 4 }
+}
+
+function matchSupplement(ranking: LegendPlayersDataset): LegendRankedMatchSupplement {
+  return {
+    schemaVersion: 1, datasetId: ranking.id, generatedAt: '2026-10-28T01:15:00.000Z',
+    rankedMatchScope: { actId: ranking.act.id, mode: 'ranked', collectionStartedAt: '2026-10-28T00:05:00.000Z',
+      collectionEndedAt: '2026-10-28T01:14:00.000Z' },
+    counts: ranking.players.map(({ id, playerId, characterId }, index) => ({ id, playerId: playerId!, characterId,
+      rankedMatchCount: index * 120 })).reverse(),
   }
 }
 
@@ -331,6 +347,68 @@ test('new-field sorting keeps missing legacy fields last in both directions and 
 
 const remote = 'https://history.example/public/players/', local = '/sf6/data/legend-players/'
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
+
+test('split ranking accepts only complete ranking rows and no embedded profile result', () => {
+  const ranking = splitRankingDataset(), supplement = matchSupplement(ranking)
+  assert.deepEqual(parseLegendPlayersDataset(ranking, createLegendPlayersDescriptor(ranking)), ranking)
+  assert.throws(() => parseLegendPlayersDataset({ ...ranking, rankedMatchScope: supplement.rankedMatchScope }), /schemaVersion 4/)
+  assert.throws(() => parseLegendPlayersDataset({ ...ranking, rankedMatchAvailability: rankingOnlyDataset().rankedMatchAvailability }), /schemaVersion 4/)
+  assert.throws(() => parseLegendPlayersDataset({ ...ranking, players: enrichedDataset().players }), /unknown field/)
+})
+
+test('a supplement matches capture, Act, time and every account-character before applying any counts', () => {
+  const ranking = splitRankingDataset(), supplement = matchSupplement(ranking)
+  const merged = applyLegendRankedMatchSupplement(ranking, parseLegendRankedMatchSupplement(supplement, ranking))
+  assert.equal(merged.captureEndedAt, ranking.captureEndedAt)
+  assert.equal(merged.rankedMatchScope?.collectionEndedAt, '2026-10-28T01:14:00.000Z')
+  assert.deepEqual(merged.players.map(row => row.rankedMatchCount), [0, 120, 240])
+  assert.ok(ranking.players.every(row => row.rankedMatchCount === undefined))
+
+  const { counts, rankedMatchScope } = supplement
+  for (const invalid of [
+    { ...supplement, datasetId: dataset('27').id },
+    { ...supplement, generatedAt: ranking.captureEndedAt },
+    { ...supplement, rankedMatchScope: { ...rankedMatchScope, actId: 'act-14' } },
+    { ...supplement, rankedMatchScope: { ...rankedMatchScope, collectionStartedAt: ranking.captureStartedAt } },
+    { ...supplement, counts: counts!.slice(1) },
+    { ...supplement, counts: [counts![1], ...counts!.slice(1)] },
+    { ...supplement, counts: [{ ...counts![0], playerId: '0000000020' }, ...counts!.slice(1)] },
+    { ...supplement, counts: [{ ...counts![0], characterId: 'ryu' }, ...counts!.slice(1)] },
+    { ...supplement, counts: [{ ...counts![0], rankedMatchCount: -1 }, ...counts!.slice(1)] },
+  ]) assert.throws(() => parseLegendRankedMatchSupplement(invalid, ranking))
+
+  const failed = { schemaVersion: 1, datasetId: ranking.id, generatedAt: supplement.generatedAt,
+    rankedMatchAvailability: rankingOnlyDataset().rankedMatchAvailability }
+  assert.deepEqual(parseLegendRankedMatchSupplement(failed, ranking), failed)
+  assert.throws(() => parseLegendRankedMatchSupplement({ ...failed, counts }, ranking), /conflicting/)
+  assert.throws(() => parseLegendRankedMatchSupplement(failed, rankingOnlyDataset()), /schemaVersion 4/)
+})
+
+test('ranking loads without waiting for matches; a missing supplement can appear and is cached only after validation', async () => {
+  const ranking = splitRankingDataset(), supplement = matchSupplement(ranking), requests: string[] = []
+  let outcome: unknown = null
+  const feed = createLegendPlayersFeed({ historyBaseUrl: remote, localBaseUrl: local, fetch: async (input, init) => {
+    const url = String(input)
+    requests.push(url)
+    if (url === `${remote}index.json`) return json(manifest([ranking]))
+    if (url.startsWith(remote)) return json(ranking)
+    assert.equal(url, `https://history.example/match-counts/${ranking.id}.json`)
+    assert.equal(init?.credentials, 'omit')
+    assert.equal(init?.cache, 'no-store')
+    return outcome ? json(outcome) : new Response(null, { status: 404 })
+  } })
+  const publication = await feed.loadPublication(), descriptor = createLegendPlayersDescriptor(ranking)
+  assert.deepEqual(await feed.loadDataset(publication, descriptor), ranking)
+  assert.equal(requests.length, 2)
+  const loadSupplement = () => feed.loadRankedMatchSupplement(publication, descriptor, new AbortController().signal)
+  assert.equal(await loadSupplement(), null)
+  outcome = { ...supplement, datasetId: dataset('27').id }
+  await assert.rejects(loadSupplement, /capture mismatch/)
+  outcome = supplement
+  assert.deepEqual(await loadSupplement(), supplement)
+  assert.deepEqual(await loadSupplement(), supplement)
+  assert.equal(requests.length, 5)
+})
 
 test('feed loads a complete player publication, omits credentials, and caches the verified body', async () => {
   const capture = dataset(), requests: string[] = []

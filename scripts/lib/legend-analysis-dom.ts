@@ -387,6 +387,7 @@ export async function observeLegendAnalysisRoster(): Promise<{ roster: Array<{ c
 export interface LegendAnalysisPageReaderOptions {
   characterIds?: string[]
   includePlayers?: boolean
+  profileCapture?: { act: { id: string; label: string }; firstPlayerId: string; characterIds: readonly string[] }
   signal?: AbortSignal
   minIntervalMs?: number
   maxRequests?: number
@@ -407,6 +408,19 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
   let act: { id: string; label: string } | null = null
   let characterIds = options.characterIds ? [...options.characterIds] : []
   let ready = false
+  if (options.profileCapture) {
+    const { act: expectedAct, firstPlayerId, characterIds: verifiedCharacters } = options.profileCapture
+    if (!options.includePlayers || !/^act-\d+$/.test(expectedAct.id) || expectedAct.label !== `Act ${expectedAct.id.slice(4)}`
+      || !/^\d{1,20}$/.test(firstPlayerId) || !verifiedCharacters.length || new Set(verifiedCharacters).size !== verifiedCharacters.length) {
+      throw new LegendAnalysisDomError('invalid-request')
+    }
+    act = { ...expectedAct }
+    characterIds = [...verifiedCharacters]
+    firstPlayUrl = `https://www.streetfighter.com/6/buckler/ja-jp/profile/${firstPlayerId}/play`
+    // The previous ranking reader has a different clock. Reserve a full interval at handoff.
+    lastNavigation = now()
+    ready = true
+  }
   let requestCount = 0, profileRetryCount = 0
   let lastStep: LegendAnalysisReaderStep = 'idle'
   let lastErrorCode: LegendAnalysisDomErrorCode | null = null
@@ -506,6 +520,8 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
     const deadline = now() + 10000
     while (true) {
       check()
+      await observeHumanVerification()
+      if (humanVerification.domDetected === true) throw new LegendAnalysisDomError('http-denied')
       const value = await page.evaluate(observeLegendAnalysisAct)
       if (value) return value
       if (now() >= deadline) throw new LegendAnalysisDomError('act-unconfirmed')
@@ -607,7 +623,7 @@ export function createLegendAnalysisPageReader(page: Page, options: LegendAnalys
     },
     async fetchPage(pageNumber: number, url: string): Promise<LegendAnalysisPage> {
       if (running) throw new LegendAnalysisDomError('concurrent-read')
-      if (!act || !ready || !legendAnalysisPageUrlMatches(url, pageNumber)) throw new LegendAnalysisDomError('invalid-request')
+      if (options.profileCapture || !act || !ready || !legendAnalysisPageUrlMatches(url, pageNumber)) throw new LegendAnalysisDomError('invalid-request')
       running = true
       try {
         const previous = lastAccepted

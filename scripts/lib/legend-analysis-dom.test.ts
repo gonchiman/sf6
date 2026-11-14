@@ -219,6 +219,24 @@ test('profile collection waits for the matching mode response and stable ranked 
   assert.deepEqual(await data.reader.fetchPlayerRankedMatches('12345', ['ryu']), { ryu: 0 })
 })
 
+test('a profile reader tied to a saved ranking checks the same Act and keeps the existing request gate', async () => {
+  const data = fixture({ includePlayers: true,
+    profileCapture: { act: { id: 'act-13', label: 'Act 13' }, firstPlayerId: '12345', characterIds: ['ryu'] } })
+  await assert.rejects(data.reader.initialize(), { code: 'invalid-request' })
+  await assert.rejects(data.reader.fetchPage(1, legendAnalysisPageUrl(1)), { code: 'invalid-request' })
+  await assert.rejects(data.reader.fetchPlayerRankedMatches('12345', ['arjun']), { code: 'invalid-request' })
+  assert.equal(data.navigations.length, 0)
+  assert.deepEqual(await data.reader.fetchPlayerRankedMatches('12345', ['ryu']), { ryu: 42 })
+  await data.reader.confirmAct()
+  data.changeAct()
+  await assert.rejects(data.reader.confirmAct(), { code: 'act-changed' })
+  data.showSharedChallenge()
+  await assert.rejects(data.reader.confirmAct(), { code: 'http-denied' })
+  assert.ok(data.navigations.every(url => url.endsWith('/profile/12345/play')))
+  assert.ok(data.starts[0] >= 5000)
+  assert.ok(data.starts.slice(1).every((value, index) => value - data.starts[index] >= 5000))
+})
+
 test('profile collection fails closed on scope, missing values and unmatched filter responses', async () => {
   const aggregateOnly = fixture(); await aggregateOnly.reader.initialize()
   await assert.rejects(aggregateOnly.reader.fetchPlayerRankedMatches('12345', ['ryu']), /invalid-request/)
@@ -532,7 +550,7 @@ test('header-confirmed human verification stops once even on success/server stat
   const external = data.reader.getDiagnostics().humanVerification; external.domDetected = true
   assert.equal(data.reader.getDiagnostics().humanVerification.domDetected, false)
   await data.reader.confirmAct()
-  assert.deepEqual(data.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: null })
+  assert.deepEqual(data.reader.getDiagnostics().humanVerification, { wafHeaderChecked: true, wafAction: null, domDetected: false })
   data.redirect()
   await assert.rejects(data.reader.fetchPage(2, legendAnalysisPageUrl(2)), /condition-mismatch/)
   assert.deepEqual(data.reader.getDiagnostics().humanVerification, { wafHeaderChecked: false, wafAction: null, domDetected: null })
