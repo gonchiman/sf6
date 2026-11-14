@@ -2,6 +2,20 @@
   "schemaVersion": 1,
   "runs": [
     {
+      "runId": "43537203131",
+      "runAttempt": 1,
+      "trigger": "schedule",
+      "startedAt": "2026-11-14T00:54:37.233Z",
+      "endedAt": "2026-11-14T00:59:25.682Z",
+      "outcome": "partial",
+      "phase": "profiles",
+      "reason": "captcha",
+      "lastAttemptedPage": null,
+      "datasetId": "legend-2026-11-14T00-54-57-985Z",
+      "rankingCount": 505,
+      "rankedMatchCount": 0
+    },
+    {
       "runId": "43342164529",
       "runAttempt": 1,
       "trigger": "schedule",
