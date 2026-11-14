@@ -58,7 +58,8 @@ export async function runLegendDaily(dependencies: {
   let result
   try {
     result = await (dependencies.collect ?? runLegendAnalysisCollection)({ storageState: session.storageState,
-      outputDirectory: LEGEND_DAILY_OUTPUT, includePlayers, browserEnvironment: rankDistributionCloudBrowserEnvironment(env) })
+      outputDirectory: LEGEND_DAILY_OUTPUT, includePlayers, rankingOnly: includePlayers,
+      browserEnvironment: rankDistributionCloudBrowserEnvironment(env) })
   } catch { throw new LegendDailyError('collection') }
   const safeReport = summarizeLegendAnalysisCaptureReport(result.report)
   const logReport = dependencies.logReport ?? (report => console.log(JSON.stringify({ capture: report })))
@@ -76,7 +77,7 @@ export async function runLegendDaily(dependencies: {
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
   if (args.length === 1 && args[0] === '--help') {
-    console.log('レジェンド帯の日次取得。固定mainのGitHub hosted Windows専用。--collect で保存認証をメモリ内だけで再利用し、集計JSONと、有効化された場合はプレイヤー一覧を用意します。')
+    console.log('レジェンド帯ランキングの日次取得。固定mainのGitHub hosted Windows専用。--collect で集計JSONと、有効化された場合はプレイヤー一覧を用意します。')
     return
   }
   if (args.length !== 1 || args[0] !== '--collect') {
@@ -95,7 +96,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   } finally {
     if (isAllowedLegendDailyExecution(process.env) && process.env.LEGEND_PLAYERS_ENABLED === 'true') {
       try {
-        const run = buildLegendCollectionDraft(process.env, capture, reason, new Date().toISOString())
+        const run = buildLegendCollectionDraft(process.env, capture, reason, new Date().toISOString(), { rankingOnly: true })
         await writeLegendCollectionDraft(process.env, run)
       } catch {
         console.error('取得結果の記録を引き渡せませんでした。')

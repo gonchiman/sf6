@@ -13,6 +13,8 @@ import { summarizeLegendAnalysisCaptureReport } from './collect-legend-analysis.
 import { LEGEND_COLLECTION_HISTORY_PATH, parseLegendCollectionHistory } from '../src/lib/legendCollectionHistory.ts'
 import { buildLegendCollectionDraft, finalizeLegendCollectionRun, writeLegendCollectionDraft } from './lib/legend-collection-run.ts'
 import { updateLegendCollectionHistory } from './record-legend-analysis-daily.ts'
+import { runLegendRankedMatchesDaily } from './collect-legend-ranked-matches-daily.ts'
+import { publishLegendMatchResult, readLegendMatchRanking, readPublishedLegendMatchResult } from './lib/legend-ranked-match-history.ts'
 
 const PRIVATE = 'synthetic-legend-session'
 const now = new Date('2026-10-16T13:30:00.000Z')
@@ -207,7 +209,7 @@ test('publisher uses fixed isolated bundle paths and the same workflow gate', as
 test('daily workflow isolates authentication and gates player files behind explicit manual or schedule opt-in', async () => {
   const workflow = await readFile(new URL('../.github/workflows/legend-analysis-daily.yml', import.meta.url), 'utf8')
   const git = await readFile(new URL('./legend-analysis-history-git.ps1', import.meta.url), 'utf8')
-  const [collect, publish, record] = workflow.split(/  (?:save-history|record-result):/)
+  const [collect, publish, match, saveMatch, record] = workflow.split(/^  (?:save-history|collect-matches|save-matches|record-result):/m)
   assert.match(workflow, /cron: '15 20 \* \* \*'/)
   assert.match(collect, /contents: read/)
   assert.doesNotMatch(collect, /contents: write/)
@@ -221,12 +223,25 @@ test('daily workflow isolates authentication and gates player files behind expli
   assert.match(workflow, /github\.event_name == 'schedule' && vars\.LEGEND_PLAYERS_DAILY_ENABLED == 'true'/)
   assert.match(publish, /-Action save-data/)
   assert.match(publish, /needs\.collect\.outputs\.collection_attempt/)
+  assert.match(match, /needs: \[collect, save-history\]/)
+  assert.match(match, /needs\.save-history\.outputs\.save_outcome == 'success'/)
+  assert.match(match, /contents: read/)
+  assert.doesNotMatch(match, /contents: write/)
+  assert.match(match, /BUCKLER_WEEKLY_SESSION: \$\{\{ secrets\.BUCKLER_WEEKLY_SESSION/)
+  assert.match(match, /path: \.local\/legend-analysis-daily\/match-output\/result\.json/)
+  assert.match(saveMatch, /needs: \[collect, save-history, collect-matches\]/)
+  assert.match(saveMatch, /needs\.collect-matches\.outputs\.artifact_ready == 'true'/)
+  assert.match(saveMatch, /needs\.collect-matches\.outputs\.collection_attempt/)
+  assert.match(saveMatch, /-Action save-matches/)
+  assert.doesNotMatch(saveMatch, /BUCKLER_WEEKLY_SESSION/)
   assert.match(record, /if: always\(\).*inputs\.include_players.*LEGEND_PLAYERS_DAILY_ENABLED/)
-  assert.match(record, /needs: \[collect, save-history\]/)
+  assert.match(record, /needs: \[collect, save-history, collect-matches, save-matches\]/)
   assert.match(record, /needs\.save-history\.result/)
+  assert.match(record, /LEGEND_MATCH_COLLECTION_RESULT: .*needs\.collect-matches\.outputs\.collection_result/)
   assert.match(record, /-Action save-result/)
   assert.doesNotMatch(record, /BUCKLER_WEEKLY_SESSION/)
   assert.match(git, /git add -- public/)
+  assert.match(git, /git add -- match-counts/)
   assert.match(git, /git add -- collection-history\/legend-runs\.json/)
   assert.doesNotMatch(git, /--force/)
 })
@@ -320,7 +335,7 @@ test('player collection settings fail closed and valid opt-in reaches both colle
   }
   const calls: string[] = []
   await runLegendDaily({ env: { ...environment(), LEGEND_PLAYERS_ENABLED: 'true' }, now: () => now,
-    collect: async options => { assert.equal(options.includePlayers, true); calls.push('collect'); return result(true) },
+    collect: async options => { assert.equal(options.includePlayers, true); assert.equal(options.rankingOnly, true); calls.push('collect'); return result(true) },
     validate: async (_path, includePlayers) => { assert.equal(includePlayers, true); calls.push('validate'); return { datasets: 1, entries: 500 } },
     logReport: () => {}, artifactReady: async () => { calls.push('artifact') } })
   assert.deepEqual(calls, ['collect', 'validate', 'artifact'])
@@ -334,7 +349,7 @@ async function bundleFixture(t: test.TestContext) {
   t.after(async () => { if (legendAnalysisPathWithin(parent, root)) await rm(root, { recursive: true, force: true }) })
   return root
 }
-async function writeBundle(root: string, includePlayers: boolean, day = '27', failed = false, playerSchemaVersion: 1 | 2 | 3 = 1) {
+async function writeBundle(root: string, includePlayers: boolean, day = '27', failed = false, playerSchemaVersion: 1 | 2 | 3 | 4 = 1) {
   const captured = `2026-10-${day}T00:00:00.000Z`
   const players = parseLegendPlayersDataset({ schemaVersion: 1, id: `legend-${captured.replace(/[:.]/g, '-')}`,
     captureStartedAt: captured, captureEndedAt: captured, generatedAt: captured,
@@ -343,9 +358,11 @@ async function writeBundle(root: string, includePlayers: boolean, day = '27', fa
     conditions: { region: 'all', platform: 'all', characters: 'all', users: 'source-default' }, totalCount: 1,
     players: [{ id: 'entry-1', playerName: '人工プレイヤー', characterId: 'ryu', rank: 1, masterRating: 2500 }],
     validation: { status: 'verified', coverage: 'all-listed-legend-entries', checks: [...LEGEND_ANALYSIS_VALIDATION_CHECKS], notes: ['人工テスト。'] } })
-  const playerDataset = playerSchemaVersion === 1 ? players : playerSchemaVersion === 3 ? parseLegendPlayersDataset({ ...players, schemaVersion: 3,
-    generatedAt: bundleGeneratedAt,
-    rankedMatchAvailability: { status: 'unavailable', reason: 'access-unavailable', checkedAt: bundleGeneratedAt },
+  const playerDataset = playerSchemaVersion === 1 ? players : playerSchemaVersion === 3 || playerSchemaVersion === 4
+    ? parseLegendPlayersDataset({ ...players, schemaVersion: playerSchemaVersion,
+    generatedAt: bundleGeneratedAt, ...(playerSchemaVersion === 3 ? {
+      rankedMatchAvailability: { status: 'unavailable', reason: 'access-unavailable', checkedAt: bundleGeneratedAt },
+    } : {}),
     players: players.players.map(row => ({ ...row, playerId: '0001234567', region: '日本', platform: 'Steam' }))
   }) : parseLegendPlayersDataset({ ...players, schemaVersion: 2,
     generatedAt: `2026-10-${day}T00:46:00.000Z`, rankedMatchScope: { actId: players.act.id, mode: 'ranked',
@@ -397,6 +414,92 @@ test('bundle publication retains player history across aggregate-only days and f
   assert.equal(JSON.parse(after['players/index.json']).availability.status, 'collection-failed')
   assert.equal(JSON.parse(after['players/index.json']).datasets.length, 1)
   assert.equal(JSON.parse(after['index.json']).datasets.length, 2)
+})
+
+async function splitMatchFixture(t: test.TestContext) {
+  const root = await bundleFixture(t)
+  const history = resolve(root, 'history'), incoming = resolve(root, 'incoming')
+  const datasetId = await writeBundle(incoming, true, '27', false, 4)
+  const env = { ...environment(), LEGEND_PLAYERS_ENABLED: 'true', GITHUB_RUN_ID: '42426148449',
+    GITHUB_RUN_ATTEMPT: '1', LEGEND_COLLECTION_ATTEMPT: '1',
+    LEGEND_COLLECTION_RESULT: JSON.stringify({
+      runId: '42426148449', runAttempt: 1, trigger: 'schedule', startedAt: '2026-10-27T00:00:00.000Z',
+      endedAt: bundleGeneratedAt, outcome: 'partial', phase: 'profiles', reason: null,
+      lastAttemptedPage: null, datasetId, rankingCount: 1, rankedMatchCount: 0,
+    }) }
+  await publishLegendDailyBundle(incoming, resolve(history, 'public'), true, bundleGeneratedAt)
+  const ranking = await readLegendMatchRanking(history, env)
+  const checkedAt = '2026-10-29T02:00:00.000Z'
+  const supplement = { schemaVersion: 1 as const, datasetId, generatedAt: checkedAt,
+    rankedMatchScope: { actId: ranking.act.id, mode: 'ranked' as const, collectionStartedAt: checkedAt, collectionEndedAt: checkedAt },
+    counts: [{ id: ranking.players[0].id, playerId: ranking.players[0].playerId!, characterId: ranking.players[0].characterId,
+      rankedMatchCount: 0 }] }
+  return { root, history, env, datasetId, ranking, checkedAt, supplement }
+}
+
+test('a match result is published only against its previously saved ranking and cannot change the ranking or an immutable match result', async t => {
+  const { root, history, env, datasetId, ranking, supplement } = await splitMatchFixture(t)
+  const output = resolve(root, 'match-output', 'result.json')
+  const savedRanking = await bundleSnapshot(resolve(history, 'public'))
+  assert.equal(await readPublishedLegendMatchResult(history, ranking), null)
+  const calls: string[] = []
+  assert.equal(await runLegendRankedMatchesDaily({ env, history, output, now: () => new Date(supplement.generatedAt),
+    collect: async options => {
+      assert.equal(options.ranking.id, datasetId)
+      assert.equal(env.BUCKLER_WEEKLY_SESSION, undefined)
+      assert.equal(options.storageState.cookies[0].value, PRIVATE)
+      assert.deepEqual(options.browserEnvironment, { PATH: 'test-path' })
+      calls.push('collect')
+      return { ...result(true), supplement }
+    },
+    logReport: () => {},
+    recordResult: async (_env, value) => { assert.deepEqual(value, { datasetId, reason: null }); calls.push('report') },
+    artifactReady: async () => { calls.push('artifact') },
+  }), true)
+  assert.deepEqual(calls, ['collect', 'report', 'artifact'])
+  await publishLegendMatchResult(output, history, ranking)
+  await publishLegendMatchResult(output, history, ranking)
+  assert.deepEqual(await readPublishedLegendMatchResult(history, ranking), supplement)
+  const changed = { ...supplement, counts: [{ ...supplement.counts[0], rankedMatchCount: 1 }] }
+  await writeFile(output, JSON.stringify(changed))
+  await assert.rejects(publishLegendMatchResult(output, history, ranking), /同じ取得回/)
+  await writeFile(output, JSON.stringify({ ...changed, counts: [{ ...changed.counts[0], playerId: '999' }] }))
+  await assert.rejects(publishLegendMatchResult(output, history, ranking), /account-character mismatch/)
+  assert.deepEqual(await readPublishedLegendMatchResult(history, ranking), supplement)
+  assert.deepEqual(await bundleSnapshot(resolve(history, 'public')), savedRanking)
+})
+
+test('CAPTCHA stops the separate match job but preserves rankings and an unavailable match result, and reruns do not contact Buckler', async t => {
+  const { root, history, env, datasetId, ranking, checkedAt } = await splitMatchFixture(t)
+  const firstOutput = resolve(root, 'first-output', 'result.json'), rerunOutput = resolve(root, 'rerun-output', 'result.json')
+  const failed = { schemaVersion: 1 as const, datasetId, generatedAt: checkedAt,
+    rankedMatchAvailability: { status: 'unavailable' as const, reason: 'access-unavailable' as const, checkedAt } }
+  let collected = 0, ready = 0
+  const dependencies = { history, now: () => new Date(checkedAt),
+    collect: async () => {
+      collected++
+      const report = { ...result(false).report, reason: 'access-unavailable' as const,
+        humanVerification: { wafHeaderChecked: true, wafAction: 'captcha' as const, domDetected: true } }
+      return { succeeded: false, report, supplement: failed }
+    },
+    logReport: () => {}, artifactReady: async () => { ready++ },
+  }
+  assert.equal(await runLegendRankedMatchesDaily({ ...dependencies, env: { ...env, GITHUB_RUN_ATTEMPT: '2' }, output: rerunOutput,
+    recordResult: async () => { throw new Error('rerun must not change the recorded outcome') },
+  }), false)
+  assert.equal(collected, 0)
+  assert.equal(await runLegendRankedMatchesDaily({ ...dependencies, env: { ...env }, output: firstOutput,
+    recordResult: async (_env, value) => assert.deepEqual(value, { datasetId, reason: 'captcha' }),
+  }), false)
+  await publishLegendMatchResult(firstOutput, history, ranking)
+  assert.equal(await runLegendRankedMatchesDaily({ ...dependencies, env: { ...env, GITHUB_RUN_ATTEMPT: '2' }, output: rerunOutput,
+    recordResult: async (_env, value) => assert.deepEqual(value, { datasetId, reason: 'access-unavailable' }),
+  }), false)
+  assert.equal(collected, 1)
+  assert.equal(ready, 2)
+  await publishLegendMatchResult(rerunOutput, history, ranking)
+  assert.deepEqual(await readPublishedLegendMatchResult(history, ranking), failed)
+  assert.deepEqual(await readLegendMatchRanking(history, env), ranking)
 })
 
 test('bundle input mismatches and invalid player files cannot modify either existing history family', async t => {

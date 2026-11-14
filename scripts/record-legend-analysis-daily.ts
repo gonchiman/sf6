@@ -15,7 +15,12 @@ export async function updateLegendCollectionHistory(historyDirectory: string, ru
   const path = resolve(historyDirectory, LEGEND_COLLECTION_HISTORY_PATH), directory = dirname(path)
   await checkLegendAnalysisParents(directory)
   const old = await legendAnalysisFileInfo(path) ? parseLegendCollectionHistory(await readLegendAnalysisJson(path)).runs : []
-  const runs = [run, ...old.filter(item => item.runId !== run.runId || item.runAttempt !== run.runAttempt)]
+  const previous = old.find(item => item.runId === run.runId && item.runAttempt === run.runAttempt)
+  // A retried downstream job can have less diagnostic evidence than the original collection.
+  const nextRun = previous?.datasetId && previous.datasetId === run.datasetId
+    && (previous.outcome === 'succeeded' || ((previous.reason === 'captcha' || previous.reason === 'human-verification')
+      && run.outcome === 'partial')) ? previous : run
+  const runs = [nextRun, ...old.filter(item => item.runId !== run.runId || item.runAttempt !== run.runAttempt)]
     .sort((a, b) => b.endedAt.localeCompare(a.endedAt) || b.runId.length - a.runId.length
       || b.runId.localeCompare(a.runId) || b.runAttempt - a.runAttempt)
     .slice(0, LEGEND_COLLECTION_HISTORY_LIMIT)
