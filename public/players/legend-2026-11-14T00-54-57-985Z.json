@@ -1,0 +1,5110 @@
+{
+  "schemaVersion": 3,
+  "id": "legend-2026-11-14T00-54-57-985Z",
+  "captureStartedAt": "2026-11-14T00:54:57.985Z",
+  "captureEndedAt": "2026-11-14T00:57:58.060Z",
+  "generatedAt": "2026-11-14T00:59:25.682Z",
+  "source": {
+    "url": "https://www.streetfighter.com/6/buckler/ja-jp/ranking/master",
+    "title": "Buckler MRランキング",
+    "population": "公式MRランキングにレジェンドとして掲載されたアカウント×キャラクターのエントリー",
+    "metric": "掲載エントリーのプレイヤー情報・キャラクター・順位・MR",
+    "unit": "account-character",
+    "notes": [
+      "公式レジェンド掲載の取得期間内の断面。",
+      "1行はアカウント×キャラクター単位。",
+      "対戦数は取得未完了。途中の取得値や過去の値は補完しない。"
+    ]
+  },
+  "act": {
+    "id": "act-14",
+    "label": "Act 14"
+  },
+  "definitionVersion": "legend-listed-v1",
+  "membershipRule": "official-legend-badge",
+  "conditions": {
+    "region": "all",
+    "platform": "all",
+    "characters": "all",
+    "users": "source-default"
+  },
+  "totalCount": 505,
+  "players": [
+    {
+      "id": "entry-1",
+      "playerName": "orarinSycom",
+      "characterId": "ken",
+      "rank": 1,
+      "masterRating": 2161,
+      "playerId": "4088416704",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-2",
+      "playerName": "takepi",
+      "characterId": "jp",
+      "rank": 2,
+      "masterRating": 2151,
+      "playerId": "3139764784",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-3",
+      "playerName": "kincho",
+      "characterId": "terry",
+      "rank": 3,
+      "masterRating": 2119,
+      "playerId": "3400122682",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-4",
+      "playerName": "＠Sycom | 今井 翔太",
+      "characterId": "elena",
+      "rank": 4,
+      "masterRating": 2108,
+      "playerId": "3161507819",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-5",
+      "playerName": "Naooonn",
+      "characterId": "gouki",
+      "rank": 5,
+      "masterRating": 2104,
+      "playerId": "2011017170",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-6",
+      "playerName": "2BASSA",
+      "characterId": "juri",
+      "rank": 6,
+      "masterRating": 2103,
+      "playerId": "3623007729",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-7",
+      "playerName": "orarinSycom",
+      "characterId": "mai",
+      "rank": 7,
+      "masterRating": 2088,
+      "playerId": "4088416704",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-8",
+      "playerName": "YHC-餅",
+      "characterId": "dhalsim",
+      "rank": 8,
+      "masterRating": 2081,
+      "playerId": "3833467565",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-9",
+      "playerName": "HAITANI",
+      "characterId": "chunli",
+      "rank": 9,
+      "masterRating": 2077,
+      "playerId": "3304337807",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-10",
+      "playerName": "Shuto",
+      "characterId": "luke",
+      "rank": 10,
+      "masterRating": 2076,
+      "playerId": "1304269231",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-11",
+      "playerName": "あくたがわ",
+      "characterId": "manon",
+      "rank": 11,
+      "masterRating": 2066,
+      "playerId": "3708958378",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-12",
+      "playerName": "-DingChunQiu-",
+      "characterId": "cviper",
+      "rank": 11,
+      "masterRating": 2066,
+      "playerId": "1205448799",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-13",
+      "playerName": "Musclenoob",
+      "characterId": "ken",
+      "rank": 11,
+      "masterRating": 2066,
+      "playerId": "4127046537",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-14",
+      "playerName": "GjijiiG。",
+      "characterId": "marisa",
+      "rank": 14,
+      "masterRating": 2063,
+      "playerId": "1275506101",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-15",
+      "playerName": "NotPedro",
+      "characterId": "luke",
+      "rank": 15,
+      "masterRating": 2058,
+      "playerId": "2616132292",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-16",
+      "playerName": "Aurorabeam",
+      "characterId": "mai",
+      "rank": 16,
+      "masterRating": 2055,
+      "playerId": "2554118024",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-17",
+      "playerName": "Maroto",
+      "characterId": "mai",
+      "rank": 16,
+      "masterRating": 2055,
+      "playerId": "1997833069",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-18",
+      "playerName": "Samurai",
+      "characterId": "mai",
+      "rank": 16,
+      "masterRating": 2055,
+      "playerId": "1579225410",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-19",
+      "playerName": "jojotaro",
+      "characterId": "ryu",
+      "rank": 19,
+      "masterRating": 2053,
+      "playerId": "3838366890",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-20",
+      "playerName": "flandre",
+      "characterId": "vega",
+      "rank": 20,
+      "masterRating": 2051,
+      "playerId": "3360681654",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-21",
+      "playerName": "RANDUMB",
+      "characterId": "manon",
+      "rank": 21,
+      "masterRating": 2048,
+      "playerId": "2434754618",
+      "region": "ドイツ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-22",
+      "playerName": "infexiousdc",
+      "characterId": "vega",
+      "rank": 22,
+      "masterRating": 2047,
+      "playerId": "1789625988",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-23",
+      "playerName": "LeShar",
+      "characterId": "luke",
+      "rank": 22,
+      "masterRating": 2047,
+      "playerId": "1304761987",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-24",
+      "playerName": "noahtheprodigy",
+      "characterId": "luke",
+      "rank": 22,
+      "masterRating": 2047,
+      "playerId": "4248707238",
+      "region": "ドミニカ共和国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-25",
+      "playerName": "Lexx",
+      "characterId": "guile",
+      "rank": 22,
+      "masterRating": 2047,
+      "playerId": "3573170100",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-26",
+      "playerName": "karura",
+      "characterId": "marisa",
+      "rank": 26,
+      "masterRating": 2044,
+      "playerId": "2242457440",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-27",
+      "playerName": "jazzzzy",
+      "characterId": "luke",
+      "rank": 27,
+      "masterRating": 2042,
+      "playerId": "3552769545",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-28",
+      "playerName": "ONYX | えびはら",
+      "characterId": "ed",
+      "rank": 27,
+      "masterRating": 2042,
+      "playerId": "3927143850",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-29",
+      "playerName": "光のZeno",
+      "characterId": "blanka",
+      "rank": 29,
+      "masterRating": 2041,
+      "playerId": "2844369681",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-30",
+      "playerName": "Shuto",
+      "characterId": "ryu",
+      "rank": 30,
+      "masterRating": 2039,
+      "playerId": "1304269231",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-31",
+      "playerName": "BonchanRB",
+      "characterId": "sagat",
+      "rank": 31,
+      "masterRating": 2038,
+      "playerId": "2344551857",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-32",
+      "playerName": "PipokunですSycomの",
+      "characterId": "kimberly",
+      "rank": 32,
+      "masterRating": 2037,
+      "playerId": "1563022046",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-33",
+      "playerName": "ACQUA",
+      "characterId": "blanka",
+      "rank": 33,
+      "masterRating": 2036,
+      "playerId": "1666271660",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-34",
+      "playerName": "ほしがた｜VLY",
+      "characterId": "cammy",
+      "rank": 34,
+      "masterRating": 2033,
+      "playerId": "1887837213",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-35",
+      "playerName": "あくたがわ",
+      "characterId": "elena",
+      "rank": 34,
+      "masterRating": 2033,
+      "playerId": "3708958378",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-36",
+      "playerName": "ChrisWong",
+      "characterId": "luke",
+      "rank": 34,
+      "masterRating": 2033,
+      "playerId": "2606550179",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-37",
+      "playerName": "Ayasaka",
+      "characterId": "aki",
+      "rank": 37,
+      "masterRating": 2032,
+      "playerId": "2690800233",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-38",
+      "playerName": "Torimeshi",
+      "characterId": "dhalsim",
+      "rank": 38,
+      "masterRating": 2031,
+      "playerId": "1396895782",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-39",
+      "playerName": "みすとめーる@iMstMaiL",
+      "characterId": "kimberly",
+      "rank": 39,
+      "masterRating": 2030,
+      "playerId": "2833619033",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-40",
+      "playerName": "ひぐち！",
+      "characterId": "guile",
+      "rank": 40,
+      "masterRating": 2029,
+      "playerId": "3550331968",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-41",
+      "playerName": "hikaru_shiftne",
+      "characterId": "aki",
+      "rank": 41,
+      "masterRating": 2028,
+      "playerId": "3434437969",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-42",
+      "playerName": "Beslem",
+      "characterId": "gouki",
+      "rank": 42,
+      "masterRating": 2025,
+      "playerId": "1395654500",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-43",
+      "playerName": "よっさん",
+      "characterId": "juri",
+      "rank": 43,
+      "masterRating": 2024,
+      "playerId": "1941946020",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-44",
+      "playerName": "FENNEL shion",
+      "characterId": "ken",
+      "rank": 43,
+      "masterRating": 2024,
+      "playerId": "4159348779",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-45",
+      "playerName": "MIDORI",
+      "characterId": "arjun",
+      "rank": 45,
+      "masterRating": 2023,
+      "playerId": "4209399895",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-46",
+      "playerName": "おずわるど",
+      "characterId": "yasmine",
+      "rank": 45,
+      "masterRating": 2023,
+      "playerId": "1176225270",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-47",
+      "playerName": "leith",
+      "characterId": "chunli",
+      "rank": 47,
+      "masterRating": 2021,
+      "playerId": "3557204906",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-48",
+      "playerName": "FENNEL tako",
+      "characterId": "kimberly",
+      "rank": 48,
+      "masterRating": 2020,
+      "playerId": "3188331272",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-49",
+      "playerName": "m1Ng",
+      "characterId": "jp",
+      "rank": 49,
+      "masterRating": 2019,
+      "playerId": "1514694876",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-50",
+      "playerName": "SOL|vaio",
+      "characterId": "ken",
+      "rank": 50,
+      "masterRating": 2017,
+      "playerId": "2214000504",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-51",
+      "playerName": "シュラリス",
+      "characterId": "lily",
+      "rank": 51,
+      "masterRating": 2016,
+      "playerId": "4036668756",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-52",
+      "playerName": "勇者きょーすけ",
+      "characterId": "ingrid",
+      "rank": 52,
+      "masterRating": 2015,
+      "playerId": "2802315103",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-53",
+      "playerName": "kurapop",
+      "characterId": "ingrid",
+      "rank": 53,
+      "masterRating": 2014,
+      "playerId": "2327682411",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-54",
+      "playerName": "生駒デビル",
+      "characterId": "elena",
+      "rank": 53,
+      "masterRating": 2014,
+      "playerId": "3722662728",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-55",
+      "playerName": "Nth＿satoru",
+      "characterId": "rashid",
+      "rank": 55,
+      "masterRating": 2013,
+      "playerId": "1732856596",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-56",
+      "playerName": "Hollywood RobTV",
+      "characterId": "cammy",
+      "rank": 56,
+      "masterRating": 2012,
+      "playerId": "1688569381",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-57",
+      "playerName": "Kakeru",
+      "characterId": "jp",
+      "rank": 56,
+      "masterRating": 2012,
+      "playerId": "2862828890",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-58",
+      "playerName": "Broski",
+      "characterId": "arjun",
+      "rank": 56,
+      "masterRating": 2012,
+      "playerId": "3570388222",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-59",
+      "playerName": "ayayan",
+      "characterId": "ken",
+      "rank": 56,
+      "masterRating": 2012,
+      "playerId": "1867448864",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-60",
+      "playerName": "StealthTX",
+      "characterId": "jp",
+      "rank": 60,
+      "masterRating": 2011,
+      "playerId": "2220727906",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-61",
+      "playerName": "DARK817",
+      "characterId": "vega",
+      "rank": 60,
+      "masterRating": 2011,
+      "playerId": "3886271173",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-62",
+      "playerName": "Ares",
+      "characterId": "deejay",
+      "rank": 60,
+      "masterRating": 2011,
+      "playerId": "3013224978",
+      "region": "ドミニカ共和国",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-63",
+      "playerName": "なっつだよ",
+      "characterId": "terry",
+      "rank": 63,
+      "masterRating": 2010,
+      "playerId": "4210220386",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-64",
+      "playerName": "コウキ＿ルーク使いの人",
+      "characterId": "luke",
+      "rank": 63,
+      "masterRating": 2010,
+      "playerId": "4067979107",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-65",
+      "playerName": "3Dolla",
+      "characterId": "yasmine",
+      "rank": 65,
+      "masterRating": 2009,
+      "playerId": "3043868153",
+      "region": "ジャマイカ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-66",
+      "playerName": "山田の隣",
+      "characterId": "rashid",
+      "rank": 66,
+      "masterRating": 2008,
+      "playerId": "2978676776",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-67",
+      "playerName": "アッキー",
+      "characterId": "deejay",
+      "rank": 66,
+      "masterRating": 2008,
+      "playerId": "3809483725",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-68",
+      "playerName": "真獣神化百鬼豪ゴッドストライク",
+      "characterId": "ken",
+      "rank": 68,
+      "masterRating": 2007,
+      "playerId": "1713289305",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-69",
+      "playerName": "semy28",
+      "characterId": "ryu",
+      "rank": 69,
+      "masterRating": 2006,
+      "playerId": "1256470244",
+      "region": "ドイツ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-70",
+      "playerName": "Kudryavka",
+      "characterId": "kimberly",
+      "rank": 70,
+      "masterRating": 2005,
+      "playerId": "3598144176",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-71",
+      "playerName": "ElChakotay",
+      "characterId": "arjun",
+      "rank": 71,
+      "masterRating": 2004,
+      "playerId": "1253940177",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-72",
+      "playerName": "こな７６",
+      "characterId": "ingrid",
+      "rank": 71,
+      "masterRating": 2004,
+      "playerId": "2664526989",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-73",
+      "playerName": "あくたがわ",
+      "characterId": "kimberly",
+      "rank": 71,
+      "masterRating": 2004,
+      "playerId": "3708958378",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-74",
+      "playerName": "@SycomのSeichi",
+      "characterId": "elena",
+      "rank": 71,
+      "masterRating": 2004,
+      "playerId": "1927204743",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-75",
+      "playerName": "モダコナ",
+      "characterId": "luke",
+      "rank": 71,
+      "masterRating": 2004,
+      "playerId": "1296555367",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-76",
+      "playerName": "Azzz",
+      "characterId": "blanka",
+      "rank": 71,
+      "masterRating": 2004,
+      "playerId": "2879168567",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-77",
+      "playerName": "GameIn_PC",
+      "characterId": "luke",
+      "rank": 77,
+      "masterRating": 2003,
+      "playerId": "3951487062",
+      "region": "ベルギー",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-78",
+      "playerName": "uriche",
+      "characterId": "marisa",
+      "rank": 77,
+      "masterRating": 2003,
+      "playerId": "2082970859",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-79",
+      "playerName": "NotPedro",
+      "characterId": "ken",
+      "rank": 77,
+      "masterRating": 2003,
+      "playerId": "2616132292",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-80",
+      "playerName": "反作用ボム2",
+      "characterId": "dhalsim",
+      "rank": 80,
+      "masterRating": 2002,
+      "playerId": "2336643469",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-81",
+      "playerName": "Gone Fishin'/IA",
+      "characterId": "sagat",
+      "rank": 80,
+      "masterRating": 2002,
+      "playerId": "1300061444",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-82",
+      "playerName": "ランガサミ/rangasamy",
+      "characterId": "honda",
+      "rank": 80,
+      "masterRating": 2002,
+      "playerId": "2016047651",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-83",
+      "playerName": "さなぎ-",
+      "characterId": "ken",
+      "rank": 80,
+      "masterRating": 2002,
+      "playerId": "1548282656",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-84",
+      "playerName": "infimum00",
+      "characterId": "cammy",
+      "rank": 84,
+      "masterRating": 2001,
+      "playerId": "1380930836",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-85",
+      "playerName": "めんたらこ",
+      "characterId": "zangief",
+      "rank": 84,
+      "masterRating": 2001,
+      "playerId": "2838390560",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-86",
+      "playerName": "SAKONOKO_GAME",
+      "characterId": "elena",
+      "rank": 84,
+      "masterRating": 2001,
+      "playerId": "3629694153",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-87",
+      "playerName": "AmuFGC",
+      "characterId": "vega",
+      "rank": 84,
+      "masterRating": 2001,
+      "playerId": "4061634342",
+      "region": "パキスタン",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-88",
+      "playerName": "真獣神化百鬼豪ゴッドストライク",
+      "characterId": "gouki",
+      "rank": 84,
+      "masterRating": 2001,
+      "playerId": "1713289305",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-89",
+      "playerName": "あーるえいち",
+      "characterId": "honda",
+      "rank": 84,
+      "masterRating": 2001,
+      "playerId": "2012930118",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-90",
+      "playerName": "いおりチャンネル",
+      "characterId": "ken",
+      "rank": 84,
+      "masterRating": 2001,
+      "playerId": "1343734406",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-91",
+      "playerName": "Daddynoob",
+      "characterId": "jp",
+      "rank": 91,
+      "masterRating": 2000,
+      "playerId": "1187116109",
+      "region": "ペルー",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-92",
+      "playerName": "Rerin/レリン",
+      "characterId": "jp",
+      "rank": 91,
+      "masterRating": 2000,
+      "playerId": "2832252939",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-93",
+      "playerName": "ElChakotay",
+      "characterId": "ingrid",
+      "rank": 91,
+      "masterRating": 2000,
+      "playerId": "1253940177",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-94",
+      "playerName": "定格電圧:AC100V",
+      "characterId": "cviper",
+      "rank": 91,
+      "masterRating": 2000,
+      "playerId": "1494813159",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-95",
+      "playerName": "Noble",
+      "characterId": "luke",
+      "rank": 91,
+      "masterRating": 2000,
+      "playerId": "2672012782",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-96",
+      "playerName": "hinao",
+      "characterId": "luke",
+      "rank": 91,
+      "masterRating": 2000,
+      "playerId": "2399060619",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-97",
+      "playerName": "jueks",
+      "characterId": "juri",
+      "rank": 91,
+      "masterRating": 2000,
+      "playerId": "3377168573",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-98",
+      "playerName": "taizen",
+      "characterId": "deejay",
+      "rank": 91,
+      "masterRating": 2000,
+      "playerId": "3749455195",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-99",
+      "playerName": "拳打曾狗君叼草坐臺敏腳踩威力狗",
+      "characterId": "cammy",
+      "rank": 99,
+      "masterRating": 1999,
+      "playerId": "2911445905",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-100",
+      "playerName": "Jackie-zhu",
+      "characterId": "dhalsim",
+      "rank": 100,
+      "masterRating": 1996,
+      "playerId": "4265082780",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-101",
+      "playerName": "シゲマツ",
+      "characterId": "blanka",
+      "rank": 100,
+      "masterRating": 1996,
+      "playerId": "1576585852",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-102",
+      "playerName": "キクラゲ",
+      "characterId": "blanka",
+      "rank": 102,
+      "masterRating": 1994,
+      "playerId": "2742666761",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-103",
+      "playerName": "NISHIKIN",
+      "characterId": "blanka",
+      "rank": 103,
+      "masterRating": 1993,
+      "playerId": "3913795402",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-104",
+      "playerName": "Johnny Football",
+      "characterId": "cviper",
+      "rank": 104,
+      "masterRating": 1991,
+      "playerId": "2685616938",
+      "region": "カナダ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-105",
+      "playerName": "3S｜Yoske",
+      "characterId": "cviper",
+      "rank": 104,
+      "masterRating": 1991,
+      "playerId": "2596827813",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-106",
+      "playerName": "NLNL",
+      "characterId": "luke",
+      "rank": 104,
+      "masterRating": 1991,
+      "playerId": "4029657578",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-107",
+      "playerName": "Taisei",
+      "characterId": "cviper",
+      "rank": 107,
+      "masterRating": 1989,
+      "playerId": "2116937999",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-108",
+      "playerName": "ダス＠PC",
+      "characterId": "cviper",
+      "rank": 107,
+      "masterRating": 1989,
+      "playerId": "2710540610",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-109",
+      "playerName": "inaba",
+      "characterId": "cviper",
+      "rank": 109,
+      "masterRating": 1988,
+      "playerId": "2521166079",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-110",
+      "playerName": "docmorales24",
+      "characterId": "dhalsim",
+      "rank": 110,
+      "masterRating": 1987,
+      "playerId": "1711733433",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-111",
+      "playerName": "JACK_DOLL",
+      "characterId": "juri",
+      "rank": 110,
+      "masterRating": 1987,
+      "playerId": "2215317639",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-112",
+      "playerName": "ハイテイ",
+      "characterId": "zangief",
+      "rank": 112,
+      "masterRating": 1986,
+      "playerId": "2028457703",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-113",
+      "playerName": "つぉーか",
+      "characterId": "guile",
+      "rank": 112,
+      "masterRating": 1986,
+      "playerId": "2047550234",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-114",
+      "playerName": "☆ GuN__SLinGa ☆",
+      "characterId": "rashid",
+      "rank": 112,
+      "masterRating": 1986,
+      "playerId": "3170323313",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-115",
+      "playerName": "良かったこのキャラで",
+      "characterId": "alex",
+      "rank": 115,
+      "masterRating": 1985,
+      "playerId": "2833718589",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-116",
+      "playerName": "ひへいへ",
+      "characterId": "marisa",
+      "rank": 115,
+      "masterRating": 1985,
+      "playerId": "1254633366",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-117",
+      "playerName": "SUNSUN@",
+      "characterId": "kimberly",
+      "rank": 117,
+      "masterRating": 1984,
+      "playerId": "3818872094",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-118",
+      "playerName": "IWILLKEEELYOU",
+      "characterId": "luke",
+      "rank": 118,
+      "masterRating": 1983,
+      "playerId": "1852755035",
+      "region": "トリニダード・トバゴ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-119",
+      "playerName": "Ｋ_Ｚ_Ｏ_",
+      "characterId": "arjun",
+      "rank": 119,
+      "masterRating": 1982,
+      "playerId": "3732472540",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-120",
+      "playerName": "infexiousdc",
+      "characterId": "marisa",
+      "rank": 119,
+      "masterRating": 1982,
+      "playerId": "1789625988",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-121",
+      "playerName": "ESTGhosty",
+      "characterId": "alex",
+      "rank": 121,
+      "masterRating": 1981,
+      "playerId": "3333140573",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-122",
+      "playerName": "あでりい",
+      "characterId": "ed",
+      "rank": 121,
+      "masterRating": 1981,
+      "playerId": "3297851278",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-123",
+      "playerName": "まさのんた",
+      "characterId": "cviper",
+      "rank": 123,
+      "masterRating": 1980,
+      "playerId": "1540615990",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-124",
+      "playerName": "SURINI",
+      "characterId": "kimberly",
+      "rank": 123,
+      "masterRating": 1980,
+      "playerId": "2963698637",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-125",
+      "playerName": "ミリたす",
+      "characterId": "terry",
+      "rank": 123,
+      "masterRating": 1980,
+      "playerId": "4251844658",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-126",
+      "playerName": "Hakkesshu",
+      "characterId": "deejay",
+      "rank": 123,
+      "masterRating": 1980,
+      "playerId": "1014958050",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-127",
+      "playerName": "IW | Stetik",
+      "characterId": "gouki",
+      "rank": 127,
+      "masterRating": 1979,
+      "playerId": "2218303431",
+      "region": "アルゼンチン",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-128",
+      "playerName": "Keyn",
+      "characterId": "jamie",
+      "rank": 127,
+      "masterRating": 1979,
+      "playerId": "1058376180",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-129",
+      "playerName": "JBJB",
+      "characterId": "rashid",
+      "rank": 127,
+      "masterRating": 1979,
+      "playerId": "1868364923",
+      "region": "ホンジュラス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-130",
+      "playerName": "Wassim",
+      "characterId": "jp",
+      "rank": 130,
+      "masterRating": 1978,
+      "playerId": "1961559697",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-131",
+      "playerName": "ChrisCCH",
+      "characterId": "ed",
+      "rank": 130,
+      "masterRating": 1978,
+      "playerId": "1730250145",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-132",
+      "playerName": "でんせつえすぴ～",
+      "characterId": "juri",
+      "rank": 130,
+      "masterRating": 1978,
+      "playerId": "2649234087",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-133",
+      "playerName": "めんたらこ",
+      "characterId": "cviper",
+      "rank": 133,
+      "masterRating": 1977,
+      "playerId": "2838390560",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-134",
+      "playerName": "LeviHakai.",
+      "characterId": "chunli",
+      "rank": 134,
+      "masterRating": 1976,
+      "playerId": "3914620036",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-135",
+      "playerName": "oPUPo",
+      "characterId": "ryu",
+      "rank": 134,
+      "masterRating": 1976,
+      "playerId": "2050884225",
+      "region": "イタリア",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-136",
+      "playerName": "tuxa",
+      "characterId": "chunli",
+      "rank": 136,
+      "masterRating": 1975,
+      "playerId": "1748456893",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-137",
+      "playerName": "hato",
+      "characterId": "cviper",
+      "rank": 136,
+      "masterRating": 1975,
+      "playerId": "3486673709",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-138",
+      "playerName": "nao:",
+      "characterId": "luke",
+      "rank": 136,
+      "masterRating": 1975,
+      "playerId": "1796241996",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-139",
+      "playerName": "Minimum",
+      "characterId": "aki",
+      "rank": 136,
+      "masterRating": 1975,
+      "playerId": "1561711575",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-140",
+      "playerName": "ネコ派です_ネッコ座ってます",
+      "characterId": "deejay",
+      "rank": 136,
+      "masterRating": 1975,
+      "playerId": "3437029140",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-141",
+      "playerName": "Nemo1127",
+      "characterId": "alex",
+      "rank": 141,
+      "masterRating": 1973,
+      "playerId": "3427012082",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-142",
+      "playerName": "覚醒マレミー",
+      "characterId": "vega",
+      "rank": 141,
+      "masterRating": 1973,
+      "playerId": "4151377769",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-143",
+      "playerName": "matcha",
+      "characterId": "jamie",
+      "rank": 143,
+      "masterRating": 1972,
+      "playerId": "4139763427",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-144",
+      "playerName": "Lazyboredom",
+      "characterId": "marisa",
+      "rank": 143,
+      "masterRating": 1972,
+      "playerId": "3780854153",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-145",
+      "playerName": "Unsung",
+      "characterId": "yasmine",
+      "rank": 145,
+      "masterRating": 1971,
+      "playerId": "2344463030",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-146",
+      "playerName": "卍†♨☯♨†卍｜ぬーどる（本人",
+      "characterId": "cammy",
+      "rank": 146,
+      "masterRating": 1970,
+      "playerId": "1497476764",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-147",
+      "playerName": "GalacticPS5",
+      "characterId": "chunli",
+      "rank": 146,
+      "masterRating": 1970,
+      "playerId": "2315269927",
+      "region": "アメリカ合衆国",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-148",
+      "playerName": "なっつだよ",
+      "characterId": "yasmine",
+      "rank": 146,
+      "masterRating": 1970,
+      "playerId": "4210220386",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-149",
+      "playerName": "Ctown88",
+      "characterId": "deejay",
+      "rank": 146,
+      "masterRating": 1970,
+      "playerId": "4178087416",
+      "region": "アメリカ合衆国",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-150",
+      "playerName": "くるみ、たまねぎ",
+      "characterId": "ingrid",
+      "rank": 150,
+      "masterRating": 1969,
+      "playerId": "3296509766",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-151",
+      "playerName": "guyguygief",
+      "characterId": "zangief",
+      "rank": 151,
+      "masterRating": 1968,
+      "playerId": "1890531407",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-152",
+      "playerName": "Ares",
+      "characterId": "chunli",
+      "rank": 151,
+      "masterRating": 1968,
+      "playerId": "2297268873",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-153",
+      "playerName": "ネコと和解せよ",
+      "characterId": "aki",
+      "rank": 151,
+      "masterRating": 1968,
+      "playerId": "4186916094",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-154",
+      "playerName": "ブッチンダ",
+      "characterId": "deejay",
+      "rank": 151,
+      "masterRating": 1968,
+      "playerId": "3739967834",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-155",
+      "playerName": "PC6Akira",
+      "characterId": "cammy",
+      "rank": 155,
+      "masterRating": 1966,
+      "playerId": "1529602025",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-156",
+      "playerName": "ネコと和解せよ",
+      "characterId": "arjun",
+      "rank": 155,
+      "masterRating": 1966,
+      "playerId": "4186916094",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-157",
+      "playerName": "Kilzyou",
+      "characterId": "mai",
+      "rank": 157,
+      "masterRating": 1965,
+      "playerId": "2082149929",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-158",
+      "playerName": "PhenomTheMoose",
+      "characterId": "cammy",
+      "rank": 158,
+      "masterRating": 1964,
+      "playerId": "2797811950",
+      "region": "ノルウェー",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-159",
+      "playerName": "ドドガマル_pc",
+      "characterId": "chunli",
+      "rank": 158,
+      "masterRating": 1964,
+      "playerId": "3158699417",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-160",
+      "playerName": "***************",
+      "characterId": "jamie",
+      "rank": 158,
+      "masterRating": 1964,
+      "playerId": "3143950497",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-161",
+      "playerName": "3S|しっくすびっと",
+      "characterId": "honda",
+      "rank": 158,
+      "masterRating": 1964,
+      "playerId": "3147134400",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-162",
+      "playerName": "medicine box",
+      "characterId": "ryu",
+      "rank": 158,
+      "masterRating": 1964,
+      "playerId": "2065771884",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-163",
+      "playerName": "三太郎　┃LaVISION。",
+      "characterId": "jamie",
+      "rank": 163,
+      "masterRating": 1963,
+      "playerId": "3782809273",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-164",
+      "playerName": "niruhiru PC",
+      "characterId": "guile",
+      "rank": 163,
+      "masterRating": 1963,
+      "playerId": "1981551637",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-165",
+      "playerName": "GTW-XiaoXu",
+      "characterId": "deejay",
+      "rank": 163,
+      "masterRating": 1963,
+      "playerId": "3140819469",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-166",
+      "playerName": "ばばばるじ",
+      "characterId": "cammy",
+      "rank": 166,
+      "masterRating": 1962,
+      "playerId": "2827969522",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-167",
+      "playerName": "Fuudo",
+      "characterId": "cviper",
+      "rank": 166,
+      "masterRating": 1962,
+      "playerId": "2884396961",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-168",
+      "playerName": "NEPHEW237142",
+      "characterId": "juri",
+      "rank": 166,
+      "masterRating": 1962,
+      "playerId": "3349960197",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-169",
+      "playerName": "pannel",
+      "characterId": "lily",
+      "rank": 166,
+      "masterRating": 1962,
+      "playerId": "3584985828",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-170",
+      "playerName": "GTW-XiaoZhai",
+      "characterId": "cammy",
+      "rank": 170,
+      "masterRating": 1961,
+      "playerId": "2786115728",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-171",
+      "playerName": "らおやむやむ☆ハイハイ謝謝♪",
+      "characterId": "vega",
+      "rank": 170,
+      "masterRating": 1961,
+      "playerId": "3816954641",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-172",
+      "playerName": "生駒デビル",
+      "characterId": "vega",
+      "rank": 170,
+      "masterRating": 1961,
+      "playerId": "3722662728",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-173",
+      "playerName": "rana",
+      "characterId": "guile",
+      "rank": 170,
+      "masterRating": 1961,
+      "playerId": "2164528577",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-174",
+      "playerName": "硝子ドール",
+      "characterId": "ingrid",
+      "rank": 174,
+      "masterRating": 1960,
+      "playerId": "3083442357",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-175",
+      "playerName": "zero",
+      "characterId": "ryu",
+      "rank": 174,
+      "masterRating": 1960,
+      "playerId": "2797379937",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-176",
+      "playerName": "ぱんだレッサー",
+      "characterId": "elena",
+      "rank": 176,
+      "masterRating": 1959,
+      "playerId": "2904980995",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-177",
+      "playerName": "孤独的楼",
+      "characterId": "ryu",
+      "rank": 176,
+      "masterRating": 1959,
+      "playerId": "4090019287",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-178",
+      "playerName": "fumi39dc_pc",
+      "characterId": "cammy",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "3026932565",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-179",
+      "playerName": "2BASSA",
+      "characterId": "cammy",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "3623007729",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-180",
+      "playerName": "Mitsu51",
+      "characterId": "ingrid",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "1874815982",
+      "region": "オランダ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-181",
+      "playerName": "KT_DakCorgi",
+      "characterId": "cviper",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "2448431071",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-182",
+      "playerName": "chima",
+      "characterId": "cviper",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "2082577772",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-183",
+      "playerName": "にこちん",
+      "characterId": "elena",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "4261254544",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-184",
+      "playerName": "IBSG Akatsuki",
+      "characterId": "terry",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "1065898247",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-185",
+      "playerName": "jojotaro",
+      "characterId": "gouki",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "3838366890",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-186",
+      "playerName": "zMetra",
+      "characterId": "marisa",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "3385348182",
+      "region": "アメリカ合衆国",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-187",
+      "playerName": "小走り。",
+      "characterId": "rashid",
+      "rank": 178,
+      "masterRating": 1958,
+      "playerId": "4113559157",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-188",
+      "playerName": "HideCatCHB",
+      "characterId": "cammy",
+      "rank": 188,
+      "masterRating": 1957,
+      "playerId": "2730208788",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-189",
+      "playerName": "アポロのチョコレート",
+      "characterId": "cviper",
+      "rank": 188,
+      "masterRating": 1957,
+      "playerId": "2731186024",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-190",
+      "playerName": "oPUPo",
+      "characterId": "mai",
+      "rank": 188,
+      "masterRating": 1957,
+      "playerId": "2050884225",
+      "region": "イタリア",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-191",
+      "playerName": "Bilibili_GM",
+      "characterId": "jamie",
+      "rank": 188,
+      "masterRating": 1957,
+      "playerId": "3554590600",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-192",
+      "playerName": "AKUMASAKI",
+      "characterId": "blanka",
+      "rank": 188,
+      "masterRating": 1957,
+      "playerId": "2502978758",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-193",
+      "playerName": "Elryonsof",
+      "characterId": "ryu",
+      "rank": 188,
+      "masterRating": 1957,
+      "playerId": "4063081378",
+      "region": "メキシコ",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-194",
+      "playerName": "Alphen",
+      "characterId": "cammy",
+      "rank": 194,
+      "masterRating": 1956,
+      "playerId": "1903752485",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-195",
+      "playerName": "Hand Me Downs",
+      "characterId": "sagat",
+      "rank": 194,
+      "masterRating": 1956,
+      "playerId": "4076601818",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-196",
+      "playerName": "nekro",
+      "characterId": "cviper",
+      "rank": 196,
+      "masterRating": 1955,
+      "playerId": "1156711127",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-197",
+      "playerName": "BIORENTE",
+      "characterId": "kimberly",
+      "rank": 196,
+      "masterRating": 1955,
+      "playerId": "1301015410",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-198",
+      "playerName": "Bens",
+      "characterId": "terry",
+      "rank": 196,
+      "masterRating": 1955,
+      "playerId": "4093633928",
+      "region": "チリ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-199",
+      "playerName": "ばやしこ｜VLY",
+      "characterId": "terry",
+      "rank": 196,
+      "masterRating": 1955,
+      "playerId": "3592602051",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-200",
+      "playerName": "りきたく",
+      "characterId": "vega",
+      "rank": 196,
+      "masterRating": 1955,
+      "playerId": "2768153202",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-201",
+      "playerName": "寝ることは大事",
+      "characterId": "luke",
+      "rank": 196,
+      "masterRating": 1955,
+      "playerId": "3627849065",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-202",
+      "playerName": "hikaru_shiftne",
+      "characterId": "arjun",
+      "rank": 202,
+      "masterRating": 1954,
+      "playerId": "3434437969",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-203",
+      "playerName": "inaba",
+      "characterId": "arjun",
+      "rank": 202,
+      "masterRating": 1954,
+      "playerId": "2521166079",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-204",
+      "playerName": "NAGA",
+      "characterId": "ingrid",
+      "rank": 202,
+      "masterRating": 1954,
+      "playerId": "2290710378",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-205",
+      "playerName": "Mitsu-is-sorry",
+      "characterId": "ingrid",
+      "rank": 202,
+      "masterRating": 1954,
+      "playerId": "2246819049",
+      "region": "オランダ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-206",
+      "playerName": "うにめる",
+      "characterId": "elena",
+      "rank": 202,
+      "masterRating": 1954,
+      "playerId": "1553815040",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-207",
+      "playerName": "えんでび",
+      "characterId": "blanka",
+      "rank": 202,
+      "masterRating": 1954,
+      "playerId": "2619615397",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-208",
+      "playerName": "草薙真吾",
+      "characterId": "luke",
+      "rank": 208,
+      "masterRating": 1953,
+      "playerId": "2984352546",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-209",
+      "playerName": "犀川創平@スト6",
+      "characterId": "ken",
+      "rank": 208,
+      "masterRating": 1953,
+      "playerId": "2794823972",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-210",
+      "playerName": "kazu",
+      "characterId": "vega",
+      "rank": 210,
+      "masterRating": 1952,
+      "playerId": "3642359226",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-211",
+      "playerName": "ついっぎー",
+      "characterId": "lily",
+      "rank": 210,
+      "masterRating": 1952,
+      "playerId": "1225663061",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-212",
+      "playerName": "vicg",
+      "characterId": "ken",
+      "rank": 210,
+      "masterRating": 1952,
+      "playerId": "3344433982",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-213",
+      "playerName": "nerizan",
+      "characterId": "zangief",
+      "rank": 213,
+      "masterRating": 1951,
+      "playerId": "2755554228",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-214",
+      "playerName": "ナショナル動かせ",
+      "characterId": "elena",
+      "rank": 213,
+      "masterRating": 1951,
+      "playerId": "1426292087",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-215",
+      "playerName": "SGN｜ルル",
+      "characterId": "terry",
+      "rank": 213,
+      "masterRating": 1951,
+      "playerId": "2028132599",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-216",
+      "playerName": "DugpaSorcerer",
+      "characterId": "vega",
+      "rank": 213,
+      "masterRating": 1951,
+      "playerId": "1714476719",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-217",
+      "playerName": "aiai",
+      "characterId": "juri",
+      "rank": 213,
+      "masterRating": 1951,
+      "playerId": "1245557136",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-218",
+      "playerName": "シミソラシド",
+      "characterId": "rashid",
+      "rank": 213,
+      "masterRating": 1951,
+      "playerId": "3658756049",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-219",
+      "playerName": "小明哥888",
+      "characterId": "cammy",
+      "rank": 219,
+      "masterRating": 1950,
+      "playerId": "3063664962",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-220",
+      "playerName": "Citizen",
+      "characterId": "yasmine",
+      "rank": 219,
+      "masterRating": 1950,
+      "playerId": "1246568393",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-221",
+      "playerName": "tubaki",
+      "characterId": "mai",
+      "rank": 219,
+      "masterRating": 1950,
+      "playerId": "3322178950",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-222",
+      "playerName": "Terry Or Mai",
+      "characterId": "vega",
+      "rank": 219,
+      "masterRating": 1950,
+      "playerId": "4087938262",
+      "region": "カナダ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-223",
+      "playerName": "KUSANAGI",
+      "characterId": "gouki",
+      "rank": 219,
+      "masterRating": 1950,
+      "playerId": "2094038840",
+      "region": "メキシコ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-224",
+      "playerName": "Aminechan",
+      "characterId": "luke",
+      "rank": 219,
+      "masterRating": 1950,
+      "playerId": "3271243072",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-225",
+      "playerName": "ファルコンタ",
+      "characterId": "ken",
+      "rank": 219,
+      "masterRating": 1950,
+      "playerId": "3696850095",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-226",
+      "playerName": "優しい麦茶",
+      "characterId": "alex",
+      "rank": 226,
+      "masterRating": 1949,
+      "playerId": "1082776866",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-227",
+      "playerName": "TAKEDA",
+      "characterId": "vega",
+      "rank": 226,
+      "masterRating": 1949,
+      "playerId": "1394321803",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-228",
+      "playerName": "おずわるど",
+      "characterId": "sagat",
+      "rank": 226,
+      "masterRating": 1949,
+      "playerId": "1176225270",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-229",
+      "playerName": "JOZ Mocchi",
+      "characterId": "gouki",
+      "rank": 226,
+      "masterRating": 1949,
+      "playerId": "1766348858",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-230",
+      "playerName": "GUILHERME LEMEZ",
+      "characterId": "guile",
+      "rank": 226,
+      "masterRating": 1949,
+      "playerId": "3814323799",
+      "region": "その他",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-231",
+      "playerName": "EMC2",
+      "characterId": "rashid",
+      "rank": 226,
+      "masterRating": 1949,
+      "playerId": "2486286264",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-232",
+      "playerName": "Ferreras",
+      "characterId": "cammy",
+      "rank": 232,
+      "masterRating": 1948,
+      "playerId": "1654644051",
+      "region": "その他",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-233",
+      "playerName": "PAPI",
+      "characterId": "mai",
+      "rank": 232,
+      "masterRating": 1948,
+      "playerId": "1955572134",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-234",
+      "playerName": "さうたむ",
+      "characterId": "cammy",
+      "rank": 234,
+      "masterRating": 1947,
+      "playerId": "2066976238",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-235",
+      "playerName": "cokaΣickey",
+      "characterId": "manon",
+      "rank": 234,
+      "masterRating": 1947,
+      "playerId": "1917947815",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-236",
+      "playerName": "SAMYUWENpc",
+      "characterId": "blanka",
+      "rank": 234,
+      "masterRating": 1947,
+      "playerId": "2010290402",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-237",
+      "playerName": "Minmi",
+      "characterId": "cviper",
+      "rank": 237,
+      "masterRating": 1946,
+      "playerId": "1936439955",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-238",
+      "playerName": "EYCPOYCC",
+      "characterId": "luke",
+      "rank": 237,
+      "masterRating": 1946,
+      "playerId": "3744430695",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-239",
+      "playerName": "Crown",
+      "characterId": "deejay",
+      "rank": 237,
+      "masterRating": 1946,
+      "playerId": "1387906551",
+      "region": "オランダ",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-240",
+      "playerName": "Babaaaaa",
+      "characterId": "manon",
+      "rank": 240,
+      "masterRating": 1945,
+      "playerId": "1900338329",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-241",
+      "playerName": "草薙真吾",
+      "characterId": "luke",
+      "rank": 240,
+      "masterRating": 1945,
+      "playerId": "2657437640",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-242",
+      "playerName": "fantia社長",
+      "characterId": "blanka",
+      "rank": 240,
+      "masterRating": 1945,
+      "playerId": "1409702096",
+      "region": "ソマリア",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-243",
+      "playerName": "Railgun",
+      "characterId": "cammy",
+      "rank": 243,
+      "masterRating": 1944,
+      "playerId": "4077676369",
+      "region": "ドイツ",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-244",
+      "playerName": "DarKsword",
+      "characterId": "chunli",
+      "rank": 243,
+      "masterRating": 1944,
+      "playerId": "1821430876",
+      "region": "モロッコ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-245",
+      "playerName": "NoKawaii NoLife",
+      "characterId": "sagat",
+      "rank": 243,
+      "masterRating": 1944,
+      "playerId": "3394804917",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-246",
+      "playerName": "DaigoTheBeasTV",
+      "characterId": "gouki",
+      "rank": 243,
+      "masterRating": 1944,
+      "playerId": "3466035121",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-247",
+      "playerName": "広島のKirara",
+      "characterId": "luke",
+      "rank": 243,
+      "masterRating": 1944,
+      "playerId": "3372732790",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-248",
+      "playerName": "Mando",
+      "characterId": "zangief",
+      "rank": 248,
+      "masterRating": 1943,
+      "playerId": "2004241872",
+      "region": "メキシコ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-249",
+      "playerName": "Kirito",
+      "characterId": "yasmine",
+      "rank": 248,
+      "masterRating": 1943,
+      "playerId": "3375379585",
+      "region": "ポーランド",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-250",
+      "playerName": "Pochoclo23",
+      "characterId": "yasmine",
+      "rank": 248,
+      "masterRating": 1943,
+      "playerId": "3987753314",
+      "region": "チリ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-251",
+      "playerName": "3S|しっくすびっと",
+      "characterId": "cviper",
+      "rank": 248,
+      "masterRating": 1943,
+      "playerId": "3147134400",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-252",
+      "playerName": "Karoshi_",
+      "characterId": "jamie",
+      "rank": 248,
+      "masterRating": 1943,
+      "playerId": "1018557117",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-253",
+      "playerName": "Acnis",
+      "characterId": "deejay",
+      "rank": 248,
+      "masterRating": 1943,
+      "playerId": "3710344308",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-254",
+      "playerName": "みそぷららら",
+      "characterId": "arjun",
+      "rank": 254,
+      "masterRating": 1942,
+      "playerId": "2814375598",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-255",
+      "playerName": "sngv",
+      "characterId": "mai",
+      "rank": 254,
+      "masterRating": 1942,
+      "playerId": "2394188268",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-256",
+      "playerName": "寝ることは大事",
+      "characterId": "mai",
+      "rank": 254,
+      "masterRating": 1942,
+      "playerId": "3627849065",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-257",
+      "playerName": "春日再临",
+      "characterId": "jamie",
+      "rank": 254,
+      "masterRating": 1942,
+      "playerId": "3543097926",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-258",
+      "playerName": "HJK Gaming｜みぜん",
+      "characterId": "juri",
+      "rank": 254,
+      "masterRating": 1942,
+      "playerId": "1936818548",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-259",
+      "playerName": "SivaKaeru",
+      "characterId": "lily",
+      "rank": 254,
+      "masterRating": 1942,
+      "playerId": "2528850923",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-260",
+      "playerName": "Magicarper",
+      "characterId": "deejay",
+      "rank": 254,
+      "masterRating": 1942,
+      "playerId": "2957108882",
+      "region": "スウェーデン",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-261",
+      "playerName": "Problem X",
+      "characterId": "alex",
+      "rank": 261,
+      "masterRating": 1941,
+      "playerId": "1205826705",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-262",
+      "playerName": "ハール/Haar",
+      "characterId": "ryu",
+      "rank": 261,
+      "masterRating": 1941,
+      "playerId": "4078938645",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-263",
+      "playerName": "osugi_bent",
+      "characterId": "cammy",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "3854029379",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-264",
+      "playerName": "byako",
+      "characterId": "jp",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "1213065008",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-265",
+      "playerName": "はんたーです",
+      "characterId": "zangief",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "4282222983",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-266",
+      "playerName": "Pat.Q",
+      "characterId": "ingrid",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "2366945728",
+      "region": "フィリピン",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-267",
+      "playerName": "JordonYaDig",
+      "characterId": "kimberly",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "2754196368",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-268",
+      "playerName": "ANDREJ",
+      "characterId": "sagat",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "2528401680",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-269",
+      "playerName": "KUSANAGI",
+      "characterId": "luke",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "4016597575",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-270",
+      "playerName": "Yu Nishinoya",
+      "characterId": "luke",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "2628353202",
+      "region": "ドミニカ共和国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-271",
+      "playerName": "お茶(・ω・)",
+      "characterId": "deejay",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "1257153934",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-272",
+      "playerName": "Shotaro",
+      "characterId": "ken",
+      "rank": 263,
+      "masterRating": 1940,
+      "playerId": "4288926697",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-273",
+      "playerName": "ACQUA",
+      "characterId": "arjun",
+      "rank": 273,
+      "masterRating": 1939,
+      "playerId": "1666271660",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-274",
+      "playerName": "おMew",
+      "characterId": "elena",
+      "rank": 273,
+      "masterRating": 1939,
+      "playerId": "1087266491",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-275",
+      "playerName": "まえうしろ",
+      "characterId": "vega",
+      "rank": 273,
+      "masterRating": 1939,
+      "playerId": "3547352577",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-276",
+      "playerName": "台灣最弱怪獸雞哥@Twitch",
+      "characterId": "blanka",
+      "rank": 273,
+      "masterRating": 1939,
+      "playerId": "3787537483",
+      "region": "バルバドス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-277",
+      "playerName": "ハマシカ",
+      "characterId": "ken",
+      "rank": 273,
+      "masterRating": 1939,
+      "playerId": "2710684227",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-278",
+      "playerName": "Emiy4_",
+      "characterId": "cammy",
+      "rank": 278,
+      "masterRating": 1938,
+      "playerId": "2714476334",
+      "region": "コンゴ民主共和国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-279",
+      "playerName": "Shaka",
+      "characterId": "dhalsim",
+      "rank": 278,
+      "masterRating": 1938,
+      "playerId": "3518861911",
+      "region": "アルゼンチン",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-280",
+      "playerName": "Kazunoko",
+      "characterId": "arjun",
+      "rank": 278,
+      "masterRating": 1938,
+      "playerId": "2626960876",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-281",
+      "playerName": "SpaceBoy",
+      "characterId": "yasmine",
+      "rank": 278,
+      "masterRating": 1938,
+      "playerId": "2431319348",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-282",
+      "playerName": "てるぼう",
+      "characterId": "terry",
+      "rank": 278,
+      "masterRating": 1938,
+      "playerId": "2161207026",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-283",
+      "playerName": "inaba",
+      "characterId": "vega",
+      "rank": 278,
+      "masterRating": 1938,
+      "playerId": "2521166079",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-284",
+      "playerName": "enigma",
+      "characterId": "honda",
+      "rank": 278,
+      "masterRating": 1938,
+      "playerId": "2604860301",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-285",
+      "playerName": "AmyDARC",
+      "characterId": "luke",
+      "rank": 278,
+      "masterRating": 1938,
+      "playerId": "3988790809",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-286",
+      "playerName": "yama",
+      "characterId": "aki",
+      "rank": 278,
+      "masterRating": 1938,
+      "playerId": "1351572443",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-287",
+      "playerName": "YOKOHAMA_TARO",
+      "characterId": "chunli",
+      "rank": 287,
+      "masterRating": 1937,
+      "playerId": "2262158909",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-288",
+      "playerName": "ざ・しー",
+      "characterId": "alex",
+      "rank": 287,
+      "masterRating": 1937,
+      "playerId": "4108890306",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-289",
+      "playerName": "Gone Fishin'/IA",
+      "characterId": "terry",
+      "rank": 287,
+      "masterRating": 1937,
+      "playerId": "1300061444",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-290",
+      "playerName": "hinao",
+      "characterId": "sagat",
+      "rank": 287,
+      "masterRating": 1937,
+      "playerId": "2399060619",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-291",
+      "playerName": "-总狮范-",
+      "characterId": "blanka",
+      "rank": 287,
+      "masterRating": 1937,
+      "playerId": "4237360538",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-292",
+      "playerName": "ded poor",
+      "characterId": "blanka",
+      "rank": 287,
+      "masterRating": 1937,
+      "playerId": "3255886008",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-293",
+      "playerName": "モダナー竹野",
+      "characterId": "lily",
+      "rank": 287,
+      "masterRating": 1937,
+      "playerId": "2417727022",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-294",
+      "playerName": "Im still alive",
+      "characterId": "jp",
+      "rank": 294,
+      "masterRating": 1936,
+      "playerId": "1488034947",
+      "region": "アメリカ合衆国",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-295",
+      "playerName": "Manon Bora lá",
+      "characterId": "manon",
+      "rank": 294,
+      "masterRating": 1936,
+      "playerId": "2469323975",
+      "region": "ブラジル",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-296",
+      "playerName": "じゅたろー",
+      "characterId": "chunli",
+      "rank": 294,
+      "masterRating": 1936,
+      "playerId": "3733329494",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-297",
+      "playerName": "AldoApache",
+      "characterId": "jamie",
+      "rank": 294,
+      "masterRating": 1936,
+      "playerId": "1403832331",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-298",
+      "playerName": "小铁塔柚子",
+      "characterId": "dhalsim",
+      "rank": 298,
+      "masterRating": 1935,
+      "playerId": "2147156278",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-299",
+      "playerName": "むしろJPを持った杖",
+      "characterId": "jp",
+      "rank": 298,
+      "masterRating": 1935,
+      "playerId": "3368439988",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-300",
+      "playerName": "Ichiranman",
+      "characterId": "cviper",
+      "rank": 298,
+      "masterRating": 1935,
+      "playerId": "3008061489",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-301",
+      "playerName": "くえです",
+      "characterId": "kimberly",
+      "rank": 298,
+      "masterRating": 1935,
+      "playerId": "1373201150",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-302",
+      "playerName": "だいわ_",
+      "characterId": "sagat",
+      "rank": 298,
+      "masterRating": 1935,
+      "playerId": "2375949972",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-303",
+      "playerName": "MKEI",
+      "characterId": "ed",
+      "rank": 298,
+      "masterRating": 1935,
+      "playerId": "3970622037",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-304",
+      "playerName": "chess_pc",
+      "characterId": "ken",
+      "rank": 298,
+      "masterRating": 1935,
+      "playerId": "1068730280",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-305",
+      "playerName": "Popin",
+      "characterId": "cammy",
+      "rank": 305,
+      "masterRating": 1934,
+      "playerId": "2151647534",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-306",
+      "playerName": "サンギの大冒険",
+      "characterId": "zangief",
+      "rank": 305,
+      "masterRating": 1934,
+      "playerId": "3385770749",
+      "region": "オーストラリア",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-307",
+      "playerName": "うおみです",
+      "characterId": "yasmine",
+      "rank": 305,
+      "masterRating": 1934,
+      "playerId": "2153552616",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-308",
+      "playerName": "toto",
+      "characterId": "elena",
+      "rank": 305,
+      "masterRating": 1934,
+      "playerId": "1533494276",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-309",
+      "playerName": "Boltstrike",
+      "characterId": "jamie",
+      "rank": 305,
+      "masterRating": 1934,
+      "playerId": "3181521915",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-310",
+      "playerName": "求求你阻止我",
+      "characterId": "luke",
+      "rank": 305,
+      "masterRating": 1934,
+      "playerId": "3339857880",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-311",
+      "playerName": "す さ",
+      "characterId": "blanka",
+      "rank": 305,
+      "masterRating": 1934,
+      "playerId": "2724498200",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-312",
+      "playerName": "DNS l armperor",
+      "characterId": "ken",
+      "rank": 305,
+      "masterRating": 1934,
+      "playerId": "3276699561",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-313",
+      "playerName": "Buda",
+      "characterId": "dhalsim",
+      "rank": 313,
+      "masterRating": 1933,
+      "playerId": "2182517054",
+      "region": "キューバ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-314",
+      "playerName": "Cuongster",
+      "characterId": "jp",
+      "rank": 313,
+      "masterRating": 1933,
+      "playerId": "1973717204",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-315",
+      "playerName": "SGN｜とと",
+      "characterId": "yasmine",
+      "rank": 313,
+      "masterRating": 1933,
+      "playerId": "2870125909",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-316",
+      "playerName": "PAPAsunsun",
+      "characterId": "lily",
+      "rank": 313,
+      "masterRating": 1933,
+      "playerId": "3100543140",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-317",
+      "playerName": "AfroSaiyan",
+      "characterId": "deejay",
+      "rank": 313,
+      "masterRating": 1933,
+      "playerId": "1845557095",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-318",
+      "playerName": "だんごだなも",
+      "characterId": "dhalsim",
+      "rank": 318,
+      "masterRating": 1932,
+      "playerId": "2049930874",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-319",
+      "playerName": "ねじまき鳥クロニクル",
+      "characterId": "dhalsim",
+      "rank": 318,
+      "masterRating": 1932,
+      "playerId": "2180247383",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-320",
+      "playerName": "kamiki_C",
+      "characterId": "jp",
+      "rank": 318,
+      "masterRating": 1932,
+      "playerId": "3183602913",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-321",
+      "playerName": "Hyup",
+      "characterId": "terry",
+      "rank": 318,
+      "masterRating": 1932,
+      "playerId": "2771360295",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-322",
+      "playerName": "陳易大師",
+      "characterId": "luke",
+      "rank": 318,
+      "masterRating": 1932,
+      "playerId": "2452272605",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-323",
+      "playerName": "TAYA",
+      "characterId": "deejay",
+      "rank": 318,
+      "masterRating": 1932,
+      "playerId": "3482745951",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-324",
+      "playerName": "ストーム久保",
+      "characterId": "arjun",
+      "rank": 324,
+      "masterRating": 1931,
+      "playerId": "1890936960",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-325",
+      "playerName": "Dr.Teacher",
+      "characterId": "juri",
+      "rank": 324,
+      "masterRating": 1931,
+      "playerId": "3251792677",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-326",
+      "playerName": "DIONISIO",
+      "characterId": "zangief",
+      "rank": 326,
+      "masterRating": 1930,
+      "playerId": "3316428071",
+      "region": "ブラジル",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-327",
+      "playerName": "WIM ｜ hokashu",
+      "characterId": "arjun",
+      "rank": 326,
+      "masterRating": 1930,
+      "playerId": "1351350444",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-328",
+      "playerName": "EvilShaDoW_CL",
+      "characterId": "alex",
+      "rank": 326,
+      "masterRating": 1930,
+      "playerId": "2478703563",
+      "region": "チリ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-329",
+      "playerName": "モダンエド専門学校",
+      "characterId": "ed",
+      "rank": 326,
+      "masterRating": 1930,
+      "playerId": "2495073559",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-330",
+      "playerName": "RiddlesMK",
+      "characterId": "terry",
+      "rank": 330,
+      "masterRating": 1929,
+      "playerId": "2819872987",
+      "region": "カナダ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-331",
+      "playerName": "tsumugiZ",
+      "characterId": "jamie",
+      "rank": 330,
+      "masterRating": 1929,
+      "playerId": "2394682846",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-332",
+      "playerName": "JUNINHO-RAS",
+      "characterId": "luke",
+      "rank": 330,
+      "masterRating": 1929,
+      "playerId": "2622990354",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-333",
+      "playerName": "Gone Fishin'/IA",
+      "characterId": "ken",
+      "rank": 330,
+      "masterRating": 1929,
+      "playerId": "1300061444",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-334",
+      "playerName": "ザンギ太郎",
+      "characterId": "zangief",
+      "rank": 334,
+      "masterRating": 1928,
+      "playerId": "3363933856",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-335",
+      "playerName": "Iborra",
+      "characterId": "kimberly",
+      "rank": 334,
+      "masterRating": 1928,
+      "playerId": "1813585483",
+      "region": "スペイン",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-336",
+      "playerName": "AFG_PEACE30",
+      "characterId": "sagat",
+      "rank": 334,
+      "masterRating": 1928,
+      "playerId": "1168992300",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-337",
+      "playerName": "SHUN1",
+      "characterId": "gouki",
+      "rank": 334,
+      "masterRating": 1928,
+      "playerId": "1147440633",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-338",
+      "playerName": "こなつ？",
+      "characterId": "dhalsim",
+      "rank": 338,
+      "masterRating": 1927,
+      "playerId": "3772068286",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-339",
+      "playerName": "Nicko",
+      "characterId": "jp",
+      "rank": 338,
+      "masterRating": 1927,
+      "playerId": "3398902632",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-340",
+      "playerName": "Naooonn",
+      "characterId": "yasmine",
+      "rank": 338,
+      "masterRating": 1927,
+      "playerId": "2011017170",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-341",
+      "playerName": "Music4friends",
+      "characterId": "kimberly",
+      "rank": 338,
+      "masterRating": 1927,
+      "playerId": "2905033121",
+      "region": "タイ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-342",
+      "playerName": "シティ・ポップ増山",
+      "characterId": "kimberly",
+      "rank": 338,
+      "masterRating": 1927,
+      "playerId": "3017584755",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-343",
+      "playerName": "Jaeger_SF6",
+      "characterId": "elena",
+      "rank": 338,
+      "masterRating": 1927,
+      "playerId": "1211309111",
+      "region": "オーストリア",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-344",
+      "playerName": "Tigger",
+      "characterId": "ryu",
+      "rank": 338,
+      "masterRating": 1927,
+      "playerId": "1825731477",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-345",
+      "playerName": "Coosco",
+      "characterId": "cammy",
+      "rank": 345,
+      "masterRating": 1926,
+      "playerId": "3971414808",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-346",
+      "playerName": "spamおにぎりPC",
+      "characterId": "zangief",
+      "rank": 345,
+      "masterRating": 1926,
+      "playerId": "1227000888",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-347",
+      "playerName": "Problem X",
+      "characterId": "arjun",
+      "rank": 345,
+      "masterRating": 1926,
+      "playerId": "1205826705",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-348",
+      "playerName": "Cell-PC",
+      "characterId": "vega",
+      "rank": 345,
+      "masterRating": 1926,
+      "playerId": "1377315476",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-349",
+      "playerName": "かまやん",
+      "characterId": "vega",
+      "rank": 345,
+      "masterRating": 1926,
+      "playerId": "2453862756",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-350",
+      "playerName": "eguto",
+      "characterId": "ed",
+      "rank": 345,
+      "masterRating": 1926,
+      "playerId": "4182760151",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-351",
+      "playerName": "Snapp.Ex",
+      "characterId": "guile",
+      "rank": 345,
+      "masterRating": 1926,
+      "playerId": "1909338681",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-352",
+      "playerName": "FALCON",
+      "characterId": "jp",
+      "rank": 352,
+      "masterRating": 1925,
+      "playerId": "3474633321",
+      "region": "ペルー",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-353",
+      "playerName": "AntarcticLights",
+      "characterId": "kimberly",
+      "rank": 352,
+      "masterRating": 1925,
+      "playerId": "1448894636",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-354",
+      "playerName": "cyber_neet",
+      "characterId": "terry",
+      "rank": 352,
+      "masterRating": 1925,
+      "playerId": "3191062250",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-355",
+      "playerName": "Dynamite body",
+      "characterId": "luke",
+      "rank": 352,
+      "masterRating": 1925,
+      "playerId": "2597712929",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-356",
+      "playerName": "daijin/対戦会中",
+      "characterId": "dhalsim",
+      "rank": 356,
+      "masterRating": 1924,
+      "playerId": "3488795807",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-357",
+      "playerName": "m1Ng",
+      "characterId": "ingrid",
+      "rank": 356,
+      "masterRating": 1924,
+      "playerId": "1514694876",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-358",
+      "playerName": "cream",
+      "characterId": "alex",
+      "rank": 356,
+      "masterRating": 1924,
+      "playerId": "3657572044",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-359",
+      "playerName": "LeviHakai.",
+      "characterId": "elena",
+      "rank": 356,
+      "masterRating": 1924,
+      "playerId": "3914620036",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-360",
+      "playerName": "OilQueen",
+      "characterId": "rashid",
+      "rank": 356,
+      "masterRating": 1924,
+      "playerId": "2328741169",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-361",
+      "playerName": "とす__",
+      "characterId": "rashid",
+      "rank": 356,
+      "masterRating": 1924,
+      "playerId": "3301319708",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-362",
+      "playerName": "ジャークキック",
+      "characterId": "deejay",
+      "rank": 356,
+      "masterRating": 1924,
+      "playerId": "1653047632",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-363",
+      "playerName": "uryo",
+      "characterId": "cviper",
+      "rank": 363,
+      "masterRating": 1923,
+      "playerId": "4211062378",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-364",
+      "playerName": "Asahi",
+      "characterId": "mai",
+      "rank": 363,
+      "masterRating": 1923,
+      "playerId": "2895917400",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-365",
+      "playerName": "krackerlack",
+      "characterId": "luke",
+      "rank": 363,
+      "masterRating": 1923,
+      "playerId": "1810460511",
+      "region": "チェコ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-366",
+      "playerName": "SBI_Hibiki",
+      "characterId": "lily",
+      "rank": 363,
+      "masterRating": 1923,
+      "playerId": "3108342606",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-367",
+      "playerName": "pc-jieba5512",
+      "characterId": "cammy",
+      "rank": 367,
+      "masterRating": 1922,
+      "playerId": "1321583500",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-368",
+      "playerName": "おとやんTV",
+      "characterId": "chunli",
+      "rank": 367,
+      "masterRating": 1922,
+      "playerId": "1908324386",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-369",
+      "playerName": "Yashi8463twitch",
+      "characterId": "arjun",
+      "rank": 367,
+      "masterRating": 1922,
+      "playerId": "2563017101",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-370",
+      "playerName": "eFC-Isaias",
+      "characterId": "alex",
+      "rank": 367,
+      "masterRating": 1922,
+      "playerId": "3437237552",
+      "region": "ドミニカ共和国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-371",
+      "playerName": "SilentAccent",
+      "characterId": "alex",
+      "rank": 367,
+      "masterRating": 1922,
+      "playerId": "2943191899",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-372",
+      "playerName": "エルバステラ",
+      "characterId": "luke",
+      "rank": 367,
+      "masterRating": 1922,
+      "playerId": "4116016207",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-373",
+      "playerName": "もた__",
+      "characterId": "rashid",
+      "rank": 367,
+      "masterRating": 1922,
+      "playerId": "3804128873",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-374",
+      "playerName": "RingRingRing",
+      "characterId": "dhalsim",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "3107027352",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-375",
+      "playerName": "アイカワ",
+      "characterId": "zangief",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "2575534378",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-376",
+      "playerName": "EINS",
+      "characterId": "arjun",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "3301020087",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-377",
+      "playerName": "youdau",
+      "characterId": "cviper",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "2078182779",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-378",
+      "playerName": "DuendeCuack",
+      "characterId": "mai",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "1412118301",
+      "region": "メキシコ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-379",
+      "playerName": "GasMan84",
+      "characterId": "luke",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "2693719514",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-380",
+      "playerName": "ゆまちゃむ",
+      "characterId": "ed",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "3712393322",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-381",
+      "playerName": "LeShar",
+      "characterId": "ed",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "1304761987",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-382",
+      "playerName": "Frozen",
+      "characterId": "juri",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "3541138314",
+      "region": "アルゼンチン",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-383",
+      "playerName": "Betty",
+      "characterId": "juri",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "2048609971",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-384",
+      "playerName": "高木サンダー",
+      "characterId": "blanka",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "3249813921",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-385",
+      "playerName": "Motchan",
+      "characterId": "aki",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "2741726179",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-386",
+      "playerName": "えこ＝こ",
+      "characterId": "ryu",
+      "rank": 374,
+      "masterRating": 1921,
+      "playerId": "3864089846",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-387",
+      "playerName": "bagbag3",
+      "characterId": "chunli",
+      "rank": 387,
+      "masterRating": 1920,
+      "playerId": "3335591513",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-388",
+      "playerName": "優しい麦茶",
+      "characterId": "vega",
+      "rank": 387,
+      "masterRating": 1920,
+      "playerId": "1082776866",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-389",
+      "playerName": "カネザカ",
+      "characterId": "luke",
+      "rank": 387,
+      "masterRating": 1920,
+      "playerId": "3230541159",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-390",
+      "playerName": "きんぐすベガ",
+      "characterId": "blanka",
+      "rank": 387,
+      "masterRating": 1920,
+      "playerId": "3537855855",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-391",
+      "playerName": "shuzo｜LaVISION。",
+      "characterId": "deejay",
+      "rank": 387,
+      "masterRating": 1920,
+      "playerId": "1745815063",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-392",
+      "playerName": "たこの.",
+      "characterId": "arjun",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "2320259107",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-393",
+      "playerName": "smile",
+      "characterId": "yasmine",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "3681349424",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-394",
+      "playerName": "Davy",
+      "characterId": "yasmine",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "3791471767",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-395",
+      "playerName": "Amaterasu",
+      "characterId": "yasmine",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "3320850207",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-396",
+      "playerName": "MonaRD",
+      "characterId": "ingrid",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "3917203909",
+      "region": "ドミニカ共和国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-397",
+      "playerName": "PC6Akira",
+      "characterId": "cviper",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "1529602025",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-398",
+      "playerName": "フォーブス",
+      "characterId": "vega",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "3464058236",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-399",
+      "playerName": "Tenshin",
+      "characterId": "sagat",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "2464631249",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-400",
+      "playerName": "ドスバギイ",
+      "characterId": "gouki",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "2275763050",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-401",
+      "playerName": "ドパの方程式",
+      "characterId": "deejay",
+      "rank": 392,
+      "masterRating": 1919,
+      "playerId": "1829619606",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-402",
+      "playerName": "Salvatore",
+      "characterId": "cammy",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "1154684827",
+      "region": "ベネズエラ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-403",
+      "playerName": "滝澤スラギンバ",
+      "characterId": "arjun",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "3785690399",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-404",
+      "playerName": "Glimmy Mouse",
+      "characterId": "arjun",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "3814550524",
+      "region": "ブラジル",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-405",
+      "playerName": "Kuro1123",
+      "characterId": "yasmine",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "1120448500",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-406",
+      "playerName": "Haru",
+      "characterId": "mai",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "2235974200",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-407",
+      "playerName": "小野塚先輩は",
+      "characterId": "vega",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "2713135357",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-408",
+      "playerName": "Leslie",
+      "characterId": "sagat",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "3949602215",
+      "region": "シンガポール",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-409",
+      "playerName": "Tas=w=",
+      "characterId": "jamie",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "3059147843",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-410",
+      "playerName": "VEGA007",
+      "characterId": "honda",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "1625883208",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-411",
+      "playerName": "Akakuro",
+      "characterId": "marisa",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "3553784487",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-412",
+      "playerName": "AtayalLin",
+      "characterId": "deejay",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "2540610779",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-413",
+      "playerName": "どんべえ",
+      "characterId": "deejay",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "1250588144",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-414",
+      "playerName": "ガチタニ",
+      "characterId": "ryu",
+      "rank": 402,
+      "masterRating": 1918,
+      "playerId": "1744858275",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-415",
+      "playerName": "熊の寝床",
+      "characterId": "manon",
+      "rank": 415,
+      "masterRating": 1917,
+      "playerId": "3356057965",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-416",
+      "playerName": "伊予 I-yo",
+      "characterId": "ingrid",
+      "rank": 415,
+      "masterRating": 1917,
+      "playerId": "1245902012",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-417",
+      "playerName": "ランページ・ゴースト",
+      "characterId": "alex",
+      "rank": 415,
+      "masterRating": 1917,
+      "playerId": "3526682705",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-418",
+      "playerName": "まりを＠PC",
+      "characterId": "elena",
+      "rank": 415,
+      "masterRating": 1917,
+      "playerId": "3694601013",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-419",
+      "playerName": "にゃんみど@youtube配信",
+      "characterId": "gouki",
+      "rank": 415,
+      "masterRating": 1917,
+      "playerId": "4268022459",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-420",
+      "playerName": "DBMOK",
+      "characterId": "guile",
+      "rank": 415,
+      "masterRating": 1917,
+      "playerId": "4214928432",
+      "region": "マレーシア",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-421",
+      "playerName": "Tucker Ducker",
+      "characterId": "marisa",
+      "rank": 415,
+      "masterRating": 1917,
+      "playerId": "1077978863",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-422",
+      "playerName": "big mo dilly",
+      "characterId": "blanka",
+      "rank": 415,
+      "masterRating": 1917,
+      "playerId": "3826769979",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-423",
+      "playerName": "あともすふぃあ",
+      "characterId": "cammy",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "2166340565",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-424",
+      "playerName": "KOIKE",
+      "characterId": "cammy",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "3389221070",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-425",
+      "playerName": "TomzinMilgrau",
+      "characterId": "jp",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "2637440966",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-426",
+      "playerName": "sinシータ",
+      "characterId": "cviper",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "2555815013",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-427",
+      "playerName": "ガチタニ",
+      "characterId": "elena",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "1744858275",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-428",
+      "playerName": "natary",
+      "characterId": "mai",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "2542656138",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-429",
+      "playerName": "pikmin@ミルダムはいしん",
+      "characterId": "vega",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "2305673300",
+      "region": "タンザニア",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-430",
+      "playerName": "YAMANAO",
+      "characterId": "vega",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "1162331411",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-431",
+      "playerName": "sanefox",
+      "characterId": "gouki",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "3746441695",
+      "region": "ドミニカ共和国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-432",
+      "playerName": "ロックス・D・ジーベック",
+      "characterId": "gouki",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "2036196141",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-433",
+      "playerName": "なふたれん",
+      "characterId": "guile",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "1265812084",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-434",
+      "playerName": "とと__",
+      "characterId": "juri",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "1552780170",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-435",
+      "playerName": "Malulu",
+      "characterId": "juri",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "1165687704",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-436",
+      "playerName": "おろち！",
+      "characterId": "blanka",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "1927804521",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-437",
+      "playerName": "Toge_Guro",
+      "characterId": "rashid",
+      "rank": 423,
+      "masterRating": 1916,
+      "playerId": "3514031412",
+      "region": "その他",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-438",
+      "playerName": "Clint",
+      "characterId": "cammy",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "3870118623",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-439",
+      "playerName": "Monsterjujuju",
+      "characterId": "dhalsim",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "2234633659",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-440",
+      "playerName": "Venom Snake",
+      "characterId": "dhalsim",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "1099822403",
+      "region": "キューバ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-441",
+      "playerName": "GTW-SUNHUI",
+      "characterId": "manon",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "3441040498",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-442",
+      "playerName": "ポタイズ",
+      "characterId": "arjun",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "2229037118",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-443",
+      "playerName": "RaInPrO",
+      "characterId": "alex",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "3003894460",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-444",
+      "playerName": "デッドロック/超ばぶーた",
+      "characterId": "vega",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "2318481544",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-445",
+      "playerName": "わわわまいん",
+      "characterId": "juri",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "3805684524",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-446",
+      "playerName": "nepity_Twitch",
+      "characterId": "deejay",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "2553047661",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-447",
+      "playerName": "Bocchi",
+      "characterId": "deejay",
+      "rank": 438,
+      "masterRating": 1915,
+      "playerId": "2594284679",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-448",
+      "playerName": "おにく８９２９",
+      "characterId": "cammy",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "1115349878",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-449",
+      "playerName": "三田JP",
+      "characterId": "jp",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "3059673838",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-450",
+      "playerName": "TropicTrickster",
+      "characterId": "manon",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "1062695926",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-451",
+      "playerName": "PROFEN",
+      "characterId": "arjun",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "2634445784",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-452",
+      "playerName": "theforce90",
+      "characterId": "cviper",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "1346704274",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-453",
+      "playerName": "Bacon",
+      "characterId": "cviper",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "3495680827",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-454",
+      "playerName": "はなわクンクン CC",
+      "characterId": "jamie",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "3978138584",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-455",
+      "playerName": "cyber_neet",
+      "characterId": "ed",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "3191062250",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-456",
+      "playerName": "amp-reflection",
+      "characterId": "guile",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "4006713323",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-457",
+      "playerName": "ぐっすみん",
+      "characterId": "juri",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "1858244048",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-458",
+      "playerName": "Dual Kevin Fan!",
+      "characterId": "rashid",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "2531295307",
+      "region": "アメリカ合衆国",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-459",
+      "playerName": "itagaki_",
+      "characterId": "lily",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "3309991061",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-460",
+      "playerName": "リクワワ",
+      "characterId": "deejay",
+      "rank": 448,
+      "masterRating": 1914,
+      "playerId": "2283197925",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-461",
+      "playerName": "kosaku",
+      "characterId": "cammy",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "3466993951",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-462",
+      "playerName": "japanese man",
+      "characterId": "dhalsim",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "4149499346",
+      "region": "オーストラリア",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-463",
+      "playerName": "tomoeCunha",
+      "characterId": "jp",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "1051133749",
+      "region": "ポルトガル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-464",
+      "playerName": "vall",
+      "characterId": "chunli",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "1227711424",
+      "region": "フランス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-465",
+      "playerName": "Kay :D",
+      "characterId": "arjun",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "3288854296",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-466",
+      "playerName": "エルフォルテ待機勢",
+      "characterId": "arjun",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "1065861973",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-467",
+      "playerName": "ElChakotayy",
+      "characterId": "arjun",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "1975333778",
+      "region": "アメリカ合衆国",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-468",
+      "playerName": "LinkNova",
+      "characterId": "ingrid",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "1404824773",
+      "region": "イギリス",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-469",
+      "playerName": "Nashi_espopia",
+      "characterId": "cviper",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "1033013614",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-470",
+      "playerName": "バギーー",
+      "characterId": "mai",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "3506589040",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-471",
+      "playerName": "Syuji",
+      "characterId": "guile",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "2024864523",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-472",
+      "playerName": "jjnj",
+      "characterId": "marisa",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "2219324073",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-473",
+      "playerName": "kurobuchi_b09",
+      "characterId": "marisa",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "3206430880",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-474",
+      "playerName": "Walk Like An",
+      "characterId": "marisa",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "1142431172",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-475",
+      "playerName": "九条/MG_Kujou",
+      "characterId": "lily",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "3615052633",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-476",
+      "playerName": "ぷろさん",
+      "characterId": "deejay",
+      "rank": 461,
+      "masterRating": 1913,
+      "playerId": "2119220871",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-477",
+      "playerName": "金曜夜8時アップランドTUBE",
+      "characterId": "manon",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "3061502180",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-478",
+      "playerName": "Moipes",
+      "characterId": "manon",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "2433511334",
+      "region": "チリ",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-479",
+      "playerName": "はっぴょうどらごん",
+      "characterId": "ingrid",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "2905857556",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-480",
+      "playerName": "君の名前を叫んで死んでやる",
+      "characterId": "ingrid",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "1264180625",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-481",
+      "playerName": ".ちくわ",
+      "characterId": "kimberly",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "1725036572",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-482",
+      "playerName": "Yoshikibi",
+      "characterId": "mai",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "1701775080",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-483",
+      "playerName": "Guts",
+      "characterId": "terry",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "1139045452",
+      "region": "アメリカ合衆国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-484",
+      "playerName": "くろみんと",
+      "characterId": "gouki",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "3227278986",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-485",
+      "playerName": "Gin0225",
+      "characterId": "guile",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "3031060796",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-486",
+      "playerName": "KAZU",
+      "characterId": "marisa",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "1236743890",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-487",
+      "playerName": "M.YooHoo",
+      "characterId": "rashid",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "2360622801",
+      "region": "韓国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-488",
+      "playerName": "シェル・ザ・ノーリミット",
+      "characterId": "aki",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "2479090475",
+      "region": "その他",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-489",
+      "playerName": "Emviem",
+      "characterId": "lily",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "2051188886",
+      "region": "イタリア",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-490",
+      "playerName": "Chaolin",
+      "characterId": "ken",
+      "rank": 477,
+      "masterRating": 1912,
+      "playerId": "1343776734",
+      "region": "ブラジル",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-491",
+      "playerName": "sanefox",
+      "characterId": "cammy",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "3746441695",
+      "region": "ドミニカ共和国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-492",
+      "playerName": "momomomomo",
+      "characterId": "chunli",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "2243133501",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-493",
+      "playerName": "Yude",
+      "characterId": "chunli",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "3025951551",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-494",
+      "playerName": "Voiledabis",
+      "characterId": "arjun",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "3841402885",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-495",
+      "playerName": "suisenri",
+      "characterId": "yasmine",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "1968724761",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-496",
+      "playerName": "發斗獨狗",
+      "characterId": "alex",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "2898412129",
+      "region": "その他",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-497",
+      "playerName": "チャ・ウンスヨ",
+      "characterId": "cviper",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "3952426513",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-498",
+      "playerName": "ただのとうのちゃん",
+      "characterId": "kimberly",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "1099624439",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-499",
+      "playerName": "らせん@コパン連打はゲージ抑制",
+      "characterId": "terry",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "2594598818",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    },
+    {
+      "id": "entry-500",
+      "playerName": "えすぴぃ",
+      "characterId": "sagat",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "4268493547",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-501",
+      "playerName": "さきいか",
+      "characterId": "jamie",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "4199621923",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-502",
+      "playerName": "ZOO丨彬（摇杆学习中）",
+      "characterId": "luke",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "4128981400",
+      "region": "中国",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-503",
+      "playerName": "big body",
+      "characterId": "ed",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "4024172770",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-504",
+      "playerName": "SAJ_Claw",
+      "characterId": "blanka",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "2045911950",
+      "region": "日本",
+      "platform": "Steam"
+    },
+    {
+      "id": "entry-505",
+      "playerName": "レオンつまじろ",
+      "characterId": "aki",
+      "rank": 491,
+      "masterRating": 1911,
+      "playerId": "4020682667",
+      "region": "日本",
+      "platform": "CrossPlatform"
+    }
+  ],
+  "validation": {
+    "status": "verified",
+    "coverage": "all-listed-legend-entries",
+    "checks": [
+      "conditions-confirmed",
+      "act-confirmed",
+      "membership-confirmed",
+      "pagination-confirmed",
+      "boundary-confirmed",
+      "ordering-confirmed",
+      "account-character-unit-confirmed",
+      "roster-confirmed",
+      "duplicates-checked",
+      "capture-rechecked"
+    ],
+    "notes": [
+      "条件・Act・掲載判定・表示範囲・順位・MR順・重複と両端を確認した。",
+      "行IDは取得回内だけで使用する。プレイヤーIDは公開ユーザーコード。",
+      "ランキング全掲載行の検証は完了。対戦数の検証は未完了のため含めない。"
+    ]
+  },
+  "rankedMatchAvailability": {
+    "status": "unavailable",
+    "reason": "access-unavailable",
+    "checkedAt": "2026-11-14T00:59:25.682Z"
+  }
+}
