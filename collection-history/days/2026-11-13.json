@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "date": "2026-11-13",
-  "checkedAt": "2026-11-13T22:37:36.390Z",
+  "checkedAt": "2026-11-14T03:15:43.289Z",
   "slots": [
     {
       "scheduledAt": "2026-11-13T00:07:00.000Z",
@@ -3625,6 +3625,206 @@
           "runId": "43520731669",
           "attempt": 1,
           "observedAt": "2026-11-13T22:37:14.139Z"
+        }
+      ]
+    },
+    {
+      "scheduledAt": "2026-11-13T22:52:00.000Z",
+      "games": [
+        {
+          "appId": 1364780,
+          "status": "published",
+          "runId": "43522725669",
+          "attempt": 1,
+          "observedAt": "2026-11-13T22:52:21.759Z"
+        },
+        {
+          "appId": 1778820,
+          "status": "published",
+          "runId": "43522725669",
+          "attempt": 1,
+          "observedAt": "2026-11-13T22:52:21.836Z"
+        },
+        {
+          "appId": 1384160,
+          "status": "published",
+          "runId": "43522725669",
+          "attempt": 1,
+          "observedAt": "2026-11-13T22:52:21.898Z"
+        },
+        {
+          "appId": 2157560,
+          "status": "published",
+          "runId": "43522725669",
+          "attempt": 1,
+          "observedAt": "2026-11-13T22:52:21.926Z"
+        },
+        {
+          "appId": 1498570,
+          "status": "published",
+          "runId": "43522725669",
+          "attempt": 1,
+          "observedAt": "2026-11-13T22:52:21.953Z"
+        }
+      ]
+    },
+    {
+      "scheduledAt": "2026-11-13T23:07:00.000Z",
+      "games": [
+        {
+          "appId": 1364780,
+          "status": "published",
+          "runId": "43524641897",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:07:10.342Z"
+        },
+        {
+          "appId": 1778820,
+          "status": "published",
+          "runId": "43524641897",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:07:10.366Z"
+        },
+        {
+          "appId": 1384160,
+          "status": "published",
+          "runId": "43524641897",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:07:10.392Z"
+        },
+        {
+          "appId": 2157560,
+          "status": "published",
+          "runId": "43524641897",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:07:10.442Z"
+        },
+        {
+          "appId": 1498570,
+          "status": "published",
+          "runId": "43524641897",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:07:10.467Z"
+        }
+      ]
+    },
+    {
+      "scheduledAt": "2026-11-13T23:22:00.000Z",
+      "games": [
+        {
+          "appId": 1364780,
+          "status": "published",
+          "runId": "43526569753",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:22:12.468Z"
+        },
+        {
+          "appId": 1778820,
+          "status": "published",
+          "runId": "43526569753",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:22:12.554Z"
+        },
+        {
+          "appId": 1384160,
+          "status": "published",
+          "runId": "43526569753",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:22:12.569Z"
+        },
+        {
+          "appId": 2157560,
+          "status": "published",
+          "runId": "43526569753",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:22:12.585Z"
+        },
+        {
+          "appId": 1498570,
+          "status": "published",
+          "runId": "43526569753",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:22:12.621Z"
+        }
+      ]
+    },
+    {
+      "scheduledAt": "2026-11-13T23:37:00.000Z",
+      "games": [
+        {
+          "appId": 1364780,
+          "status": "published",
+          "runId": "43528432990",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:37:11.954Z"
+        },
+        {
+          "appId": 1778820,
+          "status": "published",
+          "runId": "43528432990",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:37:12.132Z"
+        },
+        {
+          "appId": 1384160,
+          "status": "published",
+          "runId": "43528432990",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:37:12.160Z"
+        },
+        {
+          "appId": 2157560,
+          "status": "published",
+          "runId": "43528432990",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:37:12.198Z"
+        },
+        {
+          "appId": 1498570,
+          "status": "published",
+          "runId": "43528432990",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:37:12.249Z"
+        }
+      ]
+    },
+    {
+      "scheduledAt": "2026-11-13T23:52:00.000Z",
+      "games": [
+        {
+          "appId": 1364780,
+          "status": "published",
+          "runId": "43530241681",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:52:11.183Z"
+        },
+        {
+          "appId": 1778820,
+          "status": "published",
+          "runId": "43530241681",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:52:11.257Z"
+        },
+        {
+          "appId": 1384160,
+          "status": "published",
+          "runId": "43530241681",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:52:11.296Z"
+        },
+        {
+          "appId": 2157560,
+          "status": "published",
+          "runId": "43530241681",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:52:11.314Z"
+        },
+        {
+          "appId": 1498570,
+          "status": "published",
+          "runId": "43530241681",
+          "attempt": 1,
+          "observedAt": "2026-11-13T23:52:11.508Z"
         }
       ]
     }
