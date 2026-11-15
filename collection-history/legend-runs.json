@@ -2,6 +2,20 @@
   "schemaVersion": 1,
   "runs": [
     {
+      "runId": "43777607440",
+      "runAttempt": 1,
+      "trigger": "schedule",
+      "startedAt": "2026-11-15T23:58:26.108Z",
+      "endedAt": "2026-11-15T23:58:32.927Z",
+      "outcome": "stopped",
+      "phase": "preparation",
+      "reason": "access-unavailable",
+      "lastAttemptedPage": null,
+      "datasetId": null,
+      "rankingCount": null,
+      "rankedMatchCount": null
+    },
+    {
       "runId": "43655607950",
       "runAttempt": 1,
       "trigger": "schedule",
