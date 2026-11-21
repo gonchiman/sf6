@@ -2,6 +2,20 @@
   "schemaVersion": 1,
   "runs": [
     {
+      "runId": "44850682139",
+      "runAttempt": 1,
+      "trigger": "schedule",
+      "startedAt": "2026-11-21T01:32:01.746Z",
+      "endedAt": "2026-11-21T01:32:07.388Z",
+      "outcome": "stopped",
+      "phase": "preparation",
+      "reason": "access-unavailable",
+      "lastAttemptedPage": null,
+      "datasetId": null,
+      "rankingCount": null,
+      "rankedMatchCount": null
+    },
+    {
       "runId": "44656063533",
       "runAttempt": 1,
       "trigger": "schedule",
@@ -123,20 +137,6 @@
       "phase": "listing",
       "reason": "captcha",
       "lastAttemptedPage": 18,
-      "datasetId": null,
-      "rankingCount": null,
-      "rankedMatchCount": null
-    },
-    {
-      "runId": "42933192325",
-      "runAttempt": 1,
-      "trigger": "schedule",
-      "startedAt": "2026-11-11T00:40:58.166Z",
-      "endedAt": "2026-11-11T00:44:45.406Z",
-      "outcome": "stopped",
-      "phase": "listing",
-      "reason": "captcha",
-      "lastAttemptedPage": 21,
       "datasetId": null,
       "rankingCount": null,
       "rankedMatchCount": null
