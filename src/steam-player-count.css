@@ -1,25 +1,37 @@
-.steam-player-count-page { --steam-player-count-series: #657f99; min-width: 0; display: grid; gap: 20px; }
+#steam-player-count > .page-header, .steam-player-count-page { width: min(100%, 960px); margin-inline: auto; }
+.steam-player-count-page { min-width: 0; display: grid; gap: 16px; }
 .steam-player-count-context { display: flex; flex-wrap: wrap; gap: 5px 20px; margin: 0; color: var(--text-muted); font-size: 12px; }
-#steam-player-count-conditions { container: steam-conditions / inline-size; }
-#steam-player-count-conditions > .monthly-statistics-panel-heading { padding: 6px 12px; }
-#steam-player-count-conditions > .monthly-statistics-panel-body { padding: 8px 12px; }
-.steam-player-count-filters { display: grid; grid-template-columns: minmax(0, 144px) minmax(0, 112px) minmax(0, 1fr); align-items: end; gap: 6px 10px; border: 0; padding: 0; background: transparent; }
-.steam-player-count-filters > label { gap: 4px; }
-.steam-player-count-filters > .comparison-selection { grid-column: 1 / -1; margin-bottom: 2px; }
-.steam-player-count-custom-dates { grid-column: 1 / -1; min-width: 0; }
-.steam-player-count-custom-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.steam-player-count-date-presets { grid-column: 1 / -1; justify-self: start; }
-.steam-player-count-range-summary { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12px; font-variant-numeric: tabular-nums; }
+.steam-player-count-page .monthly-statistics-panel { border: 0; }
+.steam-player-count-page .monthly-statistics-panel-heading, .steam-player-count-result-heading {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px;
+  padding: 0; margin: 0 0 8px; border: 0; background: none;
+}
+.steam-player-count-page .monthly-statistics-panel-heading h2, .steam-player-count-result-heading h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.steam-player-count-page .monthly-statistics-panel-body { padding: 0; }
+.steam-player-count-filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; border: 0; padding: 0; background: transparent; }
+.steam-player-count-time-filters, .steam-player-count-custom-dates, .steam-game-picker-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
+}
+.steam-player-count-time-filters { padding-top: 10px; border-top: 1px solid var(--border); }
+.steam-player-count-filters label { flex: 0 1 auto; display: flex; align-items: center; gap: 6px; max-width: 100%; }
+.steam-player-count-filters label > span { flex: none; white-space: nowrap; }
+.steam-player-count-timezone { margin-inline-start: auto; color: var(--text-muted); font-size: 12px; }
+.steam-player-count-range-summary { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
 .steam-player-count-range-summary > div { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
 .steam-player-count-range-summary dt { color: var(--text-muted); }
 .steam-player-count-range-summary dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .steam-player-count-range-summary > div + div { color: var(--text-muted); font-size: 12px; }
-.steam-player-count-filters input, .steam-player-count-filters select { min-width: 0; width: 100%; }
+.steam-player-count-filters input, .steam-player-count-filters select { min-width: 0; width: auto; max-width: 100%; }
 .steam-player-count-filters input, .steam-player-count-selection select { min-height: 36px; border: 1px solid var(--border-strong); border-radius: 0; padding: 6px 10px; color: var(--text); background: var(--surface); }
 .steam-player-count-filters input:disabled, .steam-player-count-filters select:disabled { color: var(--text-muted); background: var(--surface-soft); }
-.steam-player-count-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-.steam-player-count-tabs .win-rates-button { flex: 1 1 110px; }
-.steam-player-count-tabs [aria-selected='true'] { color: var(--surface); background: var(--text); border-color: var(--text); }
+.steam-player-count-output-nav { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; border-bottom: 1px solid var(--border); }
+.steam-player-count-tabs { display: flex; flex-wrap: wrap; gap: 2px; min-width: 0; }
+.steam-player-count-tabs .win-rates-button { border: 0; border-bottom: 2px solid transparent; padding: 6px 9px; color: var(--text-muted); background: transparent; }
+.steam-player-count-tabs .win-rates-button:hover { color: var(--text); background: var(--surface-hover); }
+.steam-player-count-tabs .win-rates-button[aria-selected='true'] { border-bottom-color: var(--text); color: var(--text); font-weight: 600; }
+.steam-player-count-output-nav > .element-location-copy-button { margin-inline-start: auto; }
+.steam-player-count-view-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-bottom: 12px; }
+.steam-player-count-format-controls, .steam-player-count-comparison-controls { width: fit-content; max-width: 100%; }
 .steam-player-count-panel { min-width: 0; }
 .steam-player-count-panel[hidden] { display: none; }
 .steam-player-count-meta { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -54,51 +66,58 @@
 .steam-player-count-selection-values strong { font-weight: 500; }
 .steam-player-count-selection-nav { display: flex; gap: 6px; }
 .steam-player-count-page button:disabled { opacity: .5; cursor: default; }
-.steam-player-count-table-scroll { max-height: 460px; }
+.steam-player-count-table-scroll { position: relative; max-height: 460px; }
 .steam-player-count-table { min-width: 480px; }
+.steam-player-count-panel .steam-player-count-table:not(.steam-collection-history-table) :is(th, td) { white-space: nowrap; }
 .steam-player-count-table tr > :first-child { white-space: nowrap; }
 .steam-player-count-table .is-unavailable { color: var(--text-muted); }
-.steam-player-count-basis { margin: 0; }
-.steam-player-count-page .comparison-grid-heading { justify-content: flex-start; gap: 4px 8px; margin-bottom: 4px; }
-.steam-player-count-game-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.steam-player-count-basis { margin: 10px 0 0; }
+.steam-player-count-footer { min-width: 0; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+.steam-player-count-footer .steam-player-count-range-summary, .steam-player-count-footer .steam-player-count-details { flex-basis: 100%; }
+.steam-player-count-details summary { width: fit-content; color: var(--text-soft); cursor: pointer; font-size: 12px; }
+.steam-player-count-details[open] summary { margin-bottom: 6px; }
+.steam-player-count-details .steam-player-count-collection dd { display: flex; flex-wrap: wrap; gap: 0 12px; }
+.steam-game-picker { display: grid; min-width: 0; gap: 8px; }
+.steam-game-modes { width: fit-content; padding: 2px; border: 1px solid var(--border); background: var(--surface-soft); }
+.steam-game-modes .win-rates-button {
+  min-height: 30px; border: 1px solid transparent; padding: 4px 9px; background: transparent; font-size: 13px;
+}
+.steam-game-modes .win-rates-button + .win-rates-button { border-inline-start: 1px solid transparent; }
+.steam-game-modes .win-rates-button[aria-pressed='true'] {
+  border-color: var(--border-strong); background: var(--surface); color: var(--text); font-weight: 600;
+}
+.steam-game-modes .win-rates-button:hover:not([aria-pressed='true']) { background: var(--surface-hover); }
+.steam-player-count-game-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-inline-start: auto; }
 .steam-player-count-game-actions .win-rates-button {
   min-height: 28px; border: 0; padding: 4px 6px; color: var(--text-soft); background: transparent; font-size: 12px;
 }
 .steam-player-count-game-actions .win-rates-button:enabled { text-decoration: underline; text-underline-offset: 3px; }
 .steam-player-count-game-actions .win-rates-button:enabled:hover { color: var(--text); background: var(--surface-hover); }
-.steam-player-count-page .comparison-grid-options { display: flex; flex-wrap: wrap; gap: 5px; }
+.steam-player-count-page .comparison-grid-options { display: flex; flex-wrap: wrap; gap: 6px; }
 .steam-player-count-page .comparison-grid-option {
   min-height: 34px; max-width: 100%; flex-wrap: nowrap; gap: 6px; padding: 4px 8px;
 }
 .steam-player-count-page .comparison-grid-option[aria-pressed="true"] {
-  border-color: #66829b; background: #eaf1f7; color: var(--text);
+  border-color: #66829b; background: #eaf1f7; color: var(--text); font-weight: 600;
 }
 .steam-player-count-page .comparison-grid-option .steam-game-series-key-marker { flex: 0 0 14px; background: transparent; }
-.steam-player-count-page .comparison-grid-name { order: 0; width: auto; overflow-wrap: anywhere; }
-.steam-player-count-page .comparison-grid-check { display: none; }
-.steam-player-count-comparison-controls { width: fit-content; max-width: 100%; margin-bottom: 18px; }
 .steam-player-count-game-key { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .steam-player-count-table-unit { display: block; font-size: 11px; font-weight: 400; margin-top: 5px; }
 .steam-player-count-comparison-table { min-width: 680px; }
-.steam-player-count-game-updates { border-top: 1px solid var(--border); padding-top: 12px; }
-@container steam-conditions (min-width: 760px) {
-  .steam-player-count-filters { grid-template-columns: minmax(0, 1fr) 144px 112px; column-gap: 16px; }
-  .steam-player-count-filters > .comparison-selection { grid-column: auto; margin-bottom: 0; }
-}
-@media (pointer: coarse) {
-  .steam-player-count-page .comparison-grid-option { min-width: 44px; min-height: 44px; }
-}
+.steam-player-count-game-updates { margin-top: 4px; }
 @media (max-width: 640px) {
   .steam-player-count-page { gap: 14px; }
   .steam-player-count-selection-values { gap: 6px 12px; }
 }
 @media (max-width: 400px) {
-  .steam-player-count-custom-dates { grid-template-columns: minmax(0, 1fr); }
+  .steam-player-count-time-filters { column-gap: 8px; }
+  .steam-player-count-timezone { margin-inline-start: 0; }
+  .steam-player-count-tabs .win-rates-button { padding-inline: 6px; }
 }
 @media (max-width: 760px), (pointer: coarse) {
   .steam-player-count-filters input, .steam-player-count-filters select,
   .steam-player-count-selection select, .steam-player-count-page .win-rates-button { min-height: 44px; }
-  .steam-player-count-game-actions .win-rates-button { min-width: 44px; }
+  .steam-game-picker .win-rates-button, .steam-player-count-page .comparison-grid-option { min-width: 44px; min-height: 44px; }
   .steam-player-count-filters input, .steam-player-count-filters select, .steam-player-count-selection select { font-size: 16px; }
 }
 .steam-collection-history-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }

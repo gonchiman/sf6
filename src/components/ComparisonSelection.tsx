@@ -21,6 +21,23 @@ type Props = {
   minimumSelectionLabel?: string | null
 }
 
+export function ComparisonGridOption({ name, buttonLabel, selected, locked = false, marker, showCheck = true, descriptionId, onClick }: {
+  name: string
+  buttonLabel?: string
+  selected: boolean
+  locked?: boolean
+  marker?: ReactNode
+  showCheck?: boolean
+  descriptionId?: string
+  onClick: () => void
+}) {
+  return <button type="button" className="comparison-grid-option" aria-label={buttonLabel}
+    aria-pressed={selected} aria-disabled={locked} aria-describedby={descriptionId} onClick={locked ? undefined : onClick}>
+    {marker}<span className="comparison-grid-name">{name}</span>
+    {showCheck && <span className="comparison-grid-check" aria-hidden="true">✓</span>}
+  </button>
+}
+
 /** Shared comparison selection; the picker restores focus after chip removal. */
 export function ComparisonSelection({ items, selectedIds, onChange, label, selectionLabel, pickerLabel,
   legendLabel, renderKey, searchLabel, emptyLabel = '該当する項目がありません', showOptionKeys = false,
@@ -56,12 +73,9 @@ export function ComparisonSelection({ items, selectedIds, onChange, label, selec
       <span className="comparison-grid-count" aria-live="polite" aria-atomic="true">{selectionCountLabel(selectedIds.length)}</span>
     </div>
     <div className="comparison-grid-options" role="group" aria-labelledby={labelId} aria-describedby={minimumSelectionLabel ? hintId : undefined}>
-      {items.map(item => <button key={item.id} type="button" className="comparison-grid-option"
-        aria-pressed={selected.has(item.id)} aria-disabled={selectedIds.length === 1 && selected.has(item.id)}
-        aria-describedby={minimumSelectionLabel ? hintId : undefined} onClick={() => toggle(item.id, !selected.has(item.id))}>
-        {showOptionKeys && renderKey(item.id)}<span className="comparison-grid-name">{item.name}</span>
-        <span className="comparison-grid-check" aria-hidden="true">✓</span>
-      </button>)}
+      {items.map(item => <ComparisonGridOption key={item.id} name={item.name} selected={selected.has(item.id)}
+        locked={selectedIds.length === 1 && selected.has(item.id)} marker={showOptionKeys && renderKey(item.id)}
+        descriptionId={minimumSelectionLabel ? hintId : undefined} onClick={() => toggle(item.id, !selected.has(item.id))} />)}
     </div>
     {minimumSelectionLabel && <p id={hintId} className="comparison-grid-hint">{minimumSelectionLabel}</p>}
   </div>

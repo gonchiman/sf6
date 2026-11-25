@@ -33,19 +33,26 @@ export function SteamPlayerCountFilters({ children, dayType, onDayTypeChange, se
   }
   return <div className="win-rates-filters steam-player-count-filters">
     {children}
-    <label><span>期間</span><select aria-label="期間" value={period}
-      onChange={event => {
-        const value = event.currentTarget.value as (typeof PERIODS)[number][0]
-        onSelectionChange(value === 'custom' ? { ...range } : value)
-      }}>
-      {PERIODS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-    </select></label>
-    <label><span>曜日</span><select aria-label="曜日" value={dayType}
-      onChange={event => onDayTypeChange(event.target.value as SteamPlayerCountDayType)}>
-      <option value="all">すべて</option><option value="weekday">月〜金</option><option value="weekend">土・日</option>
-    </select></label>
+    <div className="steam-player-count-time-filters">
+      <label><span>期間</span><select aria-label="期間" value={period}
+        onChange={event => {
+          const value = event.currentTarget.value as (typeof PERIODS)[number][0]
+          onSelectionChange(value === 'custom' ? { ...range } : value)
+        }}>
+        {PERIODS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select></label>
+      <label><span>曜日</span><select aria-label="曜日" value={dayType}
+        onChange={event => onDayTypeChange(event.target.value as SteamPlayerCountDayType)}>
+        <option value="all">すべて</option><option value="weekday">月〜金</option><option value="weekend">土・日</option>
+      </select></label>
+      <span className="steam-player-count-timezone">日本時間</span>
+    </div>
     {period === 'custom' && <div className="steam-player-count-custom-dates">
-      <div className="win-rates-view-selector steam-player-count-date-presets" role="group" aria-label="日付の候補">
+      <label><span>開始日</span><input type="date" aria-label="開始日" value={dateRange.from} max={today}
+        onChange={event => changeDate('from', event.target.value)} /></label>
+      <label><span>終了日</span><input type="date" aria-label="終了日" value={dateRange.to} max={today}
+        onChange={event => changeDate('to', event.target.value)} /></label>
+      <div className="win-rates-view-selector" role="group" aria-label="日付の候補">
         {DATE_PRESETS.map(([value, label]) => {
           const preset = resolveSteamPlayerCountRange(value, null, now)
           return <button key={value} className="win-rates-button" type="button"
@@ -53,10 +60,6 @@ export function SteamPlayerCountFilters({ children, dayType, onDayTypeChange, se
             onClick={() => onSelectionChange(preset)}>{label}</button>
         })}
       </div>
-      <label><span>開始日</span><input type="date" aria-label="開始日" value={dateRange.from} max={today}
-        onChange={event => changeDate('from', event.target.value)} /></label>
-      <label><span>終了日</span><input type="date" aria-label="終了日" value={dateRange.to} max={today}
-        onChange={event => changeDate('to', event.target.value)} /></label>
     </div>}
   </div>
 }

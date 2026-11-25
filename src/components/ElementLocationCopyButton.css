@@ -1,0 +1,33 @@
+.output-icon-button {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.output-icon-face {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: inherit;
+}
+
+.output-icon-button:hover:not([aria-disabled="true"]) .output-icon-face {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.output-icon-button[aria-disabled="true"] { cursor: default; }
+.output-icon-button[aria-disabled="true"] .output-icon-face { opacity: 0.55; }
+
+@media (max-width: 760px), (pointer: coarse) {
+  .output-icon-button { width: 44px; height: 44px; }
+}

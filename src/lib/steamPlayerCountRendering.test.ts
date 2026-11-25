@@ -7,6 +7,7 @@ import { createServer, type ViteDevServer } from 'vite'
 import { STEAM_PLAYER_COUNT_GAMES } from './steamPlayerCountGames.ts'
 import { steamPlayerCountGameLabel } from './steamPlayerCountGameColors.ts'
 import { STEAM_COLLECTION_VERSION } from './steamCollectionVersion.ts'
+import type { SteamPlayerCountComparisonState } from './steamPlayerCountComparisonFeed.ts'
 import type { SteamPlayerCountAppId, SteamPlayerCountHourlyRow, SteamPlayerCountObservation } from '../types/steamPlayerCount.ts'
 import type { SteamPlayerCountGameComparison } from '../types/steamPlayerCountComparison.ts'
 
@@ -15,6 +16,7 @@ let Hourly: ComponentType<{ rows: SteamPlayerCountHourlyRow[] }>
 let Trend: ComponentType<{ observations: SteamPlayerCountObservation[] }>
 let Page: ComponentType<{ initialAppIds?: readonly SteamPlayerCountAppId[] }>
 let ComparisonTable: ComponentType<{ comparison: SteamPlayerCountGameComparison }>
+let ComparisonView: typeof import('../components/SteamPlayerCountComparisonView.tsx').SteamPlayerCountComparisonView
 let VersionDialog: ComponentType<{ onClose: () => void }>
 let Filters: ComponentType<import('react').ComponentProps<typeof import('../components/SteamPlayerCountFilters.tsx').SteamPlayerCountFilters>>
 let RangeSummary: ComponentType<import('react').ComponentProps<typeof import('../components/SteamPlayerCountFilters.tsx').SteamPlayerCountRangeSummary>>
@@ -28,6 +30,7 @@ before(async () => {
   Page = page.SteamPlayerCountPage
   const comparison = await server.ssrLoadModule('/src/components/SteamPlayerCountComparisonView.tsx')
   ComparisonTable = comparison.SteamPlayerCountGameComparisonTable
+  ComparisonView = comparison.SteamPlayerCountComparisonView
   const versions = await server.ssrLoadModule('/src/components/SteamCollectionVersionHistory.tsx')
   VersionDialog = versions.SteamCollectionVersionDialog
   const filters = await server.ssrLoadModule('/src/components/SteamPlayerCountFilters.tsx')
@@ -40,6 +43,21 @@ const observation = (minute: number, playerCount = 20000): SteamPlayerCountObser
   requestStartedAt: new Date(Date.UTC(2026, 9, 31, 0, minute)).toISOString(), playerCount, runId: null, runAttempt: null,
 })
 const renderTrend = (observations: SteamPlayerCountObservation[]) => renderToStaticMarkup(createElement(Trend, { observations }))
+
+test('hourly comparison, the selection-specific second result and collection history are the three result tabs', () => {
+  for (const count of [1, STEAM_PLAYER_COUNT_GAMES.length]) {
+    const initialAppIds = STEAM_PLAYER_COUNT_GAMES.slice(0, count).map(game => game.appId)
+    const html = renderToStaticMarkup(createElement(Page, { initialAppIds }))
+    const tabs = [...html.matchAll(/<button\b([^>]*\brole="tab"[^>]*)>([^<]+)<\/button>/g)]
+    assert.deepEqual(tabs.map(match => match[2]), ['時間帯比較', count === 1 ? '観測推移' : '期間比較', '取得履歴'])
+    assert.ok(html.includes('Steam同時接続数 / 時間帯比較の場所をコピー"'))
+    for (const [index, tab] of tabs.entries()) {
+      assert.ok(tab[1].includes(`aria-selected="${index === 0}"`))
+      const controls = tab[1].match(/aria-controls="([^"]+)"/)?.[1]
+      assert.ok(controls && html.includes(`id="${controls}"`), `missing panel for ${tab[2]}`)
+    }
+  }
+})
 
 test('the page exposes the implementation version and history before observations load for any selection size', () => {
   for (const count of [1, 2]) {
@@ -96,16 +114,27 @@ test('history preserves both v2 changes, four retrospective releases and chronol
 })
 
 function assertGameSelection(html: string, selectedAppIds: readonly SteamPlayerCountAppId[]) {
-  const labelId = html.match(/<span id="([^"]+)">ゲーム<\/span>/)?.[1]
-  assert.ok(labelId)
-  assert.ok(html.includes(`role="group" aria-labelledby="${labelId}"`))
-  const buttons = html.match(/<button[^>]*class="[^"]*comparison-grid-option[^"]*"[^>]*>[\s\S]*?<\/button>/g) ?? []
-  assert.equal(buttons.length, STEAM_PLAYER_COUNT_GAMES.length)
-  for (const [index, game] of STEAM_PLAYER_COUNT_GAMES.entries()) {
+  const multiple = selectedAppIds.length > 1
+  assert.match(html, /role="group"[^>]*aria-label="ゲームの選び方"/)
+  const gameLabelId = html.match(/<span[^>]*id="([^"]+)"[^>]*>ゲーム<\/span>/)?.[1]
+  assert.ok(html.includes('role="group" aria-label="ゲーム"') ||
+    (gameLabelId && html.includes(`role="group" aria-labelledby="${gameLabelId}"`)), 'game button group has an accessible name')
+  const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []
+  const findButton = (label: string) => buttons.find(button => button.includes(`>${label}<`))
+  for (const [label, pressed] of [['単独表示', !multiple], ['複数選択', multiple]] as const) {
+    assert.ok(findButton(label)?.includes(`aria-pressed="${pressed}"`), label)
+  }
+  for (const label of ['全選択', 'SF6のみ']) {
+    assert.equal(Boolean(findButton(label)), multiple, label)
+  }
+  for (const game of STEAM_PLAYER_COUNT_GAMES) {
+    const label = steamPlayerCountGameLabel(game.appId)
+    const button = findButton(label)
+    assert.ok(button, label)
     const pressed = selectedAppIds.includes(game.appId)
-    assert.ok(buttons[index].includes(`>${steamPlayerCountGameLabel(game.appId)}<`))
-    assert.ok(buttons[index].includes(`aria-pressed="${pressed}"`))
-    assert.ok(buttons[index].includes(`aria-disabled="${pressed && selectedAppIds.length === 1}"`))
+    assert.ok(button.includes(`aria-pressed="${pressed}"`), label)
+    if (!multiple) assert.ok(button.includes(`aria-label="${label}のみ表示"`), label)
+    assert.doesNotMatch(button, /\sdisabled(?:=|\s|>)|aria-disabled="true"/)
   }
   assert.doesNotMatch(html, /<select[^>]*aria-label="ゲーム"|>ゲーム別<|>ゲーム比較</)
 }
@@ -138,7 +167,9 @@ test('every selected game has its own source and loading state without another g
     const html = renderToStaticMarkup(createElement(Page, { initialAppIds: [game.appId] }))
     assertGameSelection(html, [game.appId])
     assert.ok(html.includes(`href="${game.sourceUrl}"`))
-    assert.ok(html.includes(`ゲーム：${game.label}`))
+    for (const other of STEAM_PLAYER_COUNT_GAMES.filter(item => item.appId !== game.appId)) {
+      assert.ok(!html.includes(`href="${other.sourceUrl}"`))
+    }
     assert.ok(html.includes(`${game.label}の観測データを読み込み中`))
     assert.doesNotMatch(html, /<strong>\d[\d,]* 人<\/strong>|最終観測|公開日時/)
   }
@@ -210,6 +241,31 @@ test('the comparison table distinguishes zero from missing means and retains sha
   assert.ok(missingRow)
   assert.equal((missingRow.match(/算出不可/g) ?? []).length, 5)
   assert.match(missingRow, /<td>0 \/ 2 日<\/td><td>3 \/ 8 区間<\/td>/)
+})
+
+test('hourly formats share their observations while the table keeps actual people on an indexed chart selection', () => {
+  const date = '2026-10-31'
+  const range = { from: date, to: date }
+  const now = new Date('2026-10-31T02:00:00Z')
+  const entries = STEAM_PLAYER_COUNT_GAMES.slice(0, 2).map((game, index) => ({
+    game, observations: [7, 22, 37, 52].map(minute => observation(minute, (index + 1) * 800)),
+    publication: { source: 'history' as const, baseUrl: '', manifest: {
+      schemaVersion: 1 as const, appId: game.appId, sourceUrl: game.sourceUrl, generatedAt: now.toISOString(), days: [],
+    } },
+  }))
+  const state: SteamPlayerCountComparisonState = {
+    status: 'ready', range, dataRange: range, comparisonRange: range, now, entries, refreshError: false, failedAppIds: [],
+  }
+  const props = { state, tab: 'hourly' as const, selection: '24h' as const, dayType: 'all' as const, scale: 'index' as const,
+    metric: 'mean' as const, onMetricChange: () => {}, onScaleChange: () => {}, onHourlyViewChange: () => {} }
+  const chart = renderToStaticMarkup(createElement(ComparisonView, { ...props, hourlyView: 'chart' }))
+  assert.match(chart, /aria-pressed="true">グラフ<\/button>/)
+  assert.match(chart, /aria-pressed="true">各ゲーム平均＝100<\/button>/)
+  const table = renderToStaticMarkup(createElement(ComparisonView, { ...props, hourlyView: 'table' }))
+  assert.match(table, /aria-pressed="true">表<\/button>/)
+  assert.doesNotMatch(table, /aria-label="折れ線の表示尺度"|指数の基準/)
+  assert.match(table, /<th scope="row">09時台<\/th><td>800<\/td><td>1,600<\/td><td>1 \/ 1 日<\/td><td>4 \/ 4 区間<\/td>/)
+  for (const html of [chart, table]) assert.match(html, /共通観測 1 日・1 時間（4 区間）/)
 })
 
 test('unavailable hourly means stay missing while a verified zero remains visible', () => {

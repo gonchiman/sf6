@@ -12,8 +12,12 @@ export default defineConfig(async ({ command, isPreview }) => ({
       (await import(parallelFetchCloudServiceUrl)).parallelFetchCloudPlugin(),
       (await import(sampleSurveyServiceUrl)).sampleSurveyPlugin()] : [])],
   base: '/sf6/',
-  server: { fs: { deny: [
-    // Preserve Vite's default deny list and keep local survey/session storage private.
-    '.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml', '**/.git/**', '**/.local/**',
-  ] } },
+  server: {
+    // Local backups and collection output can be locked while other tools write them.
+    watch: { ignored: ['**/.local/**'] },
+    fs: { deny: [
+      // Preserve Vite's default deny list and keep local survey/session storage private.
+      '.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml', '**/.git/**', '**/.local/**',
+    ] },
+  },
 }))
